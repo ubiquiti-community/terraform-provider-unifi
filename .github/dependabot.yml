@@ -3,6 +3,7 @@ updates:
   # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    rebase-strategy: auto
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
@@ -10,6 +11,7 @@ updates:
   # Maintain dependencies for Go modules
   - package-ecosystem: "gomod"
     directory: "/"
+    rebase-strategy: auto
     schedule:
       # Check for updates to Go modules every weekday
       interval: "daily"
