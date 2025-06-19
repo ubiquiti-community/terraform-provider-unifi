@@ -154,11 +154,9 @@ func configure(version string, p *schema.Provider) schema.ConfigureContextFunc {
 
 		c := &client{
 			c: &lazyClient{
-				auth: unifi.AuthInfo{
-					Username: user,
-					Password: pass,
-					ApiKey:   apikey,
-				},
+				user:     user,
+				pass:     pass,
+				apikey:   apikey,
 				baseURL:  baseURL,
 				insecure: insecure,
 			},

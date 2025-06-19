@@ -17,7 +17,9 @@ import (
 
 type lazyClient struct {
 	baseURL   string
-	auth      unifi.AuthInfo
+	user      string
+	pass      string
+	apikey    string
 	insecure  bool
 	subsystem string
 
@@ -57,6 +59,7 @@ var initErr error
 func (c *lazyClient) init(ctx context.Context) error {
 	c.once.Do(func() {
 		c.inner = &unifi.Client{}
+		c.inner.SetAPIKey(c.apikey)
 		setHTTPClient(c.inner, c.insecure, c.subsystem)
 
 		initErr = c.inner.SetBaseURL(c.baseURL)
@@ -64,7 +67,7 @@ func (c *lazyClient) init(ctx context.Context) error {
 			return
 		}
 
-		initErr = c.inner.Login(ctx, c.auth)
+		initErr = c.inner.Login(ctx, c.user, c.pass)
 		if initErr != nil {
 			return
 		}
