@@ -29,6 +29,24 @@ func New(version string) func() *schema.Provider {
 	return func() *schema.Provider {
 		p := &schema.Provider{
 			Schema: map[string]*schema.Schema{
+				"api_key": {
+					Description: "API key for the Unifi controller. Can be specified with the `UNIFI_API_KEY` " +
+						"environment variable. If this is set, the `username` and `password` fields are ignored.",
+					Type:        schema.TypeString,
+					Optional:    true,
+					DefaultFunc: schema.EnvDefaultFunc("UNIFI_API_KEY", ""),
+					ValidateFunc: func(v any, k string) (ws []string, es []error) {
+						if v == nil || v.(string) == "" {
+							return nil, nil
+						}
+						if len(v.(string)) < 32 {
+							return nil, []error{
+								fmt.Errorf("api_key must be at least 32 characters long"),
+							}
+						}
+						return nil, nil
+					},
+				},
 				"username": {
 					Description: "Local user name for the Unifi controller API. Can be specified with the `UNIFI_USERNAME` " +
 						"environment variable.",
