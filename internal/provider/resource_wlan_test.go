@@ -301,7 +301,11 @@ func TestAccWLAN_fast_roaming_enabled(t *testing.T) {
 			{
 				Config: testAccWLANConfig_fast_roaming_enabled(name, subnet, vlan, true),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_wlan.test", "fast_roaming_enabled", "true"),
+					resource.TestCheckResourceAttr(
+						"unifi_wlan.test",
+						"fast_roaming_enabled",
+						"true",
+					),
 				),
 			},
 			importStep("unifi_wlan.test"),
@@ -635,7 +639,12 @@ resource "unifi_wlan" "test" {
 `, name, subnet, vlan, proxyArp)
 }
 
-func testAccWLANConfig_bss_transition(name string, subnet *net.IPNet, vlan int, bssTransition bool) string {
+func testAccWLANConfig_bss_transition(
+	name string,
+	subnet *net.IPNet,
+	vlan int,
+	bssTransition bool,
+) string {
 	return fmt.Sprintf(`
 data "unifi_ap_group" "default" {}
 
@@ -685,7 +694,12 @@ resource "unifi_wlan" "test" {
 `, subnet, vlan)
 }
 
-func testAccWLANConfig_fast_roaming_enabled(name string, subnet *net.IPNet, vlan int, fastRoamingEnabled bool) string {
+func testAccWLANConfig_fast_roaming_enabled(
+	name string,
+	subnet *net.IPNet,
+	vlan int,
+	fastRoamingEnabled bool,
+) string {
 	return fmt.Sprintf(`
 data "unifi_ap_group" "default" {}
 

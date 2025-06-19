@@ -44,7 +44,10 @@ func resourceUser() *schema.Resource {
 				Required:         true,
 				ForceNew:         true,
 				DiffSuppressFunc: macDiffSuppressFunc,
-				ValidateFunc:     validation.StringMatch(macAddressRegexp, "Mac address is invalid"),
+				ValidateFunc: validation.StringMatch(
+					macAddressRegexp,
+					"Mac address is invalid",
+				),
 			},
 			"name": {
 				Description: "The name of the user.",
@@ -200,7 +203,11 @@ func resourceUserGetResourceData(d *schema.ResourceData) (*unifi.User, error) {
 	}, nil
 }
 
-func resourceUserSetResourceData(resp *unifi.User, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceUserSetResourceData(
+	resp *unifi.User,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	fixedIP := ""
 	if resp.UseFixedIP {
 		fixedIP = resp.FixedIP

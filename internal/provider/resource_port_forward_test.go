@@ -47,7 +47,14 @@ func TestAccPortForward_src_ip(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPortForwardConfigSrc("22", false, "10.1.1.1", "22", "fwd name", "192.168.1.0"),
+				Config: testAccPortForwardConfigSrc(
+					"22",
+					false,
+					"10.1.1.1",
+					"22",
+					"fwd name",
+					"192.168.1.0",
+				),
 				Check: resource.ComposeTestCheckFunc(
 					// testCheckNetworkExists(t, "name"),
 					resource.TestCheckResourceAttr("unifi_port_forward.test", "dst_port", "22"),
@@ -65,7 +72,14 @@ func TestAccPortForward_src_cidr(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPortForwardConfigSrc("22", false, "10.1.1.1", "22", "fwd name", "192.168.1.0/20"),
+				Config: testAccPortForwardConfigSrc(
+					"22",
+					false,
+					"10.1.1.1",
+					"22",
+					"fwd name",
+					"192.168.1.0/20",
+				),
 				Check: resource.ComposeTestCheckFunc(
 					// testCheckNetworkExists(t, "name"),
 					resource.TestCheckResourceAttr("unifi_port_forward.test", "dst_port", "22"),
@@ -88,7 +102,11 @@ resource "unifi_port_forward" "test" {
 `, dstPort, enabled, fwdIP, fwdPort, name)
 }
 
-func testAccPortForwardConfigSrc(dstPort string, enabled bool, fwdIP, fwdPort, name, src string) string {
+func testAccPortForwardConfigSrc(
+	dstPort string,
+	enabled bool,
+	fwdIP, fwdPort, name, src string,
+) string {
 	return fmt.Sprintf(`
 resource "unifi_port_forward" "test" {
 	dst_port = %q

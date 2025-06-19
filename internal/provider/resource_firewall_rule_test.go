@@ -79,8 +79,10 @@ func TestAccFirewallRule_multiple_address_groups(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config:      testAccFirewallRuleConfigMultipleAddressGroups(name),
-				ExpectError: regexp.MustCompile("firewall rule groups must be of different group types"),
+				Config: testAccFirewallRuleConfigMultipleAddressGroups(name),
+				ExpectError: regexp.MustCompile(
+					"firewall rule groups must be of different group types",
+				),
 			},
 		},
 	})
@@ -95,8 +97,10 @@ func TestAccFirewallRule_multiple_port_groups(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config:      testAccFirewallRuleConfigMultiplePortGroups(name),
-				ExpectError: regexp.MustCompile("firewall rule groups must be of different group types"),
+				Config: testAccFirewallRuleConfigMultiplePortGroups(name),
+				ExpectError: regexp.MustCompile(
+					"firewall rule groups must be of different group types",
+				),
 			},
 		},
 	})

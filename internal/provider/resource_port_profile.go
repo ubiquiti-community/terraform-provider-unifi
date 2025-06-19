@@ -41,11 +41,20 @@ func resourcePortProfile() *schema.Resource {
 				Default:     true,
 			},
 			"dot1x_ctrl": {
-				Description:  "The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				Default:      "force_authorized",
-				ValidateFunc: validation.StringInSlice([]string{"auto", "force_authorized", "force_unauthorized", "mac_based", "multi_host"}, false),
+				Description: "The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     "force_authorized",
+				ValidateFunc: validation.StringInSlice(
+					[]string{
+						"auto",
+						"force_authorized",
+						"force_unauthorized",
+						"mac_based",
+						"multi_host",
+					},
+					false,
+				),
 			},
 			"dot1x_idle_timeout": {
 				Description:  "The timeout, in seconds, to use when using the MAC Based 802.1X control. Can be between 0 and 65535",
@@ -67,11 +76,14 @@ func resourcePortProfile() *schema.Resource {
 				Default:     false,
 			},
 			"forward": {
-				Description:  "The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				Default:      "native",
-				ValidateFunc: validation.StringInSlice([]string{"all", "native", "customize", "disabled"}, false),
+				Description: "The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				Default:     "native",
+				ValidateFunc: validation.StringInSlice(
+					[]string{"all", "native", "customize", "disabled"},
+					false,
+				),
 			},
 			"full_duplex": {
 				Description: "Enable full duplex for the port profile.",
@@ -95,7 +107,7 @@ func resourcePortProfile() *schema.Resource {
 				Description: "Enable LLDP-MED topology change notifications for the port profile.",
 				Type:        schema.TypeBool,
 				Optional:    true,
-				//ValidateFunc: ,
+				// ValidateFunc: ,
 			},
 			// TODO: rename to native_network_id
 			"native_networkconf_id": {
@@ -116,10 +128,13 @@ func resourcePortProfile() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{"switch"}, false),
 			},
 			"poe_mode": {
-				Description:  "The POE mode for the port profile. Can be one of `auto`, `passv24`, `passthrough` or `off`.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"auto", "passv24", "passthrough", "off"}, false),
+				Description: "The POE mode for the port profile. Can be one of `auto`, `passv24`, `passthrough` or `off`.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{"auto", "passv24", "passthrough", "off"},
+					false,
+				),
 			},
 			"port_security_enabled": {
 				Description: "Enable port security for the port profile.",
@@ -158,10 +173,12 @@ func resourcePortProfile() *schema.Resource {
 				ValidateFunc: validation.IntBetween(0, 100),
 			},
 			"speed": {
-				Description:  "The link speed to set for the port profile. Can be one of `10`, `100`, `1000`, `2500`, `5000`, `10000`, `20000`, `25000`, `40000`, `50000` or `100000`",
-				Type:         schema.TypeInt,
-				Optional:     true,
-				ValidateFunc: validation.IntInSlice([]int{10, 100, 1000, 2500, 5000, 10000, 20000, 25000, 40000, 50000, 100000}),
+				Description: "The link speed to set for the port profile. Can be one of `10`, `100`, `1000`, `2500`, `5000`, `10000`, `20000`, `25000`, `40000`, `50000` or `100000`",
+				Type:        schema.TypeInt,
+				Optional:    true,
+				ValidateFunc: validation.IntInSlice(
+					[]int{10, 100, 1000, 2500, 5000, 10000, 20000, 25000, 40000, 50000, 100000},
+				),
 			},
 			"stormctrl_bcast_enabled": {
 				Description: "Enable broadcast Storm Control for the port profile.",
@@ -248,7 +265,11 @@ func resourcePortProfile() *schema.Resource {
 	}
 }
 
-func resourcePortProfileCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortProfileCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourcePortProfileGetResourceData(d)
@@ -271,7 +292,9 @@ func resourcePortProfileCreate(ctx context.Context, d *schema.ResourceData, meta
 }
 
 func resourcePortProfileGetResourceData(d *schema.ResourceData) (*unifi.PortProfile, error) {
-	portSecurityMacAddress, err := setToStringSlice(d.Get("port_security_mac_address").(*schema.Set))
+	portSecurityMacAddress, err := setToStringSlice(
+		d.Get("port_security_mac_address").(*schema.Set),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +337,11 @@ func resourcePortProfileGetResourceData(d *schema.ResourceData) (*unifi.PortProf
 	}, nil
 }
 
-func resourcePortProfileSetResourceData(resp *unifi.PortProfile, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourcePortProfileSetResourceData(
+	resp *unifi.PortProfile,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("autoneg", resp.Autoneg)
 	d.Set("dot1x_ctrl", resp.Dot1XCtrl)
@@ -354,7 +381,11 @@ func resourcePortProfileSetResourceData(resp *unifi.PortProfile, d *schema.Resou
 	return nil
 }
 
-func resourcePortProfileRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortProfileRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -375,7 +406,11 @@ func resourcePortProfileRead(ctx context.Context, d *schema.ResourceData, meta a
 	return resourcePortProfileSetResourceData(resp, d, site)
 }
 
-func resourcePortProfileUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortProfileUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourcePortProfileGetResourceData(d)
@@ -399,7 +434,11 @@ func resourcePortProfileUpdate(ctx context.Context, d *schema.ResourceData, meta
 	return resourcePortProfileSetResourceData(resp, d, site)
 }
 
-func resourcePortProfileDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortProfileDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

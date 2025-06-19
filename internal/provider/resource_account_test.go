@@ -36,7 +36,11 @@ func TestAccAccount_mac(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					// testCheckNetworkExists(t, "name"),
 					resource.TestCheckResourceAttr("unifi_account.test", "name", "00B0D06FC226"),
-					resource.TestCheckResourceAttr("unifi_account.test", "password", "00B0D06FC226"),
+					resource.TestCheckResourceAttr(
+						"unifi_account.test",
+						"password",
+						"00B0D06FC226",
+					),
 				),
 			},
 			importStep("unifi_account.test"),

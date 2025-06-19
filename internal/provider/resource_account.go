@@ -122,7 +122,7 @@ func resourceAccountUpdate(ctx context.Context, d *schema.ResourceData, meta any
 func resourceAccountDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	c := meta.(*client)
 
-	//name := d.Get("name").(string)
+	// name := d.Get("name").(string)
 	site := d.Get("site").(string)
 	if site == "" {
 		site = c.site
@@ -158,7 +158,11 @@ func resourceAccountRead(ctx context.Context, d *schema.ResourceData, meta any) 
 	return resourceAccountSetResourceData(resp, d, site)
 }
 
-func resourceAccountSetResourceData(resp *unifi.Account, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceAccountSetResourceData(
+	resp *unifi.Account,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("name", resp.Name)
 	d.Set("password", resp.XPassword)

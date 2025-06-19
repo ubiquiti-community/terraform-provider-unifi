@@ -25,8 +25,16 @@ func TestAccNetwork_basic(t *testing.T) {
 			{
 				Config: testAccNetworkConfig(name, subnet1, vlan1, true, nil),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "domain_name", "foo.local"),
-					resource.TestCheckResourceAttr("unifi_network.test", "vlan_id", strconv.Itoa(vlan1)),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"domain_name",
+						"foo.local",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"vlan_id",
+						strconv.Itoa(vlan1),
+					),
 					resource.TestCheckResourceAttr("unifi_network.test", "igmp_snooping", "true"),
 				),
 			},
@@ -34,7 +42,11 @@ func TestAccNetwork_basic(t *testing.T) {
 			{
 				Config: testAccNetworkConfig(name, subnet2, vlan2, false, nil),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "vlan_id", strconv.Itoa(vlan2)),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"vlan_id",
+						strconv.Itoa(vlan2),
+					),
 					resource.TestCheckResourceAttr("unifi_network.test", "igmp_snooping", "false"),
 				),
 			},
@@ -82,15 +94,33 @@ func TestAccNetwork_dhcp_dns(t *testing.T) {
 			{
 				Config: testAccNetworkConfig(name, subnet, vlan, true, []string{"192.168.1.101"}),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_dns.0", "192.168.1.101"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_dns.0",
+						"192.168.1.101",
+					),
 				),
 			},
 			importStep("unifi_network.test"),
 			{
-				Config: testAccNetworkConfig(name, subnet, vlan, true, []string{"192.168.1.101", "192.168.1.102"}),
+				Config: testAccNetworkConfig(
+					name,
+					subnet,
+					vlan,
+					true,
+					[]string{"192.168.1.101", "192.168.1.102"},
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_dns.0", "192.168.1.101"),
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_dns.1", "192.168.1.102"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_dns.0",
+						"192.168.1.101",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_dns.1",
+						"192.168.1.102",
+					),
 				),
 			},
 			importStep("unifi_network.test"),
@@ -103,7 +133,11 @@ func TestAccNetwork_dhcp_dns(t *testing.T) {
 			{
 				Config: testAccNetworkConfig(name, subnet, vlan, true, []string{"192.168.1.101"}),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_dns.0", "192.168.1.101"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_dns.0",
+						"192.168.1.101",
+					),
 				),
 			},
 		},
@@ -142,19 +176,51 @@ func TestAccNetwork_v6(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccNetworkConfigV6(name, subnet1, vlan1, "static", "fd6a:37be:e362::1/64"),
+				Config: testAccNetworkConfigV6(
+					name,
+					subnet1,
+					vlan1,
+					"static",
+					"fd6a:37be:e362::1/64",
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "domain_name", "foo.local"),
-					resource.TestCheckResourceAttr("unifi_network.test", "vlan_id", strconv.Itoa(vlan1)),
-					resource.TestCheckResourceAttr("unifi_network.test", "ipv6_static_subnet", "fd6a:37be:e362::1/64"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"domain_name",
+						"foo.local",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"vlan_id",
+						strconv.Itoa(vlan1),
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"ipv6_static_subnet",
+						"fd6a:37be:e362::1/64",
+					),
 				),
 			},
 			importStep("unifi_network.test"),
 			{
-				Config: testAccNetworkConfigV6(name, subnet2, vlan2, "static", "fd6a:37be:e363::1/64"),
+				Config: testAccNetworkConfigV6(
+					name,
+					subnet2,
+					vlan2,
+					"static",
+					"fd6a:37be:e363::1/64",
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "vlan_id", strconv.Itoa(vlan2)),
-					resource.TestCheckResourceAttr("unifi_network.test", "ipv6_static_subnet", "fd6a:37be:e363::1/64"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"vlan_id",
+						strconv.Itoa(vlan2),
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"ipv6_static_subnet",
+						"fd6a:37be:e363::1/64",
+					),
 				),
 			},
 			importStep("unifi_network.test"),
@@ -168,10 +234,26 @@ func TestAccNetwork_v6(t *testing.T) {
 					"fd6a:37be:e364::7d1",
 					[]string{"2001:4860:4860::8888", "2001:4860:4860::8844"}),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "vlan_id", strconv.Itoa(vlan3)),
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_v6_start", "fd6a:37be:e364::2"),
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_v6_stop", "fd6a:37be:e364::7d1"),
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_v6_lease", strconv.Itoa(12*60*60)),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"vlan_id",
+						strconv.Itoa(vlan3),
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_v6_start",
+						"fd6a:37be:e364::2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_v6_stop",
+						"fd6a:37be:e364::7d1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_v6_lease",
+						strconv.Itoa(12*60*60),
+					),
 				),
 			},
 			{
@@ -198,14 +280,40 @@ func TestAccNetwork_wan(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config: testWanNetworkConfig(name, "WAN", "pppoe", "192.168.1.1", 1, "username", "password", "8.8.8.8", "4.4.4.4"),
+				Config: testWanNetworkConfig(
+					name,
+					"WAN",
+					"pppoe",
+					"192.168.1.1",
+					1,
+					"username",
+					"password",
+					"8.8.8.8",
+					"4.4.4.4",
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_networkgroup", "WAN"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_networkgroup",
+						"WAN",
+					),
 					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_type", "pppoe"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_ip", "192.168.1.1"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_ip",
+						"192.168.1.1",
+					),
 					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_egress_qos", "1"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_username", "username"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "x_wan_password", "password"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_username",
+						"username",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"x_wan_password",
+						"password",
+					),
 
 					resource.TestCheckOutput("wan_dns1", "8.8.8.8"),
 					resource.TestCheckOutput("wan_dns2", "4.4.4.4"),
@@ -214,14 +322,40 @@ func TestAccNetwork_wan(t *testing.T) {
 			importStep("unifi_network.wan_test"),
 			// remove qos
 			{
-				Config: testWanNetworkConfig(name, "WAN", "pppoe", "192.168.1.1", 0, "username", "password", "8.8.8.8", "4.4.4.4"),
+				Config: testWanNetworkConfig(
+					name,
+					"WAN",
+					"pppoe",
+					"192.168.1.1",
+					0,
+					"username",
+					"password",
+					"8.8.8.8",
+					"4.4.4.4",
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_networkgroup", "WAN"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_networkgroup",
+						"WAN",
+					),
 					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_type", "pppoe"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_ip", "192.168.1.1"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_ip",
+						"192.168.1.1",
+					),
 					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_egress_qos", "0"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_username", "username"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "x_wan_password", "password"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_username",
+						"username",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"x_wan_password",
+						"password",
+					),
 
 					resource.TestCheckOutput("wan_dns1", "8.8.8.8"),
 					resource.TestCheckOutput("wan_dns2", "4.4.4.4"),
@@ -229,14 +363,40 @@ func TestAccNetwork_wan(t *testing.T) {
 			},
 			importStep("unifi_network.wan_test"),
 			{
-				Config: testWanNetworkConfig(name, "WAN", "pppoe", "192.168.1.1", 1, "username", "password", "8.8.8.8", "4.4.4.4"),
+				Config: testWanNetworkConfig(
+					name,
+					"WAN",
+					"pppoe",
+					"192.168.1.1",
+					1,
+					"username",
+					"password",
+					"8.8.8.8",
+					"4.4.4.4",
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_networkgroup", "WAN"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_networkgroup",
+						"WAN",
+					),
 					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_type", "pppoe"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_ip", "192.168.1.1"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_ip",
+						"192.168.1.1",
+					),
 					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_egress_qos", "1"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_username", "username"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "x_wan_password", "password"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_username",
+						"username",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"x_wan_password",
+						"password",
+					),
 
 					resource.TestCheckOutput("wan_dns1", "8.8.8.8"),
 					resource.TestCheckOutput("wan_dns2", "4.4.4.4"),
@@ -244,8 +404,10 @@ func TestAccNetwork_wan(t *testing.T) {
 			},
 			importStep("unifi_network.wan_test"),
 			{
-				Config:      testWanV6NetworkConfig(name, "dhcpv6", 47),
-				ExpectError: regexp.MustCompile(regexp.QuoteMeta("expected wan_dhcp_v6_pd_size to be in the range (48 - 64)")),
+				Config: testWanV6NetworkConfig(name, "dhcpv6", 47),
+				ExpectError: regexp.MustCompile(
+					regexp.QuoteMeta("expected wan_dhcp_v6_pd_size to be in the range (48 - 64)"),
+				),
 			},
 			{
 				Config:      testWanV6NetworkConfig(name, "invalid", 48),
@@ -254,8 +416,16 @@ func TestAccNetwork_wan(t *testing.T) {
 			{
 				Config: testWanV6NetworkConfig(name, "dhcpv6", 48),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_type_v6", "dhcpv6"),
-					resource.TestCheckResourceAttr("unifi_network.wan_test", "wan_dhcp_v6_pd_size", "48"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_type_v6",
+						"dhcpv6",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.wan_test",
+						"wan_dhcp_v6_pd_size",
+						"48",
+					),
 				),
 			},
 		},
@@ -275,7 +445,12 @@ func TestAccNetwork_differentSite(t *testing.T) {
 			{
 				Config: testAccNetworkWithSiteConfig(name, subnet1, vlan1),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrPair("unifi_network.test", "site", "unifi_site.test", "name"),
+					resource.TestCheckResourceAttrPair(
+						"unifi_network.test",
+						"site",
+						"unifi_site.test",
+						"name",
+					),
 				),
 			},
 			{
@@ -287,7 +462,12 @@ func TestAccNetwork_differentSite(t *testing.T) {
 			{
 				Config: testAccNetworkWithSiteConfig(name, subnet2, vlan2),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrPair("unifi_network.test", "site", "unifi_site.test", "name"),
+					resource.TestCheckResourceAttrPair(
+						"unifi_network.test",
+						"site",
+						"unifi_site.test",
+						"name",
+					),
 				),
 			},
 			{
@@ -323,11 +503,23 @@ func TestAccNetwork_importByName(t *testing.T) {
 			},
 			// Apply and test errors.
 			{
-				Config: testAccNetworkWithDuplicateNames(subnet2, vlan2, subnet3, vlan3, "DUPLICATE_NAME"),
+				Config: testAccNetworkWithDuplicateNames(
+					subnet2,
+					vlan2,
+					subnet3,
+					vlan3,
+					"DUPLICATE_NAME",
+				),
 			},
 			// Test error on name that doesn't exist.
 			{
-				Config:            testAccNetworkWithDuplicateNames(subnet2, vlan2, subnet3, vlan3, "DUPLICATE_NAME"),
+				Config: testAccNetworkWithDuplicateNames(
+					subnet2,
+					vlan2,
+					subnet3,
+					vlan3,
+					"DUPLICATE_NAME",
+				),
 				ResourceName:      "unifi_network.test1",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -336,7 +528,13 @@ func TestAccNetwork_importByName(t *testing.T) {
 			},
 			// Test error on multiple matches.
 			{
-				Config:            testAccNetworkWithDuplicateNames(subnet2, vlan2, subnet3, vlan3, "DUPLICATE_NAME"),
+				Config: testAccNetworkWithDuplicateNames(
+					subnet2,
+					vlan2,
+					subnet3,
+					vlan3,
+					"DUPLICATE_NAME",
+				),
 				ResourceName:      "unifi_network.test1",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -361,14 +559,22 @@ func TestAccNetwork_dhcpRelay(t *testing.T) {
 			{
 				Config: testAccNetworkConfigDHCPRelay(name, subnet, vlan, true),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_relay_enabled", "true"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_relay_enabled",
+						"true",
+					),
 				),
 			},
 			importStep("unifi_network.test"),
 			{
 				Config: testAccNetworkConfigDHCPRelay(name, subnet, vlan, false),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "dhcp_relay_enabled", "false"),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"dhcp_relay_enabled",
+						"false",
+					),
 				),
 			},
 			importStep("unifi_network.test"),
@@ -390,7 +596,11 @@ func TestAccNetwork_vlanOnly(t *testing.T) {
 			{
 				Config: testAccNetworkVlanOnly(name, vlan),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_network.test", "vlan_id", strconv.Itoa(vlan)),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test",
+						"vlan_id",
+						strconv.Itoa(vlan),
+					),
 				),
 			},
 			{
@@ -470,7 +680,13 @@ resource "unifi_network" "test" {
 `, name, subnet, vlan)
 }
 
-func testAccNetworkConfig(name string, subnet *net.IPNet, vlan int, igmpSnoop bool, dhcpDNS []string) string {
+func testAccNetworkConfig(
+	name string,
+	subnet *net.IPNet,
+	vlan int,
+	igmpSnoop bool,
+	dhcpDNS []string,
+) string {
 	return fmt.Sprintf(`
 locals {
 	subnet  = "%[2]s"
@@ -494,7 +710,13 @@ resource "unifi_network" "test" {
 `, name, subnet, vlan, igmpSnoop, strings.Join(quoteStrings(dhcpDNS), ","))
 }
 
-func testAccNetworkConfigV6(name string, subnet *net.IPNet, vlan int, ipv6Type string, ipv6Subnet string) string {
+func testAccNetworkConfigV6(
+	name string,
+	subnet *net.IPNet,
+	vlan int,
+	ipv6Type string,
+	ipv6Subnet string,
+) string {
 	return fmt.Sprintf(`
 locals {
 	subnet  = "%[2]s"
@@ -519,7 +741,17 @@ resource "unifi_network" "test" {
 `, name, subnet, vlan, ipv6Type, ipv6Subnet)
 }
 
-func testWanNetworkConfig(name string, networkGroup string, wanType string, wanIP string, wanEgressQOS int, wanUsername string, wanPassword string, wanDNS1 string, wanDNS2 string) string {
+func testWanNetworkConfig(
+	name string,
+	networkGroup string,
+	wanType string,
+	wanIP string,
+	wanEgressQOS int,
+	wanUsername string,
+	wanPassword string,
+	wanDNS1 string,
+	wanDNS2 string,
+) string {
 	return fmt.Sprintf(`
 resource "unifi_network" "wan_test" {
 	name             = "%s"
@@ -591,7 +823,13 @@ resource "unifi_network" "test" {
 `, name, subnet, vlan)
 }
 
-func testAccNetworkWithDuplicateNames(subnet1 *net.IPNet, vlan1 int, subnet2 *net.IPNet, vlan2 int, networkName string) string {
+func testAccNetworkWithDuplicateNames(
+	subnet1 *net.IPNet,
+	vlan1 int,
+	subnet2 *net.IPNet,
+	vlan2 int,
+	networkName string,
+) string {
 	return fmt.Sprintf(`
 locals {
 	subnet1  = "%[1]s"
@@ -618,7 +856,12 @@ resource "unifi_network" "test2" {
 `, subnet1, vlan1, subnet2, vlan2, networkName)
 }
 
-func testAccNetworkConfigDHCPRelay(name string, subnet *net.IPNet, vlan int, dhcpRelay bool) string {
+func testAccNetworkConfigDHCPRelay(
+	name string,
+	subnet *net.IPNet,
+	vlan int,
+	dhcpRelay bool,
+) string {
 	return fmt.Sprintf(`
 locals {
 	subnet  = "%[2]s"
@@ -653,7 +896,15 @@ resource "unifi_network" "test" {
 `, name, vlan)
 }
 
-func testAccNetworkConfigDhcpV6(name string, subnet *net.IPNet, vlan int, gatewayIP string, dhcpdV6Start string, dhcpdV6Stop string, dhcpV6DNS []string) string {
+func testAccNetworkConfigDhcpV6(
+	name string,
+	subnet *net.IPNet,
+	vlan int,
+	gatewayIP string,
+	dhcpdV6Start string,
+	dhcpdV6Stop string,
+	dhcpV6DNS []string,
+) string {
 	return fmt.Sprintf(`
 locals {
   subnet  = "%[2]s"

@@ -57,7 +57,11 @@ func resourceUserGroup() *schema.Resource {
 	}
 }
 
-func resourceUserGroupCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceUserGroupCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceUserGroupGetResourceData(d)
@@ -88,7 +92,10 @@ func resourceUserGroupGetResourceData(d *schema.ResourceData) (*unifi.UserGroup,
 	}, nil
 }
 
-func resourceUserGroupSetResourceData(resp *unifi.UserGroup, d *schema.ResourceData) diag.Diagnostics {
+func resourceUserGroupSetResourceData(
+	resp *unifi.UserGroup,
+	d *schema.ResourceData,
+) diag.Diagnostics {
 	d.Set("name", resp.Name)
 	d.Set("qos_rate_max_down", resp.QOSRateMaxDown)
 	d.Set("qos_rate_max_up", resp.QOSRateMaxUp)
@@ -118,7 +125,11 @@ func resourceUserGroupRead(ctx context.Context, d *schema.ResourceData, meta any
 	return resourceUserGroupSetResourceData(resp, d)
 }
 
-func resourceUserGroupUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceUserGroupUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceUserGroupGetResourceData(d)
@@ -142,7 +153,11 @@ func resourceUserGroupUpdate(ctx context.Context, d *schema.ResourceData, meta a
 	return resourceUserGroupSetResourceData(resp, d)
 }
 
-func resourceUserGroupDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceUserGroupDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

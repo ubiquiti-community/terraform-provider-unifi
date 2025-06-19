@@ -11,7 +11,20 @@ import (
 )
 
 var (
-	wlanValidMinimumDataRate2g = []int{1000, 2000, 5500, 6000, 9000, 11000, 12000, 18000, 24000, 36000, 48000, 54000}
+	wlanValidMinimumDataRate2g = []int{
+		1000,
+		2000,
+		5500,
+		6000,
+		9000,
+		11000,
+		12000,
+		18000,
+		24000,
+		36000,
+		48000,
+		54000,
+	}
 	wlanValidMinimumDataRate5g = []int{6000, 9000, 12000, 18000, 24000, 36000, 48000, 54000}
 )
 
@@ -67,11 +80,14 @@ func resourceWLAN() *schema.Resource {
 				Optional:    true,
 			},
 			"pmf_mode": {
-				Description:  "Enable Protected Management Frames. This cannot be disabled if using WPA 3. Valid values are `required`, `optional` and `disabled`.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"required", "optional", "disabled"}, false),
-				Default:      "disabled",
+				Description: "Enable Protected Management Frames. This cannot be disabled if using WPA 3. Valid values are `required`, `optional` and `disabled`.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{"required", "optional", "disabled"},
+					false,
+				),
+				Default: "disabled",
 			},
 			"passphrase": {
 				Description: "The passphrase for the network, this is only required if `security` is not set to `open`.",
@@ -105,8 +121,11 @@ func resourceWLAN() *schema.Resource {
 				Type:        schema.TypeSet,
 				Optional:    true,
 				Elem: &schema.Schema{
-					Type:             schema.TypeString,
-					ValidateFunc:     validation.StringMatch(macAddressRegexp, "Mac address is invalid"),
+					Type: schema.TypeString,
+					ValidateFunc: validation.StringMatch(
+						macAddressRegexp,
+						"Mac address is invalid",
+					),
 					DiffSuppressFunc: macDiffSuppressFunc,
 				},
 			},
@@ -130,10 +149,13 @@ func resourceWLAN() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"day_of_week": {
-							Description:  "Day of week for the block. Valid values are `sun`, `mon`, `tue`, `wed`, `thu`, `fri`, `sat`.",
-							Type:         schema.TypeString,
-							Required:     true,
-							ValidateFunc: validation.StringInSlice([]string{"sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun"}, false),
+							Description: "Day of week for the block. Valid values are `sun`, `mon`, `tue`, `wed`, `thu`, `fri`, `sat`.",
+							Type:        schema.TypeString,
+							Required:    true,
+							ValidateFunc: validation.StringInSlice(
+								[]string{"sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun"},
+								false,
+							),
 						},
 						"start_hour": {
 							Description:  "Start hour for the block (0-23).",
@@ -205,7 +227,9 @@ func resourceWLAN() *schema.Resource {
 				Type:     schema.TypeInt,
 				Optional: true,
 				// TODO: this validation is from the UI, if other values work, perhaps remove this is set it to a range instead?
-				ValidateFunc: validation.IntInSlice(append([]int{0}, wlanValidMinimumDataRate2g...)),
+				ValidateFunc: validation.IntInSlice(
+					append([]int{0}, wlanValidMinimumDataRate2g...),
+				),
 			},
 			"minimum_data_rate_5g_kbps": {
 				Description: "Set minimum data rate control for 5G devices, in Kbps. " +
@@ -214,7 +238,9 @@ func resourceWLAN() *schema.Resource {
 				Type:     schema.TypeInt,
 				Optional: true,
 				// TODO: this validation is from the UI, if other values work, perhaps remove this is set it to a range instead?
-				ValidateFunc: validation.IntInSlice(append([]int{0}, wlanValidMinimumDataRate5g...)),
+				ValidateFunc: validation.IntInSlice(
+					append([]int{0}, wlanValidMinimumDataRate5g...),
+				),
 			},
 			"wlan_band": {
 				Description:  "Radio band your WiFi network will use.",
@@ -258,12 +284,18 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta any) (*unifi.WLAN,
 		// nothing
 	default:
 		if wpa3 || wpa3Transition {
-			return nil, fmt.Errorf("wpa3_support and wpa3_transition are only valid for security type wpapsk")
+			return nil, fmt.Errorf(
+				"wpa3_support and wpa3_transition are only valid for security type wpapsk",
+			)
 		}
 	}
 	if v := c.ControllerVersion(); v.LessThanOrEqual(controllerVersionWPA3) {
 		if wpa3 || wpa3Transition {
-			return nil, fmt.Errorf("WPA 3 support is not available on controller version %q, you must be on %q or higher", v, controllerVersionWPA3)
+			return nil, fmt.Errorf(
+				"WPA 3 support is not available on controller version %q, you must be on %q or higher",
+				v,
+				controllerVersionWPA3,
+			)
 		}
 	}
 
@@ -296,10 +328,14 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta any) (*unifi.WLAN,
 	}
 
 	minrateSettingPreference := "auto"
-	if d.Get("minimum_data_rate_2g_kbps").(int) != 0 || d.Get("minimum_data_rate_5g_kbps").(int) != 0 {
-		if d.Get("minimum_data_rate_2g_kbps").(int) == 0 || d.Get("minimum_data_rate_5g_kbps").(int) == 0 {
+	if d.Get("minimum_data_rate_2g_kbps").(int) != 0 ||
+		d.Get("minimum_data_rate_5g_kbps").(int) != 0 {
+		if d.Get("minimum_data_rate_2g_kbps").(int) == 0 ||
+			d.Get("minimum_data_rate_5g_kbps").(int) == 0 {
 			// this is really only true I think in >= 7.2, but easier to just apply this in general
-			return nil, fmt.Errorf("you must set minimum data rates on both 2g and 5g if setting either")
+			return nil, fmt.Errorf(
+				"you must set minimum data rates on both 2g and 5g if setting either",
+			)
 		}
 		minrateSettingPreference = "manual"
 	}
@@ -373,7 +409,12 @@ func resourceWLANCreate(ctx context.Context, d *schema.ResourceData, meta any) d
 	return resourceWLANSetResourceData(resp, d, meta, site)
 }
 
-func resourceWLANSetResourceData(resp *unifi.WLAN, d *schema.ResourceData, meta any, site string) diag.Diagnostics {
+func resourceWLANSetResourceData(
+	resp *unifi.WLAN,
+	d *schema.ResourceData,
+	_ any,
+	site string,
+) diag.Diagnostics {
 	// c := meta.(*client)
 	security := resp.Security
 	passphrase := resp.XPassphrase

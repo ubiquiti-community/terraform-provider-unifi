@@ -13,7 +13,9 @@ import (
 
 var resourceSettingUsgLock = sync.Mutex{}
 
-func resourceSettingUsgLocker(f func(context.Context, *schema.ResourceData, any) diag.Diagnostics) func(context.Context, *schema.ResourceData, any) diag.Diagnostics {
+func resourceSettingUsgLocker(
+	f func(context.Context, *schema.ResourceData, any) diag.Diagnostics,
+) func(context.Context, *schema.ResourceData, any) diag.Diagnostics {
 	return func(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 		resourceSettingUsgLock.Lock()
 		defer resourceSettingUsgLock.Unlock()
@@ -89,13 +91,20 @@ func resourceSettingUsg() *schema.Resource {
 	}
 }
 
-func resourceSettingUsgUpdateResourceData(d *schema.ResourceData, meta any, setting *unifi.SettingUsg) error {
+func resourceSettingUsgUpdateResourceData(
+	d *schema.ResourceData,
+	meta any,
+	setting *unifi.SettingUsg,
+) error {
 	c := meta.(*client)
 
 	//nolint // GetOkExists is deprecated, but using here:
 	if mdns, hasMdns := d.GetOkExists("multicast_dns_enabled"); hasMdns {
 		if v := c.ControllerVersion(); v.GreaterThanOrEqual(controllerV7) {
-			return fmt.Errorf("multicast_dns_enabled is not supported on controller version %v", c.ControllerVersion())
+			return fmt.Errorf(
+				"multicast_dns_enabled is not supported on controller version %v",
+				c.ControllerVersion(),
+			)
 		}
 
 		setting.MdnsEnabled = mdns.(bool)
@@ -118,7 +127,11 @@ func resourceSettingUsgUpdateResourceData(d *schema.ResourceData, meta any, sett
 	return nil
 }
 
-func resourceSettingUsgUpsert(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceSettingUsgUpsert(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	site := d.Get("site").(string)
@@ -145,7 +158,12 @@ func resourceSettingUsgUpsert(ctx context.Context, d *schema.ResourceData, meta 
 	return resourceSettingUsgSetResourceData(resp, d, meta, site)
 }
 
-func resourceSettingUsgSetResourceData(resp *unifi.SettingUsg, d *schema.ResourceData, meta any, site string) diag.Diagnostics {
+func resourceSettingUsgSetResourceData(
+	resp *unifi.SettingUsg,
+	d *schema.ResourceData,
+	meta any,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("multicast_dns_enabled", resp.MdnsEnabled)
 	d.Set("firewall_guest_default_log", resp.FirewallGuestDefaultLog)
@@ -170,7 +188,11 @@ func resourceSettingUsgSetResourceData(resp *unifi.SettingUsg, d *schema.Resourc
 	return nil
 }
 
-func resourceSettingUsgRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceSettingUsgRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	site := d.Get("site").(string)

@@ -42,7 +42,11 @@ func resourceSite() *schema.Resource {
 	}
 }
 
-func resourceSiteImport(ctx context.Context, d *schema.ResourceData, meta any) ([]*schema.ResourceData, error) {
+func resourceSiteImport(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) ([]*schema.ResourceData, error) {
 	c := meta.(*client)
 
 	id := d.Id()

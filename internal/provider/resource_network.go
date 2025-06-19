@@ -26,22 +26,37 @@ var (
 	validateWANPassword = validation.StringMatch(wanPasswordRegexp, "invalid WAN password")
 
 	wanNetworkGroupRegexp   = regexp.MustCompile("WAN[2]?|WAN_LTE_FAILOVER")
-	validateWANNetworkGroup = validation.StringMatch(wanNetworkGroupRegexp, "invalid WAN network group")
+	validateWANNetworkGroup = validation.StringMatch(
+		wanNetworkGroupRegexp,
+		"invalid WAN network group",
+	)
 
 	wanV6NetworkGroupRegexp   = regexp.MustCompile("wan[2]?")
-	validateWANV6NetworkGroup = validation.StringMatch(wanV6NetworkGroupRegexp, "invalid WANv6 network group")
+	validateWANV6NetworkGroup = validation.StringMatch(
+		wanV6NetworkGroupRegexp,
+		"invalid WANv6 network group",
+	)
 
 	ipV6InterfaceTypeRegexp   = regexp.MustCompile("none|pd|static")
-	validateIpV6InterfaceType = validation.StringMatch(ipV6InterfaceTypeRegexp, "invalid IPv6 interface type")
+	validateIpV6InterfaceType = validation.StringMatch(
+		ipV6InterfaceTypeRegexp,
+		"invalid IPv6 interface type",
+	)
 
 	// This is a slightly larger range than the UI, it includes some reserved ones, so could be tightened up.
 	validateVLANID = validation.IntBetween(0, 4096)
 
 	ipV6RAPriorityRegexp   = regexp.MustCompile("high|medium|low")
-	validateIpV6RAPriority = validation.StringMatch(ipV6RAPriorityRegexp, "invalid IPv6 RA priority")
+	validateIpV6RAPriority = validation.StringMatch(
+		ipV6RAPriorityRegexp,
+		"invalid IPv6 RA priority",
+	)
 
 	wireguardClientModeRegexp   = regexp.MustCompile("file|manual")
-	validateWireguardClientMode = validation.StringMatch(wireguardClientModeRegexp, "invalid Wireguard client mode")
+	validateWireguardClientMode = validation.StringMatch(
+		wireguardClientModeRegexp,
+		"invalid Wireguard client mode",
+	)
 )
 
 func resourceNetwork() *schema.Resource {
@@ -75,11 +90,14 @@ func resourceNetwork() *schema.Resource {
 				Required:    true,
 			},
 			"purpose": {
-				Description:  "The purpose of the network. Must be one of `corporate`, `guest`, `wan`, `vlan-only`, or `vpn-client`.",
-				Type:         schema.TypeString,
-				Required:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice([]string{"corporate", "guest", "wan", "vlan-only", "vpn-client"}, false),
+				Description: "The purpose of the network. Must be one of `corporate`, `guest`, `wan`, `vlan-only`, or `vpn-client`.",
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{"corporate", "guest", "wan", "vlan-only", "vpn-client"},
+					false,
+				),
 			},
 			"vlan_id": {
 				Description:  "The VLAN ID of the network.",
@@ -563,7 +581,11 @@ func resourceNetworkGetResourceData(d *schema.ResourceData, meta any) (*unifi.Ne
 	}, nil
 }
 
-func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceNetworkSetResourceData(
+	resp *unifi.Network,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	wanType := ""
 	wanDNS := []string{}
 	wanIP := ""
@@ -757,7 +779,11 @@ func resourceNetworkDelete(ctx context.Context, d *schema.ResourceData, meta any
 	return diag.FromErr(err)
 }
 
-func importNetwork(ctx context.Context, d *schema.ResourceData, meta any) ([]*schema.ResourceData, error) {
+func importNetwork(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) ([]*schema.ResourceData, error) {
 	c := meta.(*client)
 	id := d.Id()
 	site := d.Get("site").(string)
@@ -789,7 +815,11 @@ func importNetwork(ctx context.Context, d *schema.ResourceData, meta any) ([]*sc
 	return []*schema.ResourceData{d}, nil
 }
 
-func getNetworkIDByName(ctx context.Context, client unifiClient, networkName, site string) (string, error) {
+func getNetworkIDByName(
+	ctx context.Context,
+	client unifiClient,
+	networkName, site string,
+) (string, error) {
 	networks, err := client.ListNetwork(ctx, site)
 	if err != nil {
 		return "", err
@@ -808,7 +838,11 @@ func getNetworkIDByName(ctx context.Context, client unifiClient, networkName, si
 		idMatchingName = network.ID
 	}
 	if idMatchingName == "" {
-		return "", fmt.Errorf("found no networks with name '%s', found: %s", networkName, strings.Join(allNames, ", "))
+		return "", fmt.Errorf(
+			"found no networks with name '%s', found: %s",
+			networkName,
+			strings.Join(allNames, ", "),
+		)
 	}
 	return idMatchingName, nil
 }

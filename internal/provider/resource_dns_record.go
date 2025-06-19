@@ -81,7 +81,11 @@ func resourceDNSRecord() *schema.Resource {
 	}
 }
 
-func resourceDNSRecordCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceDNSRecordCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceDNSRecordGetResourceData(d)
@@ -119,7 +123,11 @@ func resourceDNSRecordGetResourceData(d *schema.ResourceData) (*unifi.DNSRecord,
 	return r, nil
 }
 
-func resourceDNSRecordSetResourceData(resp *unifi.DNSRecord, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceDNSRecordSetResourceData(
+	resp *unifi.DNSRecord,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("enabled", resp.Enabled)
 	d.Set("name", resp.Key)
 	d.Set("port", resp.Port)
@@ -144,7 +152,6 @@ func resourceDNSRecordRead(ctx context.Context, d *schema.ResourceData, meta any
 	}
 
 	resp, err := c.c.ListDNSRecord(ctx, site)
-
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -163,7 +170,11 @@ func resourceDNSRecordRead(ctx context.Context, d *schema.ResourceData, meta any
 	return resourceDNSRecordSetResourceData(&rec, d, site)
 }
 
-func resourceDNSRecordUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceDNSRecordUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceDNSRecordGetResourceData(d)
@@ -187,7 +198,11 @@ func resourceDNSRecordUpdate(ctx context.Context, d *schema.ResourceData, meta a
 	return resourceDNSRecordSetResourceData(resp, d, site)
 }
 
-func resourceDNSRecordDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceDNSRecordDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

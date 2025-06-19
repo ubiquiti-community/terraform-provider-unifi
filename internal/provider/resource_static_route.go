@@ -49,10 +49,13 @@ func resourceStaticRoute() *schema.Resource {
 				DiffSuppressFunc: cidrDiffSuppress,
 			},
 			"type": {
-				Description:  "The type of static route. Can be `interface-route`, `nexthop-route`, or `blackhole`.",
-				Type:         schema.TypeString,
-				Required:     true,
-				ValidateFunc: validation.StringInSlice([]string{"interface-route", "nexthop-route", "blackhole"}, false),
+				Description: "The type of static route. Can be `interface-route`, `nexthop-route`, or `blackhole`.",
+				Type:        schema.TypeString,
+				Required:    true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{"interface-route", "nexthop-route", "blackhole"},
+					false,
+				),
 			},
 			"distance": {
 				Description: "The distance of the static route.",
@@ -75,7 +78,11 @@ func resourceStaticRoute() *schema.Resource {
 	}
 }
 
-func resourceStaticRouteCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceStaticRouteCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceStaticRouteGetResourceData(d)
@@ -124,7 +131,11 @@ func resourceStaticRouteGetResourceData(d *schema.ResourceData) (*unifi.Routing,
 	return r, nil
 }
 
-func resourceStaticRouteSetResourceData(resp *unifi.Routing, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceStaticRouteSetResourceData(
+	resp *unifi.Routing,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("name", resp.Name)
 	d.Set("network", cidrZeroBased(resp.StaticRouteNetwork))
@@ -150,7 +161,11 @@ func resourceStaticRouteSetResourceData(resp *unifi.Routing, d *schema.ResourceD
 	return nil
 }
 
-func resourceStaticRouteRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceStaticRouteRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -172,7 +187,11 @@ func resourceStaticRouteRead(ctx context.Context, d *schema.ResourceData, meta a
 	return resourceStaticRouteSetResourceData(resp, d, site)
 }
 
-func resourceStaticRouteUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceStaticRouteUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceStaticRouteGetResourceData(d)
@@ -196,7 +215,11 @@ func resourceStaticRouteUpdate(ctx context.Context, d *schema.ResourceData, meta
 	return resourceStaticRouteSetResourceData(resp, d, site)
 }
 
-func resourceStaticRouteDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceStaticRouteDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

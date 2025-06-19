@@ -27,7 +27,10 @@ func dataUser() *schema.Resource {
 				Type:             schema.TypeString,
 				Required:         true,
 				DiffSuppressFunc: macDiffSuppressFunc,
-				ValidateFunc:     validation.StringMatch(macAddressRegexp, "Mac address is invalid"),
+				ValidateFunc: validation.StringMatch(
+					macAddressRegexp,
+					"Mac address is invalid",
+				),
 			},
 
 			// read-only / computed

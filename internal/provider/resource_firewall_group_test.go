@@ -44,11 +44,19 @@ func TestAccFirewallGroup_address_group(t *testing.T) {
 			},
 			importStep("unifi_firewall_group.test"),
 			{
-				Config: testAccFirewallGroupConfig("testag", "address-group", []string{"10.0.0.1", "10.0.0.2"}),
+				Config: testAccFirewallGroupConfig(
+					"testag",
+					"address-group",
+					[]string{"10.0.0.1", "10.0.0.2"},
+				),
 			},
 			importStep("unifi_firewall_group.test"),
 			{
-				Config: testAccFirewallGroupConfig("testag", "address-group", []string{"10.0.0.0/24"}),
+				Config: testAccFirewallGroupConfig(
+					"testag",
+					"address-group",
+					[]string{"10.0.0.0/24"},
+				),
 			},
 			importStep("unifi_firewall_group.test"),
 		},

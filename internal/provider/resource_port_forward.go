@@ -100,7 +100,11 @@ func resourcePortForward() *schema.Resource {
 	}
 }
 
-func resourcePortForwardCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortForwardCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourcePortForwardGetResourceData(d)
@@ -136,7 +140,11 @@ func resourcePortForwardGetResourceData(d *schema.ResourceData) (*unifi.PortForw
 	}, nil
 }
 
-func resourcePortForwardSetResourceData(resp *unifi.PortForward, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourcePortForwardSetResourceData(
+	resp *unifi.PortForward,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("dst_port", resp.DstPort)
 	d.Set("enabled", resp.Enabled)
@@ -151,7 +159,11 @@ func resourcePortForwardSetResourceData(resp *unifi.PortForward, d *schema.Resou
 	return nil
 }
 
-func resourcePortForwardRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortForwardRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -172,7 +184,11 @@ func resourcePortForwardRead(ctx context.Context, d *schema.ResourceData, meta a
 	return resourcePortForwardSetResourceData(resp, d, site)
 }
 
-func resourcePortForwardUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortForwardUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourcePortForwardGetResourceData(d)
@@ -196,7 +212,11 @@ func resourcePortForwardUpdate(ctx context.Context, d *schema.ResourceData, meta
 	return resourcePortForwardSetResourceData(resp, d, site)
 }
 
-func resourcePortForwardDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourcePortForwardDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

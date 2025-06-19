@@ -41,10 +41,13 @@ func resourceFirewallGroup() *schema.Resource {
 				Required:    true,
 			},
 			"type": {
-				Description:  "The type of the firewall group. Must be one of: `address-group`, `port-group`, or `ipv6-address-group`.",
-				Type:         schema.TypeString,
-				Required:     true,
-				ValidateFunc: validation.StringInSlice([]string{"address-group", "port-group", "ipv6-address-group"}, false),
+				Description: "The type of the firewall group. Must be one of: `address-group`, `port-group`, or `ipv6-address-group`.",
+				Type:        schema.TypeString,
+				Required:    true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{"address-group", "port-group", "ipv6-address-group"},
+					false,
+				),
 			},
 			"members": {
 				Description: "The members of the firewall group.",
@@ -56,7 +59,11 @@ func resourceFirewallGroup() *schema.Resource {
 	}
 }
 
-func resourceFirewallGroupCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallGroupCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceFirewallGroupGetResourceData(d)
@@ -97,7 +104,11 @@ func resourceFirewallGroupGetResourceData(d *schema.ResourceData) (*unifi.Firewa
 	}, nil
 }
 
-func resourceFirewallGroupSetResourceData(resp *unifi.FirewallGroup, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceFirewallGroupSetResourceData(
+	resp *unifi.FirewallGroup,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("name", resp.Name)
 	d.Set("type", resp.GroupType)
@@ -106,7 +117,11 @@ func resourceFirewallGroupSetResourceData(resp *unifi.FirewallGroup, d *schema.R
 	return nil
 }
 
-func resourceFirewallGroupRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallGroupRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -128,7 +143,11 @@ func resourceFirewallGroupRead(ctx context.Context, d *schema.ResourceData, meta
 	return resourceFirewallGroupSetResourceData(resp, d, site)
 }
 
-func resourceFirewallGroupUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallGroupUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceFirewallGroupGetResourceData(d)
@@ -152,7 +171,11 @@ func resourceFirewallGroupUpdate(ctx context.Context, d *schema.ResourceData, me
 	return resourceFirewallGroupSetResourceData(resp, d, site)
 }
 
-func resourceFirewallGroupDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallGroupDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

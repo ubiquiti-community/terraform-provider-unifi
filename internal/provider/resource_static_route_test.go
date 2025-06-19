@@ -27,11 +27,27 @@ func TestAccStaticRoute_nextHop(t *testing.T) {
 			{
 				Config: testAccStaticRouteConfig_nextHop(name, network, distance, &nextHop),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "nexthop-route"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", network.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"type",
+						"nexthop-route",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						network.String(),
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", name),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", strconv.Itoa(distance)),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "next_hop", nextHop.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"distance",
+						strconv.Itoa(distance),
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"next_hop",
+						nextHop.String(),
+					),
 				),
 			},
 			importStep("unifi_static_route.test"),
@@ -42,11 +58,62 @@ func TestAccStaticRoute_nextHop(t *testing.T) {
 func TestAccStaticRoute_nextHop_ipv6(t *testing.T) {
 	name := acctest.RandomWithPrefix("tfacc")
 	network := &net.IPNet{
-		IP:   net.IP{0xfd, 0x6a, 0x37, 0xbe, 0xe3, 0x62, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1},
-		Mask: net.IPMask{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		IP: net.IP{
+			0xfd,
+			0x6a,
+			0x37,
+			0xbe,
+			0xe3,
+			0x62,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x1,
+		},
+		Mask: net.IPMask{
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+		},
 	}
 	distance := 1
-	nextHop := net.IP{0xfd, 0x6a, 0x37, 0xbe, 0xe3, 0x62, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1}
+	nextHop := net.IP{
+		0xfd,
+		0x6a,
+		0x37,
+		0xbe,
+		0xe3,
+		0x62,
+		0x0,
+		0x0,
+		0x0,
+		0x0,
+		0x0,
+		0x0,
+		0x0,
+		0x0,
+		0x0,
+		0x1,
+	}
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { preCheck(t) },
@@ -56,11 +123,27 @@ func TestAccStaticRoute_nextHop_ipv6(t *testing.T) {
 			{
 				Config: testAccStaticRouteConfig_nextHop(name, network, distance, &nextHop),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "nexthop-route"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", network.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"type",
+						"nexthop-route",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						network.String(),
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", name),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", strconv.Itoa(distance)),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "next_hop", nextHop.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"distance",
+						strconv.Itoa(distance),
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"next_hop",
+						nextHop.String(),
+					),
 				),
 			},
 			importStep("unifi_static_route.test"),
@@ -85,9 +168,17 @@ func TestAccStaticRoute_blackhole(t *testing.T) {
 				Config: testAccStaticRouteConfig_blackhole(name, network, distance),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "blackhole"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", network.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						network.String(),
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", name),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", strconv.Itoa(distance)),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"distance",
+						strconv.Itoa(distance),
+					),
 				),
 			},
 			importStep("unifi_static_route.test"),
@@ -98,8 +189,42 @@ func TestAccStaticRoute_blackhole(t *testing.T) {
 func TestAccStaticRoute_blackhole_ipv6(t *testing.T) {
 	name := acctest.RandomWithPrefix("tfacc")
 	network := &net.IPNet{
-		IP:   net.IP{0xfd, 0x6a, 0x37, 0xbe, 0xe3, 0x62, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1},
-		Mask: net.IPMask{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		IP: net.IP{
+			0xfd,
+			0x6a,
+			0x37,
+			0xbe,
+			0xe3,
+			0x62,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x1,
+		},
+		Mask: net.IPMask{
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+		},
 	}
 	distance := 1
 
@@ -112,9 +237,17 @@ func TestAccStaticRoute_blackhole_ipv6(t *testing.T) {
 				Config: testAccStaticRouteConfig_blackhole(name, network, distance),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "blackhole"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", network.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						network.String(),
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", name),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", strconv.Itoa(distance)),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"distance",
+						strconv.Itoa(distance),
+					),
 				),
 			},
 			importStep("unifi_static_route.test"),
@@ -137,13 +270,34 @@ func TestAccStaticRoute_interface(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccStaticRouteConfig_interface(name, network, distance, networkInterface),
+				Config: testAccStaticRouteConfig_interface(
+					name,
+					network,
+					distance,
+					networkInterface,
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "interface-route"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", network.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"type",
+						"interface-route",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						network.String(),
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", name),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", strconv.Itoa(distance)),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "interface", networkInterface),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"distance",
+						strconv.Itoa(distance),
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"interface",
+						networkInterface,
+					),
 				),
 			},
 			importStep("unifi_static_route.test"),
@@ -154,8 +308,42 @@ func TestAccStaticRoute_interface(t *testing.T) {
 func TestAccStaticRoute_interface_ipv6(t *testing.T) {
 	name := acctest.RandomWithPrefix("tfacc")
 	network := &net.IPNet{
-		IP:   net.IP{0xfd, 0x6a, 0x37, 0xbe, 0xe3, 0x62, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1},
-		Mask: net.IPMask{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		IP: net.IP{
+			0xfd,
+			0x6a,
+			0x37,
+			0xbe,
+			0xe3,
+			0x62,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x0,
+			0x1,
+		},
+		Mask: net.IPMask{
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+			0xff,
+		},
 	}
 	distance := 1
 	networkInterface := "WAN2"
@@ -166,13 +354,34 @@ func TestAccStaticRoute_interface_ipv6(t *testing.T) {
 		// TODO: CheckDestroy: ,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccStaticRouteConfig_interface(name, network, distance, networkInterface),
+				Config: testAccStaticRouteConfig_interface(
+					name,
+					network,
+					distance,
+					networkInterface,
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "interface-route"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", network.String()),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"type",
+						"interface-route",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						network.String(),
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", name),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", strconv.Itoa(distance)),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "interface", networkInterface),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"distance",
+						strconv.Itoa(distance),
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"interface",
+						networkInterface,
+					),
 				),
 			},
 			importStep("unifi_static_route.test"),
@@ -180,7 +389,12 @@ func TestAccStaticRoute_interface_ipv6(t *testing.T) {
 	})
 }
 
-func testAccStaticRouteConfig_nextHop(name string, network *net.IPNet, distance int, nextHop *net.IP) string {
+func testAccStaticRouteConfig_nextHop(
+	name string,
+	network *net.IPNet,
+	distance int,
+	nextHop *net.IP,
+) string {
 	return fmt.Sprintf(`
 resource "unifi_static_route" "test" {
 	type     = "nexthop-route"
@@ -203,7 +417,12 @@ resource "unifi_static_route" "test" {
 `, name, network, distance)
 }
 
-func testAccStaticRouteConfig_interface(name string, network *net.IPNet, distance int, networkInterface string) string {
+func testAccStaticRouteConfig_interface(
+	name string,
+	network *net.IPNet,
+	distance int,
+	networkInterface string,
+) string {
 	return fmt.Sprintf(`
 resource "unifi_static_route" "test" {
 	type      = "interface-route"

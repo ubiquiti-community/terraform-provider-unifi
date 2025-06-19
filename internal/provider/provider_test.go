@@ -83,14 +83,16 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-	const user = "admin"
-	const password = "admin"
+	authInfo := unifi.AuthInfo{
+		Username: "admin",
+		Password: "admin",
+	}
 
-	if err = os.Setenv("UNIFI_USERNAME", user); err != nil {
+	if err = os.Setenv("UNIFI_USERNAME", authInfo.Username); err != nil {
 		panic(err)
 	}
 
-	if err = os.Setenv("UNIFI_PASSWORD", password); err != nil {
+	if err = os.Setenv("UNIFI_PASSWORD", authInfo.Password); err != nil {
 		panic(err)
 	}
 
@@ -105,7 +107,7 @@ func runAcceptanceTests(m *testing.M) int {
 	testClient = &unifi.Client{}
 	setHTTPClient(testClient, true, "unifi")
 	testClient.SetBaseURL(endpoint)
-	if err = testClient.Login(ctx, user, password); err != nil {
+	if err = testClient.Login(ctx, authInfo); err != nil {
 		panic(err)
 	}
 

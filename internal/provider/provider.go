@@ -111,14 +111,18 @@ func configure(version string, p *schema.Provider) schema.ConfigureContextFunc {
 	return func(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
 		user := d.Get("username").(string)
 		pass := d.Get("password").(string)
+		apikey := d.Get("api_key").(string)
 		baseURL := d.Get("api_url").(string)
 		site := d.Get("site").(string)
 		insecure := d.Get("allow_insecure").(bool)
 
 		c := &client{
 			c: &lazyClient{
-				user:     user,
-				pass:     pass,
+				auth: unifi.AuthInfo{
+					Username: user,
+					Password: pass,
+					ApiKey:   apikey,
+				},
 				baseURL:  baseURL,
 				insecure: insecure,
 			},
@@ -140,15 +144,31 @@ type unifiClient interface {
 
 	ListFirewallGroup(ctx context.Context, site string) ([]unifi.FirewallGroup, error)
 	DeleteFirewallGroup(ctx context.Context, site, id string) error
-	CreateFirewallGroup(ctx context.Context, site string, d *unifi.FirewallGroup) (*unifi.FirewallGroup, error)
+	CreateFirewallGroup(
+		ctx context.Context,
+		site string,
+		d *unifi.FirewallGroup,
+	) (*unifi.FirewallGroup, error)
 	GetFirewallGroup(ctx context.Context, site, id string) (*unifi.FirewallGroup, error)
-	UpdateFirewallGroup(ctx context.Context, site string, d *unifi.FirewallGroup) (*unifi.FirewallGroup, error)
+	UpdateFirewallGroup(
+		ctx context.Context,
+		site string,
+		d *unifi.FirewallGroup,
+	) (*unifi.FirewallGroup, error)
 
 	ListFirewallRule(ctx context.Context, site string) ([]unifi.FirewallRule, error)
 	DeleteFirewallRule(ctx context.Context, site, id string) error
-	CreateFirewallRule(ctx context.Context, site string, d *unifi.FirewallRule) (*unifi.FirewallRule, error)
+	CreateFirewallRule(
+		ctx context.Context,
+		site string,
+		d *unifi.FirewallRule,
+	) (*unifi.FirewallRule, error)
 	GetFirewallRule(ctx context.Context, site, id string) (*unifi.FirewallRule, error)
-	UpdateFirewallRule(ctx context.Context, site string, d *unifi.FirewallRule) (*unifi.FirewallRule, error)
+	UpdateFirewallRule(
+		ctx context.Context,
+		site string,
+		d *unifi.FirewallRule,
+	) (*unifi.FirewallRule, error)
 
 	ListWLANGroup(ctx context.Context, site string) ([]unifi.WLANGroup, error)
 
@@ -185,14 +205,30 @@ type unifiClient interface {
 
 	GetPortForward(ctx context.Context, site, id string) (*unifi.PortForward, error)
 	DeletePortForward(ctx context.Context, site, id string) error
-	CreatePortForward(ctx context.Context, site string, d *unifi.PortForward) (*unifi.PortForward, error)
-	UpdatePortForward(ctx context.Context, site string, d *unifi.PortForward) (*unifi.PortForward, error)
+	CreatePortForward(
+		ctx context.Context,
+		site string,
+		d *unifi.PortForward,
+	) (*unifi.PortForward, error)
+	UpdatePortForward(
+		ctx context.Context,
+		site string,
+		d *unifi.PortForward,
+	) (*unifi.PortForward, error)
 
 	ListRADIUSProfile(ctx context.Context, site string) ([]unifi.RADIUSProfile, error)
 	GetRADIUSProfile(ctx context.Context, site, id string) (*unifi.RADIUSProfile, error)
 	DeleteRADIUSProfile(ctx context.Context, site, id string) error
-	CreateRADIUSProfile(ctx context.Context, site string, d *unifi.RADIUSProfile) (*unifi.RADIUSProfile, error)
-	UpdateRADIUSProfile(ctx context.Context, site string, d *unifi.RADIUSProfile) (*unifi.RADIUSProfile, error)
+	CreateRADIUSProfile(
+		ctx context.Context,
+		site string,
+		d *unifi.RADIUSProfile,
+	) (*unifi.RADIUSProfile, error)
+	UpdateRADIUSProfile(
+		ctx context.Context,
+		site string,
+		d *unifi.RADIUSProfile,
+	) (*unifi.RADIUSProfile, error)
 
 	ListAccounts(ctx context.Context, site string) ([]unifi.Account, error)
 	GetAccount(ctx context.Context, site, id string) (*unifi.Account, error)
@@ -209,8 +245,16 @@ type unifiClient interface {
 	ListPortProfile(ctx context.Context, site string) ([]unifi.PortProfile, error)
 	GetPortProfile(ctx context.Context, site, id string) (*unifi.PortProfile, error)
 	DeletePortProfile(ctx context.Context, site, id string) error
-	CreatePortProfile(ctx context.Context, site string, d *unifi.PortProfile) (*unifi.PortProfile, error)
-	UpdatePortProfile(ctx context.Context, site string, d *unifi.PortProfile) (*unifi.PortProfile, error)
+	CreatePortProfile(
+		ctx context.Context,
+		site string,
+		d *unifi.PortProfile,
+	) (*unifi.PortProfile, error)
+	UpdatePortProfile(
+		ctx context.Context,
+		site string,
+		d *unifi.PortProfile,
+	) (*unifi.PortProfile, error)
 
 	ListRouting(ctx context.Context, site string) ([]unifi.Routing, error)
 	GetRouting(ctx context.Context, site, id string) (*unifi.Routing, error)
@@ -221,8 +265,16 @@ type unifiClient interface {
 	ListDynamicDNS(ctx context.Context, site string) ([]unifi.DynamicDNS, error)
 	GetDynamicDNS(ctx context.Context, site, id string) (*unifi.DynamicDNS, error)
 	DeleteDynamicDNS(ctx context.Context, site, id string) error
-	CreateDynamicDNS(ctx context.Context, site string, d *unifi.DynamicDNS) (*unifi.DynamicDNS, error)
-	UpdateDynamicDNS(ctx context.Context, site string, d *unifi.DynamicDNS) (*unifi.DynamicDNS, error)
+	CreateDynamicDNS(
+		ctx context.Context,
+		site string,
+		d *unifi.DynamicDNS,
+	) (*unifi.DynamicDNS, error)
+	UpdateDynamicDNS(
+		ctx context.Context,
+		site string,
+		d *unifi.DynamicDNS,
+	) (*unifi.DynamicDNS, error)
 
 	ListDNSRecord(ctx context.Context, site string) ([]unifi.DNSRecord, error)
 	GetDNSRecord(ctx context.Context, site string, id string) (*unifi.DNSRecord, error)
@@ -232,11 +284,23 @@ type unifiClient interface {
 
 	GetSettingMgmt(ctx context.Context, id string) (*unifi.SettingMgmt, error)
 	GetSettingUsg(ctx context.Context, id string) (*unifi.SettingUsg, error)
-	UpdateSettingMgmt(ctx context.Context, site string, d *unifi.SettingMgmt) (*unifi.SettingMgmt, error)
-	UpdateSettingUsg(ctx context.Context, site string, d *unifi.SettingUsg) (*unifi.SettingUsg, error)
+	UpdateSettingMgmt(
+		ctx context.Context,
+		site string,
+		d *unifi.SettingMgmt,
+	) (*unifi.SettingMgmt, error)
+	UpdateSettingUsg(
+		ctx context.Context,
+		site string,
+		d *unifi.SettingUsg,
+	) (*unifi.SettingUsg, error)
 
 	GetSettingRadius(ctx context.Context, id string) (*unifi.SettingRadius, error)
-	UpdateSettingRadius(ctx context.Context, site string, d *unifi.SettingRadius) (*unifi.SettingRadius, error)
+	UpdateSettingRadius(
+		ctx context.Context,
+		site string,
+		d *unifi.SettingRadius,
+	) (*unifi.SettingRadius, error)
 }
 
 type client struct {

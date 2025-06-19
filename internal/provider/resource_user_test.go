@@ -75,9 +75,17 @@ func TestAccUser_basic(t *testing.T) {
 			},
 			userImportStep("unifi_user.test"),
 			{
-				Config: testAccUserConfig(strings.ReplaceAll(strings.ToLower(mac), ":", "-"), "tfacc-2", "tfacc note 2 dash and lower"),
+				Config: testAccUserConfig(
+					strings.ReplaceAll(strings.ToLower(mac), ":", "-"),
+					"tfacc-2",
+					"tfacc note 2 dash and lower",
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_user.test", "note", "tfacc note 2 dash and lower"),
+					resource.TestCheckResourceAttr(
+						"unifi_user.test",
+						"note",
+						"tfacc note 2 dash and lower",
+					),
 				),
 			},
 			userImportStep("unifi_user.test"),
@@ -121,7 +129,14 @@ func TestAccUser_fixed_ip(t *testing.T) {
 				// this passes the network again even though its not used
 				// to avoid a destroy order of operations issue, can
 				// maybe work it out some other way
-				Config: testAccUserConfig_network(subnet, vlan) + testAccUserConfig(mac, "tfacc", "tfacc fixed ip"),
+				Config: testAccUserConfig_network(
+					subnet,
+					vlan,
+				) + testAccUserConfig(
+					mac,
+					"tfacc",
+					"tfacc fixed ip",
+				),
 				Check: resource.ComposeTestCheckFunc(
 					// testCheckNetworkExists(t, "name"),
 					resource.TestCheckResourceAttr("unifi_user.test", "fixed_ip", ""),
@@ -298,9 +313,20 @@ func TestAccUser_localdns(t *testing.T) {
 			},
 			userImportStep("unifi_user.test"),
 			{
-				Config: testAccUserConfig_localdns(subnet, vlan, mac, "tfacc", "resource.example.com", &ip),
+				Config: testAccUserConfig_localdns(
+					subnet,
+					vlan,
+					mac,
+					"tfacc",
+					"resource.example.com",
+					&ip,
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_user.test", "local_dns_record", "resource.example.com"),
+					resource.TestCheckResourceAttr(
+						"unifi_user.test",
+						"local_dns_record",
+						"resource.example.com",
+					),
 				),
 			},
 			userImportStep("unifi_user.test"),
@@ -409,7 +435,13 @@ resource "unifi_user" "test" {
 `, mac, name, devIdOverride)
 }
 
-func testAccUserConfig_localdns(subnet *net.IPNet, vlan int, mac, name string, localDnsRecord string, ip *net.IP) string {
+func testAccUserConfig_localdns(
+	subnet *net.IPNet,
+	vlan int,
+	mac, name string,
+	localDnsRecord string,
+	ip *net.IP,
+) string {
 	return fmt.Sprintf(testAccUserConfig_network(subnet, vlan)+`
 resource "unifi_user" "test" {
 	mac             = "%[1]s"

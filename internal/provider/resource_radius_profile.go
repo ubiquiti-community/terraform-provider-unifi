@@ -78,11 +78,14 @@ func resourceRadiusProfile() *schema.Resource {
 				Optional:    true,
 			},
 			"vlan_wlan_mode": {
-				Description:  "Specifies whether to use vlan on wireless connections. Must be one of `disabled`, `optional`, or `required`.",
-				Type:         schema.TypeString,
-				Default:      "",
-				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"disabled", "optional", "required"}, false),
+				Description: "Specifies whether to use vlan on wireless connections. Must be one of `disabled`, `optional`, or `required`.",
+				Type:        schema.TypeString,
+				Default:     "",
+				Optional:    true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{"disabled", "optional", "required"},
+					false,
+				),
 			},
 			"auth_server": {
 				Description: "RADIUS authentication servers.",
@@ -232,7 +235,11 @@ func fromAcctServer(sshKey unifi.RADIUSProfileAcctServers) (map[string]any, erro
 	}, nil
 }
 
-func resourceRadiusProfileCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceRadiusProfileCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 	req, err := resourceRadiusProfileGetResourceData(d)
 	if err != nil {
@@ -275,7 +282,11 @@ func resourceRadiusProfileGetResourceData(d *schema.ResourceData) (*unifi.RADIUS
 	}, nil
 }
 
-func resourceRadiusProfileSetResourceData(resp *unifi.RADIUSProfile, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceRadiusProfileSetResourceData(
+	resp *unifi.RADIUSProfile,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	authServers, err := setFromAuthServers(resp.AuthServers)
 	if err != nil {
 		return diag.FromErr(err)
@@ -300,7 +311,11 @@ func resourceRadiusProfileSetResourceData(resp *unifi.RADIUSProfile, d *schema.R
 	return nil
 }
 
-func resourceRadiusProfileRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceRadiusProfileRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -321,7 +336,11 @@ func resourceRadiusProfileRead(ctx context.Context, d *schema.ResourceData, meta
 	return resourceRadiusProfileSetResourceData(resp, d, site)
 }
 
-func resourceRadiusProfileUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceRadiusProfileUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceRadiusProfileGetResourceData(d)
@@ -345,7 +364,11 @@ func resourceRadiusProfileUpdate(ctx context.Context, d *schema.ResourceData, me
 	return resourceRadiusProfileSetResourceData(resp, d, site)
 }
 
-func resourceRadiusProfileDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceRadiusProfileDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -359,7 +382,11 @@ func resourceRadiusProfileDelete(ctx context.Context, d *schema.ResourceData, me
 	return diag.FromErr(err)
 }
 
-func importRadiusProfile(ctx context.Context, d *schema.ResourceData, meta any) ([]*schema.ResourceData, error) {
+func importRadiusProfile(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) ([]*schema.ResourceData, error) {
 	c := meta.(*client)
 	id := d.Id()
 	site := d.Get("site").(string)
@@ -391,7 +418,11 @@ func importRadiusProfile(ctx context.Context, d *schema.ResourceData, meta any) 
 	return []*schema.ResourceData{d}, nil
 }
 
-func getRadiusProfileIDByName(ctx context.Context, client unifiClient, profileName, site string) (string, error) {
+func getRadiusProfileIDByName(
+	ctx context.Context,
+	client unifiClient,
+	profileName, site string,
+) (string, error) {
 	radiusProfiles, err := client.ListRADIUSProfile(ctx, site)
 	if err != nil {
 		return "", err
@@ -410,7 +441,11 @@ func getRadiusProfileIDByName(ctx context.Context, client unifiClient, profileNa
 		idMatchingName = profile.ID
 	}
 	if idMatchingName == "" {
-		return "", fmt.Errorf("Found no RADIUS profile with name '%s', found: %s", profileName, strings.Join(allNames, ", "))
+		return "", fmt.Errorf(
+			"Found no RADIUS profile with name '%s', found: %s",
+			profileName,
+			strings.Join(allNames, ", "),
+		)
 	}
 	return idMatchingName, nil
 }

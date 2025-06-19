@@ -49,7 +49,10 @@ func resourceDevice() *schema.Resource {
 				Computed:         true,
 				ForceNew:         true,
 				DiffSuppressFunc: macDiffSuppressFunc,
-				ValidateFunc:     validation.StringMatch(macAddressRegexp, "Mac address is invalid"),
+				ValidateFunc: validation.StringMatch(
+					macAddressRegexp,
+					"Mac address is invalid",
+				),
 			},
 			"name": {
 				Description: "The name of the device.",
@@ -86,11 +89,14 @@ func resourceDevice() *schema.Resource {
 							Optional:    true,
 						},
 						"op_mode": {
-							Description:  "Operating mode of the port, valid values are `switch`, `mirror`, and `aggregate`.",
-							Type:         schema.TypeString,
-							Optional:     true,
-							Default:      "switch",
-							ValidateFunc: validation.StringInSlice([]string{"switch", "mirror", "aggregate"}, false),
+							Description: "Operating mode of the port, valid values are `switch`, `mirror`, and `aggregate`.",
+							Type:        schema.TypeString,
+							Optional:    true,
+							Default:     "switch",
+							ValidateFunc: validation.StringInSlice(
+								[]string{"switch", "mirror", "aggregate"},
+								false,
+							),
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 								if old == "" && new == "switch" {
 									return true
@@ -99,10 +105,13 @@ func resourceDevice() *schema.Resource {
 							},
 						},
 						"poe_mode": {
-							Description:  "PoE mode of the port; valid values are `auto`, `pasv24`, `passthrough`, and `off`.",
-							Type:         schema.TypeString,
-							Optional:     true,
-							ValidateFunc: validation.StringInSlice([]string{"auto", "pasv24", "passthrough", "off"}, false),
+							Description: "PoE mode of the port; valid values are `auto`, `pasv24`, `passthrough`, and `off`.",
+							Type:        schema.TypeString,
+							Optional:    true,
+							ValidateFunc: validation.StringInSlice(
+								[]string{"auto", "pasv24", "passthrough", "off"},
+								false,
+							),
 						},
 						"aggregate_num_ports": {
 							Description:  "Number of ports in the aggregate.",
@@ -136,7 +145,11 @@ func resourceDevice() *schema.Resource {
 	}
 }
 
-func resourceDeviceImport(ctx context.Context, d *schema.ResourceData, meta any) ([]*schema.ResourceData, error) {
+func resourceDeviceImport(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) ([]*schema.ResourceData, error) {
 	c := meta.(*client)
 	id := d.Id()
 	site := d.Get("site").(string)
@@ -154,7 +167,6 @@ func resourceDeviceImport(ctx context.Context, d *schema.ResourceData, meta any)
 		// look up id by mac
 		mac := cleanMAC(id)
 		device, err := c.c.GetDeviceByMAC(ctx, site, mac)
-
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +194,9 @@ func resourceDeviceCreate(ctx context.Context, d *schema.ResourceData, meta any)
 
 	mac := d.Get("mac").(string)
 	if mac == "" {
-		return diag.Errorf("no MAC address specified, please import the device using terraform import")
+		return diag.Errorf(
+			"no MAC address specified, please import the device using terraform import",
+		)
 	}
 
 	mac = cleanMAC(mac)
@@ -205,7 +219,19 @@ func resourceDeviceCreate(ctx context.Context, d *schema.ResourceData, meta any)
 			return diag.FromErr(err)
 		}
 
-		device, err = waitForDeviceState(ctx, d, meta, unifi.DeviceStateConnected, []unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStatePending, unifi.DeviceStateProvisioning, unifi.DeviceStateUpgrading}, 2*time.Minute)
+		device, err = waitForDeviceState(
+			ctx,
+			d,
+			meta,
+			unifi.DeviceStateConnected,
+			[]unifi.DeviceState{
+				unifi.DeviceStateAdopting,
+				unifi.DeviceStatePending,
+				unifi.DeviceStateProvisioning,
+				unifi.DeviceStateUpgrading,
+			},
+			2*time.Minute,
+		)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -236,7 +262,14 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta any)
 		return diag.FromErr(err)
 	}
 
-	_, err = waitForDeviceState(ctx, d, meta, unifi.DeviceStateConnected, []unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning}, 1*time.Minute)
+	_, err = waitForDeviceState(
+		ctx,
+		d,
+		meta,
+		unifi.DeviceStateConnected,
+		[]unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning},
+		1*time.Minute,
+	)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -263,7 +296,14 @@ func resourceDeviceDelete(ctx context.Context, d *schema.ResourceData, meta any)
 		return diag.FromErr(err)
 	}
 
-	_, err = waitForDeviceState(ctx, d, meta, unifi.DeviceStatePending, []unifi.DeviceState{unifi.DeviceStateConnected, unifi.DeviceStateDeleting}, 1*time.Minute)
+	_, err = waitForDeviceState(
+		ctx,
+		d,
+		meta,
+		unifi.DeviceStatePending,
+		[]unifi.DeviceState{unifi.DeviceStateConnected, unifi.DeviceStateDeleting},
+		1*time.Minute,
+	)
 	if _, ok := err.(*unifi.NotFoundError); !ok {
 		return diag.FromErr(err)
 	}
@@ -293,7 +333,11 @@ func resourceDeviceRead(ctx context.Context, d *schema.ResourceData, meta any) d
 	return resourceDeviceSetResourceData(resp, d, site)
 }
 
-func resourceDeviceSetResourceData(resp *unifi.Device, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceDeviceSetResourceData(
+	resp *unifi.Device,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	portOverrides, err := setFromPortOverrides(resp.PortOverrides)
 	if err != nil {
 		return diag.FromErr(err)
@@ -314,7 +358,7 @@ func resourceDeviceGetResourceData(d *schema.ResourceData) (*unifi.Device, error
 		return nil, fmt.Errorf("unable to process port_override block: %w", err)
 	}
 
-	//TODO: pass Disabled once we figure out how to enable the device afterwards
+	// TODO: pass Disabled once we figure out how to enable the device afterwards
 
 	return &unifi.Device{
 		MAC:           d.Get("mac").(string),
@@ -386,7 +430,14 @@ func fromPortOverride(po unifi.DevicePortOverrides) (map[string]any, error) {
 	}, nil
 }
 
-func waitForDeviceState(ctx context.Context, d *schema.ResourceData, meta any, targetState unifi.DeviceState, pendingStates []unifi.DeviceState, timeout time.Duration) (*unifi.Device, error) {
+func waitForDeviceState(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+	targetState unifi.DeviceState,
+	pendingStates []unifi.DeviceState,
+	timeout time.Duration,
+) (*unifi.Device, error) {
 	c := meta.(*client)
 
 	site := d.Get("site").(string)

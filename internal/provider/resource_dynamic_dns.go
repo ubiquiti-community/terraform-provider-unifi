@@ -68,12 +68,16 @@ func resourceDynamicDNS() *schema.Resource {
 				Sensitive:   true,
 			},
 
-			//TODO: options support?
+			// TODO: options support?
 		},
 	}
 }
 
-func resourceDynamicDNSCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceDynamicDNSCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceDynamicDNSGetResourceData(d)
@@ -111,7 +115,11 @@ func resourceDynamicDNSGetResourceData(d *schema.ResourceData) (*unifi.DynamicDN
 	return r, nil
 }
 
-func resourceDynamicDNSSetResourceData(resp *unifi.DynamicDNS, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceDynamicDNSSetResourceData(
+	resp *unifi.DynamicDNS,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("interface", resp.Interface)
 	d.Set("service", resp.Service)
 
@@ -124,7 +132,11 @@ func resourceDynamicDNSSetResourceData(resp *unifi.DynamicDNS, d *schema.Resourc
 	return nil
 }
 
-func resourceDynamicDNSRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceDynamicDNSRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -146,7 +158,11 @@ func resourceDynamicDNSRead(ctx context.Context, d *schema.ResourceData, meta an
 	return resourceDynamicDNSSetResourceData(resp, d, site)
 }
 
-func resourceDynamicDNSUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceDynamicDNSUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceDynamicDNSGetResourceData(d)
@@ -170,7 +186,11 @@ func resourceDynamicDNSUpdate(ctx context.Context, d *schema.ResourceData, meta 
 	return resourceDynamicDNSSetResourceData(resp, d, site)
 }
 
-func resourceDynamicDNSDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceDynamicDNSDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

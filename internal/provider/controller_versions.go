@@ -24,7 +24,11 @@ func checkMinimumControllerVersion(versionString string) error {
 		return err
 	}
 	if v.LessThan(controllerV6) {
-		return fmt.Errorf("Controller version %q or greater is required to use the provider, found %q.", controllerV6, v)
+		return fmt.Errorf(
+			"Controller version %q or greater is required to use the provider, found %q.",
+			controllerV6,
+			v,
+		)
 	}
 	return nil
 }

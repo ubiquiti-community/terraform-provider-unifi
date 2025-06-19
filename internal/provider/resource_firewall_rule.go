@@ -11,9 +11,17 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var firewallRuleProtocolRegexp = regexp.MustCompile("^$|all|([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|tcp_udp|ah|ax.25|dccp|ddp|egp|eigrp|encap|esp|etherip|fc|ggp|gre|hip|hmp|icmp|idpr-cmtp|idrp|igmp|igp|ip|ipcomp|ipencap|ipip|ipv6|ipv6-frag|ipv6-icmp|ipv6-nonxt|ipv6-opts|ipv6-route|isis|iso-tp4|l2tp|manet|mobility-header|mpls-in-ip|ospf|pim|pup|rdp|rohc|rspf|rsvp|sctp|shim6|skip|st|tcp|udp|udplite|vmtp|vrrp|wesp|xns-idp|xtp")
-var firewallRuleProtocolV6Regexp = regexp.MustCompile("^$|([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|ah|all|dccp|eigrp|esp|gre|icmpv6|ipcomp|ipv6|ipv6-frag|ipv6-icmp|ipv6-nonxt|ipv6-opts|ipv6-route|isis|l2tp|manet|mobility-header|mpls-in-ip|ospf|pim|rsvp|sctp|shim6|tcp|tcp_udp|udp|vrrp")
-var firewallRuleICMPv6TypenameRegexp = regexp.MustCompile("^$|address-unreachable|bad-header|beyond-scope|communication-prohibited|destination-unreachable|echo-reply|echo-request|failed-policy|neighbor-advertisement|neighbor-solicitation|no-route|packet-too-big|parameter-problem|port-unreachable|redirect|reject-route|router-advertisement|router-solicitation|time-exceeded|ttl-zero-during-reassembly|ttl-zero-during-transit|unknown-header-type|unknown-option")
+var (
+	firewallRuleProtocolRegexp = regexp.MustCompile(
+		"^$|all|([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|tcp_udp|ah|ax.25|dccp|ddp|egp|eigrp|encap|esp|etherip|fc|ggp|gre|hip|hmp|icmp|idpr-cmtp|idrp|igmp|igp|ip|ipcomp|ipencap|ipip|ipv6|ipv6-frag|ipv6-icmp|ipv6-nonxt|ipv6-opts|ipv6-route|isis|iso-tp4|l2tp|manet|mobility-header|mpls-in-ip|ospf|pim|pup|rdp|rohc|rspf|rsvp|sctp|shim6|skip|st|tcp|udp|udplite|vmtp|vrrp|wesp|xns-idp|xtp",
+	)
+	firewallRuleProtocolV6Regexp = regexp.MustCompile(
+		"^$|([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|ah|all|dccp|eigrp|esp|gre|icmpv6|ipcomp|ipv6|ipv6-frag|ipv6-icmp|ipv6-nonxt|ipv6-opts|ipv6-route|isis|l2tp|manet|mobility-header|mpls-in-ip|ospf|pim|rsvp|sctp|shim6|tcp|tcp_udp|udp|vrrp",
+	)
+	firewallRuleICMPv6TypenameRegexp = regexp.MustCompile(
+		"^$|address-unreachable|bad-header|beyond-scope|communication-prohibited|destination-unreachable|echo-reply|echo-request|failed-policy|neighbor-advertisement|neighbor-solicitation|no-route|packet-too-big|parameter-problem|port-unreachable|redirect|reject-route|router-advertisement|router-solicitation|time-exceeded|ttl-zero-during-reassembly|ttl-zero-during-transit|unknown-header-type|unknown-option",
+	)
+)
 
 func resourceFirewallRule() *schema.Resource {
 	return &schema.Resource{
@@ -56,9 +64,31 @@ func resourceFirewallRule() *schema.Resource {
 					"Must be one of `WAN_IN`, `WAN_OUT`, `WAN_LOCAL`, `LAN_IN`, `LAN_OUT`, `LAN_LOCAL`, `GUEST_IN`, " +
 					"`GUEST_OUT`, `GUEST_LOCAL`, `WANv6_IN`, `WANv6_OUT`, `WANv6_LOCAL`, `LANv6_IN`, `LANv6_OUT`, " +
 					"`LANv6_LOCAL`, `GUESTv6_IN`, `GUESTv6_OUT`, or `GUESTv6_LOCAL`.",
-				Type:         schema.TypeString,
-				Required:     true,
-				ValidateFunc: validation.StringInSlice([]string{"WAN_IN", "WAN_OUT", "WAN_LOCAL", "LAN_IN", "LAN_OUT", "LAN_LOCAL", "GUEST_IN", "GUEST_OUT", "GUEST_LOCAL", "WANv6_IN", "WANv6_OUT", "WANv6_LOCAL", "LANv6_IN", "LANv6_OUT", "LANv6_LOCAL", "GUESTv6_IN", "GUESTv6_OUT", "GUESTv6_LOCAL"}, false),
+				Type:     schema.TypeString,
+				Required: true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{
+						"WAN_IN",
+						"WAN_OUT",
+						"WAN_LOCAL",
+						"LAN_IN",
+						"LAN_OUT",
+						"LAN_LOCAL",
+						"GUEST_IN",
+						"GUEST_OUT",
+						"GUEST_LOCAL",
+						"WANv6_IN",
+						"WANv6_OUT",
+						"WANv6_LOCAL",
+						"LANv6_IN",
+						"LANv6_OUT",
+						"LANv6_LOCAL",
+						"GUESTv6_IN",
+						"GUESTv6_OUT",
+						"GUESTv6_LOCAL",
+					},
+					false,
+				),
 			},
 			"rule_index": {
 				Description: "The index of the rule. Must be >= 2000 < 3000 or >= 4000 < 5000.",
@@ -67,16 +97,22 @@ func resourceFirewallRule() *schema.Resource {
 				// 2[0-9]{3}|4[0-9]{3}
 			},
 			"protocol": {
-				Description:  "The protocol of the rule.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringMatch(firewallRuleProtocolRegexp, "must be a valid IPv4 protocol"),
+				Description: "The protocol of the rule.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ValidateFunc: validation.StringMatch(
+					firewallRuleProtocolRegexp,
+					"must be a valid IPv4 protocol",
+				),
 			},
 			"protocol_v6": {
-				Description:  "The IPv6 protocol of the rule.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringMatch(firewallRuleProtocolV6Regexp, "must be a valid IPv6 protocol"),
+				Description: "The IPv6 protocol of the rule.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ValidateFunc: validation.StringMatch(
+					firewallRuleProtocolV6Regexp,
+					"must be a valid IPv6 protocol",
+				),
 			},
 			"icmp_typename": {
 				Description: "ICMP type name.",
@@ -84,10 +120,13 @@ func resourceFirewallRule() *schema.Resource {
 				Optional:    true,
 			},
 			"icmp_v6_typename": {
-				Description:  "ICMPv6 type name.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringMatch(firewallRuleICMPv6TypenameRegexp, "must be a ICMPv6 type"),
+				Description: "ICMPv6 type name.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ValidateFunc: validation.StringMatch(
+					firewallRuleICMPv6TypenameRegexp,
+					"must be a ICMPv6 type",
+				),
 			},
 			"enabled": {
 				Description: "Specifies whether the rule should be enabled.",
@@ -200,16 +239,23 @@ func resourceFirewallRule() *schema.Resource {
 				Optional:    true,
 			},
 			"ip_sec": {
-				Description:  "Specify whether the rule matches on IPsec packets. Can be one of `match-ipset` or `match-none`.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"match-ipsec", "match-none"}, false),
+				Description: "Specify whether the rule matches on IPsec packets. Can be one of `match-ipset` or `match-none`.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ValidateFunc: validation.StringInSlice(
+					[]string{"match-ipsec", "match-none"},
+					false,
+				),
 			},
 		},
 	}
 }
 
-func resourceFirewallRuleCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallRuleCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceFirewallRuleGetResourceData(d)
@@ -226,7 +272,10 @@ func resourceFirewallRuleCreate(ctx context.Context, d *schema.ResourceData, met
 	if err != nil {
 		var apiErr *unifi.APIError
 		if errors.As(err, &apiErr) && apiErr.Message == "api.err.FirewallGroupTypeExists" {
-			return diag.Errorf("firewall rule groups must be of different group types (ie. a port group and address group): %s", err)
+			return diag.Errorf(
+				"firewall rule groups must be of different group types (ie. a port group and address group): %s",
+				err,
+			)
 		}
 
 		return diag.FromErr(err)
@@ -282,7 +331,11 @@ func resourceFirewallRuleGetResourceData(d *schema.ResourceData) (*unifi.Firewal
 	}, nil
 }
 
-func resourceFirewallRuleSetResourceData(resp *unifi.FirewallRule, d *schema.ResourceData, site string) diag.Diagnostics {
+func resourceFirewallRuleSetResourceData(
+	resp *unifi.FirewallRule,
+	d *schema.ResourceData,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("name", resp.Name)
 	d.Set("enabled", resp.Enabled)
@@ -318,7 +371,11 @@ func resourceFirewallRuleSetResourceData(resp *unifi.FirewallRule, d *schema.Res
 	return nil
 }
 
-func resourceFirewallRuleRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallRuleRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()
@@ -340,7 +397,11 @@ func resourceFirewallRuleRead(ctx context.Context, d *schema.ResourceData, meta 
 	return resourceFirewallRuleSetResourceData(resp, d, site)
 }
 
-func resourceFirewallRuleUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallRuleUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceFirewallRuleGetResourceData(d)
@@ -364,7 +425,11 @@ func resourceFirewallRuleUpdate(ctx context.Context, d *schema.ResourceData, met
 	return resourceFirewallRuleSetResourceData(resp, d, site)
 }
 
-func resourceFirewallRuleDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceFirewallRuleDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	id := d.Id()

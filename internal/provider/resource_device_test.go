@@ -41,7 +41,9 @@ func allocateDevice(t *testing.T) (*unifi.Device, func()) {
 				}
 
 				// These devices aren't really switches.
-				if device.Model == "USPRPS" || device.Model == "USPRPSP" || device.Model == "USPPDUHD" || device.Model == "USPPDUP" {
+				if device.Model == "USPRPS" || device.Model == "USPRPSP" ||
+					device.Model == "USPPDUHD" ||
+					device.Model == "USPPDUP" {
 					continue
 				}
 
@@ -51,7 +53,8 @@ func allocateDevice(t *testing.T) (*unifi.Device, func()) {
 				}
 
 				// Only switches with these chipsets support both port mirroring ang aggregation.
-				if !(isBroadcomSwitch(device) || isMicrosemiSwitch(device) || isNephosSwitch(device)) {
+				if !isBroadcomSwitch(device) && !isMicrosemiSwitch(device) &&
+					!isNephosSwitch(device) {
 					continue
 				}
 
@@ -63,7 +66,6 @@ func allocateDevice(t *testing.T) (*unifi.Device, func()) {
 
 			return nil
 		})
-
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +83,6 @@ func allocateDevice(t *testing.T) (*unifi.Device, func()) {
 
 		return nil
 	})
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,8 +181,10 @@ func TestAccDevice_empty(t *testing.T) {
 		CheckDestroy:      testAccCheckDeviceDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config:      testAccDeviceConfigEmpty(),
-				ExpectError: regexp.MustCompile(`no MAC address specified, please import the device using terraform import`),
+				Config: testAccDeviceConfigEmpty(),
+				ExpectError: regexp.MustCompile(
+					`no MAC address specified, please import the device using terraform import`,
+				),
 			},
 		},
 	})
@@ -267,22 +270,42 @@ func TestAccDevice_switch_portOverrides(t *testing.T) {
 					// TODO: Why are these out of order?
 					resource.TestCheckResourceAttr(resourceName, "port_override.0.number", "3"),
 					resource.TestCheckResourceAttr(resourceName, "port_override.0.name", ""),
-					resource.TestCheckResourceAttr(resourceName, "port_override.0.port_profile_id", ""),
-					resource.TestCheckResourceAttr(resourceName, "port_override.0.op_mode", "aggregate"),
-					resource.TestCheckResourceAttr(resourceName, "port_override.0.aggregate_num_ports", "2"),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"port_override.0.port_profile_id",
+						"",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"port_override.0.op_mode",
+						"aggregate",
+					),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"port_override.0.aggregate_num_ports",
+						"2",
+					),
 
 					resource.TestCheckResourceAttr(resourceName, "port_override.1.number", "1"),
 					resource.TestCheckResourceAttr(resourceName, "port_override.1.name", "Port 1"),
-					resource.TestCheckResourceAttr(resourceName, "port_override.1.port_profile_id", ""),
-					//resource.TestCheckResourceAttr(resourceName, "port_override.1.op_mode", "switch"),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"port_override.1.port_profile_id",
+						"",
+					),
+					// resource.TestCheckResourceAttr(resourceName, "port_override.1.op_mode", "switch"),
 
 					resource.TestCheckResourceAttr(resourceName, "port_override.2.number", "2"),
 					resource.TestCheckResourceAttr(resourceName, "port_override.2.name", "Port 2"),
-					//resource.TestCheckResourceAttr(resourceName, "port_override.2.port_profile_id", ""),
-					//resource.TestCheckResourceAttr(resourceName, "port_override.2.op_mode", "switch"),
+					// resource.TestCheckResourceAttr(resourceName, "port_override.2.port_profile_id", ""),
+					// resource.TestCheckResourceAttr(resourceName, "port_override.2.op_mode", "switch"),
 
 					resource.TestCheckResourceAttr(resourceName, "port_override.3.number", "4"),
-					resource.TestCheckResourceAttr(resourceName, "port_override.3.poe_mode", "pasv24"),
+					resource.TestCheckResourceAttr(
+						resourceName,
+						"port_override.3.poe_mode",
+						"pasv24",
+					),
 				),
 			},
 			{

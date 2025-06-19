@@ -83,7 +83,10 @@ func resourceSettingRadius() *schema.Resource {
 	}
 }
 
-func resourceSettingRadiusGetResourceData(d *schema.ResourceData, meta any) (*unifi.SettingRadius, error) {
+func resourceSettingRadiusGetResourceData(
+	d *schema.ResourceData,
+	meta any,
+) (*unifi.SettingRadius, error) {
 	return &unifi.SettingRadius{
 		AccountingEnabled:     d.Get("accounting_enabled").(bool),
 		Enabled:               d.Get("enabled").(bool),
@@ -96,7 +99,11 @@ func resourceSettingRadiusGetResourceData(d *schema.ResourceData, meta any) (*un
 	}, nil
 }
 
-func resourceSettingRadiusCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceSettingRadiusCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceSettingRadiusGetResourceData(d, meta)
@@ -119,7 +126,12 @@ func resourceSettingRadiusCreate(ctx context.Context, d *schema.ResourceData, me
 	return resourceSettingRadiusSetResourceData(resp, d, meta, site)
 }
 
-func resourceSettingRadiusSetResourceData(resp *unifi.SettingRadius, d *schema.ResourceData, meta any, site string) diag.Diagnostics {
+func resourceSettingRadiusSetResourceData(
+	resp *unifi.SettingRadius,
+	d *schema.ResourceData,
+	meta any,
+	site string,
+) diag.Diagnostics {
 	d.Set("site", site)
 	d.Set("enabled", resp.Enabled)
 	d.Set("accounting_enabled", resp.AccountingEnabled)
@@ -131,7 +143,11 @@ func resourceSettingRadiusSetResourceData(resp *unifi.SettingRadius, d *schema.R
 	return nil
 }
 
-func resourceSettingRadiusRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceSettingRadiusRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	site := d.Get("site").(string)
@@ -151,7 +167,11 @@ func resourceSettingRadiusRead(ctx context.Context, d *schema.ResourceData, meta
 	return resourceSettingRadiusSetResourceData(resp, d, meta, site)
 }
 
-func resourceSettingRadiusUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+func resourceSettingRadiusUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta any,
+) diag.Diagnostics {
 	c := meta.(*client)
 
 	req, err := resourceSettingRadiusGetResourceData(d, meta)
