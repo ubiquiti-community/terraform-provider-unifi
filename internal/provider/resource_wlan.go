@@ -300,9 +300,9 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta any) (*unifi.WLAN,
 	}
 
 	if wpa3Transition && pmf == "disabled" {
-		return nil, fmt.Errorf("WPA 3 transition mode requires pmf_mode to be turned on.")
+		return nil, fmt.Errorf("WPA 3 transition mode requires pmf_mode to be turned on")
 	} else if wpa3 && !wpa3Transition && pmf != "required" {
-		return nil, fmt.Errorf("For WPA 3 you must set pmf_mode to required.")
+		return nil, fmt.Errorf("for WPA 3 you must set pmf_mode to required")
 	}
 
 	macFilterEnabled := d.Get("mac_filter_enabled").(bool)

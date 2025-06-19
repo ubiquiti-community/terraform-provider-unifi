@@ -45,10 +45,19 @@ func dataUserGroup() *schema.Resource {
 }
 
 func dataUserGroupRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
-	name := d.Get("name").(string)
-	site := d.Get("site").(string)
+	name, ok := d.Get("name").(string)
+	if !ok {
+		return diag.Errorf("name is not a string")
+	}
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}

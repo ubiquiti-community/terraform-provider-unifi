@@ -21,13 +21,13 @@ func cidrValidate(raw any, key string) ([]string, []error) {
 	return nil, nil
 }
 
-func cidrDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
+func cidrDiffSuppress(k, old, newVal string, d *schema.ResourceData) bool {
 	_, oldNet, err := net.ParseCIDR(old)
 	if err != nil {
 		return false
 	}
 
-	_, newNet, err := net.ParseCIDR(new)
+	_, newNet, err := net.ParseCIDR(newVal)
 	if err != nil {
 		return false
 	}

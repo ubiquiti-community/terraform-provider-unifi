@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -73,14 +74,20 @@ func resourceAccount() *schema.Resource {
 }
 
 func resourceAccountCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
 	req, err := resourceAccountGetResourceData(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	site := d.Get("site").(string)
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -96,9 +103,15 @@ func resourceAccountCreate(ctx context.Context, d *schema.ResourceData, meta any
 }
 
 func resourceAccountUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
-	site := d.Get("site").(string)
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -120,10 +133,16 @@ func resourceAccountUpdate(ctx context.Context, d *schema.ResourceData, meta any
 }
 
 func resourceAccountDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
 	// name := d.Get("name").(string)
-	site := d.Get("site").(string)
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -137,11 +156,17 @@ func resourceAccountDelete(ctx context.Context, d *schema.ResourceData, meta any
 }
 
 func resourceAccountRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
 	id := d.Id()
 
-	site := d.Get("site").(string)
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -173,11 +198,32 @@ func resourceAccountSetResourceData(
 }
 
 func resourceAccountGetResourceData(d *schema.ResourceData) (*unifi.Account, error) {
+	name, ok := d.Get("name").(string)
+	if !ok {
+		return nil, fmt.Errorf("name is not a string")
+	}
+	password, ok := d.Get("password").(string)
+	if !ok {
+		return nil, fmt.Errorf("password is not a string")
+	}
+	tunnelType, ok := d.Get("tunnel_type").(int)
+	if !ok {
+		return nil, fmt.Errorf("tunnel_type is not an int")
+	}
+	tunnelMediumType, ok := d.Get("tunnel_medium_type").(int)
+	if !ok {
+		return nil, fmt.Errorf("tunnel_medium_type is not an int")
+	}
+	networkID, ok := d.Get("network_id").(string)
+	if !ok {
+		return nil, fmt.Errorf("network_id is not a string")
+	}
+
 	return &unifi.Account{
-		Name:             d.Get("name").(string),
-		XPassword:        d.Get("password").(string),
-		TunnelType:       d.Get("tunnel_type").(int),
-		TunnelMediumType: d.Get("tunnel_medium_type").(int),
-		NetworkID:        d.Get("network_id").(string),
+		Name:             name,
+		XPassword:        password,
+		TunnelType:       tunnelType,
+		TunnelMediumType: tunnelMediumType,
+		NetworkID:        networkID,
 	}, nil
 }

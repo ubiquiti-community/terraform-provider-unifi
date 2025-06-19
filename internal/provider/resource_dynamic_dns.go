@@ -118,13 +118,13 @@ func resourceDynamicDNSGetResourceData(d *schema.ResourceData) (*unifi.DynamicDN
 func resourceDynamicDNSSetResourceData(
 	resp *unifi.DynamicDNS,
 	d *schema.ResourceData,
-	site string,
+	_ string,
 ) diag.Diagnostics {
 	d.Set("interface", resp.Interface)
 	d.Set("service", resp.Service)
 
 	d.Set("host_name", resp.HostName)
-
+	d.Set("site", resp.SiteID)
 	d.Set("server", resp.Server)
 	d.Set("login", resp.Login)
 	d.Set("password", resp.XPassword)

@@ -65,10 +65,19 @@ func dataDNSRecord() *schema.Resource {
 }
 
 func dataDNSRecordRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
-	name := d.Get("name").(string)
-	site := d.Get("site").(string)
+	name, ok := d.Get("name").(string)
+	if !ok {
+		return diag.Errorf("name is not a string")
+	}
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -80,13 +89,13 @@ func dataDNSRecordRead(ctx context.Context, d *schema.ResourceData, meta any) di
 	for _, g := range groups {
 		if (name == "" && g.HiddenID == "default") || g.Key == name {
 			d.SetId(g.ID)
-			d.Set("site", site)
-			d.Set("port", g.Port)
-			d.Set("priority", g.Priority)
-			d.Set("record_type", g.RecordType)
-			d.Set("ttl", g.Ttl)
-			d.Set("value", g.Value)
-			d.Set("weight", g.Weight)
+			_ = d.Set("site", site)
+			_ = d.Set("port", g.Port)
+			_ = d.Set("priority", g.Priority)
+			_ = d.Set("record_type", g.RecordType)
+			_ = d.Set("ttl", g.Ttl)
+			_ = d.Set("value", g.Value)
+			_ = d.Set("weight", g.Weight)
 
 			return nil
 		}

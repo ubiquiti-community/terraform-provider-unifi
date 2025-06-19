@@ -57,10 +57,19 @@ func dataAccount() *schema.Resource {
 }
 
 func dataAccountRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
-	name := d.Get("name").(string)
-	site := d.Get("site").(string)
+	name, ok := d.Get("name").(string)
+	if !ok {
+		return diag.Errorf("name is not a string")
+	}
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -72,12 +81,12 @@ func dataAccountRead(ctx context.Context, d *schema.ResourceData, meta any) diag
 	for _, account := range accounts {
 		if account.Name == name {
 			d.SetId(account.ID)
-			d.Set("name", account.Name)
-			d.Set("password", account.XPassword)
-			d.Set("tunnel_type", account.TunnelType)
-			d.Set("tunnel_medium_type", account.TunnelMediumType)
-			d.Set("network_id", account.NetworkID)
-			d.Set("site", site)
+			_ = d.Set("name", account.Name)
+			_ = d.Set("password", account.XPassword)
+			_ = d.Set("tunnel_type", account.TunnelType)
+			_ = d.Set("tunnel_medium_type", account.TunnelMediumType)
+			_ = d.Set("network_id", account.NetworkID)
+			_ = d.Set("site", site)
 			return nil
 		}
 	}

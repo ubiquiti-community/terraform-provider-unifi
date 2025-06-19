@@ -93,14 +93,23 @@ func dataUser() *schema.Resource {
 	}
 }
 
-func dataUserRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+func dataUserRead(ctx context.Context, d *schema.ResourceData, meta any) (diags diag.Diagnostics) {
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
-	site := d.Get("site").(string)
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
-	mac := d.Get("mac").(string)
+	mac, ok := d.Get("mac").(string)
+	if !ok {
+		return diag.Errorf("mac is not a string")
+	}
 
 	macResp, err := c.c.GetUserByMAC(ctx, site, strings.ToLower(mac))
 	if err != nil {
@@ -124,18 +133,18 @@ func dataUserRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Di
 		localDnsRecord = resp.LocalDNSRecord
 	}
 	d.SetId(resp.ID)
-	d.Set("site", site)
-	d.Set("mac", resp.MAC)
-	d.Set("name", resp.Name)
-	d.Set("user_group_id", resp.UserGroupID)
-	d.Set("note", resp.Note)
-	d.Set("fixed_ip", fixedIP)
-	d.Set("network_id", resp.NetworkID)
-	d.Set("blocked", resp.Blocked)
-	d.Set("dev_id_override", resp.DevIdOverride)
-	d.Set("hostname", resp.Hostname)
-	d.Set("ip", resp.IP)
-	d.Set("ip", localDnsRecord)
+	_ = d.Set("site", site)
+	_ = d.Set("mac", resp.MAC)
+	_ = d.Set("name", resp.Name)
+	_ = d.Set("user_group_id", resp.UserGroupID)
+	_ = d.Set("note", resp.Note)
+	_ = d.Set("fixed_ip", fixedIP)
+	_ = d.Set("network_id", resp.NetworkID)
+	_ = d.Set("blocked", resp.Blocked)
+	_ = d.Set("dev_id_override", resp.DevIdOverride)
+	_ = d.Set("hostname", resp.Hostname)
+	_ = d.Set("ip", resp.IP)
+	_ = d.Set("ip", localDnsRecord)
 
 	return nil
 }

@@ -109,12 +109,30 @@ func New(version string) func() *schema.Provider {
 
 func configure(version string, p *schema.Provider) schema.ConfigureContextFunc {
 	return func(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
-		user := d.Get("username").(string)
-		pass := d.Get("password").(string)
-		apikey := d.Get("api_key").(string)
-		baseURL := d.Get("api_url").(string)
-		site := d.Get("site").(string)
-		insecure := d.Get("allow_insecure").(bool)
+		user, ok := d.Get("username").(string)
+		if !ok {
+			return nil, diag.Errorf("username is not a string")
+		}
+		pass, ok := d.Get("password").(string)
+		if !ok {
+			return nil, diag.Errorf("password is not a string")
+		}
+		apikey, ok := d.Get("api_key").(string)
+		if !ok {
+			return nil, diag.Errorf("api_key is not a string")
+		}
+		baseURL, ok := d.Get("api_url").(string)
+		if !ok {
+			return nil, diag.Errorf("api_url is not a string")
+		}
+		site, ok := d.Get("site").(string)
+		if !ok {
+			return nil, diag.Errorf("site is not a string")
+		}
+		insecure, ok := d.Get("allow_insecure").(bool)
+		if !ok {
+			return nil, diag.Errorf("allow_insecure is not a bool")
+		}
 
 		c := &client{
 			c: &lazyClient{

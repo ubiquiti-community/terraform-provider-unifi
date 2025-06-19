@@ -279,11 +279,23 @@ func dataNetwork() *schema.Resource {
 }
 
 func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
-	name := d.Get("name").(string)
-	site := d.Get("site").(string)
-	id := d.Get("id").(string)
+	name, ok := d.Get("name").(string)
+	if !ok {
+		return diag.Errorf("name is not a string")
+	}
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
+	id, ok := d.Get("id").(string)
+	if !ok {
+		return diag.Errorf("id is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -323,42 +335,42 @@ func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta any) diag
 			}
 
 			d.SetId(n.ID)
-			d.Set("site", site)
-			d.Set("name", n.Name)
-			d.Set("purpose", n.Purpose)
-			d.Set("vlan_id", n.VLAN)
-			d.Set("subnet", cidrZeroBased(n.IPSubnet))
-			d.Set("network_group", n.NetworkGroup)
-			d.Set("dhcp_dns", dhcpDNS)
-			d.Set("dhcp_start", n.DHCPDStart)
-			d.Set("dhcp_stop", n.DHCPDStop)
-			d.Set("dhcp_enabled", n.DHCPDEnabled)
-			d.Set("dhcp_lease", n.DHCPDLeaseTime)
-			d.Set("dhcpd_boot_enabled", n.DHCPDBootEnabled)
-			d.Set("dhcpd_boot_server", n.DHCPDBootServer)
-			d.Set("dhcpd_boot_filename", n.DHCPDBootFilename)
-			d.Set("domain_name", n.DomainName)
-			d.Set("igmp_snooping", n.IGMPSnooping)
-			d.Set("ipv6_interface_type", n.IPV6InterfaceType)
-			d.Set("ipv6_static_subnet", n.IPV6Subnet)
-			d.Set("ipv6_pd_interface", n.IPV6PDInterface)
-			d.Set("ipv6_pd_prefixid", n.IPV6PDPrefixid)
-			d.Set("ipv6_ra_enable", n.IPV6RaEnabled)
-			d.Set("multicast_dns", n.MdnsEnabled)
-			d.Set("wan_ip", n.WANIP)
-			d.Set("wan_netmask", n.WANNetmask)
-			d.Set("wan_gateway", n.WANGateway)
-			d.Set("wan_type", n.WANType)
-			d.Set("wan_dns", wanDNS)
-			d.Set("wan_networkgroup", n.WANNetworkGroup)
-			d.Set("wan_egress_qos", n.WANEgressQOS)
-			d.Set("wan_username", n.WANUsername)
-			d.Set("x_wan_password", n.XWANPassword)
-			d.Set("wan_type_v6", n.WANTypeV6)
-			d.Set("wan_dhcp_v6_pd_size", n.WANDHCPv6PDSize)
-			d.Set("wan_ipv6", n.WANIPV6)
-			d.Set("wan_gateway_v6", n.WANGatewayV6)
-			d.Set("wan_prefixlen", n.WANPrefixlen)
+			_ = d.Set("site", site)
+			_ = d.Set("name", n.Name)
+			_ = d.Set("purpose", n.Purpose)
+			_ = d.Set("vlan_id", n.VLAN)
+			_ = d.Set("subnet", cidrZeroBased(n.IPSubnet))
+			_ = d.Set("network_group", n.NetworkGroup)
+			_ = d.Set("dhcp_dns", dhcpDNS)
+			_ = d.Set("dhcp_start", n.DHCPDStart)
+			_ = d.Set("dhcp_stop", n.DHCPDStop)
+			_ = d.Set("dhcp_enabled", n.DHCPDEnabled)
+			_ = d.Set("dhcp_lease", n.DHCPDLeaseTime)
+			_ = d.Set("dhcpd_boot_enabled", n.DHCPDBootEnabled)
+			_ = d.Set("dhcpd_boot_server", n.DHCPDBootServer)
+			_ = d.Set("dhcpd_boot_filename", n.DHCPDBootFilename)
+			_ = d.Set("domain_name", n.DomainName)
+			_ = d.Set("igmp_snooping", n.IGMPSnooping)
+			_ = d.Set("ipv6_interface_type", n.IPV6InterfaceType)
+			_ = d.Set("ipv6_static_subnet", n.IPV6Subnet)
+			_ = d.Set("ipv6_pd_interface", n.IPV6PDInterface)
+			_ = d.Set("ipv6_pd_prefixid", n.IPV6PDPrefixid)
+			_ = d.Set("ipv6_ra_enable", n.IPV6RaEnabled)
+			_ = d.Set("multicast_dns", n.MdnsEnabled)
+			_ = d.Set("wan_ip", n.WANIP)
+			_ = d.Set("wan_netmask", n.WANNetmask)
+			_ = d.Set("wan_gateway", n.WANGateway)
+			_ = d.Set("wan_type", n.WANType)
+			_ = d.Set("wan_dns", wanDNS)
+			_ = d.Set("wan_networkgroup", n.WANNetworkGroup)
+			_ = d.Set("wan_egress_qos", n.WANEgressQOS)
+			_ = d.Set("wan_username", n.WANUsername)
+			_ = d.Set("x_wan_password", n.XWANPassword)
+			_ = d.Set("wan_type_v6", n.WANTypeV6)
+			_ = d.Set("wan_dhcp_v6_pd_size", n.WANDHCPv6PDSize)
+			_ = d.Set("wan_ipv6", n.WANIPV6)
+			_ = d.Set("wan_gateway_v6", n.WANGatewayV6)
+			_ = d.Set("wan_prefixlen", n.WANPrefixlen)
 
 			return nil
 		}

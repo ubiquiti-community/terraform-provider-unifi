@@ -97,8 +97,8 @@ func resourceDevice() *schema.Resource {
 								[]string{"switch", "mirror", "aggregate"},
 								false,
 							),
-							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								if old == "" && new == "switch" {
+							DiffSuppressFunc: func(k, old, newVal string, d *schema.ResourceData) bool {
+								if old == "" && newVal == "switch" {
 									return true
 								}
 								return false
@@ -118,8 +118,8 @@ func resourceDevice() *schema.Resource {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							ValidateFunc: validation.IntBetween(2, 8),
-							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								if old == strconv.Itoa(0) && new == "" {
+							DiffSuppressFunc: func(k, old, newVal string, d *schema.ResourceData) bool {
+								if old == strconv.Itoa(0) && newVal == "" {
 									return true
 								}
 								return false
@@ -150,9 +150,15 @@ func resourceDeviceImport(
 	d *schema.ResourceData,
 	meta any,
 ) ([]*schema.ResourceData, error) {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return nil, fmt.Errorf("meta is not of type *client")
+	}
 	id := d.Id()
-	site := d.Get("site").(string)
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return nil, fmt.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
@@ -185,14 +191,23 @@ func resourceDeviceImport(
 }
 
 func resourceDeviceCreate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
-	c := meta.(*client)
+	c, ok := meta.(*client)
+	if !ok {
+		return diag.Errorf("meta is not of type *client")
+	}
 
-	site := d.Get("site").(string)
+	site, ok := d.Get("site").(string)
+	if !ok {
+		return diag.Errorf("site is not a string")
+	}
 	if site == "" {
 		site = c.site
 	}
 
-	mac := d.Get("mac").(string)
+	mac, ok := d.Get("mac").(string)
+	if !ok {
+		return diag.Errorf("mac is not a string")
+	}
 	if mac == "" {
 		return diag.Errorf(
 			"no MAC address specified, please import the device using terraform import",
@@ -210,7 +225,11 @@ func resourceDeviceCreate(ctx context.Context, d *schema.ResourceData, meta any)
 	}
 
 	if device.Adopted != nil && !*device.Adopted {
-		if !d.Get("allow_adoption").(bool) {
+		allowAdoption, ok := d.Get("allow_adoption").(bool)
+		if !ok {
+			return diag.Errorf("allow_adoption is not a bool")
+		}
+		if !allowAdoption {
 			return diag.Errorf("Device must be adopted before it can be managed")
 		}
 
