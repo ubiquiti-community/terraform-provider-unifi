@@ -1,0 +1,34 @@
+---
+name: Lint
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "**.go"
+      - go.mod
+      - go.sum
+      - ".github/workflows/lint.yaml"
+
+  pull_request:
+    types: ["opened", "synchronize"]
+    paths:
+      - "**.go"
+      - go.mod
+      - go.sum
+      - ".github/workflows/lint.yaml"
+
+jobs:
+  golangci:
+    name: GolangCI Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest

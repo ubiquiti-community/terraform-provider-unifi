@@ -1,11 +1,7 @@
 name: Acceptance Tests
 on:
-  pull_request:
-    paths-ignore:
-      - "README.md"
-  push:
-    paths-ignore:
-      - "README.md"
+  release:
+    types: [published]
   schedule:
     - cron: "0 13 * * *"
 jobs:
@@ -17,25 +13,28 @@ jobs:
       fail-fast: false
       matrix:
         unifi_version:
-          - "v6.5"
-          - "v6"
-          - "v7.0"
-          - "v7.1"
-          - "v7.2"
-          - "v7.3"
-          - "v7.4"
-          - "v7"
+          - "v8.1"
+          - "v8.2"
+          - "v8.3"
+          - "v8.4"
+          - "v8.5"
+          - "v8.6"
+          - "v8"
+          - "v9.0"
+          - "v9"
           - "latest"
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
           check-latest: true
 
-      # - uses: hoverkraft-tech/compose-action@v0.0.0
-      #   env:
-      #     UNIFI_VERSION: ${{ matrix.unifi_version }}
+      # Pre-install Teraform, so that test cases don't try installing their temporary copy
+      # See https://github.com/hashicorp/terraform-plugin-testing/issues/429
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
 
       # The acceptance tests sometimes timeout for some unknown reason.
       - name: TF acceptance tests

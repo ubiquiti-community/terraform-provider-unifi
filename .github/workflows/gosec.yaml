@@ -1,0 +1,36 @@
+---
+  name: Go Security Check
+  on:
+    push:
+      branches:
+        - main
+      paths:
+        - '**.go'
+        - 'vendor/**'
+        - '.github/workflows/**'
+      
+    pull_request:
+      types: ['opened', 'synchronize']
+      paths:
+        - '**.go'
+        - 'vendor/**'
+        - '.github/workflows/**'
+
+    schedule:
+      - cron: '0 0 * * 0'
+  
+  jobs:
+    gosec:
+       name: gosec
+       runs-on: ubuntu-latest
+       steps:
+         - name: Checkout Source
+           uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+         - name: Run Gosec Security Scanner
+           uses: securego/gosec@d4617f51baf75f4f809066386a4f9d27b3ac3e46 # v2.21.4
+           with:
+             args: '-no-fail -fmt sarif -out results.sarif ./...'
+         - name: Upload SARIF file
+           uses: github/codeql-action/upload-sarif@8f1a6fed33af5212fab8a999d004627ae8901d1b # v2.17.5
+           with:
+             sarif_file: results.sarif
