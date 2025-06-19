@@ -83,10 +83,10 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-	username := "admin"
-	password := "admin"
+	const user = "admin"
+	const password = "admin"
 
-	if err = os.Setenv("UNIFI_USERNAME", username); err != nil {
+	if err = os.Setenv("UNIFI_USERNAME", user); err != nil {
 		panic(err)
 	}
 
@@ -105,7 +105,7 @@ func runAcceptanceTests(m *testing.M) int {
 	testClient = &unifi.Client{}
 	setHTTPClient(testClient, true, "unifi")
 	testClient.SetBaseURL(endpoint)
-	if err = testClient.Login(ctx, username, password); err != nil {
+	if err = testClient.Login(ctx, user, password); err != nil {
 		panic(err)
 	}
 
