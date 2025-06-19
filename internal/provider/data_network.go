@@ -274,6 +274,326 @@ func dataNetwork() *schema.Resource {
 				Type:        schema.TypeInt,
 				Computed:    true,
 			},
+
+			// Additional fields from Network struct
+			"hidden": {
+				Description: "Specifies whether the network is hidden.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"hidden_id": {
+				Description: "The hidden network ID.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"no_delete": {
+				Description: "Specifies whether the network can be deleted.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"no_edit": {
+				Description: "Specifies whether the network can be edited.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"auto_scale_enabled": {
+				Description: "Specifies whether auto scaling is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcpd_gateway": {
+				Description: "The IPv4 address of the DHCP gateway.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_gateway_enabled": {
+				Description: "Specifies whether the DHCP gateway is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcpd_dns_enabled": {
+				Description: "Specifies whether DHCP DNS is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcpd_ntp_1": {
+				Description: "IPv4 address of the first NTP server.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_ntp_2": {
+				Description: "IPv4 address of the second NTP server.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_ntp_enabled": {
+				Description: "Specifies whether DHCP NTP is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcpd_tftp_server": {
+				Description: "IPv4 address of the TFTP server.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_time_offset": {
+				Description: "The time offset for DHCP.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"dhcpd_time_offset_enabled": {
+				Description: "Specifies whether DHCP time offset is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcpd_unifi_controller": {
+				Description: "IPv4 address of the UniFi Controller.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_wpad_url": {
+				Description: "The WPAD URL for DHCP.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_wins_1": {
+				Description: "IPv4 address of the first WINS server.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_wins_2": {
+				Description: "IPv4 address of the second WINS server.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"dhcpd_wins_enabled": {
+				Description: "Specifies whether DHCP WINS is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcp_relay_enabled": {
+				Description: "Specifies whether DHCP relay is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcpguard_enabled": {
+				Description: "Specifies whether DHCP guard is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dhcp_v6_allow_slaac": {
+				Description: "Specifies whether DHCPv6 SLAAC is allowed.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"enabled": {
+				Description: "Specifies whether the network is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"internet_access_enabled": {
+				Description: "Specifies whether internet access is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"is_nat": {
+				Description: "Specifies whether NAT is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"network_isolation_enabled": {
+				Description: "Specifies whether network isolation is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"upnp_lan_enabled": {
+				Description: "Specifies whether UPnP LAN is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"vlan_enabled": {
+				Description: "Specifies whether VLAN is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dpi_enabled": {
+				Description: "Specifies whether DPI (Deep Packet Inspection) is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"dpigroup_id": {
+				Description: "The DPI group ID.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"exposed_to_site_vpn": {
+				Description: "Specifies whether the network is exposed to site VPN.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"gateway_device": {
+				Description: "The MAC address of the gateway device.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"gateway_type": {
+				Description: "The gateway type (default or switch).",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"igmp_fastleave": {
+				Description: "Specifies whether IGMP fast leave is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"igmp_groupmembership": {
+				Description: "IGMP group membership interval.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"igmp_maxresponse": {
+				Description: "IGMP maximum response time.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"igmp_mcrtrexpiretime": {
+				Description: "IGMP multicast router expiration time.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"igmp_proxy_downstream": {
+				Description: "Specifies whether IGMP proxy downstream is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"igmp_proxy_upstream": {
+				Description: "Specifies whether IGMP proxy upstream is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"igmp_querier": {
+				Description: "IPv4 address of the IGMP querier.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"igmp_suppression": { // Note: UniFi API field name differs from schema name
+				Description: "Specifies whether IGMP suppression is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"interface_mtu": {
+				Description: "The MTU for the interface.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"interface_mtu_enabled": {
+				Description: "Specifies whether interface MTU is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"lte_lan_enabled": {
+				Description: "Specifies whether LTE LAN is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"mac_override": {
+				Description: "MAC address override for the network interface.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"mac_override_enabled": {
+				Description: "Specifies whether MAC override is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"priority": {
+				Description: "The priority of the network (1-4).",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"radiusprofile_id": {
+				Description: "The RADIUS profile ID.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"usergroup_id": {
+				Description: "The user group ID.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"report_wan_event": {
+				Description: "Specifies whether to report WAN events.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"setting_preference": {
+				Description: "Setting preference (auto or manual).",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"single_network_lan": {
+				Description: "Single network LAN configuration.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"wan_load_balance_type": {
+				Description: "WAN load balance type (failover-only or weighted).",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"wan_load_balance_weight": {
+				Description: "WAN load balance weight.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"wan_smartq_enabled": {
+				Description: "Specifies whether WAN Smart Queue is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"wan_smartq_up_rate": {
+				Description: "WAN Smart Queue upload rate.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"wan_smartq_down_rate": {
+				Description: "WAN Smart Queue download rate.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"wan_vlan": {
+				Description: "WAN VLAN ID.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"wan_vlan_enabled": {
+				Description: "Specifies whether WAN VLAN is enabled.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+			},
+			"wan_dhcp_cos": {
+				Description: "WAN DHCP Class of Service.",
+				Type:        schema.TypeInt,
+				Computed:    true,
+			},
+			"wan_dns_preference": {
+				Description: "WAN DNS preference (auto or manual).",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
+			"wan_ipv6_dns": {
+				Description: "WAN IPv6 DNS servers.",
+				Type:        schema.TypeList,
+				Computed:    true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
+			"wan_ipv6_dns_preference": {
+				Description: "WAN IPv6 DNS preference (auto or manual).",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
 		},
 	}
 }
@@ -321,6 +641,20 @@ func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta any) diag
 				}
 				dhcpDNS = append(dhcpDNS, dns)
 			}
+
+			// Handle DHCPv6 DNS
+			dhcpV6DNS := []string{}
+			for _, dns := range []string{
+				n.DHCPDV6DNS1,
+				n.DHCPDV6DNS2,
+				n.DHCPDV6DNS3,
+				n.DHCPDV6DNS4,
+			} {
+				if dns == "" {
+					continue
+				}
+				dhcpV6DNS = append(dhcpV6DNS, dns)
+			}
 			wanDNS := []string{}
 			for _, dns := range []string{
 				n.WANDNS1,
@@ -342,6 +676,12 @@ func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta any) diag
 			_ = d.Set("subnet", cidrZeroBased(n.IPSubnet))
 			_ = d.Set("network_group", n.NetworkGroup)
 			_ = d.Set("dhcp_dns", dhcpDNS)
+			_ = d.Set("dhcp_v6_dns", dhcpV6DNS)
+			_ = d.Set("dhcp_v6_dns_auto", n.DHCPDV6DNSAuto)
+			_ = d.Set("dhcp_v6_enabled", n.DHCPDV6Enabled)
+			_ = d.Set("dhcp_v6_lease", n.DHCPDV6LeaseTime)
+			_ = d.Set("dhcp_v6_start", n.DHCPDV6Start)
+			_ = d.Set("dhcp_v6_stop", n.DHCPDV6Stop)
 			_ = d.Set("dhcp_start", n.DHCPDStart)
 			_ = d.Set("dhcp_stop", n.DHCPDStop)
 			_ = d.Set("dhcp_enabled", n.DHCPDEnabled)
@@ -355,7 +695,12 @@ func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta any) diag
 			_ = d.Set("ipv6_static_subnet", n.IPV6Subnet)
 			_ = d.Set("ipv6_pd_interface", n.IPV6PDInterface)
 			_ = d.Set("ipv6_pd_prefixid", n.IPV6PDPrefixid)
+			_ = d.Set("ipv6_pd_start", n.IPV6PDStart)
+			_ = d.Set("ipv6_pd_stop", n.IPV6PDStop)
 			_ = d.Set("ipv6_ra_enable", n.IPV6RaEnabled)
+			_ = d.Set("ipv6_ra_preferred_lifetime", n.IPV6RaPreferredLifetime)
+			_ = d.Set("ipv6_ra_priority", n.IPV6RaPriority)
+			_ = d.Set("ipv6_ra_valid_lifetime", n.IPV6RaValidLifetime)
 			_ = d.Set("multicast_dns", n.MdnsEnabled)
 			_ = d.Set("wan_ip", n.WANIP)
 			_ = d.Set("wan_netmask", n.WANNetmask)
@@ -371,6 +716,81 @@ func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta any) diag
 			_ = d.Set("wan_ipv6", n.WANIPV6)
 			_ = d.Set("wan_gateway_v6", n.WANGatewayV6)
 			_ = d.Set("wan_prefixlen", n.WANPrefixlen)
+			_ = d.Set("hidden", n.Hidden)
+			_ = d.Set("hidden_id", n.HiddenID)
+			_ = d.Set("no_delete", n.NoDelete)
+			_ = d.Set("no_edit", n.NoEdit)
+			_ = d.Set("auto_scale_enabled", n.AutoScaleEnabled)
+			_ = d.Set("dhcpd_gateway", n.DHCPDGateway)
+			_ = d.Set("dhcpd_gateway_enabled", n.DHCPDGatewayEnabled)
+			_ = d.Set("dhcpd_dns_enabled", n.DHCPDDNSEnabled)
+			_ = d.Set("dhcpd_ntp_1", n.DHCPDNtp1)
+			_ = d.Set("dhcpd_ntp_2", n.DHCPDNtp2)
+			_ = d.Set("dhcpd_ntp_enabled", n.DHCPDNtpEnabled)
+			_ = d.Set("dhcpd_tftp_server", n.DHCPDTFTPServer)
+			_ = d.Set("dhcpd_time_offset", n.DHCPDTimeOffset)
+			_ = d.Set("dhcpd_time_offset_enabled", n.DHCPDTimeOffsetEnabled)
+			_ = d.Set("dhcpd_unifi_controller", n.DHCPDUnifiController)
+			_ = d.Set("dhcpd_wpad_url", n.DHCPDWPAdUrl)
+			_ = d.Set("dhcpd_wins_1", n.DHCPDWins1)
+			_ = d.Set("dhcpd_wins_2", n.DHCPDWins2)
+			_ = d.Set("dhcpd_wins_enabled", n.DHCPDWinsEnabled)
+			_ = d.Set("dhcp_relay_enabled", n.DHCPRelayEnabled)
+			_ = d.Set("dhcpguard_enabled", n.DHCPguardEnabled)
+			_ = d.Set("dhcp_v6_allow_slaac", n.DHCPDV6AllowSlaac)
+			_ = d.Set("enabled", n.Enabled)
+			_ = d.Set("internet_access_enabled", n.InternetAccessEnabled)
+			_ = d.Set("is_nat", n.IsNAT)
+			_ = d.Set("network_isolation_enabled", n.NetworkIsolationEnabled)
+			_ = d.Set("upnp_lan_enabled", n.UpnpLanEnabled)
+			_ = d.Set("vlan_enabled", n.VLANEnabled)
+			_ = d.Set("dpi_enabled", n.DPIEnabled)
+			_ = d.Set("dpigroup_id", n.DPIgroupID)
+			_ = d.Set("exposed_to_site_vpn", n.ExposedToSiteVPN)
+			_ = d.Set("gateway_device", n.GatewayDevice)
+			_ = d.Set("gateway_type", n.GatewayType)
+			_ = d.Set("igmp_fastleave", n.IGMPFastleave)
+			_ = d.Set("igmp_groupmembership", n.IGMPGroupmembership)
+			_ = d.Set("igmp_maxresponse", n.IGMPMaxresponse)
+			_ = d.Set("igmp_mcrtrexpiretime", n.IGMPMcrtrexpiretime)
+			_ = d.Set("igmp_proxy_downstream", n.IGMPProxyDownstream)
+			_ = d.Set("igmp_proxy_upstream", n.IGMPProxyUpstream)
+			_ = d.Set("igmp_querier", n.IGMPQuerier)
+			_ = d.Set("igmp_suppression", n.IGMPSupression) // Note: API has misspelled field name
+			_ = d.Set("interface_mtu", n.InterfaceMtu)
+			_ = d.Set("interface_mtu_enabled", n.InterfaceMtuEnabled)
+			_ = d.Set("lte_lan_enabled", n.LteLanEnabled)
+			_ = d.Set("mac_override", n.MACOverride)
+			_ = d.Set("mac_override_enabled", n.MACOverrideEnabled)
+			_ = d.Set("priority", n.Priority)
+			_ = d.Set("radiusprofile_id", n.RADIUSProfileID)
+			_ = d.Set("usergroup_id", n.UserGroupID)
+			_ = d.Set("report_wan_event", n.ReportWANEvent)
+			_ = d.Set("setting_preference", n.SettingPreference)
+			_ = d.Set("single_network_lan", n.SingleNetworkLan)
+			_ = d.Set("wan_load_balance_type", n.WANLoadBalanceType)
+			_ = d.Set("wan_load_balance_weight", n.WANLoadBalanceWeight)
+			_ = d.Set("wan_smartq_enabled", n.WANSmartqEnabled)
+			_ = d.Set("wan_smartq_up_rate", n.WANSmartqUpRate)
+			_ = d.Set("wan_smartq_down_rate", n.WANSmartqDownRate)
+			_ = d.Set("wan_vlan", n.WANVLAN)
+			_ = d.Set("wan_vlan_enabled", n.WANVLANEnabled)
+			_ = d.Set("wan_dhcp_cos", n.WANDHCPCos)
+			_ = d.Set("wan_dns_preference", n.WANDNSPreference)
+
+			// Handle WAN IPv6 DNS
+			wanIPv6DNS := []string{}
+			for _, dns := range []string{
+				n.WANIPV6DNS1,
+				n.WANIPV6DNS2,
+			} {
+				if dns == "" {
+					continue
+				}
+				wanIPv6DNS = append(wanIPv6DNS, dns)
+			}
+			_ = d.Set("wan_ipv6_dns", wanIPv6DNS)
+			_ = d.Set("wan_ipv6_dns_preference", n.WANIPV6DNSPreference)
 
 			return nil
 		}
