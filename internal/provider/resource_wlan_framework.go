@@ -390,61 +390,132 @@ func (r *wlanFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 }
 
 func (r *wlanFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var state wlanFrameworkResourceModel
 	var plan wlanFrameworkResourceModel
 
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	// Step 1: Read the current state (which already contains API values from previous reads)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	site := plan.Site.ValueString()
+	// Read the plan data
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Step 2: Apply the plan changes to the state object
+	r.applyPlanToState(ctx, &plan, &state)
+
+	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.site
 	}
 
-	id := plan.ID.ValueString()
-
-	// Implement UniFi API update pattern: read-merge-update
-	// 1. Read existing resource from API
-	existingWLAN, err := r.client.c.GetWLAN(ctx, site, id)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading WLAN for Update",
-			"Could not read WLAN with ID "+id+": "+err.Error(),
-		)
-		return
-	}
-
-	// 2. Convert plan to WLAN struct
-	planWLAN, diags := r.planToWLAN(ctx, plan)
+	// Step 3: Convert the updated state to API format
+	wlan, diags := r.planToWLAN(ctx, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// 3. Merge planned changes with existing values (UniFi requires full objects)
-	mergedWLAN := r.mergeWLAN(existingWLAN, planWLAN)
-
-	// 4. Update the WLAN
-	updatedWLAN, err := r.client.c.UpdateWLAN(ctx, site, mergedWLAN)
+	// Step 4: Send to API
+	wlan.ID = state.ID.ValueString()
+	updatedWLAN, err := r.client.c.UpdateWLAN(ctx, site, wlan)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating WLAN",
-			"Could not update WLAN with ID "+id+": "+err.Error(),
+			"Could not update WLAN with ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
-	// Convert response back to model
-	diags = r.wlanToModel(ctx, updatedWLAN, &plan, site)
+	// Step 5: Update state with API response
+	diags = r.wlanToModel(ctx, updatedWLAN, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+func (r *wlanFrameworkResource) applyPlanToState(ctx context.Context, plan *wlanFrameworkResourceModel, state *wlanFrameworkResourceModel) {
+	// Apply plan values to state, but only if plan value is not null/unknown
+	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
+		state.Name = plan.Name
+	}
+	if !plan.UserGroupID.IsNull() && !plan.UserGroupID.IsUnknown() {
+		state.UserGroupID = plan.UserGroupID
+	}
+	if !plan.Security.IsNull() && !plan.Security.IsUnknown() {
+		state.Security = plan.Security
+	}
+	if !plan.WPA3Support.IsNull() && !plan.WPA3Support.IsUnknown() {
+		state.WPA3Support = plan.WPA3Support
+	}
+	if !plan.WPA3Transition.IsNull() && !plan.WPA3Transition.IsUnknown() {
+		state.WPA3Transition = plan.WPA3Transition
+	}
+	if !plan.PMFMode.IsNull() && !plan.PMFMode.IsUnknown() {
+		state.PMFMode = plan.PMFMode
+	}
+	if !plan.Passphrase.IsNull() && !plan.Passphrase.IsUnknown() {
+		state.Passphrase = plan.Passphrase
+	}
+	if !plan.HideSSID.IsNull() && !plan.HideSSID.IsUnknown() {
+		state.HideSSID = plan.HideSSID
+	}
+	if !plan.IsGuest.IsNull() && !plan.IsGuest.IsUnknown() {
+		state.IsGuest = plan.IsGuest
+	}
+	if !plan.MulticastEnhance.IsNull() && !plan.MulticastEnhance.IsUnknown() {
+		state.MulticastEnhance = plan.MulticastEnhance
+	}
+	if !plan.MacFilterEnabled.IsNull() && !plan.MacFilterEnabled.IsUnknown() {
+		state.MacFilterEnabled = plan.MacFilterEnabled
+	}
+	if !plan.MacFilterList.IsNull() && !plan.MacFilterList.IsUnknown() {
+		state.MacFilterList = plan.MacFilterList
+	}
+	if !plan.MacFilterPolicy.IsNull() && !plan.MacFilterPolicy.IsUnknown() {
+		state.MacFilterPolicy = plan.MacFilterPolicy
+	}
+	if !plan.RadiusProfileID.IsNull() && !plan.RadiusProfileID.IsUnknown() {
+		state.RadiusProfileID = plan.RadiusProfileID
+	}
+	if !plan.Schedule.IsNull() && !plan.Schedule.IsUnknown() {
+		state.Schedule = plan.Schedule
+	}
+	if !plan.No2GhzOui.IsNull() && !plan.No2GhzOui.IsUnknown() {
+		state.No2GhzOui = plan.No2GhzOui
+	}
+	if !plan.L2Isolation.IsNull() && !plan.L2Isolation.IsUnknown() {
+		state.L2Isolation = plan.L2Isolation
+	}
+	if !plan.ProxyArp.IsNull() && !plan.ProxyArp.IsUnknown() {
+		state.ProxyArp = plan.ProxyArp
+	}
+	if !plan.BssTransition.IsNull() && !plan.BssTransition.IsUnknown() {
+		state.BssTransition = plan.BssTransition
+	}
+	if !plan.Uapsd.IsNull() && !plan.Uapsd.IsUnknown() {
+		state.Uapsd = plan.Uapsd
+	}
+	if !plan.FastRoamingEnabled.IsNull() && !plan.FastRoamingEnabled.IsUnknown() {
+		state.FastRoamingEnabled = plan.FastRoamingEnabled
+	}
+	if !plan.MinimumDataRate2GKbps.IsNull() && !plan.MinimumDataRate2GKbps.IsUnknown() {
+		state.MinimumDataRate2GKbps = plan.MinimumDataRate2GKbps
+	}
+	if !plan.MinimumDataRate5GKbps.IsNull() && !plan.MinimumDataRate5GKbps.IsUnknown() {
+		state.MinimumDataRate5GKbps = plan.MinimumDataRate5GKbps
+	}
+	if !plan.MinrateSettingPreference.IsNull() && !plan.MinrateSettingPreference.IsUnknown() {
+		state.MinrateSettingPreference = plan.MinrateSettingPreference
+	}
 }
 
 func (r *wlanFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

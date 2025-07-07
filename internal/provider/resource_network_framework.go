@@ -562,28 +562,39 @@ func (r *networkFrameworkResource) Read(ctx context.Context, req resource.ReadRe
 }
 
 func (r *networkFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data networkFrameworkResourceModel
+	var state networkFrameworkResourceModel
+	var plan networkFrameworkResourceModel
 
-	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	// Step 1: Read the current state (which already contains API values from previous reads)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Convert to unifi.Network
-	network, diags := r.modelToNetwork(ctx, &data)
+	// Read the plan data
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Step 2: Apply the plan changes to the state object
+	// Check if the plan's value is null or unknown. If so, leave the state value as is
+	r.applyPlanToState(ctx, &plan, &state)
+
+	// Step 3: Convert the updated state to API format
+	network, diags := r.modelToNetwork(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	site := data.Site.ValueString()
+	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.site
 	}
 
-	// Update the network
-	network.ID = data.ID.ValueString()
+	// Step 4: Send to API
+	network.ID = state.ID.ValueString()
 	updatedNetwork, err := r.client.c.UpdateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -593,15 +604,189 @@ func (r *networkFrameworkResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	// Convert back to model
-	diags = r.networkToModel(ctx, updatedNetwork, &data, site)
+	// Step 5: Update state with API response
+	diags = r.networkToModel(ctx, updatedNetwork, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *networkFrameworkResourceModel, state *networkFrameworkResourceModel) {
+	// Apply plan values to state, but only if plan value is not null/unknown
+	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
+		state.Name = plan.Name
+	}
+	if !plan.Purpose.IsNull() && !plan.Purpose.IsUnknown() {
+		state.Purpose = plan.Purpose
+	}
+	if !plan.VlanID.IsNull() && !plan.VlanID.IsUnknown() {
+		state.VlanID = plan.VlanID
+	}
+	if !plan.Subnet.IsNull() && !plan.Subnet.IsUnknown() {
+		state.Subnet = plan.Subnet
+	}
+	if !plan.NetworkGroup.IsNull() && !plan.NetworkGroup.IsUnknown() {
+		state.NetworkGroup = plan.NetworkGroup
+	}
+	
+	// DHCP Settings
+	if !plan.DhcpStart.IsNull() && !plan.DhcpStart.IsUnknown() {
+		state.DhcpStart = plan.DhcpStart
+	}
+	if !plan.DhcpStop.IsNull() && !plan.DhcpStop.IsUnknown() {
+		state.DhcpStop = plan.DhcpStop
+	}
+	if !plan.DhcpEnabled.IsNull() && !plan.DhcpEnabled.IsUnknown() {
+		state.DhcpEnabled = plan.DhcpEnabled
+	}
+	if !plan.DhcpLease.IsNull() && !plan.DhcpLease.IsUnknown() {
+		state.DhcpLease = plan.DhcpLease
+	}
+	if !plan.DhcpDNS.IsNull() && !plan.DhcpDNS.IsUnknown() {
+		state.DhcpDNS = plan.DhcpDNS
+	}
+	if !plan.DhcpdBootEnabled.IsNull() && !plan.DhcpdBootEnabled.IsUnknown() {
+		state.DhcpdBootEnabled = plan.DhcpdBootEnabled
+	}
+	if !plan.DhcpdBootServer.IsNull() && !plan.DhcpdBootServer.IsUnknown() {
+		state.DhcpdBootServer = plan.DhcpdBootServer
+	}
+	if !plan.DhcpdBootFilename.IsNull() && !plan.DhcpdBootFilename.IsUnknown() {
+		state.DhcpdBootFilename = plan.DhcpdBootFilename
+	}
+	if !plan.DhcpRelayEnabled.IsNull() && !plan.DhcpRelayEnabled.IsUnknown() {
+		state.DhcpRelayEnabled = plan.DhcpRelayEnabled
+	}
+	
+	// DHCPv6 Settings  
+	if !plan.DhcpV6DNS.IsNull() && !plan.DhcpV6DNS.IsUnknown() {
+		state.DhcpV6DNS = plan.DhcpV6DNS
+	}
+	if !plan.DhcpV6DNSAuto.IsNull() && !plan.DhcpV6DNSAuto.IsUnknown() {
+		state.DhcpV6DNSAuto = plan.DhcpV6DNSAuto
+	}
+	if !plan.DhcpV6Enabled.IsNull() && !plan.DhcpV6Enabled.IsUnknown() {
+		state.DhcpV6Enabled = plan.DhcpV6Enabled
+	}
+	if !plan.DhcpV6Lease.IsNull() && !plan.DhcpV6Lease.IsUnknown() {
+		state.DhcpV6Lease = plan.DhcpV6Lease
+	}
+	if !plan.DhcpV6PDStart.IsNull() && !plan.DhcpV6PDStart.IsUnknown() {
+		state.DhcpV6PDStart = plan.DhcpV6PDStart
+	}
+	if !plan.DhcpV6PDStop.IsNull() && !plan.DhcpV6PDStop.IsUnknown() {
+		state.DhcpV6PDStop = plan.DhcpV6PDStop
+	}
+	if !plan.DhcpV6Start.IsNull() && !plan.DhcpV6Start.IsUnknown() {
+		state.DhcpV6Start = plan.DhcpV6Start
+	}
+	if !plan.DhcpV6Stop.IsNull() && !plan.DhcpV6Stop.IsUnknown() {
+		state.DhcpV6Stop = plan.DhcpV6Stop
+	}
+	
+	// IPv6 Settings
+	if !plan.IPv6InterfaceType.IsNull() && !plan.IPv6InterfaceType.IsUnknown() {
+		state.IPv6InterfaceType = plan.IPv6InterfaceType
+	}
+	if !plan.IPv6PDPrefixid.IsNull() && !plan.IPv6PDPrefixid.IsUnknown() {
+		state.IPv6PDPrefixid = plan.IPv6PDPrefixid
+	}
+	if !plan.IPv6PDStart.IsNull() && !plan.IPv6PDStart.IsUnknown() {
+		state.IPv6PDStart = plan.IPv6PDStart
+	}
+	if !plan.IPv6PDStop.IsNull() && !plan.IPv6PDStop.IsUnknown() {
+		state.IPv6PDStop = plan.IPv6PDStop
+	}
+	if !plan.IPv6RAPriority.IsNull() && !plan.IPv6RAPriority.IsUnknown() {
+		state.IPv6RAPriority = plan.IPv6RAPriority
+	}
+	if !plan.IPv6RAValidLifetime.IsNull() && !plan.IPv6RAValidLifetime.IsUnknown() {
+		state.IPv6RAValidLifetime = plan.IPv6RAValidLifetime
+	}
+	if !plan.IPv6RAPreferredLifetime.IsNull() && !plan.IPv6RAPreferredLifetime.IsUnknown() {
+		state.IPv6RAPreferredLifetime = plan.IPv6RAPreferredLifetime
+	}
+	if !plan.IPv6RAEnable.IsNull() && !plan.IPv6RAEnable.IsUnknown() {
+		state.IPv6RAEnable = plan.IPv6RAEnable
+	}
+	if !plan.IPv6Static.IsNull() && !plan.IPv6Static.IsUnknown() {
+		state.IPv6Static = plan.IPv6Static
+	}
+	
+	// WAN Settings
+	if !plan.WANType.IsNull() && !plan.WANType.IsUnknown() {
+		state.WANType = plan.WANType
+	}
+	if !plan.WANUsername.IsNull() && !plan.WANUsername.IsUnknown() {
+		state.WANUsername = plan.WANUsername
+	}
+	if !plan.WANPassword.IsNull() && !plan.WANPassword.IsUnknown() {
+		state.WANPassword = plan.WANPassword
+	}
+	if !plan.WANIp.IsNull() && !plan.WANIp.IsUnknown() {
+		state.WANIp = plan.WANIp
+	}
+	if !plan.WANNetmask.IsNull() && !plan.WANNetmask.IsUnknown() {
+		state.WANNetmask = plan.WANNetmask
+	}
+	if !plan.WANGateway.IsNull() && !plan.WANGateway.IsUnknown() {
+		state.WANGateway = plan.WANGateway
+	}
+	if !plan.WANDNS.IsNull() && !plan.WANDNS.IsUnknown() {
+		state.WANDNS = plan.WANDNS
+	}
+	if !plan.WANNetworkGroup.IsNull() && !plan.WANNetworkGroup.IsUnknown() {
+		state.WANNetworkGroup = plan.WANNetworkGroup
+	}
+	if !plan.WANDHCPV6.IsNull() && !plan.WANDHCPV6.IsUnknown() {
+		state.WANDHCPV6 = plan.WANDHCPV6
+	}
+	if !plan.WANGatewayV6.IsNull() && !plan.WANGatewayV6.IsUnknown() {
+		state.WANGatewayV6 = plan.WANGatewayV6
+	}
+	if !plan.WANIPv6.IsNull() && !plan.WANIPv6.IsUnknown() {
+		state.WANIPv6 = plan.WANIPv6
+	}
+	if !plan.WANPrefixlen.IsNull() && !plan.WANPrefixlen.IsUnknown() {
+		state.WANPrefixlen = plan.WANPrefixlen
+	}
+	if !plan.WANTypeV6.IsNull() && !plan.WANTypeV6.IsUnknown() {
+		state.WANTypeV6 = plan.WANTypeV6
+	}
+	
+	// WireGuard Settings
+	if !plan.WireguardClientMode.IsNull() && !plan.WireguardClientMode.IsUnknown() {
+		state.WireguardClientMode = plan.WireguardClientMode
+	}
+	if !plan.WireguardClientPeerIP.IsNull() && !plan.WireguardClientPeerIP.IsUnknown() {
+		state.WireguardClientPeerIP = plan.WireguardClientPeerIP
+	}
+	if !plan.WireguardClientPeerPort.IsNull() && !plan.WireguardClientPeerPort.IsUnknown() {
+		state.WireguardClientPeerPort = plan.WireguardClientPeerPort
+	}
+	if !plan.WireguardClientPeerPublicKey.IsNull() && !plan.WireguardClientPeerPublicKey.IsUnknown() {
+		state.WireguardClientPeerPublicKey = plan.WireguardClientPeerPublicKey
+	}
+	if !plan.WireguardClientPresharedKey.IsNull() && !plan.WireguardClientPresharedKey.IsUnknown() {
+		state.WireguardClientPresharedKey = plan.WireguardClientPresharedKey
+	}
+	if !plan.WireguardClientPresharedKeyEnabled.IsNull() && !plan.WireguardClientPresharedKeyEnabled.IsUnknown() {
+		state.WireguardClientPresharedKeyEnabled = plan.WireguardClientPresharedKeyEnabled
+	}
+	if !plan.WireguardID.IsNull() && !plan.WireguardID.IsUnknown() {
+		state.WireguardID = plan.WireguardID
+	}
+	if !plan.WireguardPublicKey.IsNull() && !plan.WireguardPublicKey.IsUnknown() {
+		state.WireguardPublicKey = plan.WireguardPublicKey
+	}
+	if !plan.WireguardPrivateKey.IsNull() && !plan.WireguardPrivateKey.IsUnknown() {
+		state.WireguardPrivateKey = plan.WireguardPrivateKey
+	}
 }
 
 func (r *networkFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
