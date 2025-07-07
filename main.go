@@ -29,7 +29,7 @@ func main() {
 		Debug:   debug,
 	}
 
-	err := providerserver.Serve(context.Background(), unifi.New(), opts)
+	err := providerserver.Serve(context.Background(), unifi.New, opts)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
