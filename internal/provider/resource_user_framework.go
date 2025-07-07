@@ -274,61 +274,94 @@ func (r *userFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 }
 
 func (r *userFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var state userFrameworkResourceModel
 	var plan userFrameworkResourceModel
 
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	// Step 1: Read the current state (which already contains API values from previous reads)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	site := plan.Site.ValueString()
+	// Read the plan data
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Step 2: Apply the plan changes to the state object
+	r.applyPlanToState(ctx, &plan, &state)
+
+	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.site
 	}
 
-	id := plan.ID.ValueString()
-
-	// Implement UniFi API update pattern: read-merge-update
-	// 1. Read existing resource from API
-	existingUser, err := r.client.c.GetUser(ctx, site, id)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading User for Update",
-			"Could not read user with ID "+id+": "+err.Error(),
-		)
-		return
-	}
-
-	// 2. Convert plan to User struct
-	planUser, diags := r.planToUser(ctx, plan)
+	// Step 3: Convert the updated state to API format
+	user, diags := r.planToUser(ctx, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// 3. Merge planned changes with existing values (UniFi requires full objects)
-	mergedUser := r.mergeUser(existingUser, planUser)
-
-	// 4. Update the User
-	updatedUser, err := r.client.c.UpdateUser(ctx, site, mergedUser)
+	// Step 4: Send to API
+	user.ID = state.ID.ValueString()
+	updatedUser, err := r.client.c.UpdateUser(ctx, site, user)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating User",
-			"Could not update user with ID "+id+": "+err.Error(),
+			"Could not update user with ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
-	// Convert response back to model
-	diags = r.userToModel(ctx, updatedUser, &plan, site)
+	// Step 5: Update state with API response
+	diags = r.userToModel(ctx, updatedUser, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+func (r *userFrameworkResource) applyPlanToState(ctx context.Context, plan *userFrameworkResourceModel, state *userFrameworkResourceModel) {
+	// Apply plan values to state, but only if plan value is not null/unknown
+	if !plan.MAC.IsNull() && !plan.MAC.IsUnknown() {
+		state.MAC = plan.MAC
+	}
+	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
+		state.Name = plan.Name
+	}
+	if !plan.UserGroupID.IsNull() && !plan.UserGroupID.IsUnknown() {
+		state.UserGroupID = plan.UserGroupID
+	}
+	if !plan.Note.IsNull() && !plan.Note.IsUnknown() {
+		state.Note = plan.Note
+	}
+	if !plan.FixedIP.IsNull() && !plan.FixedIP.IsUnknown() {
+		state.FixedIP = plan.FixedIP
+	}
+	if !plan.NetworkID.IsNull() && !plan.NetworkID.IsUnknown() {
+		state.NetworkID = plan.NetworkID
+	}
+	if !plan.Blocked.IsNull() && !plan.Blocked.IsUnknown() {
+		state.Blocked = plan.Blocked
+	}
+	if !plan.DevIDOverride.IsNull() && !plan.DevIDOverride.IsUnknown() {
+		state.DevIDOverride = plan.DevIDOverride
+	}
+	if !plan.LocalDNSRecord.IsNull() && !plan.LocalDNSRecord.IsUnknown() {
+		state.LocalDNSRecord = plan.LocalDNSRecord
+	}
+	if !plan.AllowExisting.IsNull() && !plan.AllowExisting.IsUnknown() {
+		state.AllowExisting = plan.AllowExisting
+	}
+	if !plan.SkipForgetOnDestroy.IsNull() && !plan.SkipForgetOnDestroy.IsUnknown() {
+		state.SkipForgetOnDestroy = plan.SkipForgetOnDestroy
+	}
+	// Note: Computed attributes (Hostname, IP) are not applied from plan
 }
 
 func (r *userFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

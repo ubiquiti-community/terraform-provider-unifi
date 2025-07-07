@@ -162,38 +162,32 @@ func (r *siteFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 }
 
 func (r *siteFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var state siteFrameworkResourceModel
 	var plan siteFrameworkResourceModel
 
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	// Step 1: Read the current state (which already contains API values from previous reads)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Implement UniFi API update pattern: read-merge-update
-	// 1. Read existing resource from API
-	id := plan.ID.ValueString()
-	existingSite, err := r.client.c.GetSite(ctx, id)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading Site for Update",
-			"Could not read site with ID "+id+": "+err.Error(),
-		)
+	// Read the plan data
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// 2. Convert plan to Site struct and merge
-	planSite := &unifi.Site{
-		ID:          id,
-		Name:        existingSite.Name, // Name can't be changed after creation
-		Description: plan.Description.ValueString(),
-	}
+	// Step 2: Apply the plan changes to the state object
+	r.applyPlanToState(ctx, &plan, &state)
 
-	// 3. Merge planned changes with existing values (UniFi requires full objects)
-	mergedSite := r.mergeSite(existingSite, planSite)
+	// Step 3: Convert the updated state to API format
+	// Note: Site name cannot be changed after creation, only description
+	id := state.ID.ValueString()
+	name := state.Name.ValueString()
+	description := state.Description.ValueString()
 
-	// 4. Update the Site
-	updatedSites, err := r.client.c.UpdateSite(ctx, mergedSite.Name, mergedSite.Description)
+	// Step 4: Send to API
+	updatedSites, err := r.client.c.UpdateSite(ctx, name, description)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Site",
@@ -212,15 +206,23 @@ func (r *siteFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 
 	updatedSite := updatedSites[0]
 
-	// Convert response back to model
-	diags = r.siteToModel(ctx, &updatedSite, &plan)
+	// Step 5: Update state with API response
+	diags := r.siteToModel(ctx, &updatedSite, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+func (r *siteFrameworkResource) applyPlanToState(ctx context.Context, plan *siteFrameworkResourceModel, state *siteFrameworkResourceModel) {
+	// Apply plan values to state, but only if plan value is not null/unknown
+	// Note: Name cannot be changed after creation, so we don't apply it from plan
+	if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
+		state.Description = plan.Description
+	}
 }
 
 func (r *siteFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -192,65 +192,72 @@ func (r *userGroupFrameworkResource) Read(ctx context.Context, req resource.Read
 }
 
 func (r *userGroupFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var state userGroupFrameworkResourceModel
 	var plan userGroupFrameworkResourceModel
 
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	// Step 1: Read the current state (which already contains API values from previous reads)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	site := plan.Site.ValueString()
+	// Read the plan data
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Step 2: Apply the plan changes to the state object
+	r.applyPlanToState(ctx, &plan, &state)
+
+	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.site
 	}
 
-	id := plan.ID.ValueString()
-
-	// Implement UniFi API update pattern: read-merge-update
-	// 1. Read existing resource from API
-	existingUserGroup, err := r.client.c.GetUserGroup(ctx, site, id)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading User Group for Update",
-			"Could not read user group with ID "+id+": "+err.Error(),
-		)
-		return
-	}
-
-	// 2. Convert plan to UserGroup struct
-	planUserGroup, diags := r.planToUserGroup(ctx, plan)
+	// Step 3: Convert the updated state to API format
+	userGroup, diags := r.planToUserGroup(ctx, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Set required fields for update
-	planUserGroup.ID = id
-	planUserGroup.SiteID = site
+	userGroup.ID = state.ID.ValueString()
+	userGroup.SiteID = site
 
-	// 3. Merge planned changes with existing values (UniFi requires full objects)
-	mergedUserGroup := r.mergeUserGroup(existingUserGroup, planUserGroup)
-
-	// 4. Update the UserGroup
-	updatedUserGroup, err := r.client.c.UpdateUserGroup(ctx, site, mergedUserGroup)
+	// Step 4: Send to API
+	updatedUserGroup, err := r.client.c.UpdateUserGroup(ctx, site, userGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating User Group",
-			"Could not update user group with ID "+id+": "+err.Error(),
+			"Could not update user group with ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
-	// Convert response back to model
-	diags = r.userGroupToModel(ctx, updatedUserGroup, &plan, site)
+	// Step 5: Update state with API response
+	diags = r.userGroupToModel(ctx, updatedUserGroup, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+func (r *userGroupFrameworkResource) applyPlanToState(ctx context.Context, plan *userGroupFrameworkResourceModel, state *userGroupFrameworkResourceModel) {
+	// Apply plan values to state, but only if plan value is not null/unknown
+	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
+		state.Name = plan.Name
+	}
+	if !plan.QOSRateMaxDown.IsNull() && !plan.QOSRateMaxDown.IsUnknown() {
+		state.QOSRateMaxDown = plan.QOSRateMaxDown
+	}
+	if !plan.QOSRateMaxUp.IsNull() && !plan.QOSRateMaxUp.IsUnknown() {
+		state.QOSRateMaxUp = plan.QOSRateMaxUp
+	}
 }
 
 func (r *userGroupFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
