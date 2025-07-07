@@ -210,6 +210,9 @@ func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewUserFrameworkResource,
 		NewSiteFrameworkResource,
 		NewUserGroupFrameworkResource,
+		NewDNSRecordFrameworkResource,
+		NewAccountFrameworkResource,
+		NewStaticRouteFrameworkResource,
 	}
 }
 
