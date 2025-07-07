@@ -8,7 +8,7 @@ import (
 
 func TestAccNetworkFrameworkDataSource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -25,7 +25,7 @@ func TestAccNetworkFrameworkDataSource_basic(t *testing.T) {
 
 func TestAccNetworkFrameworkDataSource_byID(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
+		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

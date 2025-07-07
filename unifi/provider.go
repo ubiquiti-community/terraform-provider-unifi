@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging"
-	"github.com/ubiquiti-community/go-unifi/unifi"
+	ui "github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -37,20 +37,20 @@ type unifiProviderModel struct {
 
 // Client wraps the UniFi client with site information.
 type Client struct {
-	Client *unifi.Client
+	Client *ui.Client
 	Site   string
 }
 
 // UniFi API client methods for resources.
-func (c *Client) CreateWLAN(ctx context.Context, site string, d *unifi.WLAN) (*unifi.WLAN, error) {
+func (c *Client) CreateWLAN(ctx context.Context, site string, d *ui.WLAN) (*ui.WLAN, error) {
 	return c.Client.CreateWLAN(ctx, site, d)
 }
 
-func (c *Client) GetWLAN(ctx context.Context, site, id string) (*unifi.WLAN, error) {
+func (c *Client) GetWLAN(ctx context.Context, site, id string) (*ui.WLAN, error) {
 	return c.Client.GetWLAN(ctx, site, id)
 }
 
-func (c *Client) UpdateWLAN(ctx context.Context, site string, d *unifi.WLAN) (*unifi.WLAN, error) {
+func (c *Client) UpdateWLAN(ctx context.Context, site string, d *ui.WLAN) (*ui.WLAN, error) {
 	return c.Client.UpdateWLAN(ctx, site, d)
 }
 
@@ -61,20 +61,20 @@ func (c *Client) DeleteWLAN(ctx context.Context, site, id string) error {
 func (c *Client) CreateNetwork(
 	ctx context.Context,
 	site string,
-	d *unifi.Network,
-) (*unifi.Network, error) {
+	d *ui.Network,
+) (*ui.Network, error) {
 	return c.Client.CreateNetwork(ctx, site, d)
 }
 
-func (c *Client) GetNetwork(ctx context.Context, site, id string) (*unifi.Network, error) {
+func (c *Client) GetNetwork(ctx context.Context, site, id string) (*ui.Network, error) {
 	return c.Client.GetNetwork(ctx, site, id)
 }
 
 func (c *Client) UpdateNetwork(
 	ctx context.Context,
 	site string,
-	d *unifi.Network,
-) (*unifi.Network, error) {
+	d *ui.Network,
+) (*ui.Network, error) {
 	return c.Client.UpdateNetwork(ctx, site, d)
 }
 
@@ -89,15 +89,19 @@ func (c *Client) DeleteNetwork(ctx context.Context, site, id string) error {
 }
 
 // Device methods
-func (c *Client) GetDevice(ctx context.Context, site, id string) (*unifi.Device, error) {
+func (c *Client) GetDevice(ctx context.Context, site, id string) (*ui.Device, error) {
 	return c.Client.GetDevice(ctx, site, id)
 }
 
-func (c *Client) GetDeviceByMAC(ctx context.Context, site, mac string) (*unifi.Device, error) {
+func (c *Client) GetDeviceByMAC(ctx context.Context, site, mac string) (*ui.Device, error) {
 	return c.Client.GetDeviceByMAC(ctx, site, mac)
 }
 
-func (c *Client) UpdateDevice(ctx context.Context, site string, d *unifi.Device) (*unifi.Device, error) {
+func (c *Client) UpdateDevice(
+	ctx context.Context,
+	site string,
+	d *ui.Device,
+) (*ui.Device, error) {
 	return c.Client.UpdateDevice(ctx, site, d)
 }
 
@@ -110,15 +114,26 @@ func (c *Client) ForgetDevice(ctx context.Context, site, mac string) error {
 }
 
 // FirewallGroup methods
-func (c *Client) CreateFirewallGroup(ctx context.Context, site string, d *unifi.FirewallGroup) (*unifi.FirewallGroup, error) {
+func (c *Client) CreateFirewallGroup(
+	ctx context.Context,
+	site string,
+	d *ui.FirewallGroup,
+) (*ui.FirewallGroup, error) {
 	return c.Client.CreateFirewallGroup(ctx, site, d)
 }
 
-func (c *Client) GetFirewallGroup(ctx context.Context, site, id string) (*unifi.FirewallGroup, error) {
+func (c *Client) GetFirewallGroup(
+	ctx context.Context,
+	site, id string,
+) (*ui.FirewallGroup, error) {
 	return c.Client.GetFirewallGroup(ctx, site, id)
 }
 
-func (c *Client) UpdateFirewallGroup(ctx context.Context, site string, d *unifi.FirewallGroup) (*unifi.FirewallGroup, error) {
+func (c *Client) UpdateFirewallGroup(
+	ctx context.Context,
+	site string,
+	d *ui.FirewallGroup,
+) (*ui.FirewallGroup, error) {
 	return c.Client.UpdateFirewallGroup(ctx, site, d)
 }
 
@@ -127,15 +142,23 @@ func (c *Client) DeleteFirewallGroup(ctx context.Context, site, id string) error
 }
 
 // PortProfile methods
-func (c *Client) CreatePortProfile(ctx context.Context, site string, d *unifi.PortProfile) (*unifi.PortProfile, error) {
+func (c *Client) CreatePortProfile(
+	ctx context.Context,
+	site string,
+	d *ui.PortProfile,
+) (*ui.PortProfile, error) {
 	return c.Client.CreatePortProfile(ctx, site, d)
 }
 
-func (c *Client) GetPortProfile(ctx context.Context, site, id string) (*unifi.PortProfile, error) {
+func (c *Client) GetPortProfile(ctx context.Context, site, id string) (*ui.PortProfile, error) {
 	return c.Client.GetPortProfile(ctx, site, id)
 }
 
-func (c *Client) UpdatePortProfile(ctx context.Context, site string, d *unifi.PortProfile) (*unifi.PortProfile, error) {
+func (c *Client) UpdatePortProfile(
+	ctx context.Context,
+	site string,
+	d *ui.PortProfile,
+) (*ui.PortProfile, error) {
 	return c.Client.UpdatePortProfile(ctx, site, d)
 }
 
@@ -144,16 +167,12 @@ func (c *Client) DeletePortProfile(ctx context.Context, site, id string) error {
 }
 
 // Network list method for data sources
-func (c *Client) ListNetwork(ctx context.Context, site string) ([]unifi.Network, error) {
+func (c *Client) ListNetwork(ctx context.Context, site string) ([]ui.Network, error) {
 	return c.Client.ListNetwork(ctx, site)
 }
 
-func New(version string) func() provider.Provider {
-	return func() provider.Provider {
-		return &unifiProvider{
-			version: version,
-		}
-	}
+func New() provider.Provider {
+	return &unifiProvider{}
 }
 
 func (p *unifiProvider) Metadata(
@@ -162,7 +181,6 @@ func (p *unifiProvider) Metadata(
 	resp *provider.MetadataResponse,
 ) {
 	resp.TypeName = "unifi"
-	resp.Version = p.version
 }
 
 func (p *unifiProvider) Schema(
@@ -321,7 +339,7 @@ func (p *unifiProvider) Configure(
 	httpClient.Jar = jar
 
 	// Create UniFi client
-	client := &unifi.Client{}
+	client := &ui.Client{}
 	if err := client.SetHTTPClient(httpClient); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create HTTP Client",
