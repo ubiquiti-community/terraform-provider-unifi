@@ -198,7 +198,9 @@ func (p *frameworkProvider) Configure(
 }
 
 func (p *frameworkProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewUserFrameworkDataSource,
+	}
 }
 
 func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Resource {
@@ -206,6 +208,8 @@ func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewNetworkFrameworkResource,
 		NewWLANFrameworkResource,
 		NewUserFrameworkResource,
+		NewSiteFrameworkResource,
+		NewUserGroupFrameworkResource,
 	}
 }
 
