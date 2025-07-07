@@ -224,6 +224,13 @@ func (p *frameworkProvider) Configure(
 func (p *frameworkProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewUserFrameworkDataSource,
+		NewNetworkFrameworkDataSource,
+		NewAccountDataSource,
+		NewAPGroupDataSource,
+		NewDNSRecordDataSource,
+		NewPortProfileDataSource,
+		NewRadiusProfileDataSource,
+		NewUserGroupDataSource,
 	}
 }
 
@@ -237,6 +244,16 @@ func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewDNSRecordFrameworkResource,
 		NewAccountFrameworkResource,
 		NewStaticRouteFrameworkResource,
+		NewDynamicDNSResource,
+		NewFirewallGroupFrameworkResource,
+		NewPortProfileFrameworkResource,
+		NewDeviceFrameworkResource,
+		NewFirewallRuleResource,
+		NewPortForwardResource,
+		NewRadiusProfileResource,
+		NewSettingMgmtResource,
+		NewSettingRadiusResource,
+		NewSettingUSGResource,
 	}
 }
 
