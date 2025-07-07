@@ -53,6 +53,11 @@ The basic infrastructure is already in place:
 2. **Mux Server**: Configured in `main.go` to serve both providers
 3. **Framework Provider**: Basic structure in `provider_framework.go`
 
+**Note**: You'll need to add the validators package when migrating resources with validation:
+```bash
+go get github.com/hashicorp/terraform-plugin-framework-validators
+```
+
 ### Phase 2: Resource Migration (In Progress)
 
 Priority order for migrating resources:
@@ -602,6 +607,7 @@ Test that existing Terraform states work with new provider:
 - [x] Mux server configured in `main.go`
 - [x] Basic Framework provider structure in `provider_framework.go`
 - [x] Test factories configured for Framework provider
+- [ ] Add validator dependencies: `go get github.com/hashicorp/terraform-plugin-framework-validators`
 
 ### Per-Resource Migration
 For each resource being migrated:
