@@ -1,10 +1,14 @@
 package main // import "github.com/ubiquiti-community/terraform-provider-unifi"
 
 import (
+	"context"
 	"flag"
+	"log"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
-	"github.com/ubiquiti-community/terraform-provider-unifi/internal/provider"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	
+	// Plugin Framework provider
+	frameworkProvider "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
 )
 
 // Generate docs for website
@@ -18,22 +22,17 @@ var version string = "dev"
 // commit  string = "".
 
 func main() {
-	var debugMode bool
-
-	flag.BoolVar(
-		&debugMode,
-		"debug",
-		false,
-		"set to true to run the provider with support for debuggers like delve",
-	)
+	var debug bool
+	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers")
 	flag.Parse()
 
-	opts := &plugin.ServeOpts{ProviderFunc: provider.New(version)}
-
-	if debugMode {
-		opts.Debug = true
-		opts.ProviderAddr = "registry.terraform.io/paultyng/unifi"
+	opts := providerserver.ServeOpts{
+		Address: "registry.terraform.io/ubiquiti-community/unifi",
+		Debug:   debug,
 	}
 
-	plugin.Serve(opts)
+	err := providerserver.Serve(context.Background(), frameworkProvider.New(), opts)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 }
