@@ -31,7 +31,7 @@ func main() {
 		Debug:   debug,
 	}
 
-	err := providerserver.Serve(context.Background(), frameworkProvider.New(), opts)
+	err := providerserver.Serve(context.Background(), frameworkProvider.New, opts)
 	if err != nil {
 		log.Fatal(err.Error())
 	}

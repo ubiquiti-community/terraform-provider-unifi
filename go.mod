@@ -410,6 +410,9 @@ require (
 
 // See testcontainers/testcontainers-go#632.
 replace (
+
+	// Force compatible version for Plugin Framework
+	github.com/hashicorp/terraform-plugin-go => github.com/hashicorp/terraform-plugin-go v0.19.0
 	// For k8s dependencies, we use a replace directive, to prevent them being
 	// upgraded to the version specified in containerd, which is not relevant to the
 	// version needed.
