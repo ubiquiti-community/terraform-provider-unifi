@@ -300,12 +300,22 @@ func (p *unifiProvider) Configure(
 
 func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		NewAccountFrameworkResource,
+		NewDeviceFrameworkResource,
+		NewDNSRecordFrameworkResource,
+		NewFirewallGroupFrameworkResource,
+		NewNetworkResource,
+		NewSiteFrameworkResource,
+		NewStaticRouteFrameworkResource,
+		NewUserFrameworkResource,
+		NewUserGroupFrameworkResource,
 		NewWLANFrameworkResource,
 	}
 }
 
 func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		// Add data sources as we migrate them
+		NewNetworkFrameworkDataSource,
+		NewUserFrameworkDataSource,
 	}
 }
