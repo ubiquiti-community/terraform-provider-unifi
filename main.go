@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-mux/tf5to6server"
 	"github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
 	"github.com/ubiquiti-community/terraform-provider-unifi/internal/provider"
+	frameworkProvider "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
 )
 
 const (
@@ -42,12 +43,18 @@ func main() {
 		context.Background(),
 		provider.Provider().GRPCProvider,
 	)
+	if err != nil {
+		tflog.Error(ctx, "Failed to upgrade SDK provider to Protocol 6", map[string]any{
+			"error": err,
+		})
+		os.Exit(1)
+	}
 
 	providers := []func() tfprotov6.ProviderServer{
 		func() tfprotov6.ProviderServer {
 			return upgradedSdkProvider
 		},
-		providerserver.NewProtocol6(provider.NewFrameworkProvider()),
+		providerserver.NewProtocol6(frameworkProvider.New("")()),
 	}
 
 	muxServer, err := tf6muxserver.NewMuxServer(ctx, providers...)

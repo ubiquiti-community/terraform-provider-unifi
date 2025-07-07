@@ -1,7 +1,9 @@
-package provider
+package unifi
 
 import (
 	"context"
+	"crypto/tls"
+	"net/http"
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -11,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 const (
@@ -181,15 +184,36 @@ func (p *frameworkProvider) Configure(
 		}
 	}
 
-	configuredClient := &client{
-		c: &lazyClient{
-			user:     user,
-			pass:     pass,
-			apikey:   apikey,
-			baseURL:  apiUrl,
-			insecure: insecure,
-		},
-		site: site,
+	// Create the go-unifi client directly
+	unifiClient := &unifi.Client{}
+	err := unifiClient.SetBaseURL(apiUrl)
+	if err != nil {
+		res.Diagnostics.AddError(
+			"Invalid API URL",
+			"Could not set base URL: "+err.Error(),
+		)
+		return
+	}
+
+	httpClient := &http.Client{}
+	if insecure {
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		httpClient.Transport = transport
+	}
+	unifiClient.SetHTTPClient(httpClient)
+
+	// Set authentication
+	if apikey != "" {
+		unifiClient.SetAPIKey(apikey)
+	}
+	// TODO: Add login with username/password if needed
+	// For now, assume API key authentication
+
+	configuredClient := &Client{
+		Client: unifiClient,
+		Site:   site,
 	}
 
 	res.DataSourceData = configuredClient
@@ -205,7 +229,7 @@ func (p *frameworkProvider) DataSources(ctx context.Context) []func() datasource
 
 func (p *frameworkProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewNetworkFrameworkResource,
+		NewNetworkResource,
 		NewWLANFrameworkResource,
 		NewUserFrameworkResource,
 		NewSiteFrameworkResource,

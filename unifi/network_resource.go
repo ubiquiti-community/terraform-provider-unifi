@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -20,33 +21,34 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &networkFrameworkResource{}
-var _ resource.ResourceWithImportState = &networkFrameworkResource{}
+var (
+	_ resource.Resource                = &networkResource{}
+	_ resource.ResourceWithImportState = &networkResource{}
+)
 
-func NewNetworkFrameworkResource() resource.Resource {
-	return &networkFrameworkResource{}
+func NewNetworkResource() resource.Resource {
+	return &networkResource{}
 }
 
-// networkFrameworkResource defines the resource implementation.
-type networkFrameworkResource struct {
-	client *client
+// networkResource defines the resource implementation.
+type networkResource struct {
+	client *Client
 }
 
-// networkFrameworkResourceModel describes the resource data model.
-type networkFrameworkResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Site        types.String `tfsdk:"site"`
-	Name        types.String `tfsdk:"name"`
-	Purpose     types.String `tfsdk:"purpose"`
-	VlanID      types.Int64  `tfsdk:"vlan_id"`
-	Subnet      types.String `tfsdk:"subnet"`
+// networkResourceModel describes the resource data model.
+type networkResourceModel struct {
+	ID           types.String `tfsdk:"id"`
+	Site         types.String `tfsdk:"site"`
+	Name         types.String `tfsdk:"name"`
+	Purpose      types.String `tfsdk:"purpose"`
+	VlanID       types.Int64  `tfsdk:"vlan_id"`
+	Subnet       types.String `tfsdk:"subnet"`
 	NetworkGroup types.String `tfsdk:"network_group"`
-	
+
 	// DHCP Settings
 	DhcpStart         types.String `tfsdk:"dhcp_start"`
 	DhcpStop          types.String `tfsdk:"dhcp_stop"`
@@ -57,60 +59,68 @@ type networkFrameworkResourceModel struct {
 	DhcpdBootServer   types.String `tfsdk:"dhcpd_boot_server"`
 	DhcpdBootFilename types.String `tfsdk:"dhcpd_boot_filename"`
 	DhcpRelayEnabled  types.Bool   `tfsdk:"dhcp_relay_enabled"`
-	
+
 	// DHCPv6 Settings
-	DhcpV6DNS        types.List `tfsdk:"dhcp_v6_dns"`
-	DhcpV6DNSAuto    types.Bool `tfsdk:"dhcp_v6_dns_auto"`
-	DhcpV6Enabled    types.Bool `tfsdk:"dhcp_v6_enabled"`
-	DhcpV6Lease      types.Int64 `tfsdk:"dhcp_v6_lease"`
-	DhcpV6PDStart    types.String `tfsdk:"dhcp_v6_pd_start"`
-	DhcpV6PDStop     types.String `tfsdk:"dhcp_v6_pd_stop"`
-	DhcpV6Start      types.String `tfsdk:"dhcp_v6_start"`
-	DhcpV6Stop       types.String `tfsdk:"dhcp_v6_stop"`
-	
+	DhcpV6DNS     types.List   `tfsdk:"dhcp_v6_dns"`
+	DhcpV6DNSAuto types.Bool   `tfsdk:"dhcp_v6_dns_auto"`
+	DhcpV6Enabled types.Bool   `tfsdk:"dhcp_v6_enabled"`
+	DhcpV6Lease   types.Int64  `tfsdk:"dhcp_v6_lease"`
+	DhcpV6PDStart types.String `tfsdk:"dhcp_v6_pd_start"`
+	DhcpV6PDStop  types.String `tfsdk:"dhcp_v6_pd_stop"`
+	DhcpV6Start   types.String `tfsdk:"dhcp_v6_start"`
+	DhcpV6Stop    types.String `tfsdk:"dhcp_v6_stop"`
+
 	// IPv6 Settings
-	IPv6InterfaceType types.String `tfsdk:"ipv6_interface_type"`
-	IPv6PDPrefixid    types.String `tfsdk:"ipv6_pd_prefixid"`
-	IPv6PDStart       types.String `tfsdk:"ipv6_pd_start"`
-	IPv6PDStop        types.String `tfsdk:"ipv6_pd_stop"`
-	IPv6RAPriority    types.String `tfsdk:"ipv6_ra_priority"`
-	IPv6RAValidLifetime types.Int64 `tfsdk:"ipv6_ra_valid_lifetime"`
-	IPv6RAPreferredLifetime types.Int64 `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAEnable      types.Bool   `tfsdk:"ipv6_ra_enable"`
-	IPv6Static        types.List   `tfsdk:"ipv6_static"`
-	
+	IPv6InterfaceType       types.String `tfsdk:"ipv6_interface_type"`
+	IPv6PDPrefixid          types.String `tfsdk:"ipv6_pd_prefixid"`
+	IPv6PDStart             types.String `tfsdk:"ipv6_pd_start"`
+	IPv6PDStop              types.String `tfsdk:"ipv6_pd_stop"`
+	IPv6RAPriority          types.String `tfsdk:"ipv6_ra_priority"`
+	IPv6RAValidLifetime     types.Int64  `tfsdk:"ipv6_ra_valid_lifetime"`
+	IPv6RAPreferredLifetime types.Int64  `tfsdk:"ipv6_ra_preferred_lifetime"`
+	IPv6RAEnable            types.Bool   `tfsdk:"ipv6_ra_enable"`
+	IPv6Static              types.List   `tfsdk:"ipv6_static"`
+
 	// WAN Settings
-	WANType              types.String `tfsdk:"wan_type"`
-	WANUsername          types.String `tfsdk:"wan_username"`
-	WANPassword          types.String `tfsdk:"wan_password"`
-	WANIp                types.String `tfsdk:"wan_ip"`
-	WANGateway           types.String `tfsdk:"wan_gateway"`
-	WANNetmask           types.String `tfsdk:"wan_netmask"`
-	WANDNS               types.List   `tfsdk:"wan_dns"`
-	WANNetworkGroup      types.String `tfsdk:"wan_network_group"`
-	WANDHCPV6            types.Bool   `tfsdk:"wan_dhcp_v6"`
-	WANGatewayV6         types.String `tfsdk:"wan_gateway_v6"`
-	WANIPv6              types.String `tfsdk:"wan_ipv6"`
-	WANPrefixlen         types.Int64  `tfsdk:"wan_prefixlen"`
-	WANTypeV6            types.String `tfsdk:"wan_type_v6"`
-	
+	WANType         types.String `tfsdk:"wan_type"`
+	WANUsername     types.String `tfsdk:"wan_username"`
+	WANPassword     types.String `tfsdk:"wan_password"`
+	WANIp           types.String `tfsdk:"wan_ip"`
+	WANGateway      types.String `tfsdk:"wan_gateway"`
+	WANNetmask      types.String `tfsdk:"wan_netmask"`
+	WANDNS          types.List   `tfsdk:"wan_dns"`
+	WANNetworkGroup types.String `tfsdk:"wan_network_group"`
+	WANDHCPV6       types.Bool   `tfsdk:"wan_dhcp_v6"`
+	WANGatewayV6    types.String `tfsdk:"wan_gateway_v6"`
+	WANIPv6         types.String `tfsdk:"wan_ipv6"`
+	WANPrefixlen    types.Int64  `tfsdk:"wan_prefixlen"`
+	WANTypeV6       types.String `tfsdk:"wan_type_v6"`
+
 	// WireGuard Settings
-	WireguardClientMode            types.String `tfsdk:"wireguard_client_mode"`
-	WireguardClientPeerIP          types.String `tfsdk:"wireguard_client_peer_ip"`
-	WireguardClientPeerPort        types.Int64  `tfsdk:"wireguard_client_peer_port"`
-	WireguardClientPeerPublicKey   types.String `tfsdk:"wireguard_client_peer_public_key"`
-	WireguardClientPresharedKey    types.String `tfsdk:"wireguard_client_preshared_key"`
-	WireguardClientPresharedKeyEnabled types.Bool `tfsdk:"wireguard_client_preshared_key_enabled"`
-	WireguardID                    types.Int64  `tfsdk:"wireguard_id"`
-	WireguardPublicKey            types.String `tfsdk:"wireguard_public_key"`
-	WireguardPrivateKey           types.String `tfsdk:"wireguard_private_key"`
+	WireguardClientMode                types.String `tfsdk:"wireguard_client_mode"`
+	WireguardClientPeerIP              types.String `tfsdk:"wireguard_client_peer_ip"`
+	WireguardClientPeerPort            types.Int64  `tfsdk:"wireguard_client_peer_port"`
+	WireguardClientPeerPublicKey       types.String `tfsdk:"wireguard_client_peer_public_key"`
+	WireguardClientPresharedKey        types.String `tfsdk:"wireguard_client_preshared_key"`
+	WireguardClientPresharedKeyEnabled types.Bool   `tfsdk:"wireguard_client_preshared_key_enabled"`
+	WireguardID                        types.Int64  `tfsdk:"wireguard_id"`
+	WireguardPublicKey                 types.String `tfsdk:"wireguard_public_key"`
+	WireguardPrivateKey                types.String `tfsdk:"wireguard_private_key"`
 }
 
-func (r *networkFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *networkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_network"
 }
 
-func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *networkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "`unifi_network` manages WAN/LAN/VLAN networks.",
 
@@ -165,7 +175,7 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 				Computed:            true,
 				Default:             stringdefault.StaticString("LAN"),
 			},
-			
+
 			// DHCP Settings
 			"dhcp_start": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 address where the DHCP range of addresses starts.",
@@ -215,7 +225,7 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 				MarkdownDescription: "Specifies whether DHCP relay is enabled or not on this network.",
 				Optional:            true,
 			},
-			
+
 			// DHCPv6 Settings
 			"dhcp_v6_dns": schema.ListAttribute{
 				MarkdownDescription: "Specifies the IPv6 addresses for the DNS server to be returned from the DHCP server. Used if `dhcp_v6_dns_auto` is set to `false`.",
@@ -257,8 +267,8 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 				MarkdownDescription: "End address of the DHCPv6 pool. Used if `dhcp_v6_enabled` is set to `true`.",
 				Optional:            true,
 			},
-			
-			// IPv6 Settings  
+
+			// IPv6 Settings
 			"ipv6_interface_type": schema.StringAttribute{
 				MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of either `none`, `pd`, or `static`.",
 				Optional:            true,
@@ -308,7 +318,7 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
-			
+
 			// WAN Settings
 			"wan_type": schema.StringAttribute{
 				MarkdownDescription: "Specifies the IPV4 WAN connection type. Must be one of either `disabled`, `dhcp`, `static`, or `pppoe`.",
@@ -412,7 +422,7 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 					),
 				},
 			},
-			
+
 			// WireGuard Settings
 			"wireguard_client_mode": schema.StringAttribute{
 				MarkdownDescription: "Specifies the Wireguard client mode. Must be one of either `file` or `manual`.",
@@ -466,17 +476,24 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 	}
 }
 
-func (r *networkFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *networkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -484,8 +501,12 @@ func (r *networkFrameworkResource) Configure(ctx context.Context, req resource.C
 	r.client = client
 }
 
-func (r *networkFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data networkFrameworkResourceModel
+func (r *networkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
+	var data networkResourceModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -502,11 +523,11 @@ func (r *networkFrameworkResource) Create(ctx context.Context, req resource.Crea
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Create the network
-	createdNetwork, err := r.client.c.CreateNetwork(ctx, site, network)
+	createdNetwork, err := r.client.Client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Network",
@@ -526,8 +547,12 @@ func (r *networkFrameworkResource) Create(ctx context.Context, req resource.Crea
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *networkFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data networkFrameworkResourceModel
+func (r *networkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
+	var data networkResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -537,11 +562,11 @@ func (r *networkFrameworkResource) Read(ctx context.Context, req resource.ReadRe
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Get the network
-	network, err := r.client.c.GetNetwork(ctx, site, data.ID.ValueString())
+	network, err := r.client.Client.GetNetwork(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Network",
@@ -561,9 +586,13 @@ func (r *networkFrameworkResource) Read(ctx context.Context, req resource.ReadRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *networkFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var state networkFrameworkResourceModel
-	var plan networkFrameworkResourceModel
+func (r *networkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
+	var state networkResourceModel
+	var plan networkResourceModel
 
 	// Step 1: Read the current state (which already contains API values from previous reads)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -590,12 +619,12 @@ func (r *networkFrameworkResource) Update(ctx context.Context, req resource.Upda
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Step 4: Send to API
 	network.ID = state.ID.ValueString()
-	updatedNetwork, err := r.client.c.UpdateNetwork(ctx, site, network)
+	updatedNetwork, err := r.client.Client.UpdateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Network",
@@ -616,7 +645,11 @@ func (r *networkFrameworkResource) Update(ctx context.Context, req resource.Upda
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *networkFrameworkResourceModel, state *networkFrameworkResourceModel) {
+func (r *networkResource) applyPlanToState(
+	ctx context.Context,
+	plan *networkResourceModel,
+	state *networkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
@@ -633,7 +666,7 @@ func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *n
 	if !plan.NetworkGroup.IsNull() && !plan.NetworkGroup.IsUnknown() {
 		state.NetworkGroup = plan.NetworkGroup
 	}
-	
+
 	// DHCP Settings
 	if !plan.DhcpStart.IsNull() && !plan.DhcpStart.IsUnknown() {
 		state.DhcpStart = plan.DhcpStart
@@ -662,8 +695,8 @@ func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *n
 	if !plan.DhcpRelayEnabled.IsNull() && !plan.DhcpRelayEnabled.IsUnknown() {
 		state.DhcpRelayEnabled = plan.DhcpRelayEnabled
 	}
-	
-	// DHCPv6 Settings  
+
+	// DHCPv6 Settings
 	if !plan.DhcpV6DNS.IsNull() && !plan.DhcpV6DNS.IsUnknown() {
 		state.DhcpV6DNS = plan.DhcpV6DNS
 	}
@@ -688,7 +721,7 @@ func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *n
 	if !plan.DhcpV6Stop.IsNull() && !plan.DhcpV6Stop.IsUnknown() {
 		state.DhcpV6Stop = plan.DhcpV6Stop
 	}
-	
+
 	// IPv6 Settings
 	if !plan.IPv6InterfaceType.IsNull() && !plan.IPv6InterfaceType.IsUnknown() {
 		state.IPv6InterfaceType = plan.IPv6InterfaceType
@@ -717,7 +750,7 @@ func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *n
 	if !plan.IPv6Static.IsNull() && !plan.IPv6Static.IsUnknown() {
 		state.IPv6Static = plan.IPv6Static
 	}
-	
+
 	// WAN Settings
 	if !plan.WANType.IsNull() && !plan.WANType.IsUnknown() {
 		state.WANType = plan.WANType
@@ -758,7 +791,7 @@ func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *n
 	if !plan.WANTypeV6.IsNull() && !plan.WANTypeV6.IsUnknown() {
 		state.WANTypeV6 = plan.WANTypeV6
 	}
-	
+
 	// WireGuard Settings
 	if !plan.WireguardClientMode.IsNull() && !plan.WireguardClientMode.IsUnknown() {
 		state.WireguardClientMode = plan.WireguardClientMode
@@ -769,13 +802,15 @@ func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *n
 	if !plan.WireguardClientPeerPort.IsNull() && !plan.WireguardClientPeerPort.IsUnknown() {
 		state.WireguardClientPeerPort = plan.WireguardClientPeerPort
 	}
-	if !plan.WireguardClientPeerPublicKey.IsNull() && !plan.WireguardClientPeerPublicKey.IsUnknown() {
+	if !plan.WireguardClientPeerPublicKey.IsNull() &&
+		!plan.WireguardClientPeerPublicKey.IsUnknown() {
 		state.WireguardClientPeerPublicKey = plan.WireguardClientPeerPublicKey
 	}
 	if !plan.WireguardClientPresharedKey.IsNull() && !plan.WireguardClientPresharedKey.IsUnknown() {
 		state.WireguardClientPresharedKey = plan.WireguardClientPresharedKey
 	}
-	if !plan.WireguardClientPresharedKeyEnabled.IsNull() && !plan.WireguardClientPresharedKeyEnabled.IsUnknown() {
+	if !plan.WireguardClientPresharedKeyEnabled.IsNull() &&
+		!plan.WireguardClientPresharedKeyEnabled.IsUnknown() {
 		state.WireguardClientPresharedKeyEnabled = plan.WireguardClientPresharedKeyEnabled
 	}
 	if !plan.WireguardID.IsNull() && !plan.WireguardID.IsUnknown() {
@@ -789,8 +824,12 @@ func (r *networkFrameworkResource) applyPlanToState(ctx context.Context, plan *n
 	}
 }
 
-func (r *networkFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data networkFrameworkResourceModel
+func (r *networkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
+	var data networkResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -800,12 +839,12 @@ func (r *networkFrameworkResource) Delete(ctx context.Context, req resource.Dele
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Delete the network
 	name := data.Name.ValueString() // Get name for deletion
-	err := r.client.c.DeleteNetwork(ctx, site, data.ID.ValueString(), name)
+	err := r.client.Client.DeleteNetwork(ctx, site, data.ID.ValueString(), name)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Network",
@@ -815,82 +854,90 @@ func (r *networkFrameworkResource) Delete(ctx context.Context, req resource.Dele
 	}
 }
 
-func (r *networkFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *networkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	// Import format: "site:id" or "name=NetworkName"
 	idParts := strings.Split(req.ID, ":")
-	
+
 	if len(idParts) == 2 {
 		// site:id format
 		site := idParts[0]
 		id := idParts[1]
-		
+
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 		return
 	}
-	
+
 	// Check for name=NetworkName format
 	if strings.HasPrefix(req.ID, "name=") {
 		networkName := strings.TrimPrefix(req.ID, "name=")
-		
+
 		// Find network by name in default site
-		site := r.client.site
-		networkID, err := getNetworkIDByNameFramework(ctx, r.client.c.(*lazyClient), site, networkName)
+		site := r.client.Site
+		networks, err := r.client.Client.ListNetwork(ctx, site)
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error Finding Network",
-				fmt.Sprintf("Could not find network with name %s: %s", networkName, err.Error()),
+				"Error Listing Networks",
+				fmt.Sprintf("Could not list networks to find by name: %s", err.Error()),
 			)
 			return
 		}
-		
+
+		var networkID string
+		for _, network := range networks {
+			if network.Name == networkName {
+				networkID = network.ID
+				break
+			}
+		}
+
+		if networkID == "" {
+			resp.Diagnostics.AddError(
+				"Error Finding Network",
+				fmt.Sprintf("Could not find network with name %s", networkName),
+			)
+			return
+		}
+
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), networkID)...)
 		return
 	}
-	
+
 	// Default format: just the ID in default site
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), r.client.site)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), r.client.Site)...)
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // Helper function to find network ID by name
-func getNetworkIDByNameFramework(ctx context.Context, client *lazyClient, site, name string) (string, error) {
-	networks, err := client.ListNetwork(ctx, site)
-	if err != nil {
-		return "", err
-	}
-	
-	for _, network := range networks {
-		if network.Name == name {
-			return network.ID, nil
-		}
-	}
-	
-	return "", fmt.Errorf("network with name %s not found", name)
-}
-
 // modelToNetwork converts from Terraform model to unifi.Network
-func (r *networkFrameworkResource) modelToNetwork(ctx context.Context, model *networkFrameworkResourceModel) (*unifi.Network, diag.Diagnostics) {
+func (r *networkResource) modelToNetwork(
+	ctx context.Context,
+	model *networkResourceModel,
+) (*unifi.Network, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	
+
 	network := &unifi.Network{
 		Name:    model.Name.ValueString(),
 		Purpose: model.Purpose.ValueString(),
 	}
-	
+
 	if !model.VlanID.IsNull() {
 		network.VLAN = int(model.VlanID.ValueInt64())
 	}
-	
+
 	if !model.Subnet.IsNull() {
 		network.IPSubnet = model.Subnet.ValueString()
 	}
-	
+
 	if !model.NetworkGroup.IsNull() {
 		network.NetworkGroup = model.NetworkGroup.ValueString()
 	}
-	
+
 	// DHCP Settings
 	if !model.DhcpStart.IsNull() {
 		network.DHCPDStart = model.DhcpStart.ValueString()
@@ -904,7 +951,7 @@ func (r *networkFrameworkResource) modelToNetwork(ctx context.Context, model *ne
 	if !model.DhcpLease.IsNull() {
 		network.DHCPDLeaseTime = int(model.DhcpLease.ValueInt64())
 	}
-	
+
 	// Convert DHCP DNS list
 	if !model.DhcpDNS.IsNull() {
 		var dhcpDNS []string
@@ -929,7 +976,7 @@ func (r *networkFrameworkResource) modelToNetwork(ctx context.Context, model *ne
 			}
 		}
 	}
-	
+
 	if !model.DhcpdBootEnabled.IsNull() {
 		network.DHCPDBootEnabled = model.DhcpdBootEnabled.ValueBool()
 	}
@@ -942,60 +989,65 @@ func (r *networkFrameworkResource) modelToNetwork(ctx context.Context, model *ne
 	if !model.DhcpRelayEnabled.IsNull() {
 		network.DHCPRelayEnabled = model.DhcpRelayEnabled.ValueBool()
 	}
-	
+
 	// TODO: Add more field mappings for DHCPv6, IPv6, WAN, WireGuard settings
-	
+
 	return network, diags
 }
 
 // networkToModel converts from unifi.Network to Terraform model
-func (r *networkFrameworkResource) networkToModel(ctx context.Context, network *unifi.Network, model *networkFrameworkResourceModel, site string) diag.Diagnostics {
+func (r *networkResource) networkToModel(
+	ctx context.Context,
+	network *unifi.Network,
+	model *networkResourceModel,
+	site string,
+) diag.Diagnostics {
 	var diags diag.Diagnostics
-	
+
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(network.Name)
 	model.Purpose = types.StringValue(network.Purpose)
-	
+
 	if network.VLAN != 0 {
 		model.VlanID = types.Int64Value(int64(network.VLAN))
 	} else {
 		model.VlanID = types.Int64Null()
 	}
-	
+
 	if network.IPSubnet != "" {
 		model.Subnet = types.StringValue(network.IPSubnet)
 	} else {
 		model.Subnet = types.StringNull()
 	}
-	
+
 	if network.NetworkGroup != "" {
 		model.NetworkGroup = types.StringValue(network.NetworkGroup)
 	} else {
 		model.NetworkGroup = types.StringValue("LAN") // Default value
 	}
-	
+
 	// DHCP Settings
 	if network.DHCPDStart != "" {
 		model.DhcpStart = types.StringValue(network.DHCPDStart)
 	} else {
 		model.DhcpStart = types.StringNull()
 	}
-	
+
 	if network.DHCPDStop != "" {
 		model.DhcpStop = types.StringValue(network.DHCPDStop)
 	} else {
 		model.DhcpStop = types.StringNull()
 	}
-	
+
 	model.DhcpEnabled = types.BoolValue(network.DHCPDEnabled)
-	
+
 	if network.DHCPDLeaseTime != 0 {
 		model.DhcpLease = types.Int64Value(int64(network.DHCPDLeaseTime))
 	} else {
 		model.DhcpLease = types.Int64Value(86400) // Default value
 	}
-	
+
 	// Convert DHCP DNS from individual fields to list
 	dhcpDNSSlice := []string{}
 	for _, dns := range []string{network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4} {
@@ -1003,7 +1055,7 @@ func (r *networkFrameworkResource) networkToModel(ctx context.Context, network *
 			dhcpDNSSlice = append(dhcpDNSSlice, dns)
 		}
 	}
-	
+
 	if len(dhcpDNSSlice) > 0 {
 		dhcpDNSValues := make([]attr.Value, len(dhcpDNSSlice))
 		for i, dns := range dhcpDNSSlice {
@@ -1015,23 +1067,23 @@ func (r *networkFrameworkResource) networkToModel(ctx context.Context, network *
 	} else {
 		model.DhcpDNS = types.ListNull(types.StringType)
 	}
-	
+
 	model.DhcpdBootEnabled = types.BoolValue(network.DHCPDBootEnabled)
-	
+
 	if network.DHCPDBootServer != "" {
 		model.DhcpdBootServer = types.StringValue(network.DHCPDBootServer)
 	} else {
 		model.DhcpdBootServer = types.StringNull()
 	}
-	
+
 	if network.DHCPDBootFilename != "" {
 		model.DhcpdBootFilename = types.StringValue(network.DHCPDBootFilename)
 	} else {
 		model.DhcpdBootFilename = types.StringNull()
 	}
-	
+
 	model.DhcpRelayEnabled = types.BoolValue(network.DHCPRelayEnabled)
-	
+
 	// TODO: Add more field mappings for DHCPv6, IPv6, WAN, WireGuard settings
 	// For now, set remaining fields to null to prevent issues
 	model.DhcpV6DNS = types.ListNull(types.StringType)
@@ -1042,7 +1094,7 @@ func (r *networkFrameworkResource) networkToModel(ctx context.Context, network *
 	model.DhcpV6PDStop = types.StringNull()
 	model.DhcpV6Start = types.StringNull()
 	model.DhcpV6Stop = types.StringNull()
-	
+
 	// IPv6 Settings
 	model.IPv6InterfaceType = types.StringNull()
 	model.IPv6PDPrefixid = types.StringNull()
@@ -1053,7 +1105,7 @@ func (r *networkFrameworkResource) networkToModel(ctx context.Context, network *
 	model.IPv6RAPreferredLifetime = types.Int64Null()
 	model.IPv6RAEnable = types.BoolNull()
 	model.IPv6Static = types.ListNull(types.StringType)
-	
+
 	// WAN Settings
 	model.WANType = types.StringNull()
 	model.WANUsername = types.StringNull()
@@ -1068,7 +1120,7 @@ func (r *networkFrameworkResource) networkToModel(ctx context.Context, network *
 	model.WANIPv6 = types.StringNull()
 	model.WANPrefixlen = types.Int64Null()
 	model.WANTypeV6 = types.StringNull()
-	
+
 	// WireGuard Settings
 	model.WireguardClientMode = types.StringNull()
 	model.WireguardClientPeerIP = types.StringNull()
@@ -1079,6 +1131,6 @@ func (r *networkFrameworkResource) networkToModel(ctx context.Context, network *
 	model.WireguardID = types.Int64Null()
 	model.WireguardPublicKey = types.StringNull()
 	model.WireguardPrivateKey = types.StringNull()
-	
+
 	return diags
 }

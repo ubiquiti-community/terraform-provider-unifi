@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func NewUserFrameworkDataSource() datasource.DataSource {
 
 // userFrameworkDataSource defines the data source implementation.
 type userFrameworkDataSource struct {
-	client *client
+	client *Client
 }
 
 // userFrameworkDataSourceModel describes the data source data model.
@@ -110,11 +110,11 @@ func (d *userFrameworkDataSource) Configure(ctx context.Context, req datasource.
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -133,13 +133,13 @@ func (d *userFrameworkDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	site := config.Site.ValueString()
 	if site == "" {
-		site = d.client.site
+		site = d.client.Site
 	}
 
 	mac := config.MAC.ValueString()
 
 	// Get user by MAC address first to get IP address
-	macResp, err := d.client.c.GetUserByMAC(ctx, site, strings.ToLower(mac))
+	macResp, err := d.client.Client.GetUserByMAC(ctx, site, strings.ToLower(mac))
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading User by MAC",
@@ -149,7 +149,7 @@ func (d *userFrameworkDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 
 	// Get full user details by ID
-	user, err := d.client.c.GetUser(ctx, site, macResp.ID)
+	user, err := d.client.Client.GetUser(ctx, site, macResp.ID)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading User",
