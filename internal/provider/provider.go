@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -25,65 +26,49 @@ func init() {
 	}
 }
 
+func Provider() *schema.Provider {
+	return New("dev")()
+}
+
 func New(version string) func() *schema.Provider {
 	return func() *schema.Provider {
 		p := &schema.Provider{
 			Schema: map[string]*schema.Schema{
 				"api_key": {
-					Description: "API key for the Unifi controller. Can be specified with the `UNIFI_API_KEY` " +
-						"environment variable. If this is set, the `username` and `password` fields are ignored.",
+					Description: ApiKeyDescription,
 					Type:        schema.TypeString,
 					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_API_KEY", ""),
-					ValidateFunc: func(v any, k string) (ws []string, es []error) {
-						if v == nil || v.(string) == "" {
-							return nil, nil
-						}
-						if len(v.(string)) < 32 {
-							return nil, []error{
-								fmt.Errorf("api_key must be at least 32 characters long"),
-							}
-						}
-						return nil, nil
-					},
+					// DefaultFunc: schema.EnvDefaultFunc("UNIFI_API_KEY", ""),
 				},
 				"username": {
-					Description: "Local user name for the Unifi controller API. Can be specified with the `UNIFI_USERNAME` " +
-						"environment variable.",
+					Description: UserNameDescription,
 					Type:        schema.TypeString,
-					Required:    true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_USERNAME", ""),
+					Optional:    true,
+					// DefaultFunc: schema.EnvDefaultFunc("UNIFI_USERNAME", ""),
 				},
 				"password": {
-					Description: "Password for the user accessing the API. Can be specified with the `UNIFI_PASSWORD` " +
-						"environment variable.",
+					Description: PasswordDescription,
 					Type:        schema.TypeString,
-					Required:    true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_PASSWORD", ""),
+					Optional:    true,
+					// DefaultFunc: schema.EnvDefaultFunc("UNIFI_PASSWORD", ""),
 				},
 				"api_url": {
-					Description: "URL of the controller API. Can be specified with the `UNIFI_API` environment variable. " +
-						"You should **NOT** supply the path (`/api`), the SDK will discover the appropriate paths. This is " +
-						"to support UDM Pro style API paths as well as more standard controller paths.",
-
+					Description: ApiUrlDescription,
 					Type:        schema.TypeString,
 					Required:    true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_API", ""),
+					// DefaultFunc: schema.EnvDefaultFunc("UNIFI_API", ""),
 				},
 				"site": {
-					Description: "The site in the Unifi controller this provider will manage. Can be specified with " +
-						"the `UNIFI_SITE` environment variable. Default: `default`",
+					Description: SiteDescription,
 					Type:        schema.TypeString,
-					Required:    true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_SITE", "default"),
+					Optional:    true,
+					// DefaultFunc: schema.EnvDefaultFunc("UNIFI_SITE", "default"),
 				},
 				"allow_insecure": {
-					Description: "Skip verification of TLS certificates of API requests. You may need to set this to `true` " +
-						"if you are using your local API without setting up a signed certificate. Can be specified with the " +
-						"`UNIFI_INSECURE` environment variable.",
+					Description: AllowInsecureDescription,
 					Type:        schema.TypeBool,
 					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_INSECURE", false),
+					// DefaultFunc: schema.EnvDefaultFunc("UNIFI_INSECURE", false),
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
@@ -129,27 +114,51 @@ func configure(version string, p *schema.Provider) schema.ConfigureContextFunc {
 	return func(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
 		user, ok := d.Get("username").(string)
 		if !ok {
-			return nil, diag.Errorf("username is not a string")
+			if v := os.Getenv("UNIFI_USERNAME"); v != "" {
+				user = v
+			} else {
+				return nil, diag.Errorf("username is not a string")
+			}
 		}
 		pass, ok := d.Get("password").(string)
 		if !ok {
-			return nil, diag.Errorf("password is not a string")
+			if v := os.Getenv("UNIFI_PASSWORD"); v != "" {
+				pass = v
+			} else {
+				return nil, diag.Errorf("password is not a string")
+			}
 		}
 		apikey, ok := d.Get("api_key").(string)
 		if !ok {
-			return nil, diag.Errorf("api_key is not a string")
+			if v := os.Getenv("UNIFI_API_KEY"); v != "" {
+				apikey = v
+			} else {
+				return nil, diag.Errorf("api_key is not a string")
+			}
 		}
 		baseURL, ok := d.Get("api_url").(string)
 		if !ok {
-			return nil, diag.Errorf("api_url is not a string")
+			if v := os.Getenv("UNIFI_API"); v != "" {
+				baseURL = v
+			} else {
+				return nil, diag.Errorf("api_url is not a string")
+			}
 		}
 		site, ok := d.Get("site").(string)
 		if !ok {
-			return nil, diag.Errorf("site is not a string")
+			if v := os.Getenv("UNIFI_SITE"); v != "" {
+				site = v
+			} else {
+				site = "default"
+			}
 		}
 		insecure, ok := d.Get("allow_insecure").(bool)
 		if !ok {
-			return nil, diag.Errorf("allow_insecure is not a bool")
+			if v := os.Getenv("UNIFI_INSECURE"); v != "" {
+				insecure = v == "true"
+			} else {
+				return nil, diag.Errorf("allow_insecure is not a bool")
+			}
 		}
 
 		c := &client{

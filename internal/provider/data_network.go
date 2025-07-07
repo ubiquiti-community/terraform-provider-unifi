@@ -146,6 +146,11 @@ func dataNetwork() *schema.Resource {
 				Type:        schema.TypeBool,
 				Computed:    true,
 			},
+			"ip_subnet": {
+				Description: "The IPv4 subnet of the network in CIDR notation.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
 			"ipv6_interface_type": {
 				Description: "Specifies which type of IPv6 connection to use. Must be one of either `static`, `pd`, or `none`.",
 				Type:        schema.TypeString,
@@ -690,6 +695,7 @@ func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta any) diag
 			_ = d.Set("dhcpd_boot_server", n.DHCPDBootServer)
 			_ = d.Set("dhcpd_boot_filename", n.DHCPDBootFilename)
 			_ = d.Set("domain_name", n.DomainName)
+			_ = d.Set("ip_subnet", n.IPSubnet)
 			_ = d.Set("igmp_snooping", n.IGMPSnooping)
 			_ = d.Set("ipv6_interface_type", n.IPV6InterfaceType)
 			_ = d.Set("ipv6_static_subnet", n.IPV6Subnet)

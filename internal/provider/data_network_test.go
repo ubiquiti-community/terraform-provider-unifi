@@ -9,6 +9,10 @@ import (
 )
 
 func TestAccDataNetwork_byName(t *testing.T) {
+	if testClient == nil {
+		testClient = NewTestClient(t.Context())
+	}
+
 	defaultName := "Default"
 	v, err := version.NewVersion(testClient.Version())
 	if err != nil {
