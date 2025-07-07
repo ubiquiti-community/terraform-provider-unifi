@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -13,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -27,7 +27,7 @@ func NewUserFrameworkResource() resource.Resource {
 
 // userFrameworkResource defines the resource implementation.
 type userFrameworkResource struct {
-	client *client
+	client *Client
 }
 
 // userFrameworkResourceModel describes the resource data model.
@@ -154,11 +154,11 @@ func (r *userFrameworkResource) Configure(ctx context.Context, req resource.Conf
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -177,7 +177,7 @@ func (r *userFrameworkResource) Create(ctx context.Context, req resource.CreateR
 
 	site := plan.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Convert the plan to UniFi User struct
@@ -190,7 +190,7 @@ func (r *userFrameworkResource) Create(ctx context.Context, req resource.CreateR
 	allowExisting := plan.AllowExisting.ValueBool()
 
 	// Create the User
-	createdUser, err := r.client.c.CreateUser(ctx, site, user)
+	createdUser, err := r.client.Client.CreateUser(ctx, site, user)
 	if err != nil {
 		var apiErr *unifi.APIError
 		if !errors.As(err, &apiErr) || (apiErr.Message != "api.err.MacUsed" || !allowExisting) {
@@ -203,7 +203,7 @@ func (r *userFrameworkResource) Create(ctx context.Context, req resource.CreateR
 
 		// MAC in use, just absorb the existing user
 		mac := plan.MAC.ValueString()
-		existingUser, err := r.client.c.GetUserByMAC(ctx, site, mac)
+		existingUser, err := r.client.Client.GetUserByMAC(ctx, site, mac)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Getting Existing User",
@@ -214,7 +214,7 @@ func (r *userFrameworkResource) Create(ctx context.Context, req resource.CreateR
 
 		// Implement merge pattern for existing user
 		mergedUser := r.mergeUser(existingUser, user)
-		updatedUser, err := r.client.c.UpdateUser(ctx, site, mergedUser)
+		updatedUser, err := r.client.Client.UpdateUser(ctx, site, mergedUser)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Updating Existing User",
@@ -247,13 +247,13 @@ func (r *userFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	id := state.ID.ValueString()
 
 	// Get the User from the API
-	user, err := r.client.c.GetUser(ctx, site, id)
+	user, err := r.client.Client.GetUser(ctx, site, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading User",
@@ -294,7 +294,7 @@ func (r *userFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Step 3: Convert the updated state to API format
@@ -306,7 +306,7 @@ func (r *userFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 
 	// Step 4: Send to API
 	user.ID = state.ID.ValueString()
-	updatedUser, err := r.client.c.UpdateUser(ctx, site, user)
+	updatedUser, err := r.client.Client.UpdateUser(ctx, site, user)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating User",
@@ -375,7 +375,7 @@ func (r *userFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	id := state.ID.ValueString()
@@ -387,7 +387,7 @@ func (r *userFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 	}
 
 	// lookup MAC instead of trusting state
-	u, err := r.client.c.GetUser(ctx, site, id)
+	u, err := r.client.Client.GetUser(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		return
 	}
@@ -399,7 +399,7 @@ func (r *userFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 		return
 	}
 
-	err = r.client.c.DeleteUserByMAC(ctx, site, u.MAC)
+	err = r.client.Client.DeleteUserByMAC(ctx, site, u.MAC)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting User",

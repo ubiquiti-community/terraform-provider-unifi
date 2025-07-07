@@ -11,6 +11,23 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
+const (
+	ApiKeyDescription = "API key for the Unifi controller. Can be specified with the `UNIFI_API_KEY` " +
+		"environment variable. If this is set, the `username` and `password` fields are ignored."
+	UserNameDescription = "Local user name for the Unifi controller API. Can be specified with the `UNIFI_USERNAME` " +
+		"environment variable."
+	PasswordDescription = "Password for the user accessing the API. Can be specified with the `UNIFI_PASSWORD` " +
+		"environment variable."
+	ApiUrlDescription = "URL of the controller API. Can be specified with the `UNIFI_API` environment variable. " +
+		"You should **NOT** supply the path (`/api`), the SDK will discover the appropriate paths. This is " +
+		"to support UDM Pro style API paths as well as more standard controller paths."
+	SiteDescription = "The site in the Unifi controller this provider will manage. Can be specified with " +
+		"the `UNIFI_SITE` environment variable. Default: `default`"
+	AllowInsecureDescription = "Skip verification of TLS certificates of API requests. You may need to set this to `true` " +
+		"if you are using your local API without setting up a signed certificate. Can be specified with the " +
+		"`UNIFI_INSECURE` environment variable."
+)
+
 func init() {
 	schema.DescriptionKind = schema.StringMarkdown
 
@@ -96,7 +113,6 @@ func New(version string) func() *schema.Provider {
 				"unifi_static_route":   resourceStaticRoute(),
 				"unifi_user_group":     resourceUserGroup(),
 				"unifi_user":           resourceUser(),
-				"unifi_wlan":           resourceWLAN(),
 				"unifi_account":        resourceAccount(),
 
 				"unifi_setting_mgmt":   resourceSettingMgmt(),

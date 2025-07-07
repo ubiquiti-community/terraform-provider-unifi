@@ -1,17 +1,17 @@
-package provider
+package unifi
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -25,7 +25,7 @@ func NewSiteFrameworkResource() resource.Resource {
 
 // siteFrameworkResource defines the resource implementation.
 type siteFrameworkResource struct {
-	client *client
+	client *Client
 }
 
 // siteFrameworkResourceModel describes the resource data model.
@@ -71,11 +71,11 @@ func (r *siteFrameworkResource) Configure(ctx context.Context, req resource.Conf
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -95,7 +95,7 @@ func (r *siteFrameworkResource) Create(ctx context.Context, req resource.CreateR
 	description := plan.Description.ValueString()
 
 	// Create the Site
-	sites, err := r.client.c.CreateSite(ctx, description)
+	sites, err := r.client.Client.CreateSite(ctx, description)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Site",
@@ -137,7 +137,7 @@ func (r *siteFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 	id := state.ID.ValueString()
 
 	// Get the Site from the API
-	site, err := r.client.c.GetSite(ctx, id)
+	site, err := r.client.Client.GetSite(ctx, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		resp.State.RemoveResource(ctx)
 		return
@@ -187,7 +187,7 @@ func (r *siteFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 	description := state.Description.ValueString()
 
 	// Step 4: Send to API
-	updatedSites, err := r.client.c.UpdateSite(ctx, name, description)
+	updatedSites, err := r.client.Client.UpdateSite(ctx, name, description)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Site",
@@ -236,7 +236,7 @@ func (r *siteFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 
 	id := state.ID.ValueString()
 
-	_, err := r.client.c.DeleteSite(ctx, id)
+	_, err := r.client.Client.DeleteSite(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Site",
@@ -250,7 +250,7 @@ func (r *siteFrameworkResource) ImportState(ctx context.Context, req resource.Im
 	id := req.ID
 
 	// First try to import by ID
-	_, err := r.client.c.GetSite(ctx, id)
+	_, err := r.client.Client.GetSite(ctx, id)
 	if err != nil {
 		var nf *unifi.NotFoundError
 		if !errors.As(err, &nf) {
@@ -267,7 +267,7 @@ func (r *siteFrameworkResource) ImportState(ctx context.Context, req resource.Im
 	}
 
 	// If not found by ID, try to lookup site by name
-	sites, err := r.client.c.ListSites(ctx)
+	sites, err := r.client.Client.ListSites(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Listing Sites for Import",

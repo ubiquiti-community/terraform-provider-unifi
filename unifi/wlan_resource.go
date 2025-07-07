@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -18,13 +19,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &wlanFrameworkResource{}
-var _ resource.ResourceWithImportState = &wlanFrameworkResource{}
+var (
+	_ resource.Resource                = &wlanFrameworkResource{}
+	_ resource.ResourceWithImportState = &wlanFrameworkResource{}
+)
 
 func NewWLANFrameworkResource() resource.Resource {
 	return &wlanFrameworkResource{}
@@ -32,7 +34,7 @@ func NewWLANFrameworkResource() resource.Resource {
 
 // wlanFrameworkResource defines the resource implementation.
 type wlanFrameworkResource struct {
-	client *client
+	client *Client
 }
 
 // wlanScheduleModel represents a schedule block for WLAN
@@ -74,11 +76,19 @@ type wlanFrameworkResourceModel struct {
 	MinrateSettingPreference types.String `tfsdk:"minrate_setting_preference"`
 }
 
-func (r *wlanFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *wlanFrameworkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_wlan"
 }
 
-func (r *wlanFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *wlanFrameworkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a WiFi network / SSID in UniFi Controller",
 
@@ -224,7 +234,21 @@ func (r *wlanFrameworkResource) Schema(ctx context.Context, req resource.SchemaR
 				Computed:            true,
 				Default:             int64default.StaticInt64(0),
 				Validators: []validator.Int64{
-					int64validator.OneOf(0, 1000, 2000, 5500, 6000, 9000, 11000, 12000, 18000, 24000, 36000, 48000, 54000),
+					int64validator.OneOf(
+						0,
+						1000,
+						2000,
+						5500,
+						6000,
+						9000,
+						11000,
+						12000,
+						18000,
+						24000,
+						36000,
+						48000,
+						54000,
+					),
 				},
 			},
 			"minimum_data_rate_5g_kbps": schema.Int64Attribute{
@@ -256,7 +280,15 @@ func (r *wlanFrameworkResource) Schema(ctx context.Context, req resource.SchemaR
 							MarkdownDescription: "Day of week for the block.",
 							Required:            true,
 							Validators: []validator.String{
-								stringvalidator.OneOf("sun", "mon", "tue", "wed", "thu", "fri", "sat"),
+								stringvalidator.OneOf(
+									"sun",
+									"mon",
+									"tue",
+									"wed",
+									"thu",
+									"fri",
+									"sat",
+								),
 							},
 						},
 						"start_hour": schema.Int64Attribute{
@@ -293,16 +325,23 @@ func (r *wlanFrameworkResource) Schema(ctx context.Context, req resource.SchemaR
 	}
 }
 
-func (r *wlanFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *wlanFrameworkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -310,7 +349,11 @@ func (r *wlanFrameworkResource) Configure(ctx context.Context, req resource.Conf
 	r.client = client
 }
 
-func (r *wlanFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *wlanFrameworkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan wlanFrameworkResourceModel
 
 	diags := req.Plan.Get(ctx, &plan)
@@ -321,7 +364,7 @@ func (r *wlanFrameworkResource) Create(ctx context.Context, req resource.CreateR
 
 	site := plan.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Convert the plan to UniFi WLAN struct
@@ -332,7 +375,7 @@ func (r *wlanFrameworkResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	// Create the WLAN
-	createdWLAN, err := r.client.c.CreateWLAN(ctx, site, wlan)
+	createdWLAN, err := r.client.Client.CreateWLAN(ctx, site, wlan)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating WLAN",
@@ -352,7 +395,11 @@ func (r *wlanFrameworkResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *wlanFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *wlanFrameworkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state wlanFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -363,13 +410,13 @@ func (r *wlanFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	id := state.ID.ValueString()
 
 	// Get the WLAN from the API
-	wlan, err := r.client.c.GetWLAN(ctx, site, id)
+	wlan, err := r.client.Client.GetWLAN(ctx, site, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading WLAN",
@@ -389,7 +436,11 @@ func (r *wlanFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *wlanFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *wlanFrameworkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state wlanFrameworkResourceModel
 	var plan wlanFrameworkResourceModel
 
@@ -410,7 +461,7 @@ func (r *wlanFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Step 3: Convert the updated state to API format
@@ -422,7 +473,7 @@ func (r *wlanFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 
 	// Step 4: Send to API
 	wlan.ID = state.ID.ValueString()
-	updatedWLAN, err := r.client.c.UpdateWLAN(ctx, site, wlan)
+	updatedWLAN, err := r.client.Client.UpdateWLAN(ctx, site, wlan)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating WLAN",
@@ -442,7 +493,11 @@ func (r *wlanFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *wlanFrameworkResource) applyPlanToState(ctx context.Context, plan *wlanFrameworkResourceModel, state *wlanFrameworkResourceModel) {
+func (r *wlanFrameworkResource) applyPlanToState(
+	ctx context.Context,
+	plan *wlanFrameworkResourceModel,
+	state *wlanFrameworkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
@@ -518,7 +573,11 @@ func (r *wlanFrameworkResource) applyPlanToState(ctx context.Context, plan *wlan
 	}
 }
 
-func (r *wlanFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *wlanFrameworkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state wlanFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -529,12 +588,12 @@ func (r *wlanFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	id := state.ID.ValueString()
 
-	err := r.client.c.DeleteWLAN(ctx, site, id)
+	err := r.client.Client.DeleteWLAN(ctx, site, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting WLAN",
@@ -544,7 +603,11 @@ func (r *wlanFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 	}
 }
 
-func (r *wlanFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *wlanFrameworkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	idParts := strings.Split(req.ID, ":")
 	if len(idParts) == 2 {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
@@ -556,7 +619,10 @@ func (r *wlanFrameworkResource) ImportState(ctx context.Context, req resource.Im
 
 // Helper functions for conversion and merging
 
-func (r *wlanFrameworkResource) planToWLAN(ctx context.Context, plan wlanFrameworkResourceModel) (*unifi.WLAN, diag.Diagnostics) {
+func (r *wlanFrameworkResource) planToWLAN(
+	ctx context.Context,
+	plan wlanFrameworkResourceModel,
+) (*unifi.WLAN, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	wlan := &unifi.WLAN{
@@ -584,7 +650,7 @@ func (r *wlanFrameworkResource) planToWLAN(ctx context.Context, plan wlanFramewo
 		MinrateNgDataRateKbps:    int(plan.MinimumDataRate2GKbps.ValueInt64()),
 		MinrateNaEnabled:         plan.MinimumDataRate5GKbps.ValueInt64() != 0,
 		MinrateNaDataRateKbps:    int(plan.MinimumDataRate5GKbps.ValueInt64()),
-		
+
 		// Set defaults that UniFi expects
 		GroupRekey:         3600,
 		DTIMMode:           "default",
@@ -616,13 +682,16 @@ func (r *wlanFrameworkResource) planToWLAN(ctx context.Context, plan wlanFramewo
 		}
 
 		for _, sched := range schedules {
-			wlan.ScheduleWithDuration = append(wlan.ScheduleWithDuration, unifi.WLANScheduleWithDuration{
-				StartDaysOfWeek: []string{sched.DayOfWeek.ValueString()},
-				StartHour:       int(sched.StartHour.ValueInt64()),
-				StartMinute:     int(sched.StartMinute.ValueInt64()),
-				DurationMinutes: int(sched.Duration.ValueInt64()),
-				Name:            sched.Name.ValueString(),
-			})
+			wlan.ScheduleWithDuration = append(
+				wlan.ScheduleWithDuration,
+				unifi.WLANScheduleWithDuration{
+					StartDaysOfWeek: []string{sched.DayOfWeek.ValueString()},
+					StartHour:       int(sched.StartHour.ValueInt64()),
+					StartMinute:     int(sched.StartMinute.ValueInt64()),
+					DurationMinutes: int(sched.Duration.ValueInt64()),
+					Name:            sched.Name.ValueString(),
+				},
+			)
 		}
 		wlan.ScheduleEnabled = len(wlan.ScheduleWithDuration) > 0
 	}
@@ -630,7 +699,12 @@ func (r *wlanFrameworkResource) planToWLAN(ctx context.Context, plan wlanFramewo
 	return wlan, diags
 }
 
-func (r *wlanFrameworkResource) wlanToModel(ctx context.Context, wlan *unifi.WLAN, model *wlanFrameworkResourceModel, site string) diag.Diagnostics {
+func (r *wlanFrameworkResource) wlanToModel(
+	ctx context.Context,
+	wlan *unifi.WLAN,
+	model *wlanFrameworkResourceModel,
+	site string,
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(wlan.ID)
@@ -640,48 +714,48 @@ func (r *wlanFrameworkResource) wlanToModel(ctx context.Context, wlan *unifi.WLA
 	model.Security = types.StringValue(wlan.Security)
 	model.WPA3Support = types.BoolValue(wlan.WPA3Support)
 	model.WPA3Transition = types.BoolValue(wlan.WPA3Transition)
-	
+
 	if wlan.PMFMode != "" {
 		model.PMFMode = types.StringValue(wlan.PMFMode)
 	} else {
 		model.PMFMode = types.StringValue("disabled")
 	}
-	
+
 	// Only set passphrase if it's not empty (don't overwrite sensitive data unnecessarily)
 	if wlan.XPassphrase != "" {
 		model.Passphrase = types.StringValue(wlan.XPassphrase)
 	}
-	
+
 	model.HideSSID = types.BoolValue(wlan.HideSSID)
 	model.IsGuest = types.BoolValue(wlan.IsGuest)
 	model.MulticastEnhance = types.BoolValue(wlan.MulticastEnhanceEnabled)
 	model.MacFilterEnabled = types.BoolValue(wlan.MACFilterEnabled)
-	
+
 	if wlan.MACFilterPolicy != "" {
 		model.MacFilterPolicy = types.StringValue(wlan.MACFilterPolicy)
 	} else {
 		model.MacFilterPolicy = types.StringValue("deny")
 	}
-	
+
 	if wlan.RADIUSProfileID != "" {
 		model.RadiusProfileID = types.StringValue(wlan.RADIUSProfileID)
 	} else {
 		model.RadiusProfileID = types.StringNull()
 	}
-	
+
 	model.No2GhzOui = types.BoolValue(wlan.No2GhzOui)
 	model.L2Isolation = types.BoolValue(wlan.L2Isolation)
 	model.ProxyArp = types.BoolValue(wlan.ProxyArp)
 	model.BssTransition = types.BoolValue(wlan.BssTransition)
 	model.Uapsd = types.BoolValue(wlan.UapsdEnabled)
 	model.FastRoamingEnabled = types.BoolValue(wlan.FastRoamingEnabled)
-	
+
 	if wlan.MinrateSettingPreference != "" {
 		model.MinrateSettingPreference = types.StringValue(wlan.MinrateSettingPreference)
 	} else {
 		model.MinrateSettingPreference = types.StringValue("auto")
 	}
-	
+
 	model.MinimumDataRate2GKbps = types.Int64Value(int64(wlan.MinrateNgDataRateKbps))
 	model.MinimumDataRate5GKbps = types.Int64Value(int64(wlan.MinrateNaDataRateKbps))
 
@@ -706,18 +780,18 @@ func (r *wlanFrameworkResource) wlanToModel(ctx context.Context, wlan *unifi.WLA
 			for _, dow := range sched.StartDaysOfWeek {
 				scheduleObj, d := types.ObjectValue(
 					map[string]attr.Type{
-						"day_of_week":   types.StringType,
-						"start_hour":    types.Int64Type,
-						"start_minute":  types.Int64Type,
-						"duration":      types.Int64Type,
-						"name":          types.StringType,
+						"day_of_week":  types.StringType,
+						"start_hour":   types.Int64Type,
+						"start_minute": types.Int64Type,
+						"duration":     types.Int64Type,
+						"name":         types.StringType,
 					},
 					map[string]attr.Value{
-						"day_of_week":   types.StringValue(dow),
-						"start_hour":    types.Int64Value(int64(sched.StartHour)),
-						"start_minute":  types.Int64Value(int64(sched.StartMinute)),
-						"duration":      types.Int64Value(int64(sched.DurationMinutes)),
-						"name":          types.StringValue(sched.Name),
+						"day_of_week":  types.StringValue(dow),
+						"start_hour":   types.Int64Value(int64(sched.StartHour)),
+						"start_minute": types.Int64Value(int64(sched.StartMinute)),
+						"duration":     types.Int64Value(int64(sched.DurationMinutes)),
+						"name":         types.StringValue(sched.Name),
 					},
 				)
 				diags.Append(d...)
@@ -727,11 +801,11 @@ func (r *wlanFrameworkResource) wlanToModel(ctx context.Context, wlan *unifi.WLA
 		scheduleList, d := types.ListValue(
 			types.ObjectType{
 				AttrTypes: map[string]attr.Type{
-					"day_of_week":   types.StringType,
-					"start_hour":    types.Int64Type,
-					"start_minute":  types.Int64Type,
-					"duration":      types.Int64Type,
-					"name":          types.StringType,
+					"day_of_week":  types.StringType,
+					"start_hour":   types.Int64Type,
+					"start_minute": types.Int64Type,
+					"duration":     types.Int64Type,
+					"name":         types.StringType,
 				},
 			},
 			scheduleValues,
@@ -741,11 +815,11 @@ func (r *wlanFrameworkResource) wlanToModel(ctx context.Context, wlan *unifi.WLA
 	} else {
 		model.Schedule = types.ListNull(types.ObjectType{
 			AttrTypes: map[string]attr.Type{
-				"day_of_week":   types.StringType,
-				"start_hour":    types.Int64Type,
-				"start_minute":  types.Int64Type,
-				"duration":      types.Int64Type,
-				"name":          types.StringType,
+				"day_of_week":  types.StringType,
+				"start_hour":   types.Int64Type,
+				"start_minute": types.Int64Type,
+				"duration":     types.Int64Type,
+				"name":         types.StringType,
 			},
 		})
 	}
