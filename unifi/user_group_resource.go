@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -14,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -28,7 +28,7 @@ func NewUserGroupFrameworkResource() resource.Resource {
 
 // userGroupFrameworkResource defines the resource implementation.
 type userGroupFrameworkResource struct {
-	client *client
+	client *Client
 }
 
 // userGroupFrameworkResourceModel describes the resource data model.
@@ -96,11 +96,11 @@ func (r *userGroupFrameworkResource) Configure(ctx context.Context, req resource
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -119,7 +119,7 @@ func (r *userGroupFrameworkResource) Create(ctx context.Context, req resource.Cr
 
 	site := plan.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Convert the plan to UniFi UserGroup struct
@@ -130,7 +130,7 @@ func (r *userGroupFrameworkResource) Create(ctx context.Context, req resource.Cr
 	}
 
 	// Create the UserGroup
-	createdUserGroup, err := r.client.c.CreateUserGroup(ctx, site, userGroup)
+	createdUserGroup, err := r.client.Client.CreateUserGroup(ctx, site, userGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating User Group",
@@ -161,13 +161,13 @@ func (r *userGroupFrameworkResource) Read(ctx context.Context, req resource.Read
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	id := state.ID.ValueString()
 
 	// Get the UserGroup from the API
-	userGroup, err := r.client.c.GetUserGroup(ctx, site, id)
+	userGroup, err := r.client.Client.GetUserGroup(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		resp.State.RemoveResource(ctx)
 		return
@@ -212,7 +212,7 @@ func (r *userGroupFrameworkResource) Update(ctx context.Context, req resource.Up
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Step 3: Convert the updated state to API format
@@ -227,7 +227,7 @@ func (r *userGroupFrameworkResource) Update(ctx context.Context, req resource.Up
 	userGroup.SiteID = site
 
 	// Step 4: Send to API
-	updatedUserGroup, err := r.client.c.UpdateUserGroup(ctx, site, userGroup)
+	updatedUserGroup, err := r.client.Client.UpdateUserGroup(ctx, site, userGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating User Group",
@@ -271,12 +271,12 @@ func (r *userGroupFrameworkResource) Delete(ctx context.Context, req resource.De
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	id := state.ID.ValueString()
 
-	err := r.client.c.DeleteUserGroup(ctx, site, id)
+	err := r.client.Client.DeleteUserGroup(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		return
 	}

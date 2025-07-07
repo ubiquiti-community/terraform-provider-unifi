@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func NewDNSRecordFrameworkResource() resource.Resource {
 
 // dnsRecordFrameworkResource defines the resource implementation.
 type dnsRecordFrameworkResource struct {
-	client *client
+	client *Client
 }
 
 // dnsRecordFrameworkResourceModel describes the resource data model.
@@ -131,11 +131,11 @@ func (r *dnsRecordFrameworkResource) Configure(ctx context.Context, req resource
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -157,11 +157,11 @@ func (r *dnsRecordFrameworkResource) Create(ctx context.Context, req resource.Cr
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Create the DNS record
-	createdDNSRecord, err := r.client.c.CreateDNSRecord(ctx, site, dnsRecord)
+	createdDNSRecord, err := r.client.Client.CreateDNSRecord(ctx, site, dnsRecord)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating DNS Record",
@@ -188,11 +188,11 @@ func (r *dnsRecordFrameworkResource) Read(ctx context.Context, req resource.Read
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Get the DNS record from the API
-	dnsRecord, err := r.client.c.GetDNSRecord(ctx, site, data.ID.ValueString())
+	dnsRecord, err := r.client.Client.GetDNSRecord(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -233,7 +233,7 @@ func (r *dnsRecordFrameworkResource) Update(ctx context.Context, req resource.Up
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Step 3: Convert the updated state to API format
@@ -241,7 +241,7 @@ func (r *dnsRecordFrameworkResource) Update(ctx context.Context, req resource.Up
 	dnsRecord.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
-	updatedDNSRecord, err := r.client.c.UpdateDNSRecord(ctx, site, dnsRecord)
+	updatedDNSRecord, err := r.client.Client.UpdateDNSRecord(ctx, site, dnsRecord)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating DNS Record",
@@ -268,11 +268,11 @@ func (r *dnsRecordFrameworkResource) Delete(ctx context.Context, req resource.De
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Delete the DNS record
-	err := r.client.c.DeleteDNSRecord(ctx, site, data.ID.ValueString())
+	err := r.client.Client.DeleteDNSRecord(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting DNS Record",

@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func NewAccountFrameworkResource() resource.Resource {
 
 // accountFrameworkResource defines the resource implementation.
 type accountFrameworkResource struct {
-	client *client
+	client *Client
 }
 
 // accountFrameworkResourceModel describes the resource data model.
@@ -113,11 +113,11 @@ func (r *accountFrameworkResource) Configure(ctx context.Context, req resource.C
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -139,11 +139,11 @@ func (r *accountFrameworkResource) Create(ctx context.Context, req resource.Crea
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Create the account
-	createdAccount, err := r.client.c.CreateAccount(ctx, site, account)
+	createdAccount, err := r.client.Client.CreateAccount(ctx, site, account)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Account",
@@ -170,11 +170,11 @@ func (r *accountFrameworkResource) Read(ctx context.Context, req resource.ReadRe
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Get the account from the API
-	account, err := r.client.c.GetAccount(ctx, site, data.ID.ValueString())
+	account, err := r.client.Client.GetAccount(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -215,7 +215,7 @@ func (r *accountFrameworkResource) Update(ctx context.Context, req resource.Upda
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Step 3: Convert the updated state to API format
@@ -223,7 +223,7 @@ func (r *accountFrameworkResource) Update(ctx context.Context, req resource.Upda
 	account.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
-	updatedAccount, err := r.client.c.UpdateAccount(ctx, site, account)
+	updatedAccount, err := r.client.Client.UpdateAccount(ctx, site, account)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Account",
@@ -250,11 +250,11 @@ func (r *accountFrameworkResource) Delete(ctx context.Context, req resource.Dele
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Delete the account
-	err := r.client.c.DeleteAccount(ctx, site, data.ID.ValueString())
+	err := r.client.Client.DeleteAccount(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Account",

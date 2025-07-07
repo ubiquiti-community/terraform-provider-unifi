@@ -1,4 +1,4 @@
-package provider
+package unifi
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func NewStaticRouteFrameworkResource() resource.Resource {
 
 // staticRouteFrameworkResource defines the resource implementation.
 type staticRouteFrameworkResource struct {
-	client *client
+	client *Client
 }
 
 // staticRouteFrameworkResourceModel describes the resource data model.
@@ -112,11 +112,11 @@ func (r *staticRouteFrameworkResource) Configure(ctx context.Context, req resour
 		return
 	}
 
-	client, ok := req.ProviderData.(*client)
+	client, ok := req.ProviderData.(*Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -138,11 +138,11 @@ func (r *staticRouteFrameworkResource) Create(ctx context.Context, req resource.
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Create the static route
-	createdRouting, err := r.client.c.CreateRouting(ctx, site, routing)
+	createdRouting, err := r.client.Client.CreateRouting(ctx, site, routing)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Static Route",
@@ -169,11 +169,11 @@ func (r *staticRouteFrameworkResource) Read(ctx context.Context, req resource.Re
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Get the static route from the API
-	routing, err := r.client.c.GetRouting(ctx, site, data.ID.ValueString())
+	routing, err := r.client.Client.GetRouting(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -214,7 +214,7 @@ func (r *staticRouteFrameworkResource) Update(ctx context.Context, req resource.
 
 	site := state.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Step 3: Convert the updated state to API format
@@ -222,7 +222,7 @@ func (r *staticRouteFrameworkResource) Update(ctx context.Context, req resource.
 	routing.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
-	updatedRouting, err := r.client.c.UpdateRouting(ctx, site, routing)
+	updatedRouting, err := r.client.Client.UpdateRouting(ctx, site, routing)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Static Route",
@@ -249,11 +249,11 @@ func (r *staticRouteFrameworkResource) Delete(ctx context.Context, req resource.
 
 	site := data.Site.ValueString()
 	if site == "" {
-		site = r.client.site
+		site = r.client.Site
 	}
 
 	// Delete the static route
-	err := r.client.c.DeleteRouting(ctx, site, data.ID.ValueString())
+	err := r.client.Client.DeleteRouting(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return
