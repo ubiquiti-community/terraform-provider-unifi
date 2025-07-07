@@ -156,7 +156,7 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 				MarkdownDescription: "The subnet of the network. Must be a valid CIDR address.",
 				Optional:            true,
 				Validators: []validator.String{
-					// TODO: Add CIDR validation
+					CIDRValidator(),
 				},
 			},
 			"network_group": schema.StringAttribute{
@@ -171,14 +171,14 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 				MarkdownDescription: "The IPv4 address where the DHCP range of addresses starts.",
 				Optional:            true,
 				Validators: []validator.String{
-					// TODO: Add IPv4 validation
+					IPv4Validator(),
 				},
 			},
 			"dhcp_stop": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 address where the DHCP range of addresses stops.",
 				Optional:            true,
 				Validators: []validator.String{
-					// TODO: Add IPv4 validation
+					IPv4Validator(),
 				},
 			},
 			"dhcp_enabled": schema.BoolAttribute{
@@ -344,14 +344,23 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 			"wan_ip": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 address of the WAN.",
 				Optional:            true,
+				Validators: []validator.String{
+					IPv4Validator(),
+				},
 			},
 			"wan_gateway": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 gateway of the WAN.",
 				Optional:            true,
+				Validators: []validator.String{
+					IPv4Validator(),
+				},
 			},
 			"wan_netmask": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 netmask of the WAN.",
 				Optional:            true,
+				Validators: []validator.String{
+					IPv4Validator(),
+				},
 			},
 			"wan_dns": schema.ListAttribute{
 				MarkdownDescription: "DNS servers IPs of the WAN.",
@@ -375,10 +384,16 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 			"wan_gateway_v6": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 gateway of the WAN.",
 				Optional:            true,
+				Validators: []validator.String{
+					IPv6Validator(),
+				},
 			},
 			"wan_ipv6": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 address of the WAN.",
 				Optional:            true,
+				Validators: []validator.String{
+					IPv6Validator(),
+				},
 			},
 			"wan_prefixlen": schema.Int64Attribute{
 				MarkdownDescription: "The IPv6 prefix length of the WAN. Must be between 1 and 128.",
@@ -412,12 +427,15 @@ func (r *networkFrameworkResource) Schema(ctx context.Context, req resource.Sche
 			"wireguard_client_peer_ip": schema.StringAttribute{
 				MarkdownDescription: "Specifies the Wireguard client peer IP.",
 				Optional:            true,
+				Validators: []validator.String{
+					IPv4Validator(),
+				},
 			},
 			"wireguard_client_peer_port": schema.Int64Attribute{
 				MarkdownDescription: "Specifies the Wireguard client peer port.",
 				Optional:            true,
 				Validators: []validator.Int64{
-					int64validator.Between(1, 65535),
+					PortNumberValidator(),
 				},
 			},
 			"wireguard_client_peer_public_key": schema.StringAttribute{
