@@ -28,58 +28,66 @@ type networkDataSource struct {
 
 // networkDataSourceModel describes the data source data model.
 type networkDataSourceModel struct {
-	ID                        types.String `tfsdk:"id"`
-	Site                      types.String `tfsdk:"site"`
-	Name                      types.String `tfsdk:"name"`
-	Purpose                   types.String `tfsdk:"purpose"`
-	VlanID                    types.Int64  `tfsdk:"vlan_id"`
-	Subnet                    types.String `tfsdk:"subnet"`
-	NetworkGroup              types.String `tfsdk:"network_group"`
-	DHCPStart                 types.String `tfsdk:"dhcp_start"`
-	DHCPStop                  types.String `tfsdk:"dhcp_stop"`
-	DHCPEnabled               types.Bool   `tfsdk:"dhcp_enabled"`
-	DHCPLease                 types.Int64  `tfsdk:"dhcp_lease"`
-	DHCPDNS                   types.List   `tfsdk:"dhcp_dns"`
-	DHCPDBootEnabled          types.Bool   `tfsdk:"dhcpd_boot_enabled"`
-	DHCPDBootServer           types.String `tfsdk:"dhcpd_boot_server"`
-	DHCPDBootFilename         types.String `tfsdk:"dhcpd_boot_filename"`
-	DHCPV6DNS                 types.List   `tfsdk:"dhcp_v6_dns"`
-	DHCPV6DNSAuto             types.Bool   `tfsdk:"dhcp_v6_dns_auto"`
-	DHCPV6Enabled             types.Bool   `tfsdk:"dhcp_v6_enabled"`
-	DHCPV6Lease               types.Int64  `tfsdk:"dhcp_v6_lease"`
-	DHCPV6Start               types.String `tfsdk:"dhcp_v6_start"`
-	DHCPV6Stop                types.String `tfsdk:"dhcp_v6_stop"`
-	DomainName                types.String `tfsdk:"domain_name"`
-	IGMPSnooping              types.Bool   `tfsdk:"igmp_snooping"`
-	IPSubnet                  types.String `tfsdk:"ip_subnet"`
-	IPv6InterfaceType         types.String `tfsdk:"ipv6_interface_type"`
-	IPv6StaticSubnet          types.String `tfsdk:"ipv6_static_subnet"`
-	IPv6PDInterface           types.String `tfsdk:"ipv6_pd_interface"`
-	IPv6PDPrefixID            types.String `tfsdk:"ipv6_pd_prefixid"`
-	IPv6PDStart               types.String `tfsdk:"ipv6_pd_start"`
-	IPv6PDStop                types.String `tfsdk:"ipv6_pd_stop"`
-	IPv6RAEnable              types.Bool   `tfsdk:"ipv6_ra_enable"`
-	IPv6RAPreferredLifetime   types.Int64  `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAPriority            types.String `tfsdk:"ipv6_ra_priority"`
-	IPv6RAValidLifetime       types.Int64  `tfsdk:"ipv6_ra_valid_lifetime"`
-	MulticastDNS              types.Bool   `tfsdk:"multicast_dns"`
-	WanDNS                    types.List   `tfsdk:"wan_dns"`
-	WanEgressQOS              types.Int64  `tfsdk:"wan_egress_qos"`
-	WanGateway                types.String `tfsdk:"wan_gateway"`
-	WanGatewayV6              types.String `tfsdk:"wan_gateway_v6"`
-	WanIP                     types.String `tfsdk:"wan_ip"`
-	WanNetmask                types.String `tfsdk:"wan_netmask"`
-	WanNetworkGroup           types.String `tfsdk:"wan_network_group"`
-	WanType                   types.String `tfsdk:"wan_type"`
-	WanTypeV6                 types.String `tfsdk:"wan_type_v6"`
-	WanUsername               types.String `tfsdk:"wan_username"`
+	ID                      types.String `tfsdk:"id"`
+	Site                    types.String `tfsdk:"site"`
+	Name                    types.String `tfsdk:"name"`
+	Purpose                 types.String `tfsdk:"purpose"`
+	VlanID                  types.Int64  `tfsdk:"vlan_id"`
+	Subnet                  types.String `tfsdk:"subnet"`
+	NetworkGroup            types.String `tfsdk:"network_group"`
+	DHCPStart               types.String `tfsdk:"dhcp_start"`
+	DHCPStop                types.String `tfsdk:"dhcp_stop"`
+	DHCPEnabled             types.Bool   `tfsdk:"dhcp_enabled"`
+	DHCPLease               types.Int64  `tfsdk:"dhcp_lease"`
+	DHCPDNS                 types.List   `tfsdk:"dhcp_dns"`
+	DHCPDBootEnabled        types.Bool   `tfsdk:"dhcpd_boot_enabled"`
+	DHCPDBootServer         types.String `tfsdk:"dhcpd_boot_server"`
+	DHCPDBootFilename       types.String `tfsdk:"dhcpd_boot_filename"`
+	DHCPV6DNS               types.List   `tfsdk:"dhcp_v6_dns"`
+	DHCPV6DNSAuto           types.Bool   `tfsdk:"dhcp_v6_dns_auto"`
+	DHCPV6Enabled           types.Bool   `tfsdk:"dhcp_v6_enabled"`
+	DHCPV6Lease             types.Int64  `tfsdk:"dhcp_v6_lease"`
+	DHCPV6Start             types.String `tfsdk:"dhcp_v6_start"`
+	DHCPV6Stop              types.String `tfsdk:"dhcp_v6_stop"`
+	DomainName              types.String `tfsdk:"domain_name"`
+	IGMPSnooping            types.Bool   `tfsdk:"igmp_snooping"`
+	IPSubnet                types.String `tfsdk:"ip_subnet"`
+	IPv6InterfaceType       types.String `tfsdk:"ipv6_interface_type"`
+	IPv6StaticSubnet        types.String `tfsdk:"ipv6_static_subnet"`
+	IPv6PDInterface         types.String `tfsdk:"ipv6_pd_interface"`
+	IPv6PDPrefixID          types.String `tfsdk:"ipv6_pd_prefixid"`
+	IPv6PDStart             types.String `tfsdk:"ipv6_pd_start"`
+	IPv6PDStop              types.String `tfsdk:"ipv6_pd_stop"`
+	IPv6RAEnable            types.Bool   `tfsdk:"ipv6_ra_enable"`
+	IPv6RAPreferredLifetime types.Int64  `tfsdk:"ipv6_ra_preferred_lifetime"`
+	IPv6RAPriority          types.String `tfsdk:"ipv6_ra_priority"`
+	IPv6RAValidLifetime     types.Int64  `tfsdk:"ipv6_ra_valid_lifetime"`
+	MulticastDNS            types.Bool   `tfsdk:"multicast_dns"`
+	WanDNS                  types.List   `tfsdk:"wan_dns"`
+	WanEgressQOS            types.Int64  `tfsdk:"wan_egress_qos"`
+	WanGateway              types.String `tfsdk:"wan_gateway"`
+	WanGatewayV6            types.String `tfsdk:"wan_gateway_v6"`
+	WanIP                   types.String `tfsdk:"wan_ip"`
+	WanNetmask              types.String `tfsdk:"wan_netmask"`
+	WanNetworkGroup         types.String `tfsdk:"wan_network_group"`
+	WanType                 types.String `tfsdk:"wan_type"`
+	WanTypeV6               types.String `tfsdk:"wan_type_v6"`
+	WanUsername             types.String `tfsdk:"wan_username"`
 }
 
-func (d *networkDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *networkDataSource) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_network"
 }
 
-func (d *networkDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *networkDataSource) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: "`unifi_network` data source can be used to retrieve settings for a network by name or ID.",
 
@@ -286,7 +294,11 @@ func (d *networkDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 	}
 }
 
-func (d *networkDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *networkDataSource) Configure(
+	ctx context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -295,7 +307,10 @@ func (d *networkDataSource) Configure(ctx context.Context, req datasource.Config
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -303,7 +318,11 @@ func (d *networkDataSource) Configure(ctx context.Context, req datasource.Config
 	d.client = client
 }
 
-func (d *networkDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *networkDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var config networkDataSourceModel
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
@@ -381,7 +400,13 @@ func (d *networkDataSource) Read(ctx context.Context, req datasource.ReadRequest
 }
 
 // Helper method to set data source data from API response
-func (d *networkDataSource) setDataSourceData(ctx context.Context, diags *diag.Diagnostics, network *unifi.Network, model *networkDataSourceModel, site string) {
+func (d *networkDataSource) setDataSourceData(
+	ctx context.Context,
+	diags *diag.Diagnostics,
+	network *unifi.Network,
+	model *networkDataSourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 

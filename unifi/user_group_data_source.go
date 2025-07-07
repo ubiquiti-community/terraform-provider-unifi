@@ -10,9 +10,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var (
-	_ datasource.DataSource = &userGroupDataSource{}
-)
+var _ datasource.DataSource = &userGroupDataSource{}
 
 func NewUserGroupDataSource() datasource.DataSource {
 	return &userGroupDataSource{}
@@ -23,18 +21,26 @@ type userGroupDataSource struct {
 }
 
 type userGroupDataSourceModel struct {
-	ID               types.String `tfsdk:"id"`
-	Site             types.String `tfsdk:"site"`
-	Name             types.String `tfsdk:"name"`
-	QOSRateMaxDown   types.Int64  `tfsdk:"qos_rate_max_down"`
-	QOSRateMaxUp     types.Int64  `tfsdk:"qos_rate_max_up"`
+	ID             types.String `tfsdk:"id"`
+	Site           types.String `tfsdk:"site"`
+	Name           types.String `tfsdk:"name"`
+	QOSRateMaxDown types.Int64  `tfsdk:"qos_rate_max_down"`
+	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
-func (d *userGroupDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *userGroupDataSource) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_user_group"
 }
 
-func (d *userGroupDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *userGroupDataSource) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Data source for user groups.",
 
@@ -64,7 +70,11 @@ func (d *userGroupDataSource) Schema(ctx context.Context, req datasource.SchemaR
 	}
 }
 
-func (d *userGroupDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *userGroupDataSource) Configure(
+	ctx context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -73,7 +83,10 @@ func (d *userGroupDataSource) Configure(ctx context.Context, req datasource.Conf
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -81,7 +94,11 @@ func (d *userGroupDataSource) Configure(ctx context.Context, req datasource.Conf
 	d.client = client
 }
 
-func (d *userGroupDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *userGroupDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var data userGroupDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)

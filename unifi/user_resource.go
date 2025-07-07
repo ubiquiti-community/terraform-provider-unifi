@@ -18,8 +18,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &userFrameworkResource{}
-var _ resource.ResourceWithImportState = &userFrameworkResource{}
+var (
+	_ resource.Resource                = &userFrameworkResource{}
+	_ resource.ResourceWithImportState = &userFrameworkResource{}
+)
 
 func NewUserFrameworkResource() resource.Resource {
 	return &userFrameworkResource{}
@@ -32,30 +34,38 @@ type userFrameworkResource struct {
 
 // userFrameworkResourceModel describes the resource data model.
 type userFrameworkResourceModel struct {
-	ID                    types.String `tfsdk:"id"`
-	Site                  types.String `tfsdk:"site"`
-	MAC                   types.String `tfsdk:"mac"`
-	Name                  types.String `tfsdk:"name"`
-	UserGroupID           types.String `tfsdk:"user_group_id"`
-	Note                  types.String `tfsdk:"note"`
-	FixedIP               types.String `tfsdk:"fixed_ip"`
-	NetworkID             types.String `tfsdk:"network_id"`
-	Blocked               types.Bool   `tfsdk:"blocked"`
-	DevIDOverride         types.Int64  `tfsdk:"dev_id_override"`
-	LocalDNSRecord        types.String `tfsdk:"local_dns_record"`
-	AllowExisting         types.Bool   `tfsdk:"allow_existing"`
-	SkipForgetOnDestroy   types.Bool   `tfsdk:"skip_forget_on_destroy"`
-	
+	ID                  types.String `tfsdk:"id"`
+	Site                types.String `tfsdk:"site"`
+	MAC                 types.String `tfsdk:"mac"`
+	Name                types.String `tfsdk:"name"`
+	UserGroupID         types.String `tfsdk:"user_group_id"`
+	Note                types.String `tfsdk:"note"`
+	FixedIP             types.String `tfsdk:"fixed_ip"`
+	NetworkID           types.String `tfsdk:"network_id"`
+	Blocked             types.Bool   `tfsdk:"blocked"`
+	DevIDOverride       types.Int64  `tfsdk:"dev_id_override"`
+	LocalDNSRecord      types.String `tfsdk:"local_dns_record"`
+	AllowExisting       types.Bool   `tfsdk:"allow_existing"`
+	SkipForgetOnDestroy types.Bool   `tfsdk:"skip_forget_on_destroy"`
+
 	// Computed attributes
-	Hostname              types.String `tfsdk:"hostname"`
-	IP                    types.String `tfsdk:"ip"`
+	Hostname types.String `tfsdk:"hostname"`
+	IP       types.String `tfsdk:"ip"`
 }
 
-func (r *userFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *userFrameworkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_user"
 }
 
-func (r *userFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *userFrameworkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: `Manages a user (or "client" in the UI) of the network, identified by unique MAC addresses.
 
@@ -149,7 +159,11 @@ Users are created in the controller when observed on the network, so the resourc
 	}
 }
 
-func (r *userFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *userFrameworkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -158,7 +172,10 @@ func (r *userFrameworkResource) Configure(ctx context.Context, req resource.Conf
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -166,7 +183,11 @@ func (r *userFrameworkResource) Configure(ctx context.Context, req resource.Conf
 	r.client = client
 }
 
-func (r *userFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *userFrameworkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan userFrameworkResourceModel
 
 	diags := req.Plan.Get(ctx, &plan)
@@ -236,7 +257,11 @@ func (r *userFrameworkResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *userFrameworkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state userFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -273,7 +298,11 @@ func (r *userFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *userFrameworkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state userFrameworkResourceModel
 	var plan userFrameworkResourceModel
 
@@ -326,7 +355,11 @@ func (r *userFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *userFrameworkResource) applyPlanToState(ctx context.Context, plan *userFrameworkResourceModel, state *userFrameworkResourceModel) {
+func (r *userFrameworkResource) applyPlanToState(
+	ctx context.Context,
+	plan *userFrameworkResourceModel,
+	state *userFrameworkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.MAC.IsNull() && !plan.MAC.IsUnknown() {
 		state.MAC = plan.MAC
@@ -364,7 +397,11 @@ func (r *userFrameworkResource) applyPlanToState(ctx context.Context, plan *user
 	// Note: Computed attributes (Hostname, IP) are not applied from plan
 }
 
-func (r *userFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *userFrameworkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state userFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -409,7 +446,11 @@ func (r *userFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 	}
 }
 
-func (r *userFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *userFrameworkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	idParts := strings.Split(req.ID, ":")
 	if len(idParts) == 2 {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
@@ -421,19 +462,22 @@ func (r *userFrameworkResource) ImportState(ctx context.Context, req resource.Im
 
 // Helper functions for conversion and merging
 
-func (r *userFrameworkResource) planToUser(ctx context.Context, plan userFrameworkResourceModel) (*unifi.User, diag.Diagnostics) {
+func (r *userFrameworkResource) planToUser(
+	ctx context.Context,
+	plan userFrameworkResourceModel,
+) (*unifi.User, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	user := &unifi.User{
-		ID:              plan.ID.ValueString(),
-		MAC:             plan.MAC.ValueString(),
-		Name:            plan.Name.ValueString(),
-		UserGroupID:     plan.UserGroupID.ValueString(),
-		Note:            plan.Note.ValueString(),
-		FixedIP:         plan.FixedIP.ValueString(),
-		NetworkID:       plan.NetworkID.ValueString(),
-		Blocked:         plan.Blocked.ValueBool(),
-		LocalDNSRecord:  plan.LocalDNSRecord.ValueString(),
+		ID:             plan.ID.ValueString(),
+		MAC:            plan.MAC.ValueString(),
+		Name:           plan.Name.ValueString(),
+		UserGroupID:    plan.UserGroupID.ValueString(),
+		Note:           plan.Note.ValueString(),
+		FixedIP:        plan.FixedIP.ValueString(),
+		NetworkID:      plan.NetworkID.ValueString(),
+		Blocked:        plan.Blocked.ValueBool(),
+		LocalDNSRecord: plan.LocalDNSRecord.ValueString(),
 	}
 
 	if !plan.DevIDOverride.IsNull() && !plan.DevIDOverride.IsUnknown() {
@@ -443,46 +487,51 @@ func (r *userFrameworkResource) planToUser(ctx context.Context, plan userFramewo
 	return user, diags
 }
 
-func (r *userFrameworkResource) userToModel(ctx context.Context, user *unifi.User, model *userFrameworkResourceModel, site string) diag.Diagnostics {
+func (r *userFrameworkResource) userToModel(
+	ctx context.Context,
+	user *unifi.User,
+	model *userFrameworkResourceModel,
+	site string,
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(user.ID)
 	model.Site = types.StringValue(site)
 	model.MAC = types.StringValue(user.MAC)
 	model.Name = types.StringValue(user.Name)
-	
+
 	if user.UserGroupID != "" {
 		model.UserGroupID = types.StringValue(user.UserGroupID)
 	} else {
 		model.UserGroupID = types.StringNull()
 	}
-	
+
 	if user.Note != "" {
 		model.Note = types.StringValue(user.Note)
 	} else {
 		model.Note = types.StringNull()
 	}
-	
+
 	if user.FixedIP != "" {
 		model.FixedIP = types.StringValue(user.FixedIP)
 	} else {
 		model.FixedIP = types.StringNull()
 	}
-	
+
 	if user.NetworkID != "" {
 		model.NetworkID = types.StringValue(user.NetworkID)
 	} else {
 		model.NetworkID = types.StringNull()
 	}
-	
+
 	model.Blocked = types.BoolValue(user.Blocked)
-	
+
 	if user.DevIdOverride != 0 {
 		model.DevIDOverride = types.Int64Value(int64(user.DevIdOverride))
 	} else {
 		model.DevIDOverride = types.Int64Null()
 	}
-	
+
 	if user.LocalDNSRecord != "" {
 		model.LocalDNSRecord = types.StringValue(user.LocalDNSRecord)
 	} else {
@@ -495,7 +544,7 @@ func (r *userFrameworkResource) userToModel(ctx context.Context, user *unifi.Use
 	} else {
 		model.Hostname = types.StringNull()
 	}
-	
+
 	if user.IP != "" {
 		model.IP = types.StringValue(user.IP)
 	} else {

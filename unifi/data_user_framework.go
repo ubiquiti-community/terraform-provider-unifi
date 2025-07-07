@@ -24,26 +24,34 @@ type userFrameworkDataSource struct {
 
 // userFrameworkDataSourceModel describes the data source data model.
 type userFrameworkDataSourceModel struct {
-	ID                types.String `tfsdk:"id"`
-	Site              types.String `tfsdk:"site"`
-	MAC               types.String `tfsdk:"mac"`
-	Name              types.String `tfsdk:"name"`
-	UserGroupID       types.String `tfsdk:"user_group_id"`
-	Note              types.String `tfsdk:"note"`
-	FixedIP           types.String `tfsdk:"fixed_ip"`
-	NetworkID         types.String `tfsdk:"network_id"`
-	Blocked           types.Bool   `tfsdk:"blocked"`
-	DevIDOverride     types.Int64  `tfsdk:"dev_id_override"`
-	Hostname          types.String `tfsdk:"hostname"`
-	IP                types.String `tfsdk:"ip"`
-	LocalDNSRecord    types.String `tfsdk:"local_dns_record"`
+	ID             types.String `tfsdk:"id"`
+	Site           types.String `tfsdk:"site"`
+	MAC            types.String `tfsdk:"mac"`
+	Name           types.String `tfsdk:"name"`
+	UserGroupID    types.String `tfsdk:"user_group_id"`
+	Note           types.String `tfsdk:"note"`
+	FixedIP        types.String `tfsdk:"fixed_ip"`
+	NetworkID      types.String `tfsdk:"network_id"`
+	Blocked        types.Bool   `tfsdk:"blocked"`
+	DevIDOverride  types.Int64  `tfsdk:"dev_id_override"`
+	Hostname       types.String `tfsdk:"hostname"`
+	IP             types.String `tfsdk:"ip"`
+	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
 }
 
-func (d *userFrameworkDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *userFrameworkDataSource) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_user"
 }
 
-func (d *userFrameworkDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *userFrameworkDataSource) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: `Retrieves properties of a user (or "client" in the UI) of the network by MAC address.`,
 
@@ -105,7 +113,11 @@ func (d *userFrameworkDataSource) Schema(ctx context.Context, req datasource.Sch
 	}
 }
 
-func (d *userFrameworkDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *userFrameworkDataSource) Configure(
+	ctx context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -114,7 +126,10 @@ func (d *userFrameworkDataSource) Configure(ctx context.Context, req datasource.
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -122,7 +137,11 @@ func (d *userFrameworkDataSource) Configure(ctx context.Context, req datasource.
 	d.client = client
 }
 
-func (d *userFrameworkDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *userFrameworkDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var config userFrameworkDataSourceModel
 
 	diags := req.Config.Get(ctx, &config)
@@ -163,23 +182,23 @@ func (d *userFrameworkDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	// Convert to model
 	var state userFrameworkDataSourceModel
-	
+
 	state.ID = types.StringValue(user.ID)
 	state.Site = types.StringValue(site)
 	state.MAC = types.StringValue(user.MAC)
-	
+
 	if user.Name != "" {
 		state.Name = types.StringValue(user.Name)
 	} else {
 		state.Name = types.StringNull()
 	}
-	
+
 	if user.UserGroupID != "" {
 		state.UserGroupID = types.StringValue(user.UserGroupID)
 	} else {
 		state.UserGroupID = types.StringNull()
 	}
-	
+
 	if user.Note != "" {
 		state.Note = types.StringValue(user.Note)
 	} else {
@@ -192,27 +211,27 @@ func (d *userFrameworkDataSource) Read(ctx context.Context, req datasource.ReadR
 	} else {
 		state.FixedIP = types.StringNull()
 	}
-	
+
 	if user.NetworkID != "" {
 		state.NetworkID = types.StringValue(user.NetworkID)
 	} else {
 		state.NetworkID = types.StringNull()
 	}
-	
+
 	state.Blocked = types.BoolValue(user.Blocked)
-	
+
 	if user.DevIdOverride != 0 {
 		state.DevIDOverride = types.Int64Value(int64(user.DevIdOverride))
 	} else {
 		state.DevIDOverride = types.Int64Null()
 	}
-	
+
 	if user.Hostname != "" {
 		state.Hostname = types.StringValue(user.Hostname)
 	} else {
 		state.Hostname = types.StringNull()
 	}
-	
+
 	if user.IP != "" {
 		state.IP = types.StringValue(user.IP)
 	} else {

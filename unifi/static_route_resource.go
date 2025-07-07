@@ -18,8 +18,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &staticRouteFrameworkResource{}
-var _ resource.ResourceWithImportState = &staticRouteFrameworkResource{}
+var (
+	_ resource.Resource                = &staticRouteFrameworkResource{}
+	_ resource.ResourceWithImportState = &staticRouteFrameworkResource{}
+)
 
 func NewStaticRouteFrameworkResource() resource.Resource {
 	return &staticRouteFrameworkResource{}
@@ -42,11 +44,19 @@ type staticRouteFrameworkResourceModel struct {
 	Interface types.String `tfsdk:"interface"`
 }
 
-func (r *staticRouteFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *staticRouteFrameworkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_static_route"
 }
 
-func (r *staticRouteFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *staticRouteFrameworkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a static route for the USG.",
 
@@ -107,7 +117,11 @@ func (r *staticRouteFrameworkResource) Schema(ctx context.Context, req resource.
 	}
 }
 
-func (r *staticRouteFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *staticRouteFrameworkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -116,7 +130,10 @@ func (r *staticRouteFrameworkResource) Configure(ctx context.Context, req resour
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -124,7 +141,11 @@ func (r *staticRouteFrameworkResource) Configure(ctx context.Context, req resour
 	r.client = client
 }
 
-func (r *staticRouteFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *staticRouteFrameworkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var data staticRouteFrameworkResourceModel
 
 	// Read Terraform plan data into the model
@@ -158,7 +179,11 @@ func (r *staticRouteFrameworkResource) Create(ctx context.Context, req resource.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *staticRouteFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *staticRouteFrameworkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data staticRouteFrameworkResourceModel
 
 	// Read Terraform prior state data into the model
@@ -193,7 +218,11 @@ func (r *staticRouteFrameworkResource) Read(ctx context.Context, req resource.Re
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *staticRouteFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *staticRouteFrameworkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state staticRouteFrameworkResourceModel
 	var plan staticRouteFrameworkResourceModel
 
@@ -238,7 +267,11 @@ func (r *staticRouteFrameworkResource) Update(ctx context.Context, req resource.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *staticRouteFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *staticRouteFrameworkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var data staticRouteFrameworkResourceModel
 
 	// Read Terraform prior state data into the model
@@ -266,26 +299,30 @@ func (r *staticRouteFrameworkResource) Delete(ctx context.Context, req resource.
 	}
 }
 
-func (r *staticRouteFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *staticRouteFrameworkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	// Import format: "site:id" or just "id" for default site
 	idParts := strings.Split(req.ID, ":")
-	
+
 	if len(idParts) == 2 {
 		// site:id format
 		site := idParts[0]
 		id := idParts[1]
-		
+
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 		return
 	}
-	
+
 	if len(idParts) == 1 {
 		// Just id, use default site
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 		return
 	}
-	
+
 	resp.Diagnostics.AddError(
 		"Invalid Import ID",
 		"Import ID must be in format 'site:id' or 'id'",
@@ -293,7 +330,11 @@ func (r *staticRouteFrameworkResource) ImportState(ctx context.Context, req reso
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *staticRouteFrameworkResource) applyPlanToState(ctx context.Context, plan *staticRouteFrameworkResourceModel, state *staticRouteFrameworkResourceModel) {
+func (r *staticRouteFrameworkResource) applyPlanToState(
+	ctx context.Context,
+	plan *staticRouteFrameworkResourceModel,
+	state *staticRouteFrameworkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
@@ -316,9 +357,12 @@ func (r *staticRouteFrameworkResource) applyPlanToState(ctx context.Context, pla
 }
 
 // modelToRouting converts the Terraform model to the API struct
-func (r *staticRouteFrameworkResource) modelToRouting(ctx context.Context, model *staticRouteFrameworkResourceModel) *unifi.Routing {
+func (r *staticRouteFrameworkResource) modelToRouting(
+	ctx context.Context,
+	model *staticRouteFrameworkResourceModel,
+) *unifi.Routing {
 	routeType := model.Type.ValueString()
-	
+
 	routing := &unifi.Routing{
 		Enabled:             true,
 		Type:                "static-route",
@@ -345,20 +389,25 @@ func (r *staticRouteFrameworkResource) modelToRouting(ctx context.Context, model
 }
 
 // routingToModel converts the API struct to the Terraform model
-func (r *staticRouteFrameworkResource) routingToModel(ctx context.Context, routing *unifi.Routing, model *staticRouteFrameworkResourceModel, site string) {
+func (r *staticRouteFrameworkResource) routingToModel(
+	ctx context.Context,
+	routing *unifi.Routing,
+	model *staticRouteFrameworkResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(routing.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(routing.Name)
 	model.Network = types.StringValue(routing.StaticRouteNetwork)
 	model.Type = types.StringValue(routing.StaticRouteType)
 	model.Distance = types.Int64Value(int64(routing.StaticRouteDistance))
-	
+
 	if routing.StaticRouteNexthop != "" {
 		model.NextHop = types.StringValue(routing.StaticRouteNexthop)
 	} else {
 		model.NextHop = types.StringNull()
 	}
-	
+
 	if routing.StaticRouteInterface != "" {
 		model.Interface = types.StringValue(routing.StaticRouteInterface)
 	} else {

@@ -16,15 +16,19 @@ func TestAccAccountFramework_basic(t *testing.T) {
 				Config: testAccAccountFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_account.test", "name", "test-account"),
-					resource.TestCheckResourceAttr("unifi_account.test", "password", "test-password"),
+					resource.TestCheckResourceAttr(
+						"unifi_account.test",
+						"password",
+						"test-password",
+					),
 					resource.TestCheckResourceAttr("unifi_account.test", "tunnel_type", "13"),
 					resource.TestCheckResourceAttr("unifi_account.test", "tunnel_medium_type", "6"),
 				),
 			},
 			{
-				ResourceName:      "unifi_account.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "unifi_account.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"password"}, // Password is not returned by API
 			},
 		},

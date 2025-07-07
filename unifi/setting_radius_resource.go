@@ -34,11 +34,19 @@ type settingRadiusResourceModel struct {
 	// Add other RADIUS settings fields as needed
 }
 
-func (r *settingRadiusResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *settingRadiusResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_setting_radius"
 }
 
-func (r *settingRadiusResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *settingRadiusResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages RADIUS settings for a unifi site.",
 
@@ -71,7 +79,11 @@ func (r *settingRadiusResource) Schema(ctx context.Context, req resource.SchemaR
 	}
 }
 
-func (r *settingRadiusResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *settingRadiusResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -80,7 +92,10 @@ func (r *settingRadiusResource) Configure(ctx context.Context, req resource.Conf
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -88,7 +103,11 @@ func (r *settingRadiusResource) Configure(ctx context.Context, req resource.Conf
 	r.client = client
 }
 
-func (r *settingRadiusResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *settingRadiusResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var data settingRadiusResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -117,7 +136,11 @@ func (r *settingRadiusResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *settingRadiusResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *settingRadiusResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data settingRadiusResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -148,7 +171,11 @@ func (r *settingRadiusResource) Read(ctx context.Context, req resource.ReadReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *settingRadiusResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *settingRadiusResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state settingRadiusResourceModel
 	var plan settingRadiusResourceModel
 
@@ -185,15 +212,27 @@ func (r *settingRadiusResource) Update(ctx context.Context, req resource.UpdateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *settingRadiusResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *settingRadiusResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	// RADIUS settings are typically reset to defaults rather than deleted
 }
 
-func (r *settingRadiusResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *settingRadiusResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), req.ID)...)
 }
 
-func (r *settingRadiusResource) applyPlanToState(ctx context.Context, plan *settingRadiusResourceModel, state *settingRadiusResourceModel) {
+func (r *settingRadiusResource) applyPlanToState(
+	ctx context.Context,
+	plan *settingRadiusResourceModel,
+	state *settingRadiusResourceModel,
+) {
 	if !plan.AccountingEnabled.IsNull() && !plan.AccountingEnabled.IsUnknown() {
 		state.AccountingEnabled = plan.AccountingEnabled
 	}
@@ -202,7 +241,10 @@ func (r *settingRadiusResource) applyPlanToState(ctx context.Context, plan *sett
 	}
 }
 
-func (r *settingRadiusResource) modelToSettingRadius(ctx context.Context, model *settingRadiusResourceModel) *unifi.SettingRadius {
+func (r *settingRadiusResource) modelToSettingRadius(
+	ctx context.Context,
+	model *settingRadiusResourceModel,
+) *unifi.SettingRadius {
 	setting := &unifi.SettingRadius{}
 
 	if !model.AccountingEnabled.IsNull() {
@@ -215,7 +257,12 @@ func (r *settingRadiusResource) modelToSettingRadius(ctx context.Context, model 
 	return setting
 }
 
-func (r *settingRadiusResource) settingRadiusToModel(ctx context.Context, setting *unifi.SettingRadius, model *settingRadiusResourceModel, site string) {
+func (r *settingRadiusResource) settingRadiusToModel(
+	ctx context.Context,
+	setting *unifi.SettingRadius,
+	model *settingRadiusResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(setting.ID)
 	model.Site = types.StringValue(site)
 	model.AccountingEnabled = types.BoolValue(setting.AccountingEnabled)

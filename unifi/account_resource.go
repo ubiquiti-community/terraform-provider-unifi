@@ -18,8 +18,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &accountFrameworkResource{}
-var _ resource.ResourceWithImportState = &accountFrameworkResource{}
+var (
+	_ resource.Resource                = &accountFrameworkResource{}
+	_ resource.ResourceWithImportState = &accountFrameworkResource{}
+)
 
 func NewAccountFrameworkResource() resource.Resource {
 	return &accountFrameworkResource{}
@@ -41,11 +43,19 @@ type accountFrameworkResourceModel struct {
 	NetworkID        types.String `tfsdk:"network_id"`
 }
 
-func (r *accountFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *accountFrameworkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_account"
 }
 
-func (r *accountFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *accountFrameworkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: `Manages a RADIUS user account
 
@@ -108,7 +118,11 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 	}
 }
 
-func (r *accountFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *accountFrameworkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -117,7 +131,10 @@ func (r *accountFrameworkResource) Configure(ctx context.Context, req resource.C
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -125,7 +142,11 @@ func (r *accountFrameworkResource) Configure(ctx context.Context, req resource.C
 	r.client = client
 }
 
-func (r *accountFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *accountFrameworkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var data accountFrameworkResourceModel
 
 	// Read Terraform plan data into the model
@@ -159,7 +180,11 @@ func (r *accountFrameworkResource) Create(ctx context.Context, req resource.Crea
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *accountFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *accountFrameworkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data accountFrameworkResourceModel
 
 	// Read Terraform prior state data into the model
@@ -194,7 +219,11 @@ func (r *accountFrameworkResource) Read(ctx context.Context, req resource.ReadRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *accountFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *accountFrameworkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state accountFrameworkResourceModel
 	var plan accountFrameworkResourceModel
 
@@ -239,7 +268,11 @@ func (r *accountFrameworkResource) Update(ctx context.Context, req resource.Upda
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *accountFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *accountFrameworkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var data accountFrameworkResourceModel
 
 	// Read Terraform prior state data into the model
@@ -264,26 +297,30 @@ func (r *accountFrameworkResource) Delete(ctx context.Context, req resource.Dele
 	}
 }
 
-func (r *accountFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *accountFrameworkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	// Import format: "site:id" or just "id" for default site
 	idParts := strings.Split(req.ID, ":")
-	
+
 	if len(idParts) == 2 {
 		// site:id format
 		site := idParts[0]
 		id := idParts[1]
-		
+
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 		return
 	}
-	
+
 	if len(idParts) == 1 {
 		// Just id, use default site
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 		return
 	}
-	
+
 	resp.Diagnostics.AddError(
 		"Invalid Import ID",
 		"Import ID must be in format 'site:id' or 'id'",
@@ -291,7 +328,11 @@ func (r *accountFrameworkResource) ImportState(ctx context.Context, req resource
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *accountFrameworkResource) applyPlanToState(ctx context.Context, plan *accountFrameworkResourceModel, state *accountFrameworkResourceModel) {
+func (r *accountFrameworkResource) applyPlanToState(
+	ctx context.Context,
+	plan *accountFrameworkResourceModel,
+	state *accountFrameworkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
@@ -311,7 +352,10 @@ func (r *accountFrameworkResource) applyPlanToState(ctx context.Context, plan *a
 }
 
 // modelToAccount converts the Terraform model to the API struct
-func (r *accountFrameworkResource) modelToAccount(ctx context.Context, model *accountFrameworkResourceModel) *unifi.Account {
+func (r *accountFrameworkResource) modelToAccount(
+	ctx context.Context,
+	model *accountFrameworkResourceModel,
+) *unifi.Account {
 	account := &unifi.Account{
 		Name:      model.Name.ValueString(),
 		XPassword: model.Password.ValueString(),
@@ -320,11 +364,11 @@ func (r *accountFrameworkResource) modelToAccount(ctx context.Context, model *ac
 	if !model.TunnelType.IsNull() {
 		account.TunnelType = int(model.TunnelType.ValueInt64())
 	}
-	
+
 	if !model.TunnelMediumType.IsNull() {
 		account.TunnelMediumType = int(model.TunnelMediumType.ValueInt64())
 	}
-	
+
 	if !model.NetworkID.IsNull() {
 		account.NetworkID = model.NetworkID.ValueString()
 	}
@@ -333,14 +377,19 @@ func (r *accountFrameworkResource) modelToAccount(ctx context.Context, model *ac
 }
 
 // accountToModel converts the API struct to the Terraform model
-func (r *accountFrameworkResource) accountToModel(ctx context.Context, account *unifi.Account, model *accountFrameworkResourceModel, site string) {
+func (r *accountFrameworkResource) accountToModel(
+	ctx context.Context,
+	account *unifi.Account,
+	model *accountFrameworkResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(account.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(account.Name)
 	model.Password = types.StringValue(account.XPassword)
 	model.TunnelType = types.Int64Value(int64(account.TunnelType))
 	model.TunnelMediumType = types.Int64Value(int64(account.TunnelMediumType))
-	
+
 	if account.NetworkID != "" {
 		model.NetworkID = types.StringValue(account.NetworkID)
 	} else {

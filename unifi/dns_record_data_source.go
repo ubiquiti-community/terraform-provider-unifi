@@ -10,9 +10,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var (
-	_ datasource.DataSource = &dnsRecordDataSource{}
-)
+var _ datasource.DataSource = &dnsRecordDataSource{}
 
 func NewDNSRecordDataSource() datasource.DataSource {
 	return &dnsRecordDataSource{}
@@ -23,20 +21,28 @@ type dnsRecordDataSource struct {
 }
 
 type dnsRecordDataSourceModel struct {
-	ID   types.String `tfsdk:"id"`
-	Site types.String `tfsdk:"site"`
-	Name types.String `tfsdk:"name"`
-	Type types.String `tfsdk:"type"`
-	Value types.String `tfsdk:"value"`
-	TTL  types.Int64  `tfsdk:"ttl"`
-	Enabled types.Bool `tfsdk:"enabled"`
+	ID      types.String `tfsdk:"id"`
+	Site    types.String `tfsdk:"site"`
+	Name    types.String `tfsdk:"name"`
+	Type    types.String `tfsdk:"type"`
+	Value   types.String `tfsdk:"value"`
+	TTL     types.Int64  `tfsdk:"ttl"`
+	Enabled types.Bool   `tfsdk:"enabled"`
 }
 
-func (d *dnsRecordDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *dnsRecordDataSource) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_dns_record"
 }
 
-func (d *dnsRecordDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *dnsRecordDataSource) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Data source for DNS records.",
 
@@ -74,7 +80,11 @@ func (d *dnsRecordDataSource) Schema(ctx context.Context, req datasource.SchemaR
 	}
 }
 
-func (d *dnsRecordDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *dnsRecordDataSource) Configure(
+	ctx context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -83,7 +93,10 @@ func (d *dnsRecordDataSource) Configure(ctx context.Context, req datasource.Conf
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -91,7 +104,11 @@ func (d *dnsRecordDataSource) Configure(ctx context.Context, req datasource.Conf
 	d.client = client
 }
 
-func (d *dnsRecordDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *dnsRecordDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var data dnsRecordDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)

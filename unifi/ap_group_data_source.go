@@ -10,9 +10,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var (
-	_ datasource.DataSource = &apGroupDataSource{}
-)
+var _ datasource.DataSource = &apGroupDataSource{}
 
 func NewAPGroupDataSource() datasource.DataSource {
 	return &apGroupDataSource{}
@@ -28,11 +26,19 @@ type apGroupDataSourceModel struct {
 	Name types.String `tfsdk:"name"`
 }
 
-func (d *apGroupDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *apGroupDataSource) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_ap_group"
 }
 
-func (d *apGroupDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *apGroupDataSource) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Data source for access point groups.",
 
@@ -54,7 +60,11 @@ func (d *apGroupDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 	}
 }
 
-func (d *apGroupDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *apGroupDataSource) Configure(
+	ctx context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -63,7 +73,10 @@ func (d *apGroupDataSource) Configure(ctx context.Context, req datasource.Config
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -71,7 +84,11 @@ func (d *apGroupDataSource) Configure(ctx context.Context, req datasource.Config
 	d.client = client
 }
 
-func (d *apGroupDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *apGroupDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var data apGroupDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)

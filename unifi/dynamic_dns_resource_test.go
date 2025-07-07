@@ -15,7 +15,11 @@ func TestAccDynamicDNS_dyndns(t *testing.T) {
 				Config: testAccDynamicDNSConfig,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_dynamic_dns.test", "service", "dyndns"),
-					resource.TestCheckResourceAttr("unifi_dynamic_dns.test", "host_name", "test.example.com"),
+					resource.TestCheckResourceAttr(
+						"unifi_dynamic_dns.test",
+						"host_name",
+						"test.example.com",
+					),
 					resource.TestCheckResourceAttr("unifi_dynamic_dns.test", "interface", "wan"),
 				),
 			},
@@ -23,7 +27,9 @@ func TestAccDynamicDNS_dyndns(t *testing.T) {
 				ResourceName:      "unifi_dynamic_dns.test",
 				ImportState:       true,
 				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{"password"}, // Password is sensitive and not returned
+				ImportStateVerifyIgnore: []string{
+					"password",
+				}, // Password is sensitive and not returned
 			},
 		},
 	})

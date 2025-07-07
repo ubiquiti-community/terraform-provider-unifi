@@ -16,8 +16,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &siteFrameworkResource{}
-var _ resource.ResourceWithImportState = &siteFrameworkResource{}
+var (
+	_ resource.Resource                = &siteFrameworkResource{}
+	_ resource.ResourceWithImportState = &siteFrameworkResource{}
+)
 
 func NewSiteFrameworkResource() resource.Resource {
 	return &siteFrameworkResource{}
@@ -35,11 +37,19 @@ type siteFrameworkResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
-func (r *siteFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *siteFrameworkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_site"
 }
 
-func (r *siteFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *siteFrameworkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages Unifi sites",
 
@@ -66,7 +76,11 @@ func (r *siteFrameworkResource) Schema(ctx context.Context, req resource.SchemaR
 	}
 }
 
-func (r *siteFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *siteFrameworkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -75,7 +89,10 @@ func (r *siteFrameworkResource) Configure(ctx context.Context, req resource.Conf
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -83,7 +100,11 @@ func (r *siteFrameworkResource) Configure(ctx context.Context, req resource.Conf
 	r.client = client
 }
 
-func (r *siteFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *siteFrameworkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan siteFrameworkResourceModel
 
 	diags := req.Plan.Get(ctx, &plan)
@@ -125,7 +146,11 @@ func (r *siteFrameworkResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *siteFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *siteFrameworkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state siteFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -161,7 +186,11 @@ func (r *siteFrameworkResource) Read(ctx context.Context, req resource.ReadReque
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *siteFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *siteFrameworkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state siteFrameworkResourceModel
 	var plan siteFrameworkResourceModel
 
@@ -217,7 +246,11 @@ func (r *siteFrameworkResource) Update(ctx context.Context, req resource.UpdateR
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *siteFrameworkResource) applyPlanToState(ctx context.Context, plan *siteFrameworkResourceModel, state *siteFrameworkResourceModel) {
+func (r *siteFrameworkResource) applyPlanToState(
+	ctx context.Context,
+	plan *siteFrameworkResourceModel,
+	state *siteFrameworkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	// Note: Name cannot be changed after creation, so we don't apply it from plan
 	if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
@@ -225,7 +258,11 @@ func (r *siteFrameworkResource) applyPlanToState(ctx context.Context, plan *site
 	}
 }
 
-func (r *siteFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *siteFrameworkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state siteFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -246,7 +283,11 @@ func (r *siteFrameworkResource) Delete(ctx context.Context, req resource.DeleteR
 	}
 }
 
-func (r *siteFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *siteFrameworkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	id := req.ID
 
 	// First try to import by ID
@@ -291,7 +332,11 @@ func (r *siteFrameworkResource) ImportState(ctx context.Context, req resource.Im
 
 // Helper functions for conversion and merging
 
-func (r *siteFrameworkResource) siteToModel(ctx context.Context, site *unifi.Site, model *siteFrameworkResourceModel) diag.Diagnostics {
+func (r *siteFrameworkResource) siteToModel(
+	ctx context.Context,
+	site *unifi.Site,
+	model *siteFrameworkResourceModel,
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(site.ID)

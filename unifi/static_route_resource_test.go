@@ -16,10 +16,22 @@ func TestAccStaticRouteFramework_basic(t *testing.T) {
 				Config: testAccStaticRouteFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", "test-route"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", "192.168.100.0/24"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "nexthop-route"),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						"192.168.100.0/24",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"type",
+						"nexthop-route",
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", "1"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "next_hop", "192.168.1.1"),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"next_hop",
+						"192.168.1.1",
+					),
 				),
 			},
 			{

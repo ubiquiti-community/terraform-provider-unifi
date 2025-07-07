@@ -43,13 +43,21 @@ func TestAccSiteFramework_update(t *testing.T) {
 			{
 				Config: testAccSiteFrameworkConfig_update_before(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_site.test", "description", "tfacc-test-before"),
+					resource.TestCheckResourceAttr(
+						"unifi_site.test",
+						"description",
+						"tfacc-test-before",
+					),
 				),
 			},
 			{
 				Config: testAccSiteFrameworkConfig_update_after(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_site.test", "description", "tfacc-test-after"),
+					resource.TestCheckResourceAttr(
+						"unifi_site.test",
+						"description",
+						"tfacc-test-after",
+					),
 				),
 			},
 		},

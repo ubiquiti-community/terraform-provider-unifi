@@ -45,11 +45,19 @@ type portForwardResourceModel struct {
 	SrcIP                types.String `tfsdk:"src_ip"`
 }
 
-func (r *portForwardResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *portForwardResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_port_forward"
 }
 
-func (r *portForwardResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *portForwardResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a port forwarding rule on the gateway.",
 
@@ -128,7 +136,11 @@ func (r *portForwardResource) Schema(ctx context.Context, req resource.SchemaReq
 	}
 }
 
-func (r *portForwardResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *portForwardResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -137,7 +149,10 @@ func (r *portForwardResource) Configure(ctx context.Context, req resource.Config
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -145,7 +160,11 @@ func (r *portForwardResource) Configure(ctx context.Context, req resource.Config
 	r.client = client
 }
 
-func (r *portForwardResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *portForwardResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var data portForwardResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -174,7 +193,11 @@ func (r *portForwardResource) Create(ctx context.Context, req resource.CreateReq
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *portForwardResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *portForwardResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data portForwardResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -205,7 +228,11 @@ func (r *portForwardResource) Read(ctx context.Context, req resource.ReadRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *portForwardResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *portForwardResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state portForwardResourceModel
 	var plan portForwardResourceModel
 
@@ -243,7 +270,11 @@ func (r *portForwardResource) Update(ctx context.Context, req resource.UpdateReq
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *portForwardResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *portForwardResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var data portForwardResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -269,7 +300,11 @@ func (r *portForwardResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 }
 
-func (r *portForwardResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *portForwardResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	idParts := strings.Split(req.ID, ":")
 
 	if len(idParts) == 2 {
@@ -292,7 +327,11 @@ func (r *portForwardResource) ImportState(ctx context.Context, req resource.Impo
 	)
 }
 
-func (r *portForwardResource) applyPlanToState(ctx context.Context, plan *portForwardResourceModel, state *portForwardResourceModel) {
+func (r *portForwardResource) applyPlanToState(
+	ctx context.Context,
+	plan *portForwardResourceModel,
+	state *portForwardResourceModel,
+) {
 	if !plan.DstPort.IsNull() && !plan.DstPort.IsUnknown() {
 		state.DstPort = plan.DstPort
 	}
@@ -322,7 +361,10 @@ func (r *portForwardResource) applyPlanToState(ctx context.Context, plan *portFo
 	}
 }
 
-func (r *portForwardResource) modelToPortForward(ctx context.Context, model *portForwardResourceModel) *unifi.PortForward {
+func (r *portForwardResource) modelToPortForward(
+	ctx context.Context,
+	model *portForwardResourceModel,
+) *unifi.PortForward {
 	portForward := &unifi.PortForward{
 		Enabled: model.Enabled.ValueBool(),
 		Log:     model.Log.ValueBool(),
@@ -349,7 +391,12 @@ func (r *portForwardResource) modelToPortForward(ctx context.Context, model *por
 	return portForward
 }
 
-func (r *portForwardResource) portForwardToModel(ctx context.Context, portForward *unifi.PortForward, model *portForwardResourceModel, site string) {
+func (r *portForwardResource) portForwardToModel(
+	ctx context.Context,
+	portForward *unifi.PortForward,
+	model *portForwardResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(portForward.ID)
 	model.Site = types.StringValue(site)
 	model.Enabled = types.BoolValue(portForward.Enabled)
