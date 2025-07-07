@@ -41,14 +41,14 @@ type deviceResource struct {
 
 // deviceResourceModel describes the resource data model.
 type deviceResourceModel struct {
-	ID               types.String `tfsdk:"id"`
-	Site             types.String `tfsdk:"site"`
-	MAC              types.String `tfsdk:"mac"`
-	Name             types.String `tfsdk:"name"`
-	Disabled         types.Bool   `tfsdk:"disabled"`
-	PortOverride     types.Set    `tfsdk:"port_override"`
-	AllowAdoption    types.Bool   `tfsdk:"allow_adoption"`
-	ForgetOnDestroy  types.Bool   `tfsdk:"forget_on_destroy"`
+	ID              types.String `tfsdk:"id"`
+	Site            types.String `tfsdk:"site"`
+	MAC             types.String `tfsdk:"mac"`
+	Name            types.String `tfsdk:"name"`
+	Disabled        types.Bool   `tfsdk:"disabled"`
+	PortOverride    types.Set    `tfsdk:"port_override"`
+	AllowAdoption   types.Bool   `tfsdk:"allow_adoption"`
+	ForgetOnDestroy types.Bool   `tfsdk:"forget_on_destroy"`
 }
 
 // portOverrideModel describes the port override data model.
@@ -63,11 +63,19 @@ type portOverrideModel struct {
 
 var macAddressRegexp = regexp.MustCompile(`^([a-fA-F0-9]{2}[:-]){5}[a-fA-F0-9]{2}$`)
 
-func (r *deviceResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *deviceResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_device"
 }
 
-func (r *deviceResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *deviceResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: "`unifi_device` manages a device of the network.\n\n" +
 			"Devices are adopted by the controller, so it is not possible for this resource to be created through " +
@@ -176,7 +184,11 @@ func (r *deviceResource) Schema(ctx context.Context, req resource.SchemaRequest,
 	}
 }
 
-func (r *deviceResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *deviceResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -185,7 +197,10 @@ func (r *deviceResource) Configure(ctx context.Context, req resource.ConfigureRe
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -193,7 +208,11 @@ func (r *deviceResource) Configure(ctx context.Context, req resource.ConfigureRe
 	r.client = client
 }
 
-func (r *deviceResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *deviceResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan deviceResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -288,7 +307,11 @@ func (r *deviceResource) Create(ctx context.Context, req resource.CreateRequest,
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *deviceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *deviceResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state deviceResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -325,7 +348,11 @@ func (r *deviceResource) Read(ctx context.Context, req resource.ReadRequest, res
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *deviceResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *deviceResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var plan deviceResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -381,7 +408,11 @@ func (r *deviceResource) Update(ctx context.Context, req resource.UpdateRequest,
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *deviceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *deviceResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state deviceResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -424,7 +455,11 @@ func (r *deviceResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 }
 
-func (r *deviceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *deviceResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	id := req.ID
 	site := r.client.Site
 
@@ -455,7 +490,10 @@ func (r *deviceResource) ImportState(ctx context.Context, req resource.ImportSta
 
 // Helper methods
 
-func (r *deviceResource) updateDevice(ctx context.Context, model *deviceResourceModel) diag.Diagnostics {
+func (r *deviceResource) updateDevice(
+	ctx context.Context,
+	model *deviceResourceModel,
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	site := model.Site.ValueString()
@@ -503,7 +541,13 @@ func (r *deviceResource) updateDevice(ctx context.Context, model *deviceResource
 	return diags
 }
 
-func (r *deviceResource) setResourceData(ctx context.Context, diags *diag.Diagnostics, device *unifi.Device, model *deviceResourceModel, site string) {
+func (r *deviceResource) setResourceData(
+	ctx context.Context,
+	diags *diag.Diagnostics,
+	device *unifi.Device,
+	model *deviceResourceModel,
+	site string,
+) {
 	model.Site = types.StringValue(site)
 
 	if device.MAC == "" {
@@ -532,7 +576,10 @@ func (r *deviceResource) setResourceData(ctx context.Context, diags *diag.Diagno
 	}
 }
 
-func (r *deviceResource) modelToAPIDevice(ctx context.Context, model *deviceResourceModel) (*unifi.Device, diag.Diagnostics) {
+func (r *deviceResource) modelToAPIDevice(
+	ctx context.Context,
+	model *deviceResourceModel,
+) (*unifi.Device, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	device := &unifi.Device{
@@ -552,7 +599,10 @@ func (r *deviceResource) modelToAPIDevice(ctx context.Context, model *deviceReso
 	return device, diags
 }
 
-func (r *deviceResource) portOverridesToFramework(ctx context.Context, pos []unifi.DevicePortOverrides) (types.Set, diag.Diagnostics) {
+func (r *deviceResource) portOverridesToFramework(
+	ctx context.Context,
+	pos []unifi.DevicePortOverrides,
+) (types.Set, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if len(pos) == 0 {
@@ -632,7 +682,10 @@ func (r *deviceResource) portOverridesToFramework(ctx context.Context, pos []uni
 	return setValue, diags
 }
 
-func (r *deviceResource) frameworkToPortOverrides(ctx context.Context, portOverrideSet types.Set) ([]unifi.DevicePortOverrides, diag.Diagnostics) {
+func (r *deviceResource) frameworkToPortOverrides(
+	ctx context.Context,
+	portOverrideSet types.Set,
+) ([]unifi.DevicePortOverrides, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	elements := portOverrideSet.Elements()

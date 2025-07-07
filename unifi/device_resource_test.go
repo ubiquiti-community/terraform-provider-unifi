@@ -19,9 +19,9 @@ func TestAccDeviceFramework_basic(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_device.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "unifi_device.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"allow_adoption", "forget_on_destroy"},
 			},
 		},

@@ -15,8 +15,16 @@ func TestAccNetworkFrameworkDataSource_basic(t *testing.T) {
 				Config: testAccNetworkFrameworkDataSourceConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("data.unifi_network.test", "id"),
-					resource.TestCheckResourceAttr("data.unifi_network.test", "name", "test-network"),
-					resource.TestCheckResourceAttr("data.unifi_network.test", "purpose", "corporate"),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"name",
+						"test-network",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"purpose",
+						"corporate",
+					),
 				),
 			},
 		},

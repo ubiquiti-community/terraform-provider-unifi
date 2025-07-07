@@ -75,11 +75,19 @@ type portProfileResourceModel struct {
 	VoiceNetworkConfID         types.String `tfsdk:"voice_networkconf_id"`
 }
 
-func (r *portProfileResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *portProfileResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_port_profile"
 }
 
-func (r *portProfileResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *portProfileResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: "`unifi_port_profile` manages a port profile for use on network switches.",
 
@@ -112,7 +120,13 @@ func (r *portProfileResource) Schema(ctx context.Context, req resource.SchemaReq
 				Computed:    true,
 				Default:     stringdefault.StaticString("force_authorized"),
 				Validators: []validator.String{
-					stringvalidator.OneOf("auto", "force_authorized", "force_unauthorized", "mac_based", "multi_host"),
+					stringvalidator.OneOf(
+						"auto",
+						"force_authorized",
+						"force_unauthorized",
+						"mac_based",
+						"multi_host",
+					),
 				},
 			},
 			"dot1x_idle_timeout": schema.Int64Attribute{
@@ -235,7 +249,19 @@ func (r *portProfileResource) Schema(ctx context.Context, req resource.SchemaReq
 				Description: "The link speed to set for the port profile. Can be one of `10`, `100`, `1000`, `2500`, `5000`, `10000`, `20000`, `25000`, `40000`, `50000` or `100000`",
 				Optional:    true,
 				Validators: []validator.Int64{
-					int64validator.OneOf(10, 100, 1000, 2500, 5000, 10000, 20000, 25000, 40000, 50000, 100000),
+					int64validator.OneOf(
+						10,
+						100,
+						1000,
+						2500,
+						5000,
+						10000,
+						20000,
+						25000,
+						40000,
+						50000,
+						100000,
+					),
 				},
 			},
 			"stormctrl_bcast_enabled": schema.BoolAttribute{
@@ -328,7 +354,11 @@ func (r *portProfileResource) Schema(ctx context.Context, req resource.SchemaReq
 	}
 }
 
-func (r *portProfileResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *portProfileResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -337,7 +367,10 @@ func (r *portProfileResource) Configure(ctx context.Context, req resource.Config
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -345,7 +378,11 @@ func (r *portProfileResource) Configure(ctx context.Context, req resource.Config
 	r.client = client
 }
 
-func (r *portProfileResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *portProfileResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan portProfileResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -383,7 +420,11 @@ func (r *portProfileResource) Create(ctx context.Context, req resource.CreateReq
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *portProfileResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *portProfileResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state portProfileResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -417,7 +458,11 @@ func (r *portProfileResource) Read(ctx context.Context, req resource.ReadRequest
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *portProfileResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *portProfileResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var plan portProfileResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -481,7 +526,11 @@ func (r *portProfileResource) Update(ctx context.Context, req resource.UpdateReq
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *portProfileResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *portProfileResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state portProfileResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -508,7 +557,11 @@ func (r *portProfileResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 }
 
-func (r *portProfileResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *portProfileResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	idParts, diags := ParseImportID(req.ID, 1, 2)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -525,12 +578,15 @@ func (r *portProfileResource) ImportState(ctx context.Context, req resource.Impo
 
 // Helper methods
 
-func (r *portProfileResource) modelToAPIPortProfile(ctx context.Context, model *portProfileResourceModel) (*unifi.PortProfile, diag.Diagnostics) {
+func (r *portProfileResource) modelToAPIPortProfile(
+	ctx context.Context,
+	model *portProfileResourceModel,
+) (*unifi.PortProfile, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	portProfile := &unifi.PortProfile{
-		Name:      model.Name.ValueString(),
-		OpMode:    model.OpMode.ValueString(),
+		Name:   model.Name.ValueString(),
+		OpMode: model.OpMode.ValueString(),
 	}
 
 	if !model.Autoneg.IsNull() && !model.Autoneg.IsUnknown() {
@@ -596,7 +652,12 @@ func (r *portProfileResource) modelToAPIPortProfile(ctx context.Context, model *
 	return portProfile, diags
 }
 
-func (r *portProfileResource) setResourceData(ctx context.Context, portProfile *unifi.PortProfile, model *portProfileResourceModel, site string) {
+func (r *portProfileResource) setResourceData(
+	ctx context.Context,
+	portProfile *unifi.PortProfile,
+	model *portProfileResourceModel,
+	site string,
+) {
 	model.Site = types.StringValue(site)
 
 	if portProfile.Name == "" {
@@ -684,7 +745,11 @@ func (r *portProfileResource) setResourceData(ctx context.Context, portProfile *
 	model.STPPortMode = types.BoolNull()
 }
 
-func (r *portProfileResource) applyPlanToState(ctx context.Context, plan *portProfileResourceModel, state *portProfileResourceModel) {
+func (r *portProfileResource) applyPlanToState(
+	ctx context.Context,
+	plan *portProfileResourceModel,
+	state *portProfileResourceModel,
+) {
 	// Apply all plan values that are not null/unknown to the state
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name

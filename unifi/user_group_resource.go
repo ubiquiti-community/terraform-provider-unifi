@@ -19,8 +19,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &userGroupFrameworkResource{}
-var _ resource.ResourceWithImportState = &userGroupFrameworkResource{}
+var (
+	_ resource.Resource                = &userGroupFrameworkResource{}
+	_ resource.ResourceWithImportState = &userGroupFrameworkResource{}
+)
 
 func NewUserGroupFrameworkResource() resource.Resource {
 	return &userGroupFrameworkResource{}
@@ -33,18 +35,26 @@ type userGroupFrameworkResource struct {
 
 // userGroupFrameworkResourceModel describes the resource data model.
 type userGroupFrameworkResourceModel struct {
-	ID              types.String `tfsdk:"id"`
-	Site            types.String `tfsdk:"site"`
-	Name            types.String `tfsdk:"name"`
-	QOSRateMaxDown  types.Int64  `tfsdk:"qos_rate_max_down"`
-	QOSRateMaxUp    types.Int64  `tfsdk:"qos_rate_max_up"`
+	ID             types.String `tfsdk:"id"`
+	Site           types.String `tfsdk:"site"`
+	Name           types.String `tfsdk:"name"`
+	QOSRateMaxDown types.Int64  `tfsdk:"qos_rate_max_down"`
+	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
-func (r *userGroupFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *userGroupFrameworkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_user_group"
 }
 
-func (r *userGroupFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *userGroupFrameworkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: `Manages a user group (called "client group" in the UI), which can be used to limit bandwidth for groups of users.`,
 
@@ -75,7 +85,50 @@ func (r *userGroupFrameworkResource) Schema(ctx context.Context, req resource.Sc
 				Computed:            true,
 				Default:             int64default.StaticInt64(-1),
 				Validators: []validator.Int64{
-					int64validator.OneOf(-1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 7500, 10000, 15000, 20000, 25000, 30000, 40000, 50000, 75000, 100000),
+					int64validator.OneOf(
+						-1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						15,
+						20,
+						25,
+						30,
+						40,
+						50,
+						75,
+						100,
+						150,
+						200,
+						250,
+						300,
+						400,
+						500,
+						750,
+						1000,
+						1500,
+						2000,
+						2500,
+						3000,
+						4000,
+						5000,
+						7500,
+						10000,
+						15000,
+						20000,
+						25000,
+						30000,
+						40000,
+						50000,
+						75000,
+						100000,
+					),
 				},
 			},
 			"qos_rate_max_up": schema.Int64Attribute{
@@ -84,14 +137,61 @@ func (r *userGroupFrameworkResource) Schema(ctx context.Context, req resource.Sc
 				Computed:            true,
 				Default:             int64default.StaticInt64(-1),
 				Validators: []validator.Int64{
-					int64validator.OneOf(-1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 7500, 10000, 15000, 20000, 25000, 30000, 40000, 50000, 75000, 100000),
+					int64validator.OneOf(
+						-1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						15,
+						20,
+						25,
+						30,
+						40,
+						50,
+						75,
+						100,
+						150,
+						200,
+						250,
+						300,
+						400,
+						500,
+						750,
+						1000,
+						1500,
+						2000,
+						2500,
+						3000,
+						4000,
+						5000,
+						7500,
+						10000,
+						15000,
+						20000,
+						25000,
+						30000,
+						40000,
+						50000,
+						75000,
+						100000,
+					),
 				},
 			},
 		},
 	}
 }
 
-func (r *userGroupFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *userGroupFrameworkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -100,7 +200,10 @@ func (r *userGroupFrameworkResource) Configure(ctx context.Context, req resource
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -108,7 +211,11 @@ func (r *userGroupFrameworkResource) Configure(ctx context.Context, req resource
 	r.client = client
 }
 
-func (r *userGroupFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *userGroupFrameworkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan userGroupFrameworkResourceModel
 
 	diags := req.Plan.Get(ctx, &plan)
@@ -150,7 +257,11 @@ func (r *userGroupFrameworkResource) Create(ctx context.Context, req resource.Cr
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userGroupFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *userGroupFrameworkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state userGroupFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -191,7 +302,11 @@ func (r *userGroupFrameworkResource) Read(ctx context.Context, req resource.Read
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userGroupFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *userGroupFrameworkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state userGroupFrameworkResourceModel
 	var plan userGroupFrameworkResourceModel
 
@@ -247,7 +362,11 @@ func (r *userGroupFrameworkResource) Update(ctx context.Context, req resource.Up
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *userGroupFrameworkResource) applyPlanToState(ctx context.Context, plan *userGroupFrameworkResourceModel, state *userGroupFrameworkResourceModel) {
+func (r *userGroupFrameworkResource) applyPlanToState(
+	ctx context.Context,
+	plan *userGroupFrameworkResourceModel,
+	state *userGroupFrameworkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
@@ -260,7 +379,11 @@ func (r *userGroupFrameworkResource) applyPlanToState(ctx context.Context, plan 
 	}
 }
 
-func (r *userGroupFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *userGroupFrameworkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state userGroupFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -289,7 +412,11 @@ func (r *userGroupFrameworkResource) Delete(ctx context.Context, req resource.De
 	}
 }
 
-func (r *userGroupFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *userGroupFrameworkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	idParts := strings.Split(req.ID, ":")
 	if len(idParts) == 2 {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
@@ -301,7 +428,10 @@ func (r *userGroupFrameworkResource) ImportState(ctx context.Context, req resour
 
 // Helper functions for conversion and merging
 
-func (r *userGroupFrameworkResource) planToUserGroup(ctx context.Context, plan userGroupFrameworkResourceModel) (*unifi.UserGroup, diag.Diagnostics) {
+func (r *userGroupFrameworkResource) planToUserGroup(
+	ctx context.Context,
+	plan userGroupFrameworkResourceModel,
+) (*unifi.UserGroup, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	userGroup := &unifi.UserGroup{
@@ -314,7 +444,12 @@ func (r *userGroupFrameworkResource) planToUserGroup(ctx context.Context, plan u
 	return userGroup, diags
 }
 
-func (r *userGroupFrameworkResource) userGroupToModel(ctx context.Context, userGroup *unifi.UserGroup, model *userGroupFrameworkResourceModel, site string) diag.Diagnostics {
+func (r *userGroupFrameworkResource) userGroupToModel(
+	ctx context.Context,
+	userGroup *unifi.UserGroup,
+	model *userGroupFrameworkResourceModel,
+	site string,
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(userGroup.ID)
@@ -326,7 +461,10 @@ func (r *userGroupFrameworkResource) userGroupToModel(ctx context.Context, userG
 	return diags
 }
 
-func (r *userGroupFrameworkResource) mergeUserGroup(existing *unifi.UserGroup, planned *unifi.UserGroup) *unifi.UserGroup {
+func (r *userGroupFrameworkResource) mergeUserGroup(
+	existing *unifi.UserGroup,
+	planned *unifi.UserGroup,
+) *unifi.UserGroup {
 	// Start with the existing user group to preserve all UniFi internal fields
 	merged := *existing
 

@@ -19,8 +19,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &dnsRecordFrameworkResource{}
-var _ resource.ResourceWithImportState = &dnsRecordFrameworkResource{}
+var (
+	_ resource.Resource                = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithImportState = &dnsRecordFrameworkResource{}
+)
 
 func NewDNSRecordFrameworkResource() resource.Resource {
 	return &dnsRecordFrameworkResource{}
@@ -45,11 +47,19 @@ type dnsRecordFrameworkResourceModel struct {
 	Weight     types.Int64  `tfsdk:"weight"`
 }
 
-func (r *dnsRecordFrameworkResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *dnsRecordFrameworkResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_dns_record"
 }
 
-func (r *dnsRecordFrameworkResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *dnsRecordFrameworkResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages DNS record settings for different providers.",
 
@@ -126,7 +136,11 @@ func (r *dnsRecordFrameworkResource) Schema(ctx context.Context, req resource.Sc
 	}
 }
 
-func (r *dnsRecordFrameworkResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *dnsRecordFrameworkResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -135,7 +149,10 @@ func (r *dnsRecordFrameworkResource) Configure(ctx context.Context, req resource
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -143,7 +160,11 @@ func (r *dnsRecordFrameworkResource) Configure(ctx context.Context, req resource
 	r.client = client
 }
 
-func (r *dnsRecordFrameworkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *dnsRecordFrameworkResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var data dnsRecordFrameworkResourceModel
 
 	// Read Terraform plan data into the model
@@ -177,7 +198,11 @@ func (r *dnsRecordFrameworkResource) Create(ctx context.Context, req resource.Cr
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *dnsRecordFrameworkResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *dnsRecordFrameworkResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data dnsRecordFrameworkResourceModel
 
 	// Read Terraform prior state data into the model
@@ -212,7 +237,11 @@ func (r *dnsRecordFrameworkResource) Read(ctx context.Context, req resource.Read
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *dnsRecordFrameworkResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *dnsRecordFrameworkResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state dnsRecordFrameworkResourceModel
 	var plan dnsRecordFrameworkResourceModel
 
@@ -257,7 +286,11 @@ func (r *dnsRecordFrameworkResource) Update(ctx context.Context, req resource.Up
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *dnsRecordFrameworkResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *dnsRecordFrameworkResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var data dnsRecordFrameworkResourceModel
 
 	// Read Terraform prior state data into the model
@@ -282,26 +315,30 @@ func (r *dnsRecordFrameworkResource) Delete(ctx context.Context, req resource.De
 	}
 }
 
-func (r *dnsRecordFrameworkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *dnsRecordFrameworkResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	// Import format: "site:id" or just "id" for default site
 	idParts := strings.Split(req.ID, ":")
-	
+
 	if len(idParts) == 2 {
 		// site:id format
 		site := idParts[0]
 		id := idParts[1]
-		
+
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 		return
 	}
-	
+
 	if len(idParts) == 1 {
 		// Just id, use default site
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 		return
 	}
-	
+
 	resp.Diagnostics.AddError(
 		"Invalid Import ID",
 		"Import ID must be in format 'site:id' or 'id'",
@@ -309,7 +346,11 @@ func (r *dnsRecordFrameworkResource) ImportState(ctx context.Context, req resour
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
-func (r *dnsRecordFrameworkResource) applyPlanToState(ctx context.Context, plan *dnsRecordFrameworkResourceModel, state *dnsRecordFrameworkResourceModel) {
+func (r *dnsRecordFrameworkResource) applyPlanToState(
+	ctx context.Context,
+	plan *dnsRecordFrameworkResourceModel,
+	state *dnsRecordFrameworkResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
@@ -338,7 +379,10 @@ func (r *dnsRecordFrameworkResource) applyPlanToState(ctx context.Context, plan 
 }
 
 // modelToDNSRecord converts the Terraform model to the API struct
-func (r *dnsRecordFrameworkResource) modelToDNSRecord(ctx context.Context, model *dnsRecordFrameworkResourceModel) *unifi.DNSRecord {
+func (r *dnsRecordFrameworkResource) modelToDNSRecord(
+	ctx context.Context,
+	model *dnsRecordFrameworkResourceModel,
+) *unifi.DNSRecord {
 	dnsRecord := &unifi.DNSRecord{
 		Key:   model.Name.ValueString(),
 		Value: model.Value.ValueString(),
@@ -347,23 +391,23 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(ctx context.Context, model
 	if !model.Enabled.IsNull() {
 		dnsRecord.Enabled = model.Enabled.ValueBool()
 	}
-	
+
 	if !model.Port.IsNull() {
 		dnsRecord.Port = int(model.Port.ValueInt64())
 	}
-	
+
 	if !model.Priority.IsNull() {
 		dnsRecord.Priority = int(model.Priority.ValueInt64())
 	}
-	
+
 	if !model.RecordType.IsNull() {
 		dnsRecord.RecordType = model.RecordType.ValueString()
 	}
-	
+
 	if !model.TTL.IsNull() {
 		dnsRecord.Ttl = int(model.TTL.ValueInt64())
 	}
-	
+
 	if !model.Weight.IsNull() {
 		dnsRecord.Weight = int(model.Weight.ValueInt64())
 	}
@@ -372,33 +416,38 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(ctx context.Context, model
 }
 
 // dnsRecordToModel converts the API struct to the Terraform model
-func (r *dnsRecordFrameworkResource) dnsRecordToModel(ctx context.Context, dnsRecord *unifi.DNSRecord, model *dnsRecordFrameworkResourceModel, site string) {
+func (r *dnsRecordFrameworkResource) dnsRecordToModel(
+	ctx context.Context,
+	dnsRecord *unifi.DNSRecord,
+	model *dnsRecordFrameworkResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(dnsRecord.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(dnsRecord.Key)
 	model.Value = types.StringValue(dnsRecord.Value)
-	
+
 	model.Enabled = types.BoolValue(dnsRecord.Enabled)
 	model.Port = types.Int64Value(int64(dnsRecord.Port))
-	
+
 	if dnsRecord.Priority != 0 {
 		model.Priority = types.Int64Value(int64(dnsRecord.Priority))
 	} else {
 		model.Priority = types.Int64Null()
 	}
-	
+
 	if dnsRecord.RecordType != "" {
 		model.RecordType = types.StringValue(dnsRecord.RecordType)
 	} else {
 		model.RecordType = types.StringNull()
 	}
-	
+
 	if dnsRecord.Ttl != 0 {
 		model.TTL = types.Int64Value(int64(dnsRecord.Ttl))
 	} else {
 		model.TTL = types.Int64Null()
 	}
-	
+
 	if dnsRecord.Weight != 0 {
 		model.Weight = types.Int64Value(int64(dnsRecord.Weight))
 	} else {

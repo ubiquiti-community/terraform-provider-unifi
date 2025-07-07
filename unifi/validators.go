@@ -24,7 +24,11 @@ func (v ipv4Validator) MarkdownDescription(ctx context.Context) string {
 	return "value must be a valid IPv4 address"
 }
 
-func (v ipv4Validator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v ipv4Validator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
 	if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
 		return
 	}
@@ -55,7 +59,11 @@ func (v ipv6Validator) MarkdownDescription(ctx context.Context) string {
 	return "value must be a valid IPv6 address"
 }
 
-func (v ipv6Validator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v ipv6Validator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
 	if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
 		return
 	}
@@ -86,7 +94,11 @@ func (v cidrValidator) MarkdownDescription(ctx context.Context) string {
 	return "value must be a valid CIDR notation"
 }
 
-func (v cidrValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v cidrValidator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
 	if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
 		return
 	}
@@ -117,7 +129,11 @@ func (v macAddressValidator) MarkdownDescription(ctx context.Context) string {
 	return "value must be a valid MAC address"
 }
 
-func (v macAddressValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v macAddressValidator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
 	if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
 		return
 	}
@@ -148,7 +164,11 @@ func (v portValidator) MarkdownDescription(ctx context.Context) string {
 	return "value must be a valid port number (1-65535)"
 }
 
-func (v portValidator) ValidateInt64(ctx context.Context, req validator.Int64Request, resp *validator.Int64Response) {
+func (v portValidator) ValidateInt64(
+	ctx context.Context,
+	req validator.Int64Request,
+	resp *validator.Int64Response,
+) {
 	if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
 		return
 	}
@@ -170,7 +190,9 @@ func DomainNameValidator() validator.String {
 
 type domainNameValidator struct{}
 
-var domainNameRegex = regexp.MustCompile(`^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
+var domainNameRegex = regexp.MustCompile(
+	`^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`,
+)
 
 func (v domainNameValidator) Description(ctx context.Context) string {
 	return "value must be a valid domain name"
@@ -180,7 +202,11 @@ func (v domainNameValidator) MarkdownDescription(ctx context.Context) string {
 	return "value must be a valid domain name"
 }
 
-func (v domainNameValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v domainNameValidator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
 	if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
 		return
 	}

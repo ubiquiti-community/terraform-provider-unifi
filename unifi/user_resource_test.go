@@ -20,9 +20,9 @@ func TestAccUserFramework_basic(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_user.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "unifi_user.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"allow_existing", "skip_forget_on_destroy"},
 			},
 		},
@@ -48,7 +48,11 @@ func TestAccUserFramework_blocked(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_user.test", "name", "tfacc-blocked-user"),
 					resource.TestCheckResourceAttr("unifi_user.test", "blocked", "true"),
-					resource.TestCheckResourceAttr("unifi_user.test", "note", "Blocked for testing"),
+					resource.TestCheckResourceAttr(
+						"unifi_user.test",
+						"note",
+						"Blocked for testing",
+					),
 				),
 			},
 		},
@@ -74,7 +78,11 @@ func TestAccUserFramework_fixedIP(t *testing.T) {
 			{
 				Config: testAccUserFrameworkConfig_fixedIP(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_user.test", "name", "tfacc-fixed-ip-user"),
+					resource.TestCheckResourceAttr(
+						"unifi_user.test",
+						"name",
+						"tfacc-fixed-ip-user",
+					),
 					resource.TestCheckResourceAttr("unifi_user.test", "fixed_ip", "10.0.0.100"),
 				),
 			},

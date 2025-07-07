@@ -33,43 +33,51 @@ type firewallRuleResource struct {
 }
 
 type firewallRuleResourceModel struct {
-	ID                    types.String `tfsdk:"id"`
-	Site                  types.String `tfsdk:"site"`
-	Name                  types.String `tfsdk:"name"`
-	Action                types.String `tfsdk:"action"`
-	Ruleset               types.String `tfsdk:"ruleset"`
-	RuleIndex             types.Int64  `tfsdk:"rule_index"`
-	Protocol              types.String `tfsdk:"protocol"`
-	ProtocolV6            types.String `tfsdk:"protocol_v6"`
-	ICMPTypename          types.String `tfsdk:"icmp_typename"`
-	ICMPV6Typename        types.String `tfsdk:"icmp_v6_typename"`
-	Enabled               types.Bool   `tfsdk:"enabled"`
-	SrcNetworkID          types.String `tfsdk:"src_network_id"`
-	SrcNetworkType        types.String `tfsdk:"src_network_type"`
-	SrcFirewallGroupIDs   types.Set    `tfsdk:"src_firewall_group_ids"`
-	SrcAddress            types.String `tfsdk:"src_address"`
-	SrcAddressIPv6        types.String `tfsdk:"src_address_ipv6"`
-	SrcPort               types.String `tfsdk:"src_port"`
-	SrcMac                types.String `tfsdk:"src_mac"`
-	DstNetworkID          types.String `tfsdk:"dst_network_id"`
-	DstNetworkType        types.String `tfsdk:"dst_network_type"`
-	DstFirewallGroupIDs   types.Set    `tfsdk:"dst_firewall_group_ids"`
-	DstAddress            types.String `tfsdk:"dst_address"`
-	DstAddressIPv6        types.String `tfsdk:"dst_address_ipv6"`
-	DstPort               types.String `tfsdk:"dst_port"`
-	Logging               types.Bool   `tfsdk:"logging"`
-	StateEstablished      types.Bool   `tfsdk:"state_established"`
-	StateInvalid          types.Bool   `tfsdk:"state_invalid"`
-	StateNew              types.Bool   `tfsdk:"state_new"`
-	StateRelated          types.Bool   `tfsdk:"state_related"`
-	IPSec                 types.String `tfsdk:"ip_sec"`
+	ID                  types.String `tfsdk:"id"`
+	Site                types.String `tfsdk:"site"`
+	Name                types.String `tfsdk:"name"`
+	Action              types.String `tfsdk:"action"`
+	Ruleset             types.String `tfsdk:"ruleset"`
+	RuleIndex           types.Int64  `tfsdk:"rule_index"`
+	Protocol            types.String `tfsdk:"protocol"`
+	ProtocolV6          types.String `tfsdk:"protocol_v6"`
+	ICMPTypename        types.String `tfsdk:"icmp_typename"`
+	ICMPV6Typename      types.String `tfsdk:"icmp_v6_typename"`
+	Enabled             types.Bool   `tfsdk:"enabled"`
+	SrcNetworkID        types.String `tfsdk:"src_network_id"`
+	SrcNetworkType      types.String `tfsdk:"src_network_type"`
+	SrcFirewallGroupIDs types.Set    `tfsdk:"src_firewall_group_ids"`
+	SrcAddress          types.String `tfsdk:"src_address"`
+	SrcAddressIPv6      types.String `tfsdk:"src_address_ipv6"`
+	SrcPort             types.String `tfsdk:"src_port"`
+	SrcMac              types.String `tfsdk:"src_mac"`
+	DstNetworkID        types.String `tfsdk:"dst_network_id"`
+	DstNetworkType      types.String `tfsdk:"dst_network_type"`
+	DstFirewallGroupIDs types.Set    `tfsdk:"dst_firewall_group_ids"`
+	DstAddress          types.String `tfsdk:"dst_address"`
+	DstAddressIPv6      types.String `tfsdk:"dst_address_ipv6"`
+	DstPort             types.String `tfsdk:"dst_port"`
+	Logging             types.Bool   `tfsdk:"logging"`
+	StateEstablished    types.Bool   `tfsdk:"state_established"`
+	StateInvalid        types.Bool   `tfsdk:"state_invalid"`
+	StateNew            types.Bool   `tfsdk:"state_new"`
+	StateRelated        types.Bool   `tfsdk:"state_related"`
+	IPSec               types.String `tfsdk:"ip_sec"`
 }
 
-func (r *firewallRuleResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *firewallRuleResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_firewall_rule"
 }
 
-func (r *firewallRuleResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *firewallRuleResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages an individual firewall rule on the gateway.",
 
@@ -242,7 +250,11 @@ func (r *firewallRuleResource) Schema(ctx context.Context, req resource.SchemaRe
 	}
 }
 
-func (r *firewallRuleResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *firewallRuleResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -251,7 +263,10 @@ func (r *firewallRuleResource) Configure(ctx context.Context, req resource.Confi
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -259,7 +274,11 @@ func (r *firewallRuleResource) Configure(ctx context.Context, req resource.Confi
 	r.client = client
 }
 
-func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *firewallRuleResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var data firewallRuleResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -288,7 +307,11 @@ func (r *firewallRuleResource) Create(ctx context.Context, req resource.CreateRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *firewallRuleResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data firewallRuleResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -319,7 +342,11 @@ func (r *firewallRuleResource) Read(ctx context.Context, req resource.ReadReques
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *firewallRuleResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *firewallRuleResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state firewallRuleResourceModel
 	var plan firewallRuleResourceModel
 
@@ -357,7 +384,11 @@ func (r *firewallRuleResource) Update(ctx context.Context, req resource.UpdateRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *firewallRuleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *firewallRuleResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var data firewallRuleResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -383,7 +414,11 @@ func (r *firewallRuleResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 }
 
-func (r *firewallRuleResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *firewallRuleResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	idParts := strings.Split(req.ID, ":")
 
 	if len(idParts) == 2 {
@@ -406,7 +441,11 @@ func (r *firewallRuleResource) ImportState(ctx context.Context, req resource.Imp
 	)
 }
 
-func (r *firewallRuleResource) applyPlanToState(ctx context.Context, plan *firewallRuleResourceModel, state *firewallRuleResourceModel) {
+func (r *firewallRuleResource) applyPlanToState(
+	ctx context.Context,
+	plan *firewallRuleResourceModel,
+	state *firewallRuleResourceModel,
+) {
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
 	}
@@ -493,7 +532,10 @@ func (r *firewallRuleResource) applyPlanToState(ctx context.Context, plan *firew
 	}
 }
 
-func (r *firewallRuleResource) modelToFirewallRule(ctx context.Context, model *firewallRuleResourceModel) *unifi.FirewallRule {
+func (r *firewallRuleResource) modelToFirewallRule(
+	ctx context.Context,
+	model *firewallRuleResourceModel,
+) *unifi.FirewallRule {
 	firewallRule := &unifi.FirewallRule{
 		Name:      model.Name.ValueString(),
 		Action:    model.Action.ValueString(),
@@ -579,7 +621,12 @@ func (r *firewallRuleResource) modelToFirewallRule(ctx context.Context, model *f
 	return firewallRule
 }
 
-func (r *firewallRuleResource) firewallRuleToModel(ctx context.Context, firewallRule *unifi.FirewallRule, model *firewallRuleResourceModel, site string) {
+func (r *firewallRuleResource) firewallRuleToModel(
+	ctx context.Context,
+	firewallRule *unifi.FirewallRule,
+	model *firewallRuleResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(firewallRule.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(firewallRule.Name)

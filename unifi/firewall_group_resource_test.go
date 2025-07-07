@@ -15,8 +15,16 @@ func TestAccFirewallGroupFramework_basic(t *testing.T) {
 				Config: testAccFirewallGroupFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("unifi_firewall_group.test", "id"),
-					resource.TestCheckResourceAttr("unifi_firewall_group.test", "name", "Test Address Group"),
-					resource.TestCheckResourceAttr("unifi_firewall_group.test", "type", "address-group"),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_group.test",
+						"name",
+						"Test Address Group",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_group.test",
+						"type",
+						"address-group",
+					),
 					resource.TestCheckResourceAttr("unifi_firewall_group.test", "members.#", "2"),
 				),
 			},
@@ -38,8 +46,16 @@ func TestAccFirewallGroupFramework_portGroup(t *testing.T) {
 				Config: testAccFirewallGroupFrameworkConfig_portGroup(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("unifi_firewall_group.test", "id"),
-					resource.TestCheckResourceAttr("unifi_firewall_group.test", "name", "Test Port Group"),
-					resource.TestCheckResourceAttr("unifi_firewall_group.test", "type", "port-group"),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_group.test",
+						"name",
+						"Test Port Group",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_group.test",
+						"type",
+						"port-group",
+					),
 					resource.TestCheckResourceAttr("unifi_firewall_group.test", "members.#", "3"),
 				),
 			},

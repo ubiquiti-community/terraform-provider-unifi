@@ -14,8 +14,16 @@ func TestAccUserFrameworkDataSource_basic(t *testing.T) {
 			{
 				Config: testAccUserFrameworkDataSourceConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("data.unifi_user.test", "mac", "01:23:45:67:89:ae"),
-					resource.TestCheckResourceAttr("data.unifi_user.test", "name", "tfacc-data-user"),
+					resource.TestCheckResourceAttr(
+						"data.unifi_user.test",
+						"mac",
+						"01:23:45:67:89:ae",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_user.test",
+						"name",
+						"tfacc-data-user",
+					),
 					resource.TestCheckResourceAttrSet("data.unifi_user.test", "id"),
 				),
 			},

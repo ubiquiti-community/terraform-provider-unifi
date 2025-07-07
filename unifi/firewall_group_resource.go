@@ -39,11 +39,19 @@ type firewallGroupResourceModel struct {
 	Members types.Set    `tfsdk:"members"`
 }
 
-func (r *firewallGroupResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *firewallGroupResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_firewall_group"
 }
 
-func (r *firewallGroupResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *firewallGroupResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		Description: "`unifi_firewall_group` manages groups of addresses or ports for use in firewall rules (`unifi_firewall_rule`).",
 
@@ -84,7 +92,11 @@ func (r *firewallGroupResource) Schema(ctx context.Context, req resource.SchemaR
 	}
 }
 
-func (r *firewallGroupResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *firewallGroupResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -93,7 +105,10 @@ func (r *firewallGroupResource) Configure(ctx context.Context, req resource.Conf
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -101,7 +116,11 @@ func (r *firewallGroupResource) Configure(ctx context.Context, req resource.Conf
 	r.client = client
 }
 
-func (r *firewallGroupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *firewallGroupResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan firewallGroupResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -142,7 +161,11 @@ func (r *firewallGroupResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *firewallGroupResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *firewallGroupResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state firewallGroupResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -176,7 +199,11 @@ func (r *firewallGroupResource) Read(ctx context.Context, req resource.ReadReque
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *firewallGroupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *firewallGroupResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var plan firewallGroupResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -251,7 +278,11 @@ func (r *firewallGroupResource) Update(ctx context.Context, req resource.UpdateR
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *firewallGroupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *firewallGroupResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state firewallGroupResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -278,7 +309,11 @@ func (r *firewallGroupResource) Delete(ctx context.Context, req resource.DeleteR
 	}
 }
 
-func (r *firewallGroupResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *firewallGroupResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	idParts, diags := ParseImportID(req.ID, 1, 2)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -295,7 +330,10 @@ func (r *firewallGroupResource) ImportState(ctx context.Context, req resource.Im
 
 // Helper methods
 
-func (r *firewallGroupResource) modelToAPIFirewallGroup(ctx context.Context, model *firewallGroupResourceModel) (*unifi.FirewallGroup, error) {
+func (r *firewallGroupResource) modelToAPIFirewallGroup(
+	ctx context.Context,
+	model *firewallGroupResourceModel,
+) (*unifi.FirewallGroup, error) {
 	var members []string
 	if !model.Members.IsNull() && !model.Members.IsUnknown() {
 		diags := model.Members.ElementsAs(ctx, &members, false)
@@ -311,9 +349,14 @@ func (r *firewallGroupResource) modelToAPIFirewallGroup(ctx context.Context, mod
 	}, nil
 }
 
-func (r *firewallGroupResource) setResourceData(ctx context.Context, firewallGroup *unifi.FirewallGroup, model *firewallGroupResourceModel, site string) {
+func (r *firewallGroupResource) setResourceData(
+	ctx context.Context,
+	firewallGroup *unifi.FirewallGroup,
+	model *firewallGroupResourceModel,
+	site string,
+) {
 	model.Site = types.StringValue(site)
-	
+
 	if firewallGroup.Name == "" {
 		model.Name = types.StringNull()
 	} else {

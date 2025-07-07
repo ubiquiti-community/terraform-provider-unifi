@@ -10,9 +10,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var (
-	_ datasource.DataSource = &radiusProfileDataSource{}
-)
+var _ datasource.DataSource = &radiusProfileDataSource{}
 
 func NewRadiusProfileDataSource() datasource.DataSource {
 	return &radiusProfileDataSource{}
@@ -23,23 +21,31 @@ type radiusProfileDataSource struct {
 }
 
 type radiusProfileDataSourceModel struct {
-	ID                     types.String `tfsdk:"id"`
-	Site                   types.String `tfsdk:"site"`
-	Name                   types.String `tfsdk:"name"`
-	AccountingEnabled      types.Bool   `tfsdk:"accounting_enabled"`
-	InterimUpdateEnabled   types.Bool   `tfsdk:"interim_update_enabled"`
-	InterimUpdateInterval  types.Int64  `tfsdk:"interim_update_interval"`
-	UseUSGAcctServer       types.Bool   `tfsdk:"use_usg_acct_server"`
-	UseUSGAuthServer       types.Bool   `tfsdk:"use_usg_auth_server"`
-	VlanEnabled            types.Bool   `tfsdk:"vlan_enabled"`
-	VlanWlanMode           types.String `tfsdk:"vlan_wlan_mode"`
+	ID                    types.String `tfsdk:"id"`
+	Site                  types.String `tfsdk:"site"`
+	Name                  types.String `tfsdk:"name"`
+	AccountingEnabled     types.Bool   `tfsdk:"accounting_enabled"`
+	InterimUpdateEnabled  types.Bool   `tfsdk:"interim_update_enabled"`
+	InterimUpdateInterval types.Int64  `tfsdk:"interim_update_interval"`
+	UseUSGAcctServer      types.Bool   `tfsdk:"use_usg_acct_server"`
+	UseUSGAuthServer      types.Bool   `tfsdk:"use_usg_auth_server"`
+	VlanEnabled           types.Bool   `tfsdk:"vlan_enabled"`
+	VlanWlanMode          types.String `tfsdk:"vlan_wlan_mode"`
 }
 
-func (d *radiusProfileDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *radiusProfileDataSource) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_radius_profile"
 }
 
-func (d *radiusProfileDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *radiusProfileDataSource) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Data source for RADIUS profiles.",
 
@@ -89,7 +95,11 @@ func (d *radiusProfileDataSource) Schema(ctx context.Context, req datasource.Sch
 	}
 }
 
-func (d *radiusProfileDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *radiusProfileDataSource) Configure(
+	ctx context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -98,7 +108,10 @@ func (d *radiusProfileDataSource) Configure(ctx context.Context, req datasource.
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -106,7 +119,11 @@ func (d *radiusProfileDataSource) Configure(ctx context.Context, req datasource.
 	d.client = client
 }
 
-func (d *radiusProfileDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *radiusProfileDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var data radiusProfileDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)

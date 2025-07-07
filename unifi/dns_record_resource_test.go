@@ -16,7 +16,11 @@ func TestAccDNSRecordFramework_basic(t *testing.T) {
 				Config: testAccDNSRecordFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "name", "test-record"),
-					resource.TestCheckResourceAttr("unifi_dns_record.test", "value", "192.168.1.100"),
+					resource.TestCheckResourceAttr(
+						"unifi_dns_record.test",
+						"value",
+						"192.168.1.100",
+					),
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "port", "80"),
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "enabled", "true"),
 				),

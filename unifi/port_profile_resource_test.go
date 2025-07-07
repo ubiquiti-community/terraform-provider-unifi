@@ -15,7 +15,11 @@ func TestAccPortProfileFramework_basic(t *testing.T) {
 				Config: testAccPortProfileFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("unifi_port_profile.test", "id"),
-					resource.TestCheckResourceAttr("unifi_port_profile.test", "name", "Test Port Profile"),
+					resource.TestCheckResourceAttr(
+						"unifi_port_profile.test",
+						"name",
+						"Test Port Profile",
+					),
 					resource.TestCheckResourceAttr("unifi_port_profile.test", "autoneg", "true"),
 				),
 			},

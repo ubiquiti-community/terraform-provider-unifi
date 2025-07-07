@@ -33,7 +33,7 @@ var providerFactories = map[string]func() (*schema.Provider, error){
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 	"unifi": func() (tfprotov6.ProviderServer, error) {
 		ctx := context.Background()
-		
+
 		// Upgrade SDK v2 provider to protocol version 6
 		upgradedSdkProvider, err := tf5to6server.UpgradeServer(
 			ctx,

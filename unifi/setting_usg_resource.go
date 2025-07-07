@@ -32,11 +32,19 @@ type settingUSGResourceModel struct {
 	MulticastDNSEnabled types.Bool   `tfsdk:"multicast_dns_enabled"`
 }
 
-func (r *settingUSGResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *settingUSGResource) Metadata(
+	ctx context.Context,
+	req resource.MetadataRequest,
+	resp *resource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_setting_usg"
 }
 
-func (r *settingUSGResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *settingUSGResource) Schema(
+	ctx context.Context,
+	req resource.SchemaRequest,
+	resp *resource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages USG settings for a unifi site.",
 
@@ -65,7 +73,11 @@ func (r *settingUSGResource) Schema(ctx context.Context, req resource.SchemaRequ
 	}
 }
 
-func (r *settingUSGResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *settingUSGResource) Configure(
+	ctx context.Context,
+	req resource.ConfigureRequest,
+	resp *resource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -74,7 +86,10 @@ func (r *settingUSGResource) Configure(ctx context.Context, req resource.Configu
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -82,7 +97,11 @@ func (r *settingUSGResource) Configure(ctx context.Context, req resource.Configu
 	r.client = client
 }
 
-func (r *settingUSGResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *settingUSGResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var data settingUSGResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -111,7 +130,11 @@ func (r *settingUSGResource) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *settingUSGResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *settingUSGResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data settingUSGResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -142,7 +165,11 @@ func (r *settingUSGResource) Read(ctx context.Context, req resource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *settingUSGResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *settingUSGResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state settingUSGResourceModel
 	var plan settingUSGResourceModel
 
@@ -179,21 +206,36 @@ func (r *settingUSGResource) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *settingUSGResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *settingUSGResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	// USG settings are typically reset to defaults rather than deleted
 }
 
-func (r *settingUSGResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *settingUSGResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), req.ID)...)
 }
 
-func (r *settingUSGResource) applyPlanToState(ctx context.Context, plan *settingUSGResourceModel, state *settingUSGResourceModel) {
+func (r *settingUSGResource) applyPlanToState(
+	ctx context.Context,
+	plan *settingUSGResourceModel,
+	state *settingUSGResourceModel,
+) {
 	if !plan.MulticastDNSEnabled.IsNull() && !plan.MulticastDNSEnabled.IsUnknown() {
 		state.MulticastDNSEnabled = plan.MulticastDNSEnabled
 	}
 }
 
-func (r *settingUSGResource) modelToSettingUSG(ctx context.Context, model *settingUSGResourceModel) *unifi.SettingUsg {
+func (r *settingUSGResource) modelToSettingUSG(
+	ctx context.Context,
+	model *settingUSGResourceModel,
+) *unifi.SettingUsg {
 	setting := &unifi.SettingUsg{}
 
 	if !model.MulticastDNSEnabled.IsNull() {
@@ -203,7 +245,12 @@ func (r *settingUSGResource) modelToSettingUSG(ctx context.Context, model *setti
 	return setting
 }
 
-func (r *settingUSGResource) settingUSGToModel(ctx context.Context, setting *unifi.SettingUsg, model *settingUSGResourceModel, site string) {
+func (r *settingUSGResource) settingUSGToModel(
+	ctx context.Context,
+	setting *unifi.SettingUsg,
+	model *settingUSGResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(setting.ID)
 	model.Site = types.StringValue(site)
 	model.MulticastDNSEnabled = types.BoolValue(setting.MdnsEnabled)

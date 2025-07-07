@@ -179,7 +179,11 @@ func (r *dynamicDNSResource) Create(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *dynamicDNSResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *dynamicDNSResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var data dynamicDNSResourceModel
 
 	// Read Terraform prior state data into the model
@@ -214,7 +218,11 @@ func (r *dynamicDNSResource) Read(ctx context.Context, req resource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *dynamicDNSResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *dynamicDNSResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var state dynamicDNSResourceModel
 	var plan dynamicDNSResourceModel
 
@@ -260,7 +268,11 @@ func (r *dynamicDNSResource) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *dynamicDNSResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *dynamicDNSResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var data dynamicDNSResourceModel
 
 	// Read Terraform prior state data into the model
@@ -288,7 +300,11 @@ func (r *dynamicDNSResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 }
 
-func (r *dynamicDNSResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *dynamicDNSResource) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
 	// Import format: "site:id" or just "id" for default site
 	idParts := strings.Split(req.ID, ":")
 
@@ -315,7 +331,11 @@ func (r *dynamicDNSResource) ImportState(ctx context.Context, req resource.Impor
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *dynamicDNSResource) applyPlanToState(ctx context.Context, plan *dynamicDNSResourceModel, state *dynamicDNSResourceModel) {
+func (r *dynamicDNSResource) applyPlanToState(
+	ctx context.Context,
+	plan *dynamicDNSResourceModel,
+	state *dynamicDNSResourceModel,
+) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Interface.IsNull() && !plan.Interface.IsUnknown() {
 		state.Interface = plan.Interface
@@ -338,7 +358,10 @@ func (r *dynamicDNSResource) applyPlanToState(ctx context.Context, plan *dynamic
 }
 
 // modelToDynamicDNS converts the Terraform model to the API struct.
-func (r *dynamicDNSResource) modelToDynamicDNS(ctx context.Context, model *dynamicDNSResourceModel) *unifi.DynamicDNS {
+func (r *dynamicDNSResource) modelToDynamicDNS(
+	ctx context.Context,
+	model *dynamicDNSResourceModel,
+) *unifi.DynamicDNS {
 	dynamicDNS := &unifi.DynamicDNS{
 		Interface: model.Interface.ValueString(),
 		Service:   model.Service.ValueString(),
@@ -359,7 +382,12 @@ func (r *dynamicDNSResource) modelToDynamicDNS(ctx context.Context, model *dynam
 }
 
 // dynamicDNSToModel converts the API struct to the Terraform model.
-func (r *dynamicDNSResource) dynamicDNSToModel(ctx context.Context, dynamicDNS *unifi.DynamicDNS, model *dynamicDNSResourceModel, site string) {
+func (r *dynamicDNSResource) dynamicDNSToModel(
+	ctx context.Context,
+	dynamicDNS *unifi.DynamicDNS,
+	model *dynamicDNSResourceModel,
+	site string,
+) {
 	model.ID = types.StringValue(dynamicDNS.ID)
 	model.Site = types.StringValue(site)
 	model.Interface = types.StringValue(dynamicDNS.Interface)

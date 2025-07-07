@@ -10,9 +10,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var (
-	_ datasource.DataSource = &accountDataSource{}
-)
+var _ datasource.DataSource = &accountDataSource{}
 
 func NewAccountDataSource() datasource.DataSource {
 	return &accountDataSource{}
@@ -32,11 +30,19 @@ type accountDataSourceModel struct {
 	NetworkID        types.String `tfsdk:"network_id"`
 }
 
-func (d *accountDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (d *accountDataSource) Metadata(
+	ctx context.Context,
+	req datasource.MetadataRequest,
+	resp *datasource.MetadataResponse,
+) {
 	resp.TypeName = req.ProviderTypeName + "_account"
 }
 
-func (d *accountDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *accountDataSource) Schema(
+	ctx context.Context,
+	req datasource.SchemaRequest,
+	resp *datasource.SchemaResponse,
+) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Data source for RADIUS user accounts.",
 
@@ -75,7 +81,11 @@ func (d *accountDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 	}
 }
 
-func (d *accountDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *accountDataSource) Configure(
+	ctx context.Context,
+	req datasource.ConfigureRequest,
+	resp *datasource.ConfigureResponse,
+) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -84,7 +94,10 @@ func (d *accountDataSource) Configure(ctx context.Context, req datasource.Config
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -92,7 +105,11 @@ func (d *accountDataSource) Configure(ctx context.Context, req datasource.Config
 	d.client = client
 }
 
-func (d *accountDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *accountDataSource) Read(
+	ctx context.Context,
+	req datasource.ReadRequest,
+	resp *datasource.ReadResponse,
+) {
 	var data accountDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
