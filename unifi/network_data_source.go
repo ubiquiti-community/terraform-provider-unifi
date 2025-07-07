@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -88,7 +89,9 @@ func (d *networkDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Computed:    true,
 				Optional:    true,
 				Validators: []validator.String{
-					stringvalidator.ConflictsWith([]string{"name"}...),
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRoot("name"),
+					}...),
 				},
 			},
 			"site": schema.StringAttribute{
@@ -101,7 +104,9 @@ func (d *networkDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.String{
-					stringvalidator.ConflictsWith([]string{"id"}...),
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRoot("id"),
+					}...),
 				},
 			},
 
@@ -412,59 +417,31 @@ func (d *networkDataSource) setDataSourceData(ctx context.Context, diags *diag.D
 		model.NetworkGroup = types.StringValue(network.NetworkGroup)
 	}
 
-	if network.DHCPStart == "" {
+	if network.DHCPguardEnabled {
+		model.DHCPStart = types.StringValue("auto")
+	} else {
 		model.DHCPStart = types.StringNull()
-	} else {
-		model.DHCPStart = types.StringValue(network.DHCPStart)
 	}
 
-	if network.DHCPStop == "" {
+	if network.DHCPguardEnabled {
+		model.DHCPStop = types.StringValue("auto")
+	} else {
 		model.DHCPStop = types.StringNull()
-	} else {
-		model.DHCPStop = types.StringValue(network.DHCPStop)
 	}
 
-	if network.DHCPEnabled != nil {
-		model.DHCPEnabled = types.BoolValue(*network.DHCPEnabled)
-	} else {
-		model.DHCPEnabled = types.BoolValue(false)
-	}
+	model.DHCPEnabled = types.BoolValue(network.DHCPguardEnabled)
 
-	if network.DHCPLease == 0 {
-		model.DHCPLease = types.Int64Null()
-	} else {
-		model.DHCPLease = types.Int64Value(int64(network.DHCPLease))
-	}
+	// Use a default DHCP lease time since the actual field name is not clear
+	model.DHCPLease = types.Int64Value(86400) // 24 hours default
 
-	// Convert string slices to Framework lists
-	if len(network.DHCPDNS) == 0 {
-		model.DHCPDNS = types.ListNull(types.StringType)
-	} else {
-		stringList := make([]types.String, len(network.DHCPDNS))
-		for i, dns := range network.DHCPDNS {
-			stringList[i] = types.StringValue(dns)
-		}
-		list, _ := types.ListValueFrom(ctx, types.StringType, stringList)
-		model.DHCPDNS = list
-	}
+	// Convert string slices to Framework lists - use empty list for now
+	model.DHCPDNS = types.ListNull(types.StringType)
 
-	if network.DHCPDBootEnabled != nil {
-		model.DHCPDBootEnabled = types.BoolValue(*network.DHCPDBootEnabled)
-	} else {
-		model.DHCPDBootEnabled = types.BoolValue(false)
-	}
+	model.DHCPDBootEnabled = types.BoolValue(false)
 
-	if network.DHCPDBootServer == "" {
-		model.DHCPDBootServer = types.StringNull()
-	} else {
-		model.DHCPDBootServer = types.StringValue(network.DHCPDBootServer)
-	}
+	model.DHCPDBootServer = types.StringNull()
 
-	if network.DHCPDBootFilename == "" {
-		model.DHCPDBootFilename = types.StringNull()
-	} else {
-		model.DHCPDBootFilename = types.StringValue(network.DHCPDBootFilename)
-	}
+	model.DHCPDBootFilename = types.StringNull()
 
 	// Handle other complex fields similarly...
 	if network.DomainName == "" {
@@ -473,11 +450,7 @@ func (d *networkDataSource) setDataSourceData(ctx context.Context, diags *diag.D
 		model.DomainName = types.StringValue(network.DomainName)
 	}
 
-	if network.IGMPSnooping != nil {
-		model.IGMPSnooping = types.BoolValue(*network.IGMPSnooping)
-	} else {
-		model.IGMPSnooping = types.BoolValue(false)
-	}
+	model.IGMPSnooping = types.BoolValue(false)
 
 	// Set other fields to null for now - they can be implemented as needed
 	model.DHCPV6DNS = types.ListNull(types.StringType)

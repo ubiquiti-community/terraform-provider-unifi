@@ -88,6 +88,66 @@ func (c *Client) DeleteNetwork(ctx context.Context, site, id string) error {
 	return c.Client.DeleteNetwork(ctx, site, id, network.Name)
 }
 
+// Device methods
+func (c *Client) GetDevice(ctx context.Context, site, id string) (*unifi.Device, error) {
+	return c.Client.GetDevice(ctx, site, id)
+}
+
+func (c *Client) GetDeviceByMAC(ctx context.Context, site, mac string) (*unifi.Device, error) {
+	return c.Client.GetDeviceByMAC(ctx, site, mac)
+}
+
+func (c *Client) UpdateDevice(ctx context.Context, site string, d *unifi.Device) (*unifi.Device, error) {
+	return c.Client.UpdateDevice(ctx, site, d)
+}
+
+func (c *Client) AdoptDevice(ctx context.Context, site, mac string) error {
+	return c.Client.AdoptDevice(ctx, site, mac)
+}
+
+func (c *Client) ForgetDevice(ctx context.Context, site, mac string) error {
+	return c.Client.ForgetDevice(ctx, site, mac)
+}
+
+// FirewallGroup methods
+func (c *Client) CreateFirewallGroup(ctx context.Context, site string, d *unifi.FirewallGroup) (*unifi.FirewallGroup, error) {
+	return c.Client.CreateFirewallGroup(ctx, site, d)
+}
+
+func (c *Client) GetFirewallGroup(ctx context.Context, site, id string) (*unifi.FirewallGroup, error) {
+	return c.Client.GetFirewallGroup(ctx, site, id)
+}
+
+func (c *Client) UpdateFirewallGroup(ctx context.Context, site string, d *unifi.FirewallGroup) (*unifi.FirewallGroup, error) {
+	return c.Client.UpdateFirewallGroup(ctx, site, d)
+}
+
+func (c *Client) DeleteFirewallGroup(ctx context.Context, site, id string) error {
+	return c.Client.DeleteFirewallGroup(ctx, site, id)
+}
+
+// PortProfile methods
+func (c *Client) CreatePortProfile(ctx context.Context, site string, d *unifi.PortProfile) (*unifi.PortProfile, error) {
+	return c.Client.CreatePortProfile(ctx, site, d)
+}
+
+func (c *Client) GetPortProfile(ctx context.Context, site, id string) (*unifi.PortProfile, error) {
+	return c.Client.GetPortProfile(ctx, site, id)
+}
+
+func (c *Client) UpdatePortProfile(ctx context.Context, site string, d *unifi.PortProfile) (*unifi.PortProfile, error) {
+	return c.Client.UpdatePortProfile(ctx, site, d)
+}
+
+func (c *Client) DeletePortProfile(ctx context.Context, site, id string) error {
+	return c.Client.DeletePortProfile(ctx, site, id)
+}
+
+// Network list method for data sources
+func (c *Client) ListNetwork(ctx context.Context, site string) ([]unifi.Network, error) {
+	return c.Client.ListNetwork(ctx, site)
+}
+
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
 		return &unifiProvider{
@@ -305,6 +365,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewDNSRecordFrameworkResource,
 		NewFirewallGroupFrameworkResource,
 		NewNetworkResource,
+		NewPortProfileFrameworkResource,
 		NewSiteFrameworkResource,
 		NewStaticRouteFrameworkResource,
 		NewUserFrameworkResource,
