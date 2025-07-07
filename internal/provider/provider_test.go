@@ -36,6 +36,25 @@ func TestMain(m *testing.M) {
 	os.Exit(runAcceptanceTests(m))
 }
 
+func NewTestClient(ctx context.Context) *unifi.Client {
+	var user, password, endpoint, apikey string
+
+	user = os.Getenv("UNIFI_USERNAME")
+	password = os.Getenv("UNIFI_PASSWORD")
+	endpoint = os.Getenv("UNIFI_API")
+	apikey = os.Getenv("UNIFI_API_KEY")
+
+	testClient = &unifi.Client{}
+	setHTTPClient(testClient, true, "unifi")
+	testClient.SetBaseURL(endpoint)
+	testClient.SetAPIKey(apikey)
+	if err := testClient.Login(ctx, user, password); err != nil {
+		panic(err)
+	}
+
+	return testClient
+}
+
 func runAcceptanceTests(m *testing.M) int {
 	dc, err := compose.NewDockerCompose("../../docker-compose.yaml")
 	if err != nil {
