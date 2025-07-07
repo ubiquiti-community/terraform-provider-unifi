@@ -11,6 +11,10 @@ import (
 	"testing"
 
 	"github.com/apparentlymart/go-cidr/cidr"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-mux/tf5to6server"
+	"github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -22,6 +26,36 @@ import (
 var providerFactories = map[string]func() (*schema.Provider, error){
 	"unifi": func() (*schema.Provider, error) {
 		return New("acctest")(), nil
+	},
+}
+
+// testAccProtoV6ProviderFactories provides providers for acceptance tests using the new testing framework
+var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
+	"unifi": func() (tfprotov6.ProviderServer, error) {
+		ctx := context.Background()
+		
+		// Upgrade SDK v2 provider to protocol version 6
+		upgradedSdkProvider, err := tf5to6server.UpgradeServer(
+			ctx,
+			New("acctest")().GRPCProvider,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		providers := []func() tfprotov6.ProviderServer{
+			func() tfprotov6.ProviderServer {
+				return upgradedSdkProvider
+			},
+			providerserver.NewProtocol6(NewFrameworkProvider()),
+		}
+
+		muxServer, err := tf6muxserver.NewMuxServer(ctx, providers...)
+		if err != nil {
+			return nil, err
+		}
+
+		return muxServer.ProviderServer(), nil
 	},
 }
 
