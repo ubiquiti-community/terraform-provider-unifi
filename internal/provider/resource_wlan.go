@@ -28,9 +28,46 @@ var (
 	wlanValidMinimumDataRate5g = []int{6000, 9000, 12000, 18000, 24000, 36000, 48000, 54000}
 )
 
+func wlanMigrateV1(ctx context.Context, rawState map[string]interface{}, meta interface{}) (map[string]interface{}, error) {
+	if v, ok := rawState["wlan_band"]; ok {
+		if _, exists := rawState["wlan_bands"]; !exists {
+			s := v.(string)
+			var result []string
+			switch s {
+			case "2g":
+				result = []string{"2g"}
+			case "5g":
+				result = []string{"5g"}
+			default:
+				result = []string{"2g", "5g", "6g"}
+			}
+			rawState["wlan_bands"] = result
+		}
+	}
+
+	return rawState, nil
+}
+
 func resourceWLAN() *schema.Resource {
 	return &schema.Resource{
 		Description: "`unifi_wlan` manages a WiFi network / SSID.",
+
+		SchemaVersion: 1,
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Version: 0,
+				Type: (&schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"wlan_band": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "both",
+						},
+					},
+				}).CoreConfigSchema().ImpliedType(),
+				Upgrade: wlanMigrateV1,
+			},
+		},
 
 		CreateContext: resourceWLANCreate,
 		ReadContext:   resourceWLANRead,
@@ -242,12 +279,13 @@ func resourceWLAN() *schema.Resource {
 					append([]int{0}, wlanValidMinimumDataRate5g...),
 				),
 			},
-			"wlan_band": {
-				Description:  "Radio band your WiFi network will use.",
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"2g", "5g", "both"}, false),
-				Default:      "both",
+			"wlan_bands": {
+				Description: "Radio bands your WiFi network will use.",
+				Type:        schema.TypeSet,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Optional: true,
 			},
 			"network_id": {
 				Description: "ID of the network for this SSID",
@@ -320,7 +358,10 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta any) (*unifi.WLAN,
 	if err != nil {
 		return nil, err
 	}
-	wlanBand := d.Get("wlan_band").(string)
+	wlanBands, err := setToStringSlice(d.Get("wlan_bands").(*schema.Set))
+	if err != nil {
+		return nil, err
+	}
 
 	schedule, err := listToSchedules(d.Get("schedule").([]any))
 	if err != nil {
@@ -358,7 +399,7 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta any) (*unifi.WLAN,
 		RADIUSProfileID:         d.Get("radius_profile_id").(string),
 		ScheduleWithDuration:    schedule,
 		ScheduleEnabled:         len(schedule) > 0,
-		WLANBand:                wlanBand,
+		WLANBands:               wlanBands,
 		PMFMode:                 pmf,
 
 		// TODO: add to schema
@@ -455,7 +496,7 @@ func resourceWLANSetResourceData(
 	d.Set("mac_filter_policy", macFilterPolicy)
 	d.Set("radius_profile_id", resp.RADIUSProfileID)
 	d.Set("schedule", schedule)
-	d.Set("wlan_band", resp.WLANBand)
+	d.Set("wlan_bands", resp.WLANBands)
 	d.Set("no2ghz_oui", resp.No2GhzOui)
 	d.Set("l2_isolation", resp.L2Isolation)
 	d.Set("proxy_arp", resp.ProxyArp)
