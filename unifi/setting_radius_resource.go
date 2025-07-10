@@ -122,7 +122,7 @@ func (r *settingRadiusResource) Create(
 		site = r.client.Site
 	}
 
-	createdSetting, err := r.client.Client.UpdateSettingRadius(ctx, site, setting)
+	createdSetting, err := r.client.UpdateSettingRadius(ctx, site, setting)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Setting RADIUS",
@@ -153,7 +153,7 @@ func (r *settingRadiusResource) Read(
 		site = r.client.Site
 	}
 
-	setting, err := r.client.Client.GetSettingRadius(ctx, site)
+	setting, err := r.client.GetSettingRadius(ctx, site)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -198,7 +198,7 @@ func (r *settingRadiusResource) Update(
 
 	setting := r.modelToSettingRadius(ctx, &state)
 
-	updatedSetting, err := r.client.Client.UpdateSettingRadius(ctx, site, setting)
+	updatedSetting, err := r.client.UpdateSettingRadius(ctx, site, setting)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Setting RADIUS",
@@ -229,7 +229,7 @@ func (r *settingRadiusResource) ImportState(
 }
 
 func (r *settingRadiusResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *settingRadiusResourceModel,
 	state *settingRadiusResourceModel,
 ) {
@@ -242,7 +242,7 @@ func (r *settingRadiusResource) applyPlanToState(
 }
 
 func (r *settingRadiusResource) modelToSettingRadius(
-	ctx context.Context,
+	_ context.Context,
 	model *settingRadiusResourceModel,
 ) *unifi.SettingRadius {
 	setting := &unifi.SettingRadius{}
@@ -258,7 +258,7 @@ func (r *settingRadiusResource) modelToSettingRadius(
 }
 
 func (r *settingRadiusResource) settingRadiusToModel(
-	ctx context.Context,
+	_ context.Context,
 	setting *unifi.SettingRadius,
 	model *settingRadiusResourceModel,
 	site string,

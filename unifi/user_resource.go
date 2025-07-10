@@ -211,7 +211,7 @@ func (r *userFrameworkResource) Create(
 	allowExisting := plan.AllowExisting.ValueBool()
 
 	// Create the User
-	createdUser, err := r.client.Client.CreateUser(ctx, site, user)
+	createdUser, err := r.client.CreateUser(ctx, site, user)
 	if err != nil {
 		var apiErr *unifi.APIError
 		if !errors.As(err, &apiErr) || (apiErr.Message != "api.err.MacUsed" || !allowExisting) {
@@ -224,7 +224,7 @@ func (r *userFrameworkResource) Create(
 
 		// MAC in use, just absorb the existing user
 		mac := plan.MAC.ValueString()
-		existingUser, err := r.client.Client.GetUserByMAC(ctx, site, mac)
+		existingUser, err := r.client.GetUserByMAC(ctx, site, mac)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Getting Existing User",
@@ -235,7 +235,7 @@ func (r *userFrameworkResource) Create(
 
 		// Implement merge pattern for existing user
 		mergedUser := r.mergeUser(existingUser, user)
-		updatedUser, err := r.client.Client.UpdateUser(ctx, site, mergedUser)
+		updatedUser, err := r.client.UpdateUser(ctx, site, mergedUser)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Updating Existing User",
@@ -278,7 +278,7 @@ func (r *userFrameworkResource) Read(
 	id := state.ID.ValueString()
 
 	// Get the User from the API
-	user, err := r.client.Client.GetUser(ctx, site, id)
+	user, err := r.client.GetUser(ctx, site, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading User",
@@ -335,7 +335,7 @@ func (r *userFrameworkResource) Update(
 
 	// Step 4: Send to API
 	user.ID = state.ID.ValueString()
-	updatedUser, err := r.client.Client.UpdateUser(ctx, site, user)
+	updatedUser, err := r.client.UpdateUser(ctx, site, user)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating User",
@@ -354,9 +354,9 @@ func (r *userFrameworkResource) Update(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *userFrameworkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *userFrameworkResourceModel,
 	state *userFrameworkResourceModel,
 ) {
@@ -424,7 +424,7 @@ func (r *userFrameworkResource) Delete(
 	}
 
 	// lookup MAC instead of trusting state
-	u, err := r.client.Client.GetUser(ctx, site, id)
+	u, err := r.client.GetUser(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		return
 	}
@@ -436,7 +436,7 @@ func (r *userFrameworkResource) Delete(
 		return
 	}
 
-	err = r.client.Client.DeleteUserByMAC(ctx, site, u.MAC)
+	err = r.client.DeleteUserByMAC(ctx, site, u.MAC)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting User",
@@ -488,7 +488,7 @@ func (r *userFrameworkResource) planToUser(
 }
 
 func (r *userFrameworkResource) userToModel(
-	ctx context.Context,
+	_ context.Context,
 	user *unifi.User,
 	model *userFrameworkResourceModel,
 	site string,

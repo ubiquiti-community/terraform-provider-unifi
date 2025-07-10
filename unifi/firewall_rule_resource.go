@@ -293,7 +293,7 @@ func (r *firewallRuleResource) Create(
 		site = r.client.Site
 	}
 
-	createdFirewallRule, err := r.client.Client.CreateFirewallRule(ctx, site, firewallRule)
+	createdFirewallRule, err := r.client.CreateFirewallRule(ctx, site, firewallRule)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Firewall Rule",
@@ -324,7 +324,7 @@ func (r *firewallRuleResource) Read(
 		site = r.client.Site
 	}
 
-	firewallRule, err := r.client.Client.GetFirewallRule(ctx, site, data.ID.ValueString())
+	firewallRule, err := r.client.GetFirewallRule(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -370,7 +370,7 @@ func (r *firewallRuleResource) Update(
 	firewallRule := r.modelToFirewallRule(ctx, &state)
 	firewallRule.ID = state.ID.ValueString()
 
-	updatedFirewallRule, err := r.client.Client.UpdateFirewallRule(ctx, site, firewallRule)
+	updatedFirewallRule, err := r.client.UpdateFirewallRule(ctx, site, firewallRule)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Firewall Rule",
@@ -401,7 +401,7 @@ func (r *firewallRuleResource) Delete(
 		site = r.client.Site
 	}
 
-	err := r.client.Client.DeleteFirewallRule(ctx, site, data.ID.ValueString())
+	err := r.client.DeleteFirewallRule(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return
@@ -442,7 +442,7 @@ func (r *firewallRuleResource) ImportState(
 }
 
 func (r *firewallRuleResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *firewallRuleResourceModel,
 	state *firewallRuleResourceModel,
 ) {

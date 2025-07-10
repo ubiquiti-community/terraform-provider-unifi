@@ -116,7 +116,7 @@ func (r *siteFrameworkResource) Create(
 	description := plan.Description.ValueString()
 
 	// Create the Site
-	sites, err := r.client.Client.CreateSite(ctx, description)
+	sites, err := r.client.CreateSite(ctx, description)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Site",
@@ -162,7 +162,7 @@ func (r *siteFrameworkResource) Read(
 	id := state.ID.ValueString()
 
 	// Get the Site from the API
-	site, err := r.client.Client.GetSite(ctx, id)
+	site, err := r.client.GetSite(ctx, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		resp.State.RemoveResource(ctx)
 		return
@@ -216,7 +216,7 @@ func (r *siteFrameworkResource) Update(
 	description := state.Description.ValueString()
 
 	// Step 4: Send to API
-	updatedSites, err := r.client.Client.UpdateSite(ctx, name, description)
+	updatedSites, err := r.client.UpdateSite(ctx, name, description)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Site",
@@ -245,9 +245,9 @@ func (r *siteFrameworkResource) Update(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *siteFrameworkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *siteFrameworkResourceModel,
 	state *siteFrameworkResourceModel,
 ) {
@@ -273,7 +273,7 @@ func (r *siteFrameworkResource) Delete(
 
 	id := state.ID.ValueString()
 
-	_, err := r.client.Client.DeleteSite(ctx, id)
+	_, err := r.client.DeleteSite(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Site",
@@ -291,7 +291,7 @@ func (r *siteFrameworkResource) ImportState(
 	id := req.ID
 
 	// First try to import by ID
-	_, err := r.client.Client.GetSite(ctx, id)
+	_, err := r.client.GetSite(ctx, id)
 	if err != nil {
 		var nf *unifi.NotFoundError
 		if !errors.As(err, &nf) {
@@ -308,7 +308,7 @@ func (r *siteFrameworkResource) ImportState(
 	}
 
 	// If not found by ID, try to lookup site by name
-	sites, err := r.client.Client.ListSites(ctx)
+	sites, err := r.client.ListSites(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Listing Sites for Import",
@@ -333,7 +333,7 @@ func (r *siteFrameworkResource) ImportState(
 // Helper functions for conversion and merging
 
 func (r *siteFrameworkResource) siteToModel(
-	ctx context.Context,
+	_ context.Context,
 	site *unifi.Site,
 	model *siteFrameworkResourceModel,
 ) diag.Diagnostics {
@@ -344,14 +344,4 @@ func (r *siteFrameworkResource) siteToModel(
 	model.Description = types.StringValue(site.Description)
 
 	return diags
-}
-
-func (r *siteFrameworkResource) mergeSite(existing *unifi.Site, planned *unifi.Site) *unifi.Site {
-	// Start with the existing site to preserve all UniFi internal fields
-	merged := *existing
-
-	// Override with planned values (only description can be changed)
-	merged.Description = planned.Description
-
-	return &merged
 }

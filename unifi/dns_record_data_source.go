@@ -123,7 +123,7 @@ func (d *dnsRecordDataSource) Read(
 
 	name := data.Name.ValueString()
 
-	dnsRecords, err := d.client.Client.ListDNSRecord(ctx, site)
+	dnsRecords, err := d.client.ListDNSRecord(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading DNS Records",

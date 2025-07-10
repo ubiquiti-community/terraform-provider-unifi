@@ -124,7 +124,7 @@ func (d *accountDataSource) Read(
 
 	name := data.Name.ValueString()
 
-	accounts, err := d.client.Client.ListAccount(ctx, site)
+	accounts, err := d.client.ListAccount(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Accounts",

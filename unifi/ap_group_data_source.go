@@ -103,7 +103,7 @@ func (d *apGroupDataSource) Read(
 
 	name := data.Name.ValueString()
 
-	apGroups, err := d.client.Client.ListAPGroup(ctx, site)
+	apGroups, err := d.client.ListAPGroup(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading AP Groups",

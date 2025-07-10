@@ -156,7 +156,7 @@ func (r *settingMgmtResource) Create(
 	}
 
 	// Setting management uses update for both create and update operations
-	createdSetting, err := r.client.Client.UpdateSettingMgmt(ctx, site, setting)
+	createdSetting, err := r.client.UpdateSettingMgmt(ctx, site, setting)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Setting Management",
@@ -187,7 +187,7 @@ func (r *settingMgmtResource) Read(
 		site = r.client.Site
 	}
 
-	setting, err := r.client.Client.GetSettingMgmt(ctx, site)
+	setting, err := r.client.GetSettingMgmt(ctx, site)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -233,7 +233,7 @@ func (r *settingMgmtResource) Update(
 	setting := r.modelToSettingMgmt(ctx, &state)
 	setting.ID = state.ID.ValueString()
 
-	updatedSetting, err := r.client.Client.UpdateSettingMgmt(ctx, site, setting)
+	updatedSetting, err := r.client.UpdateSettingMgmt(ctx, site, setting)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Setting Management",
@@ -296,7 +296,7 @@ func (r *settingMgmtResource) ImportState(
 }
 
 func (r *settingMgmtResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *settingMgmtResourceModel,
 	state *settingMgmtResourceModel,
 ) {
@@ -312,7 +312,7 @@ func (r *settingMgmtResource) applyPlanToState(
 }
 
 func (r *settingMgmtResource) modelToSettingMgmt(
-	ctx context.Context,
+	_ context.Context,
 	model *settingMgmtResourceModel,
 ) *unifi.SettingMgmt {
 	setting := &unifi.SettingMgmt{}
@@ -337,7 +337,7 @@ func (r *settingMgmtResource) modelToSettingMgmt(
 }
 
 func (r *settingMgmtResource) settingMgmtToModel(
-	ctx context.Context,
+	_ context.Context,
 	setting *unifi.SettingMgmt,
 	model *settingMgmtResourceModel,
 	site string,

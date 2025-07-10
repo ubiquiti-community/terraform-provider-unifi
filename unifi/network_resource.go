@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -166,7 +167,7 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "The subnet of the network. Must be a valid CIDR address.",
 				Optional:            true,
 				Validators: []validator.String{
-					CIDRValidator(),
+					validators.CIDRValidator(),
 				},
 			},
 			"network_group": schema.StringAttribute{
@@ -181,14 +182,14 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "The IPv4 address where the DHCP range of addresses starts.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"dhcp_stop": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 address where the DHCP range of addresses stops.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"dhcp_enabled": schema.BoolAttribute{
@@ -355,21 +356,21 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "The IPv4 address of the WAN.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"wan_gateway": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 gateway of the WAN.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"wan_netmask": schema.StringAttribute{
 				MarkdownDescription: "The IPv4 netmask of the WAN.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"wan_dns": schema.ListAttribute{
@@ -395,14 +396,14 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "The IPv6 gateway of the WAN.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv6Validator(),
+					validators.IPv6Validator(),
 				},
 			},
 			"wan_ipv6": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 address of the WAN.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv6Validator(),
+					validators.IPv6Validator(),
 				},
 			},
 			"wan_prefixlen": schema.Int64Attribute{
@@ -438,14 +439,14 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "Specifies the Wireguard client peer IP.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"wireguard_client_peer_port": schema.Int64Attribute{
 				MarkdownDescription: "Specifies the Wireguard client peer port.",
 				Optional:            true,
 				Validators: []validator.Int64{
-					PortNumberValidator(),
+					validators.PortNumberValidator(),
 				},
 			},
 			"wireguard_client_peer_public_key": schema.StringAttribute{
@@ -527,7 +528,7 @@ func (r *networkResource) Create(
 	}
 
 	// Create the network
-	createdNetwork, err := r.client.Client.CreateNetwork(ctx, site, network)
+	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Network",
@@ -566,7 +567,7 @@ func (r *networkResource) Read(
 	}
 
 	// Get the network
-	network, err := r.client.Client.GetNetwork(ctx, site, data.ID.ValueString())
+	network, err := r.client.GetNetwork(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Network",
@@ -624,7 +625,7 @@ func (r *networkResource) Update(
 
 	// Step 4: Send to API
 	network.ID = state.ID.ValueString()
-	updatedNetwork, err := r.client.Client.UpdateNetwork(ctx, site, network)
+	updatedNetwork, err := r.client.UpdateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Network",
@@ -644,9 +645,9 @@ func (r *networkResource) Update(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *networkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *networkResourceModel,
 	state *networkResourceModel,
 ) {
@@ -844,7 +845,7 @@ func (r *networkResource) Delete(
 
 	// Delete the network
 	name := data.Name.ValueString() // Get name for deletion
-	err := r.client.Client.DeleteNetwork(ctx, site, data.ID.ValueString(), name)
+	err := r.client.DeleteNetwork(ctx, site, data.ID.ValueString(), name)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Network",
@@ -878,7 +879,7 @@ func (r *networkResource) ImportState(
 
 		// Find network by name in default site
 		site := r.client.Site
-		networks, err := r.client.Client.ListNetwork(ctx, site)
+		networks, err := r.client.ListNetwork(ctx, site)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Listing Networks",
@@ -914,7 +915,7 @@ func (r *networkResource) ImportState(
 }
 
 // Helper function to find network ID by name
-// modelToNetwork converts from Terraform model to unifi.Network
+// modelToNetwork converts from Terraform model to unifi.Network.
 func (r *networkResource) modelToNetwork(
 	ctx context.Context,
 	model *networkResourceModel,
@@ -995,9 +996,9 @@ func (r *networkResource) modelToNetwork(
 	return network, diags
 }
 
-// networkToModel converts from unifi.Network to Terraform model
+// networkToModel converts from unifi.Network to Terraform model.
 func (r *networkResource) networkToModel(
-	ctx context.Context,
+	_ context.Context,
 	network *unifi.Network,
 	model *networkResourceModel,
 	site string,

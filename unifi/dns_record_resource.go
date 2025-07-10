@@ -182,7 +182,7 @@ func (r *dnsRecordFrameworkResource) Create(
 	}
 
 	// Create the DNS record
-	createdDNSRecord, err := r.client.Client.CreateDNSRecord(ctx, site, dnsRecord)
+	createdDNSRecord, err := r.client.CreateDNSRecord(ctx, site, dnsRecord)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating DNS Record",
@@ -217,7 +217,7 @@ func (r *dnsRecordFrameworkResource) Read(
 	}
 
 	// Get the DNS record from the API
-	dnsRecord, err := r.client.Client.GetDNSRecord(ctx, site, data.ID.ValueString())
+	dnsRecord, err := r.client.GetDNSRecord(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -270,7 +270,7 @@ func (r *dnsRecordFrameworkResource) Update(
 	dnsRecord.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
-	updatedDNSRecord, err := r.client.Client.UpdateDNSRecord(ctx, site, dnsRecord)
+	updatedDNSRecord, err := r.client.UpdateDNSRecord(ctx, site, dnsRecord)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating DNS Record",
@@ -305,7 +305,7 @@ func (r *dnsRecordFrameworkResource) Delete(
 	}
 
 	// Delete the DNS record
-	err := r.client.Client.DeleteDNSRecord(ctx, site, data.ID.ValueString())
+	err := r.client.DeleteDNSRecord(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting DNS Record",
@@ -345,9 +345,9 @@ func (r *dnsRecordFrameworkResource) ImportState(
 	)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *dnsRecordFrameworkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *dnsRecordFrameworkResourceModel,
 	state *dnsRecordFrameworkResourceModel,
 ) {
@@ -378,9 +378,9 @@ func (r *dnsRecordFrameworkResource) applyPlanToState(
 	}
 }
 
-// modelToDNSRecord converts the Terraform model to the API struct
+// modelToDNSRecord converts the Terraform model to the API struct.
 func (r *dnsRecordFrameworkResource) modelToDNSRecord(
-	ctx context.Context,
+	_ context.Context,
 	model *dnsRecordFrameworkResourceModel,
 ) *unifi.DNSRecord {
 	dnsRecord := &unifi.DNSRecord{
@@ -415,9 +415,9 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(
 	return dnsRecord
 }
 
-// dnsRecordToModel converts the API struct to the Terraform model
+// dnsRecordToModel converts the API struct to the Terraform model.
 func (r *dnsRecordFrameworkResource) dnsRecordToModel(
-	ctx context.Context,
+	_ context.Context,
 	dnsRecord *unifi.DNSRecord,
 	model *dnsRecordFrameworkResourceModel,
 	site string,

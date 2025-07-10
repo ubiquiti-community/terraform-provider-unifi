@@ -11,19 +11,19 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ datasource.DataSource = &userFrameworkDataSource{}
+var _ datasource.DataSource = &userDataSource{}
 
-func NewUserFrameworkDataSource() datasource.DataSource {
-	return &userFrameworkDataSource{}
+func NewUserDataSource() datasource.DataSource {
+	return &userDataSource{}
 }
 
-// userFrameworkDataSource defines the data source implementation.
-type userFrameworkDataSource struct {
+// userDataSource defines the data source implementation.
+type userDataSource struct {
 	client *Client
 }
 
-// userFrameworkDataSourceModel describes the data source data model.
-type userFrameworkDataSourceModel struct {
+// userDataSourceModel describes the data source data model.
+type userDataSourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
 	MAC            types.String `tfsdk:"mac"`
@@ -39,7 +39,7 @@ type userFrameworkDataSourceModel struct {
 	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
 }
 
-func (d *userFrameworkDataSource) Metadata(
+func (d *userDataSource) Metadata(
 	ctx context.Context,
 	req datasource.MetadataRequest,
 	resp *datasource.MetadataResponse,
@@ -47,7 +47,7 @@ func (d *userFrameworkDataSource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_user"
 }
 
-func (d *userFrameworkDataSource) Schema(
+func (d *userDataSource) Schema(
 	ctx context.Context,
 	req datasource.SchemaRequest,
 	resp *datasource.SchemaResponse,
@@ -113,7 +113,7 @@ func (d *userFrameworkDataSource) Schema(
 	}
 }
 
-func (d *userFrameworkDataSource) Configure(
+func (d *userDataSource) Configure(
 	ctx context.Context,
 	req datasource.ConfigureRequest,
 	resp *datasource.ConfigureResponse,
@@ -137,12 +137,12 @@ func (d *userFrameworkDataSource) Configure(
 	d.client = client
 }
 
-func (d *userFrameworkDataSource) Read(
+func (d *userDataSource) Read(
 	ctx context.Context,
 	req datasource.ReadRequest,
 	resp *datasource.ReadResponse,
 ) {
-	var config userFrameworkDataSourceModel
+	var config userDataSourceModel
 
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
@@ -158,7 +158,7 @@ func (d *userFrameworkDataSource) Read(
 	mac := config.MAC.ValueString()
 
 	// Get user by MAC address first to get IP address
-	macResp, err := d.client.Client.GetUserByMAC(ctx, site, strings.ToLower(mac))
+	macResp, err := d.client.GetUserByMAC(ctx, site, strings.ToLower(mac))
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading User by MAC",
@@ -168,7 +168,7 @@ func (d *userFrameworkDataSource) Read(
 	}
 
 	// Get full user details by ID
-	user, err := d.client.Client.GetUser(ctx, site, macResp.ID)
+	user, err := d.client.GetUser(ctx, site, macResp.ID)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading User",
@@ -181,7 +181,7 @@ func (d *userFrameworkDataSource) Read(
 	user.IP = macResp.IP
 
 	// Convert to model
-	var state userFrameworkDataSourceModel
+	var state userDataSourceModel
 
 	state.ID = types.StringValue(user.ID)
 	state.Site = types.StringValue(site)

@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 var (
@@ -146,7 +147,7 @@ func (r *radiusProfileResource) Schema(
 							MarkdownDescription: "IP address of authentication service server.",
 							Required:            true,
 							Validators: []validator.String{
-								IPv4Validator(),
+								validators.IPv4Validator(),
 							},
 						},
 						"port": schema.Int64Attribute{
@@ -174,7 +175,7 @@ func (r *radiusProfileResource) Schema(
 							MarkdownDescription: "IP address of accounting service server.",
 							Required:            true,
 							Validators: []validator.String{
-								IPv4Validator(),
+								validators.IPv4Validator(),
 							},
 						},
 						"port": schema.Int64Attribute{
@@ -241,7 +242,7 @@ func (r *radiusProfileResource) Create(
 		site = r.client.Site
 	}
 
-	createdRadiusProfile, err := r.client.Client.CreateRADIUSProfile(ctx, site, radiusProfile)
+	createdRadiusProfile, err := r.client.CreateRADIUSProfile(ctx, site, radiusProfile)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating RADIUS Profile",
@@ -272,7 +273,7 @@ func (r *radiusProfileResource) Read(
 		site = r.client.Site
 	}
 
-	radiusProfile, err := r.client.Client.GetRADIUSProfile(ctx, site, data.ID.ValueString())
+	radiusProfile, err := r.client.GetRADIUSProfile(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -318,7 +319,7 @@ func (r *radiusProfileResource) Update(
 	radiusProfile := r.modelToRadiusProfile(ctx, &state)
 	radiusProfile.ID = state.ID.ValueString()
 
-	updatedRadiusProfile, err := r.client.Client.UpdateRADIUSProfile(ctx, site, radiusProfile)
+	updatedRadiusProfile, err := r.client.UpdateRADIUSProfile(ctx, site, radiusProfile)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating RADIUS Profile",
@@ -349,7 +350,7 @@ func (r *radiusProfileResource) Delete(
 		site = r.client.Site
 	}
 
-	err := r.client.Client.DeleteRADIUSProfile(ctx, site, data.ID.ValueString())
+	err := r.client.DeleteRADIUSProfile(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return
@@ -390,7 +391,7 @@ func (r *radiusProfileResource) ImportState(
 }
 
 func (r *radiusProfileResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *radiusProfileResourceModel,
 	state *radiusProfileResourceModel,
 ) {
@@ -427,7 +428,7 @@ func (r *radiusProfileResource) applyPlanToState(
 }
 
 func (r *radiusProfileResource) modelToRadiusProfile(
-	ctx context.Context,
+	_ context.Context,
 	model *radiusProfileResourceModel,
 ) *unifi.RADIUSProfile {
 	radiusProfile := &unifi.RADIUSProfile{
@@ -467,7 +468,7 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 }
 
 func (r *radiusProfileResource) radiusProfileToModel(
-	ctx context.Context,
+	_ context.Context,
 	radiusProfile *unifi.RADIUSProfile,
 	model *radiusProfileResourceModel,
 	site string,

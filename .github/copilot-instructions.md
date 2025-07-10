@@ -108,7 +108,7 @@ import (
     "github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
     
     // SDK v2 provider (existing)
-    sdkProvider "github.com/ubiquiti-community/terraform-provider-unifi/internal/provider"
+    sdkProvider "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
     // Plugin Framework provider (new)
     frameworkProvider "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
 )

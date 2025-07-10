@@ -746,7 +746,7 @@ func (r *portProfileResource) setResourceData(
 }
 
 func (r *portProfileResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *portProfileResourceModel,
 	state *portProfileResourceModel,
 ) {

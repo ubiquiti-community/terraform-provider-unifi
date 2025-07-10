@@ -17,7 +17,7 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ datasource.DataSource = &networkDataSource{}
 
-func NewNetworkFrameworkDataSource() datasource.DataSource {
+func NewNetworkDataSource() datasource.DataSource {
 	return &networkDataSource{}
 }
 
@@ -53,7 +53,7 @@ type networkDataSourceModel struct {
 	IGMPSnooping            types.Bool   `tfsdk:"igmp_snooping"`
 	IPSubnet                types.String `tfsdk:"ip_subnet"`
 	IPv6InterfaceType       types.String `tfsdk:"ipv6_interface_type"`
-	IPv6StaticSubnet        types.String `tfsdk:"ipv6_static_subnet"`
+	IPv6Subnet              types.String `tfsdk:"ipv6_static_subnet"`
 	IPv6PDInterface         types.String `tfsdk:"ipv6_pd_interface"`
 	IPv6PDPrefixID          types.String `tfsdk:"ipv6_pd_prefixid"`
 	IPv6PDStart             types.String `tfsdk:"ipv6_pd_start"`
@@ -399,7 +399,7 @@ func (d *networkDataSource) Read(
 	resp.Diagnostics.Append(diags...)
 }
 
-// Helper method to set data source data from API response
+// Helper method to set data source data from API response.
 func (d *networkDataSource) setDataSourceData(
 	ctx context.Context,
 	diags *diag.Diagnostics,
@@ -477,6 +477,18 @@ func (d *networkDataSource) setDataSourceData(
 
 	model.IGMPSnooping = types.BoolValue(false)
 
+	if network.IPV6InterfaceType == "" {
+		model.IPv6InterfaceType = types.StringNull()
+	} else {
+		model.IPv6InterfaceType = types.StringValue(network.IPV6InterfaceType)
+	}
+
+	if network.IPV6Subnet == "" {
+		model.IPv6Subnet = types.StringNull()
+	} else {
+		model.IPv6Subnet = types.StringValue(network.IPV6Subnet)
+	}
+
 	// Set other fields to null for now - they can be implemented as needed
 	model.DHCPV6DNS = types.ListNull(types.StringType)
 	model.DHCPV6DNSAuto = types.BoolValue(false)
@@ -484,8 +496,6 @@ func (d *networkDataSource) setDataSourceData(
 	model.DHCPV6Lease = types.Int64Null()
 	model.DHCPV6Start = types.StringNull()
 	model.DHCPV6Stop = types.StringNull()
-	model.IPv6InterfaceType = types.StringNull()
-	model.IPv6StaticSubnet = types.StringNull()
 	model.IPv6PDInterface = types.StringNull()
 	model.IPv6PDPrefixID = types.StringNull()
 	model.IPv6PDStart = types.StringNull()

@@ -1,11 +1,13 @@
-package provider
+package unifi
 
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"math"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 	"testing"
@@ -13,9 +15,6 @@ import (
 	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
-	"github.com/hashicorp/terraform-plugin-mux/tf5to6server"
-	"github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/testcontainers/testcontainers-go"
@@ -23,41 +22,11 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var providerFactories = map[string]func() (*schema.Provider, error){
-	"unifi": func() (*schema.Provider, error) {
-		return New("acctest")(), nil
-	},
+var providerFactories = map[string]func() (tfprotov6.ProviderServer, error){
+	"unifi": providerserver.NewProtocol6WithError(New()),
 }
 
-// testAccProtoV6ProviderFactories provides providers for acceptance tests using the new testing framework
-var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"unifi": func() (tfprotov6.ProviderServer, error) {
-		ctx := context.Background()
-
-		// Upgrade SDK v2 provider to protocol version 6
-		upgradedSdkProvider, err := tf5to6server.UpgradeServer(
-			ctx,
-			New("acctest")().GRPCProvider,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		providers := []func() tfprotov6.ProviderServer{
-			func() tfprotov6.ProviderServer {
-				return upgradedSdkProvider
-			},
-			providerserver.NewProtocol6(NewFrameworkProvider()),
-		}
-
-		muxServer, err := tf6muxserver.NewMuxServer(ctx, providers...)
-		if err != nil {
-			return nil, err
-		}
-
-		return muxServer.ProviderServer(), nil
-	},
-}
+var testAccProtoV6ProviderFactories = providerFactories
 
 var testClient *unifi.Client
 
@@ -68,25 +37,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(runAcceptanceTests(m))
-}
-
-func NewTestClient(ctx context.Context) *unifi.Client {
-	var user, password, endpoint, apikey string
-
-	user = os.Getenv("UNIFI_USERNAME")
-	password = os.Getenv("UNIFI_PASSWORD")
-	endpoint = os.Getenv("UNIFI_API")
-	apikey = os.Getenv("UNIFI_API_KEY")
-
-	testClient = &unifi.Client{}
-	setHTTPClient(testClient, true, "unifi")
-	testClient.SetBaseURL(endpoint)
-	testClient.SetAPIKey(apikey)
-	if err := testClient.Login(ctx, user, password); err != nil {
-		panic(err)
-	}
-
-	return testClient
 }
 
 func runAcceptanceTests(m *testing.M) int {
@@ -156,7 +106,12 @@ func runAcceptanceTests(m *testing.M) int {
 	}
 
 	testClient = &unifi.Client{}
-	setHTTPClient(testClient, true, "unifi")
+	httpClient := &http.Client{}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	httpClient.Transport = transport
+	testClient.SetHTTPClient(httpClient)
 	testClient.SetBaseURL(endpoint)
 	if err = testClient.Login(ctx, user, password); err != nil {
 		panic(err)

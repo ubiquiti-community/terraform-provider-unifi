@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
-// ParseImportID parses import IDs supporting both "id" and "site:id" formats
+// ParseImportID parses import IDs supporting both "id" and "site:id" formats.
 func ParseImportID(id string, minParts int, maxParts int) ([]string, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
