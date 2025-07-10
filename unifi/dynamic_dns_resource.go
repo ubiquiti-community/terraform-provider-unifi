@@ -163,7 +163,7 @@ func (r *dynamicDNSResource) Create(
 	}
 
 	// Create the dynamic DNS
-	createdDynamicDNS, err := r.client.Client.CreateDynamicDNS(ctx, site, dynamicDNS)
+	createdDynamicDNS, err := r.client.CreateDynamicDNS(ctx, site, dynamicDNS)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Dynamic DNS",
@@ -198,7 +198,7 @@ func (r *dynamicDNSResource) Read(
 	}
 
 	// Get the dynamic DNS from the API
-	dynamicDNS, err := r.client.Client.GetDynamicDNS(ctx, site, data.ID.ValueString())
+	dynamicDNS, err := r.client.GetDynamicDNS(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -252,7 +252,7 @@ func (r *dynamicDNSResource) Update(
 	dynamicDNS.SiteID = site
 
 	// Send to API
-	updatedDynamicDNS, err := r.client.Client.UpdateDynamicDNS(ctx, site, dynamicDNS)
+	updatedDynamicDNS, err := r.client.UpdateDynamicDNS(ctx, site, dynamicDNS)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Dynamic DNS",
@@ -287,7 +287,7 @@ func (r *dynamicDNSResource) Delete(
 	}
 
 	// Delete the dynamic DNS
-	err := r.client.Client.DeleteDynamicDNS(ctx, site, data.ID.ValueString())
+	err := r.client.DeleteDynamicDNS(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return
@@ -332,7 +332,7 @@ func (r *dynamicDNSResource) ImportState(
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *dynamicDNSResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *dynamicDNSResourceModel,
 	state *dynamicDNSResourceModel,
 ) {
@@ -359,7 +359,7 @@ func (r *dynamicDNSResource) applyPlanToState(
 
 // modelToDynamicDNS converts the Terraform model to the API struct.
 func (r *dynamicDNSResource) modelToDynamicDNS(
-	ctx context.Context,
+	_ context.Context,
 	model *dynamicDNSResourceModel,
 ) *unifi.DynamicDNS {
 	dynamicDNS := &unifi.DynamicDNS{
@@ -383,7 +383,7 @@ func (r *dynamicDNSResource) modelToDynamicDNS(
 
 // dynamicDNSToModel converts the API struct to the Terraform model.
 func (r *dynamicDNSResource) dynamicDNSToModel(
-	ctx context.Context,
+	_ context.Context,
 	dynamicDNS *unifi.DynamicDNS,
 	model *dynamicDNSResourceModel,
 	site string,

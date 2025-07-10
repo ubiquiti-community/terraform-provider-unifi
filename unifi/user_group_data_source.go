@@ -113,7 +113,7 @@ func (d *userGroupDataSource) Read(
 
 	name := data.Name.ValueString()
 
-	userGroups, err := d.client.Client.ListUserGroup(ctx, site)
+	userGroups, err := d.client.ListUserGroup(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading User Groups",

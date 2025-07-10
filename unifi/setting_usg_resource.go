@@ -116,7 +116,7 @@ func (r *settingUSGResource) Create(
 		site = r.client.Site
 	}
 
-	createdSetting, err := r.client.Client.UpdateSettingUsg(ctx, site, setting)
+	createdSetting, err := r.client.UpdateSettingUsg(ctx, site, setting)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Setting USG",
@@ -147,7 +147,7 @@ func (r *settingUSGResource) Read(
 		site = r.client.Site
 	}
 
-	setting, err := r.client.Client.GetSettingUsg(ctx, site)
+	setting, err := r.client.GetSettingUsg(ctx, site)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -192,7 +192,7 @@ func (r *settingUSGResource) Update(
 
 	setting := r.modelToSettingUSG(ctx, &state)
 
-	updatedSetting, err := r.client.Client.UpdateSettingUsg(ctx, site, setting)
+	updatedSetting, err := r.client.UpdateSettingUsg(ctx, site, setting)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Setting USG",
@@ -223,7 +223,7 @@ func (r *settingUSGResource) ImportState(
 }
 
 func (r *settingUSGResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *settingUSGResourceModel,
 	state *settingUSGResourceModel,
 ) {
@@ -233,7 +233,7 @@ func (r *settingUSGResource) applyPlanToState(
 }
 
 func (r *settingUSGResource) modelToSettingUSG(
-	ctx context.Context,
+	_ context.Context,
 	model *settingUSGResourceModel,
 ) *unifi.SettingUsg {
 	setting := &unifi.SettingUsg{}
@@ -246,7 +246,7 @@ func (r *settingUSGResource) modelToSettingUSG(
 }
 
 func (r *settingUSGResource) settingUSGToModel(
-	ctx context.Context,
+	_ context.Context,
 	setting *unifi.SettingUsg,
 	model *settingUSGResourceModel,
 	site string,

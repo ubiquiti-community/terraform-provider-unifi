@@ -15,11 +15,14 @@ linters:
     - predeclared
     - staticcheck
     - unconvert
-    # - unparam
+    - unparam
     - unused
     - govet
   disable:
     - errcheck
+  exclusions:
+    paths:
+      - "internal/provider/\\.*\\.go"
 formatters:
   enable:
     - gci
@@ -35,3 +38,6 @@ formatters:
           replacement: "any"
         - pattern: "a[b:len(a)]"
           replacement: "a[b:]"
+  exclusions:
+    paths:
+      - "internal/provider/\\.*\\.go"

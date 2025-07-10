@@ -25,8 +25,9 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/appkins-org/ironic",
-		Debug:   debug,
+		Address:         "registry.terraform.io/appkins-org/ironic",
+		Debug:           debug,
+		ProtocolVersion: 6,
 	}
 
 	err := providerserver.Serve(context.Background(), unifi.New, opts)

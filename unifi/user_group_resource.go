@@ -237,7 +237,7 @@ func (r *userGroupFrameworkResource) Create(
 	}
 
 	// Create the UserGroup
-	createdUserGroup, err := r.client.Client.CreateUserGroup(ctx, site, userGroup)
+	createdUserGroup, err := r.client.CreateUserGroup(ctx, site, userGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating User Group",
@@ -278,7 +278,7 @@ func (r *userGroupFrameworkResource) Read(
 	id := state.ID.ValueString()
 
 	// Get the UserGroup from the API
-	userGroup, err := r.client.Client.GetUserGroup(ctx, site, id)
+	userGroup, err := r.client.GetUserGroup(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		resp.State.RemoveResource(ctx)
 		return
@@ -342,7 +342,7 @@ func (r *userGroupFrameworkResource) Update(
 	userGroup.SiteID = site
 
 	// Step 4: Send to API
-	updatedUserGroup, err := r.client.Client.UpdateUserGroup(ctx, site, userGroup)
+	updatedUserGroup, err := r.client.UpdateUserGroup(ctx, site, userGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating User Group",
@@ -361,9 +361,9 @@ func (r *userGroupFrameworkResource) Update(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *userGroupFrameworkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *userGroupFrameworkResourceModel,
 	state *userGroupFrameworkResourceModel,
 ) {
@@ -399,7 +399,7 @@ func (r *userGroupFrameworkResource) Delete(
 
 	id := state.ID.ValueString()
 
-	err := r.client.Client.DeleteUserGroup(ctx, site, id)
+	err := r.client.DeleteUserGroup(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		return
 	}
@@ -429,7 +429,7 @@ func (r *userGroupFrameworkResource) ImportState(
 // Helper functions for conversion and merging
 
 func (r *userGroupFrameworkResource) planToUserGroup(
-	ctx context.Context,
+	_ context.Context,
 	plan userGroupFrameworkResourceModel,
 ) (*unifi.UserGroup, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -445,7 +445,7 @@ func (r *userGroupFrameworkResource) planToUserGroup(
 }
 
 func (r *userGroupFrameworkResource) userGroupToModel(
-	ctx context.Context,
+	_ context.Context,
 	userGroup *unifi.UserGroup,
 	model *userGroupFrameworkResourceModel,
 	site string,
@@ -459,23 +459,4 @@ func (r *userGroupFrameworkResource) userGroupToModel(
 	model.QOSRateMaxUp = types.Int64Value(int64(userGroup.QOSRateMaxUp))
 
 	return diags
-}
-
-func (r *userGroupFrameworkResource) mergeUserGroup(
-	existing *unifi.UserGroup,
-	planned *unifi.UserGroup,
-) *unifi.UserGroup {
-	// Start with the existing user group to preserve all UniFi internal fields
-	merged := *existing
-
-	// Override with planned values
-	merged.Name = planned.Name
-	merged.QOSRateMaxDown = planned.QOSRateMaxDown
-	merged.QOSRateMaxUp = planned.QOSRateMaxUp
-
-	// Preserve required fields for update
-	merged.ID = planned.ID
-	merged.SiteID = planned.SiteID
-
-	return &merged
 }

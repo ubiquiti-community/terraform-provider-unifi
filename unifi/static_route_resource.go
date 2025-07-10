@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -85,7 +86,7 @@ func (r *staticRouteFrameworkResource) Schema(
 				MarkdownDescription: "The network subnet address.",
 				Required:            true,
 				Validators: []validator.String{
-					CIDRValidator(),
+					validators.CIDRValidator(),
 				},
 			},
 			"type": schema.StringAttribute{
@@ -106,7 +107,7 @@ func (r *staticRouteFrameworkResource) Schema(
 				MarkdownDescription: "The next hop of the static route (only valid for `nexthop-route` type).",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"interface": schema.StringAttribute{
@@ -163,7 +164,7 @@ func (r *staticRouteFrameworkResource) Create(
 	}
 
 	// Create the static route
-	createdRouting, err := r.client.Client.CreateRouting(ctx, site, routing)
+	createdRouting, err := r.client.CreateRouting(ctx, site, routing)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Static Route",
@@ -198,7 +199,7 @@ func (r *staticRouteFrameworkResource) Read(
 	}
 
 	// Get the static route from the API
-	routing, err := r.client.Client.GetRouting(ctx, site, data.ID.ValueString())
+	routing, err := r.client.GetRouting(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -251,7 +252,7 @@ func (r *staticRouteFrameworkResource) Update(
 	routing.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
-	updatedRouting, err := r.client.Client.UpdateRouting(ctx, site, routing)
+	updatedRouting, err := r.client.UpdateRouting(ctx, site, routing)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Static Route",
@@ -286,7 +287,7 @@ func (r *staticRouteFrameworkResource) Delete(
 	}
 
 	// Delete the static route
-	err := r.client.Client.DeleteRouting(ctx, site, data.ID.ValueString())
+	err := r.client.DeleteRouting(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return
@@ -329,9 +330,9 @@ func (r *staticRouteFrameworkResource) ImportState(
 	)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *staticRouteFrameworkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *staticRouteFrameworkResourceModel,
 	state *staticRouteFrameworkResourceModel,
 ) {
@@ -356,9 +357,9 @@ func (r *staticRouteFrameworkResource) applyPlanToState(
 	}
 }
 
-// modelToRouting converts the Terraform model to the API struct
+// modelToRouting converts the Terraform model to the API struct.
 func (r *staticRouteFrameworkResource) modelToRouting(
-	ctx context.Context,
+	_ context.Context,
 	model *staticRouteFrameworkResourceModel,
 ) *unifi.Routing {
 	routeType := model.Type.ValueString()
@@ -388,9 +389,9 @@ func (r *staticRouteFrameworkResource) modelToRouting(
 	return routing
 }
 
-// routingToModel converts the API struct to the Terraform model
+// routingToModel converts the API struct to the Terraform model.
 func (r *staticRouteFrameworkResource) routingToModel(
-	ctx context.Context,
+	_ context.Context,
 	routing *unifi.Routing,
 	model *staticRouteFrameworkResourceModel,
 	site string,

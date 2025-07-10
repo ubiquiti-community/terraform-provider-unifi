@@ -139,7 +139,7 @@ func (d *radiusProfileDataSource) Read(
 	name := data.Name.ValueString()
 
 	// Get RADIUS profiles from API
-	radiusProfiles, err := d.client.Client.ListRADIUSProfile(ctx, site)
+	radiusProfiles, err := d.client.ListRADIUSProfile(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading RADIUS Profiles",

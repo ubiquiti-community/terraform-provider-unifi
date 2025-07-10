@@ -37,7 +37,7 @@ type wlanFrameworkResource struct {
 	client *Client
 }
 
-// wlanScheduleModel represents a schedule block for WLAN
+// wlanScheduleModel represents a schedule block for WLAN.
 type wlanScheduleModel struct {
 	DayOfWeek   types.String `tfsdk:"day_of_week"`
 	StartHour   types.Int64  `tfsdk:"start_hour"`
@@ -375,7 +375,7 @@ func (r *wlanFrameworkResource) Create(
 	}
 
 	// Create the WLAN
-	createdWLAN, err := r.client.Client.CreateWLAN(ctx, site, wlan)
+	createdWLAN, err := r.client.CreateWLAN(ctx, site, wlan)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating WLAN",
@@ -416,7 +416,7 @@ func (r *wlanFrameworkResource) Read(
 	id := state.ID.ValueString()
 
 	// Get the WLAN from the API
-	wlan, err := r.client.Client.GetWLAN(ctx, site, id)
+	wlan, err := r.client.GetWLAN(ctx, site, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading WLAN",
@@ -473,7 +473,7 @@ func (r *wlanFrameworkResource) Update(
 
 	// Step 4: Send to API
 	wlan.ID = state.ID.ValueString()
-	updatedWLAN, err := r.client.Client.UpdateWLAN(ctx, site, wlan)
+	updatedWLAN, err := r.client.UpdateWLAN(ctx, site, wlan)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating WLAN",
@@ -492,9 +492,9 @@ func (r *wlanFrameworkResource) Update(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *wlanFrameworkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *wlanFrameworkResourceModel,
 	state *wlanFrameworkResourceModel,
 ) {
@@ -593,7 +593,7 @@ func (r *wlanFrameworkResource) Delete(
 
 	id := state.ID.ValueString()
 
-	err := r.client.Client.DeleteWLAN(ctx, site, id)
+	err := r.client.DeleteWLAN(ctx, site, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting WLAN",
@@ -700,7 +700,7 @@ func (r *wlanFrameworkResource) planToWLAN(
 }
 
 func (r *wlanFrameworkResource) wlanToModel(
-	ctx context.Context,
+	_ context.Context,
 	wlan *unifi.WLAN,
 	model *wlanFrameworkResourceModel,
 	site string,
@@ -825,40 +825,4 @@ func (r *wlanFrameworkResource) wlanToModel(
 	}
 
 	return diags
-}
-
-func (r *wlanFrameworkResource) mergeWLAN(existing *unifi.WLAN, planned *unifi.WLAN) *unifi.WLAN {
-	// Start with the existing WLAN to preserve all UniFi internal fields
-	merged := *existing
-
-	// Override with planned values
-	merged.Name = planned.Name
-	merged.UserGroupID = planned.UserGroupID
-	merged.Security = planned.Security
-	merged.WPA3Support = planned.WPA3Support
-	merged.WPA3Transition = planned.WPA3Transition
-	merged.PMFMode = planned.PMFMode
-	merged.XPassphrase = planned.XPassphrase
-	merged.HideSSID = planned.HideSSID
-	merged.IsGuest = planned.IsGuest
-	merged.MulticastEnhanceEnabled = planned.MulticastEnhanceEnabled
-	merged.MACFilterEnabled = planned.MACFilterEnabled
-	merged.MACFilterList = planned.MACFilterList
-	merged.MACFilterPolicy = planned.MACFilterPolicy
-	merged.RADIUSProfileID = planned.RADIUSProfileID
-	merged.ScheduleWithDuration = planned.ScheduleWithDuration
-	merged.ScheduleEnabled = planned.ScheduleEnabled
-	merged.No2GhzOui = planned.No2GhzOui
-	merged.L2Isolation = planned.L2Isolation
-	merged.ProxyArp = planned.ProxyArp
-	merged.BssTransition = planned.BssTransition
-	merged.UapsdEnabled = planned.UapsdEnabled
-	merged.FastRoamingEnabled = planned.FastRoamingEnabled
-	merged.MinrateSettingPreference = planned.MinrateSettingPreference
-	merged.MinrateNgEnabled = planned.MinrateNgEnabled
-	merged.MinrateNgDataRateKbps = planned.MinrateNgDataRateKbps
-	merged.MinrateNaEnabled = planned.MinrateNaEnabled
-	merged.MinrateNaDataRateKbps = planned.MinrateNaDataRateKbps
-
-	return &merged
 }

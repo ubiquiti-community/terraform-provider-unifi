@@ -164,7 +164,7 @@ func (r *accountFrameworkResource) Create(
 	}
 
 	// Create the account
-	createdAccount, err := r.client.Client.CreateAccount(ctx, site, account)
+	createdAccount, err := r.client.CreateAccount(ctx, site, account)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Account",
@@ -199,7 +199,7 @@ func (r *accountFrameworkResource) Read(
 	}
 
 	// Get the account from the API
-	account, err := r.client.Client.GetAccount(ctx, site, data.ID.ValueString())
+	account, err := r.client.GetAccount(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -252,7 +252,7 @@ func (r *accountFrameworkResource) Update(
 	account.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
-	updatedAccount, err := r.client.Client.UpdateAccount(ctx, site, account)
+	updatedAccount, err := r.client.UpdateAccount(ctx, site, account)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Account",
@@ -287,7 +287,7 @@ func (r *accountFrameworkResource) Delete(
 	}
 
 	// Delete the account
-	err := r.client.Client.DeleteAccount(ctx, site, data.ID.ValueString())
+	err := r.client.DeleteAccount(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Account",
@@ -327,9 +327,9 @@ func (r *accountFrameworkResource) ImportState(
 	)
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown
+// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *accountFrameworkResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *accountFrameworkResourceModel,
 	state *accountFrameworkResourceModel,
 ) {
@@ -351,9 +351,9 @@ func (r *accountFrameworkResource) applyPlanToState(
 	}
 }
 
-// modelToAccount converts the Terraform model to the API struct
+// modelToAccount converts the Terraform model to the API struct.
 func (r *accountFrameworkResource) modelToAccount(
-	ctx context.Context,
+	_ context.Context,
 	model *accountFrameworkResourceModel,
 ) *unifi.Account {
 	account := &unifi.Account{
@@ -376,9 +376,9 @@ func (r *accountFrameworkResource) modelToAccount(
 	return account
 }
 
-// accountToModel converts the API struct to the Terraform model
+// accountToModel converts the API struct to the Terraform model.
 func (r *accountFrameworkResource) accountToModel(
-	ctx context.Context,
+	_ context.Context,
 	account *unifi.Account,
 	model *accountFrameworkResourceModel,
 	site string,

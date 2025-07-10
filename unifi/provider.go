@@ -10,17 +10,20 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ provider.Provider = &unifiProvider{}
+var (
+	_ provider.Provider                       = &unifiProvider{}
+	_ provider.ProviderWithEphemeralResources = &unifiProvider{}
+)
 
 type unifiProvider struct {
 	version string
@@ -37,138 +40,8 @@ type unifiProviderModel struct {
 
 // Client wraps the UniFi client with site information.
 type Client struct {
-	Client *ui.Client
-	Site   string
-}
-
-// UniFi API client methods for resources.
-func (c *Client) CreateWLAN(ctx context.Context, site string, d *ui.WLAN) (*ui.WLAN, error) {
-	return c.Client.CreateWLAN(ctx, site, d)
-}
-
-func (c *Client) GetWLAN(ctx context.Context, site, id string) (*ui.WLAN, error) {
-	return c.Client.GetWLAN(ctx, site, id)
-}
-
-func (c *Client) UpdateWLAN(ctx context.Context, site string, d *ui.WLAN) (*ui.WLAN, error) {
-	return c.Client.UpdateWLAN(ctx, site, d)
-}
-
-func (c *Client) DeleteWLAN(ctx context.Context, site, id string) error {
-	return c.Client.DeleteWLAN(ctx, site, id)
-}
-
-func (c *Client) CreateNetwork(
-	ctx context.Context,
-	site string,
-	d *ui.Network,
-) (*ui.Network, error) {
-	return c.Client.CreateNetwork(ctx, site, d)
-}
-
-func (c *Client) GetNetwork(ctx context.Context, site, id string) (*ui.Network, error) {
-	return c.Client.GetNetwork(ctx, site, id)
-}
-
-func (c *Client) UpdateNetwork(
-	ctx context.Context,
-	site string,
-	d *ui.Network,
-) (*ui.Network, error) {
-	return c.Client.UpdateNetwork(ctx, site, d)
-}
-
-func (c *Client) DeleteNetwork(ctx context.Context, site, id string) error {
-	// The UniFi Network delete method requires both ID and name
-	// We'll need to get the network first to retrieve the name
-	network, err := c.GetNetwork(ctx, site, id)
-	if err != nil {
-		return err
-	}
-	return c.Client.DeleteNetwork(ctx, site, id, network.Name)
-}
-
-// Device methods
-func (c *Client) GetDevice(ctx context.Context, site, id string) (*ui.Device, error) {
-	return c.Client.GetDevice(ctx, site, id)
-}
-
-func (c *Client) GetDeviceByMAC(ctx context.Context, site, mac string) (*ui.Device, error) {
-	return c.Client.GetDeviceByMAC(ctx, site, mac)
-}
-
-func (c *Client) UpdateDevice(
-	ctx context.Context,
-	site string,
-	d *ui.Device,
-) (*ui.Device, error) {
-	return c.Client.UpdateDevice(ctx, site, d)
-}
-
-func (c *Client) AdoptDevice(ctx context.Context, site, mac string) error {
-	return c.Client.AdoptDevice(ctx, site, mac)
-}
-
-func (c *Client) ForgetDevice(ctx context.Context, site, mac string) error {
-	return c.Client.ForgetDevice(ctx, site, mac)
-}
-
-// FirewallGroup methods
-func (c *Client) CreateFirewallGroup(
-	ctx context.Context,
-	site string,
-	d *ui.FirewallGroup,
-) (*ui.FirewallGroup, error) {
-	return c.Client.CreateFirewallGroup(ctx, site, d)
-}
-
-func (c *Client) GetFirewallGroup(
-	ctx context.Context,
-	site, id string,
-) (*ui.FirewallGroup, error) {
-	return c.Client.GetFirewallGroup(ctx, site, id)
-}
-
-func (c *Client) UpdateFirewallGroup(
-	ctx context.Context,
-	site string,
-	d *ui.FirewallGroup,
-) (*ui.FirewallGroup, error) {
-	return c.Client.UpdateFirewallGroup(ctx, site, d)
-}
-
-func (c *Client) DeleteFirewallGroup(ctx context.Context, site, id string) error {
-	return c.Client.DeleteFirewallGroup(ctx, site, id)
-}
-
-// PortProfile methods
-func (c *Client) CreatePortProfile(
-	ctx context.Context,
-	site string,
-	d *ui.PortProfile,
-) (*ui.PortProfile, error) {
-	return c.Client.CreatePortProfile(ctx, site, d)
-}
-
-func (c *Client) GetPortProfile(ctx context.Context, site, id string) (*ui.PortProfile, error) {
-	return c.Client.GetPortProfile(ctx, site, id)
-}
-
-func (c *Client) UpdatePortProfile(
-	ctx context.Context,
-	site string,
-	d *ui.PortProfile,
-) (*ui.PortProfile, error) {
-	return c.Client.UpdatePortProfile(ctx, site, d)
-}
-
-func (c *Client) DeletePortProfile(ctx context.Context, site, id string) error {
-	return c.Client.DeletePortProfile(ctx, site, id)
-}
-
-// Network list method for data sources
-func (c *Client) ListNetwork(ctx context.Context, site string) ([]ui.Network, error) {
-	return c.Client.ListNetwork(ctx, site)
+	*ui.Client
+	Site string
 }
 
 func New() provider.Provider {
@@ -325,13 +198,7 @@ func (p *unifiProvider) Configure(
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 		}
-
-		// Add logging transport if enabled
-		if logging.IsDebugOrHigher() {
-			httpClient.Transport = logging.NewTransport("UniFi", transport)
-		} else {
-			httpClient.Transport = transport
-		}
+		httpClient.Transport = transport
 	}
 
 	// Add cookie jar for session management
@@ -361,10 +228,22 @@ func (p *unifiProvider) Configure(
 	// Set authentication
 	if apiKey != "" {
 		client.SetAPIKey(apiKey)
+	} else if username != "" && password != "" {
+		if err := client.Login(ctx, username, password); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Logging In",
+				"Could not log in with username and password. "+
+					"UniFi Client Error: "+err.Error(),
+			)
+			return
+		}
+	} else {
+		resp.Diagnostics.AddError(
+			"Missing Authentication Configuration",
+			"Either api_key or both username and password must be provided.",
+		)
+		return
 	}
-
-	// For username/password auth, we would typically need to login
-	// This will depend on the go-unifi client implementation
 
 	// Create wrapper client with site info
 	configuredClient := &Client{
@@ -374,6 +253,7 @@ func (p *unifiProvider) Configure(
 
 	resp.DataSourceData = configuredClient
 	resp.ResourceData = configuredClient
+	resp.EphemeralResourceData = configuredClient
 }
 
 func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resource {
@@ -381,9 +261,16 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewAccountFrameworkResource,
 		NewDeviceFrameworkResource,
 		NewDNSRecordFrameworkResource,
+		NewDynamicDNSResource,
 		NewFirewallGroupFrameworkResource,
+		NewFirewallRuleResource,
 		NewNetworkResource,
+		NewPortForwardResource,
 		NewPortProfileFrameworkResource,
+		NewRadiusProfileResource,
+		NewSettingMgmtResource,
+		NewSettingRadiusResource,
+		NewSettingUSGResource,
 		NewSiteFrameworkResource,
 		NewStaticRouteFrameworkResource,
 		NewUserFrameworkResource,
@@ -394,7 +281,19 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 
 func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewNetworkFrameworkDataSource,
-		NewUserFrameworkDataSource,
+		NewUserDataSource,
+		NewNetworkDataSource,
+		NewAccountDataSource,
+		NewAPGroupDataSource,
+		NewDNSRecordDataSource,
+		NewPortProfileDataSource,
+		NewRadiusProfileDataSource,
+		NewUserGroupDataSource,
 	}
+}
+
+func (p *unifiProvider) EphemeralResources(
+	ctx context.Context,
+) []func() ephemeral.EphemeralResource {
+	return []func() ephemeral.EphemeralResource{}
 }

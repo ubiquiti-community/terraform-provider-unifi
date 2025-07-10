@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 var (
@@ -93,7 +94,7 @@ func (r *portForwardResource) Schema(
 				MarkdownDescription: "The IPv4 address to forward traffic to.",
 				Optional:            true,
 				Validators: []validator.String{
-					IPv4Validator(),
+					validators.IPv4Validator(),
 				},
 			},
 			"fwd_port": schema.StringAttribute{
@@ -179,7 +180,7 @@ func (r *portForwardResource) Create(
 		site = r.client.Site
 	}
 
-	createdPortForward, err := r.client.Client.CreatePortForward(ctx, site, portForward)
+	createdPortForward, err := r.client.CreatePortForward(ctx, site, portForward)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Port Forward",
@@ -210,7 +211,7 @@ func (r *portForwardResource) Read(
 		site = r.client.Site
 	}
 
-	portForward, err := r.client.Client.GetPortForward(ctx, site, data.ID.ValueString())
+	portForward, err := r.client.GetPortForward(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -256,7 +257,7 @@ func (r *portForwardResource) Update(
 	portForward := r.modelToPortForward(ctx, &state)
 	portForward.ID = state.ID.ValueString()
 
-	updatedPortForward, err := r.client.Client.UpdatePortForward(ctx, site, portForward)
+	updatedPortForward, err := r.client.UpdatePortForward(ctx, site, portForward)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Port Forward",
@@ -287,7 +288,7 @@ func (r *portForwardResource) Delete(
 		site = r.client.Site
 	}
 
-	err := r.client.Client.DeletePortForward(ctx, site, data.ID.ValueString())
+	err := r.client.DeletePortForward(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return
@@ -328,7 +329,7 @@ func (r *portForwardResource) ImportState(
 }
 
 func (r *portForwardResource) applyPlanToState(
-	ctx context.Context,
+	_ context.Context,
 	plan *portForwardResourceModel,
 	state *portForwardResourceModel,
 ) {
@@ -362,7 +363,7 @@ func (r *portForwardResource) applyPlanToState(
 }
 
 func (r *portForwardResource) modelToPortForward(
-	ctx context.Context,
+	_ context.Context,
 	model *portForwardResourceModel,
 ) *unifi.PortForward {
 	portForward := &unifi.PortForward{
@@ -392,7 +393,7 @@ func (r *portForwardResource) modelToPortForward(
 }
 
 func (r *portForwardResource) portForwardToModel(
-	ctx context.Context,
+	_ context.Context,
 	portForward *unifi.PortForward,
 	model *portForwardResourceModel,
 	site string,

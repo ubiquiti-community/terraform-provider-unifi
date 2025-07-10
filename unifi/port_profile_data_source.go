@@ -106,7 +106,7 @@ func (d *portProfileDataSource) Read(
 
 	name := data.Name.ValueString()
 
-	portProfiles, err := d.client.Client.ListPortProfile(ctx, site)
+	portProfiles, err := d.client.ListPortProfile(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Port Profiles",

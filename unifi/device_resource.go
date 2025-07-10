@@ -20,8 +20,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util/retry"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -104,10 +105,7 @@ func (r *deviceResource) Schema(
 				Optional:    true,
 				Computed:    true,
 				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						macAddressRegexp,
-						"Mac address is invalid",
-					),
+					validators.MACAddressValidator(),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -600,7 +598,7 @@ func (r *deviceResource) modelToAPIDevice(
 }
 
 func (r *deviceResource) portOverridesToFramework(
-	ctx context.Context,
+	_ context.Context,
 	pos []unifi.DevicePortOverrides,
 ) (types.Set, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -683,7 +681,7 @@ func (r *deviceResource) portOverridesToFramework(
 }
 
 func (r *deviceResource) frameworkToPortOverrides(
-	ctx context.Context,
+	_ context.Context,
 	portOverrideSet types.Set,
 ) ([]unifi.DevicePortOverrides, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -787,7 +785,7 @@ func (r *deviceResource) waitForDeviceState(
 	return nil, err
 }
 
-// cleanMAC normalizes MAC address format
+// cleanMAC normalizes MAC address format.
 func cleanMAC(mac string) string {
 	mac = strings.ReplaceAll(mac, "-", ":")
 	mac = strings.ToLower(mac)
