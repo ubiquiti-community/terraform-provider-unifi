@@ -251,6 +251,15 @@ func (p *unifiProvider) Configure(
 		Site:   site,
 	}
 
+	if err := configuredClient.Login(ctx, username, password); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Logging In",
+			"Could not log in with username and password. "+
+				"UniFi Client Error: "+err.Error(),
+		)
+		return
+	}
+
 	resp.DataSourceData = configuredClient
 	resp.ResourceData = configuredClient
 	resp.EphemeralResourceData = configuredClient

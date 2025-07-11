@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -54,12 +53,12 @@ type deviceResourceModel struct {
 
 // portOverrideModel describes the port override data model.
 type portOverrideModel struct {
-	Number            types.Int64  `tfsdk:"number"`
-	Name              types.String `tfsdk:"name"`
-	PortProfileID     types.String `tfsdk:"port_profile_id"`
-	OpMode            types.String `tfsdk:"op_mode"`
-	PoeMode           types.String `tfsdk:"poe_mode"`
-	AggregateNumPorts types.Int64  `tfsdk:"aggregate_num_ports"`
+	Number           types.Int64    `tfsdk:"number"`
+	Name             types.String   `tfsdk:"name"`
+	PortProfileID    types.String   `tfsdk:"port_profile_id"`
+	OpMode           types.String   `tfsdk:"op_mode"`
+	PoeMode          types.String   `tfsdk:"poe_mode"`
+	AggregateMembers types.ListType `tfsdk:"aggregate_members"`
 }
 
 var macAddressRegexp = regexp.MustCompile(`^([a-fA-F0-9]{2}[:-]){5}[a-fA-F0-9]{2}$`)
@@ -168,12 +167,10 @@ func (r *deviceResource) Schema(
 								stringvalidator.OneOf("auto", "pasv24", "passthrough", "off"),
 							},
 						},
-						"aggregate_num_ports": schema.Int64Attribute{
+						"aggregate_members": schema.ListAttribute{
 							Description: "Number of ports in the aggregate.",
 							Optional:    true,
-							Validators: []validator.Int64{
-								int64validator.Between(2, 8),
-							},
+							ElementType: types.Int64Type,
 						},
 					},
 				},
@@ -250,7 +247,7 @@ func (r *deviceResource) Create(
 		return
 	}
 
-	if device.Adopted != nil && !*device.Adopted {
+	if !device.Adopted {
 		allowAdoption := plan.AllowAdoption.ValueBool()
 		if !allowAdoption {
 			resp.Diagnostics.AddError(
@@ -560,11 +557,7 @@ func (r *deviceResource) setResourceData(
 		model.Name = types.StringValue(device.Name)
 	}
 
-	if device.Disabled != nil {
-		model.Disabled = types.BoolValue(*device.Disabled)
-	} else {
-		model.Disabled = types.BoolValue(false)
-	}
+	model.Disabled = types.BoolValue(device.Disabled)
 
 	// Convert port overrides
 	portOverrides, convDiags := r.portOverridesToFramework(ctx, device.PortOverrides)
@@ -606,24 +599,28 @@ func (r *deviceResource) portOverridesToFramework(
 	if len(pos) == 0 {
 		return types.SetNull(types.ObjectType{
 			AttrTypes: map[string]attr.Type{
-				"number":              types.Int64Type,
-				"name":                types.StringType,
-				"port_profile_id":     types.StringType,
-				"op_mode":             types.StringType,
-				"poe_mode":            types.StringType,
-				"aggregate_num_ports": types.Int64Type,
+				"number":          types.Int64Type,
+				"name":            types.StringType,
+				"port_profile_id": types.StringType,
+				"op_mode":         types.StringType,
+				"poe_mode":        types.StringType,
+				"aggregate_members": types.ListType{
+					ElemType: types.Int64Type,
+				},
 			},
 		}), diags
 	}
 
 	attrType := types.ObjectType{
 		AttrTypes: map[string]attr.Type{
-			"number":              types.Int64Type,
-			"name":                types.StringType,
-			"port_profile_id":     types.StringType,
-			"op_mode":             types.StringType,
-			"poe_mode":            types.StringType,
-			"aggregate_num_ports": types.Int64Type,
+			"number":          types.Int64Type,
+			"name":            types.StringType,
+			"port_profile_id": types.StringType,
+			"op_mode":         types.StringType,
+			"poe_mode":        types.StringType,
+			"aggregate_members": types.ListType{
+				ElemType: types.Int64Type,
+			},
 		},
 	}
 
@@ -657,10 +654,19 @@ func (r *deviceResource) portOverridesToFramework(
 			portOverrideObj["poe_mode"] = types.StringValue(po.PoeMode)
 		}
 
-		if po.AggregateNumPorts == 0 {
-			portOverrideObj["aggregate_num_ports"] = types.Int64Null()
+		if len(po.AggregateMembers) == 0 {
+			portOverrideObj["aggregate_members"] = types.ListNull(types.Int64Type)
 		} else {
-			portOverrideObj["aggregate_num_ports"] = types.Int64Value(int64(po.AggregateNumPorts))
+			aggrMemberValues := make([]attr.Value, 0, len(po.AggregateMembers))
+			for _, member := range po.AggregateMembers {
+				aggrMemberValues = append(aggrMemberValues, types.Int64Value(int64(member)))
+			}
+			listVal, listDiags := types.ListValue(types.Int64Type, aggrMemberValues)
+			diags.Append(listDiags...)
+			if diags.HasError() {
+				continue
+			}
+			portOverrideObj["aggregate_members"] = listVal
 		}
 
 		objVal, objDiags := types.ObjectValue(attrType.AttrTypes, portOverrideObj)
@@ -681,7 +687,7 @@ func (r *deviceResource) portOverridesToFramework(
 }
 
 func (r *deviceResource) frameworkToPortOverrides(
-	_ context.Context,
+	ctx context.Context,
 	portOverrideSet types.Set,
 ) ([]unifi.DevicePortOverrides, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -715,8 +721,13 @@ func (r *deviceResource) frameworkToPortOverrides(
 			po.PoeMode = poeModeAttr.(types.String).ValueString()
 		}
 
-		if aggAttr, ok := attrs["aggregate_num_ports"]; ok && !aggAttr.IsNull() {
-			po.AggregateNumPorts = int(aggAttr.(types.Int64).ValueInt64())
+		if aggAttr, ok := attrs["aggregate_members"]; ok && !aggAttr.IsNull() {
+			aggrMembers := []int{}
+			diags.Append(aggAttr.(types.List).ElementsAs(ctx, &aggrMembers, true)...)
+			if diags.HasError() {
+				return nil, diags
+			}
+			po.AggregateMembers = aggrMembers
 		}
 
 		overrideMap[idx] = po
