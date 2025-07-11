@@ -259,13 +259,9 @@ func (r *settingMgmtResource) Delete(
 		return
 	}
 
-	site := data.Site.ValueString()
-	if site == "" {
-		site = r.client.Site
-	}
-
 	// Setting management cannot be deleted, it's a configuration resource
 	// Just remove from state
+	resp.State.RemoveResource(ctx)
 }
 
 func (r *settingMgmtResource) ImportState(

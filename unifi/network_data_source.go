@@ -35,11 +35,11 @@ type networkDataSourceModel struct {
 	VlanID                  types.Int64  `tfsdk:"vlan_id"`
 	Subnet                  types.String `tfsdk:"subnet"`
 	NetworkGroup            types.String `tfsdk:"network_group"`
-	DHCPStart               types.String `tfsdk:"dhcp_start"`
-	DHCPStop                types.String `tfsdk:"dhcp_stop"`
-	DHCPEnabled             types.Bool   `tfsdk:"dhcp_enabled"`
-	DHCPLease               types.Int64  `tfsdk:"dhcp_lease"`
-	DHCPDNS                 types.List   `tfsdk:"dhcp_dns"`
+	DHCPDStart              types.String `tfsdk:"dhcpd_start"`
+	DHCPDStop               types.String `tfsdk:"dhcpd_stop"`
+	DHCPDEnabled            types.Bool   `tfsdk:"dhcpd_enabled"`
+	DHCPDLease              types.Int64  `tfsdk:"dhcpd_leasetime"`
+	DHCPDDNS                types.List   `tfsdk:"dhcpd_dns"`
 	DHCPDBootEnabled        types.Bool   `tfsdk:"dhcpd_boot_enabled"`
 	DHCPDBootServer         types.String `tfsdk:"dhcpd_boot_server"`
 	DHCPDBootFilename       types.String `tfsdk:"dhcpd_boot_filename"`
@@ -135,23 +135,23 @@ func (d *networkDataSource) Schema(
 				Description: "The group of the network.",
 				Computed:    true,
 			},
-			"dhcp_start": schema.StringAttribute{
+			"dhcpd_start": schema.StringAttribute{
 				Description: "The IPv4 address where the DHCP range of addresses starts.",
 				Computed:    true,
 			},
-			"dhcp_stop": schema.StringAttribute{
+			"dhcpd_stop": schema.StringAttribute{
 				Description: "The IPv4 address where the DHCP range of addresses stops.",
 				Computed:    true,
 			},
-			"dhcp_enabled": schema.BoolAttribute{
+			"dhcpd_enabled": schema.BoolAttribute{
 				Description: "whether DHCP is enabled or not on this network.",
 				Computed:    true,
 			},
-			"dhcp_lease": schema.Int64Attribute{
+			"dhcpd_leasetime": schema.Int64Attribute{
 				Description: "lease time for DHCP addresses.",
 				Computed:    true,
 			},
-			"dhcp_dns": schema.ListAttribute{
+			"dhcpd_dns": schema.ListAttribute{
 				Description: "IPv4 addresses for the DNS server to be returned from the DHCP server.",
 				Computed:    true,
 				ElementType: types.StringType,
@@ -401,8 +401,8 @@ func (d *networkDataSource) Read(
 
 // Helper method to set data source data from API response.
 func (d *networkDataSource) setDataSourceData(
-	ctx context.Context,
-	diags *diag.Diagnostics,
+	_ context.Context,
+	_ *diag.Diagnostics,
 	network *unifi.Network,
 	model *networkDataSourceModel,
 	site string,
@@ -442,25 +442,25 @@ func (d *networkDataSource) setDataSourceData(
 		model.NetworkGroup = types.StringValue(network.NetworkGroup)
 	}
 
-	if network.DHCPguardEnabled {
-		model.DHCPStart = types.StringValue("auto")
+	if network.DHCPDStart != "" {
+		model.DHCPDStart = types.StringValue(network.DHCPDStart)
 	} else {
-		model.DHCPStart = types.StringNull()
+		model.DHCPDStart = types.StringNull()
 	}
 
-	if network.DHCPguardEnabled {
-		model.DHCPStop = types.StringValue("auto")
+	if network.DHCPDStop != "" {
+		model.DHCPDStop = types.StringValue(network.DHCPDStop)
 	} else {
-		model.DHCPStop = types.StringNull()
+		model.DHCPDStop = types.StringNull()
 	}
 
-	model.DHCPEnabled = types.BoolValue(network.DHCPguardEnabled)
+	model.DHCPDEnabled = types.BoolValue(network.DHCPDEnabled)
 
 	// Use a default DHCP lease time since the actual field name is not clear
-	model.DHCPLease = types.Int64Value(86400) // 24 hours default
+	model.DHCPDLease = types.Int64Value(int64(network.DHCPDLeaseTime)) // 24 hours default
 
 	// Convert string slices to Framework lists - use empty list for now
-	model.DHCPDNS = types.ListNull(types.StringType)
+	model.DHCPDDNS = types.ListNull(types.StringType)
 
 	model.DHCPDBootEnabled = types.BoolValue(false)
 
