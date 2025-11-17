@@ -12,7 +12,7 @@ import (
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi"
 )
 
-//go:generate go tool github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name unifi
+//go:generate go tool tfplugindocs generate -provider-name unifi
 func main() {
 	var debug bool
 
@@ -25,9 +25,8 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address:         "registry.terraform.io/ubiquiti-community/unifi",
-		Debug:           debug,
-		ProtocolVersion: 6,
+		Address: "registry.terraform.io/ubiquiti-community/unifi",
+		Debug:   debug,
 	}
 
 	err := providerserver.Serve(context.Background(), unifi.New, opts)

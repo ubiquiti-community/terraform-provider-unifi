@@ -95,7 +95,7 @@ func (r *dnsRecordFrameworkResource) Schema(
 			},
 			"port": schema.Int64Attribute{
 				MarkdownDescription: "The port of the Dns record.",
-				Required:            true,
+				Optional:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(0, 65535),
 				},

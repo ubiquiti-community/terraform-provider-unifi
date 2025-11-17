@@ -30,12 +30,12 @@ resource "unifi_dns_record" "test" {
 ### Required
 
 - `name` (String) The key of the Dns record.
-- `port` (Number) The port of the Dns record.
 - `value` (String) The value of the Dns record.
 
 ### Optional
 
 - `enabled` (Boolean) Whether the Dns record is enabled.
+- `port` (Number) The port of the Dns record.
 - `priority` (Number) The priority of the Dns record.
 - `record_type` (String) The type of the Dns record.
 - `site` (String) The name of the site to associate the Dns record with.
