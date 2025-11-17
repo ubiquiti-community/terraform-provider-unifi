@@ -6,6 +6,7 @@ package retry
 import (
 	"context"
 	"log"
+	"slices"
 	"time"
 )
 
@@ -163,12 +164,9 @@ func (conf *StateChangeConf) WaitForStateContext(ctx context.Context) (any, erro
 					}
 				}
 
-				for _, allowed := range conf.Pending {
-					if currentState == allowed {
-						found = true
-						targetOccurence = 0
-						break
-					}
+				if slices.Contains(conf.Pending, currentState) {
+					found = true
+					targetOccurence = 0
 				}
 
 				if !found && len(conf.Pending) > 0 {

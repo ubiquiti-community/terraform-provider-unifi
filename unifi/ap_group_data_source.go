@@ -21,9 +21,10 @@ type apGroupDataSource struct {
 }
 
 type apGroupDataSourceModel struct {
-	ID   types.String `tfsdk:"id"`
-	Site types.String `tfsdk:"site"`
-	Name types.String `tfsdk:"name"`
+	ID         types.String `tfsdk:"id"`
+	Site       types.String `tfsdk:"site"`
+	Name       types.String `tfsdk:"name"`
+	DeviceMacs types.List   `tfsdk:"device_macs"`
 }
 
 func (d *apGroupDataSource) Metadata(
@@ -55,6 +56,11 @@ func (d *apGroupDataSource) Schema(
 			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the AP group to look up.",
 				Required:            true,
+			},
+			"device_macs": schema.ListAttribute{
+				MarkdownDescription: "List of device MAC addresses in the AP group.",
+				Computed:            true,
+				ElementType:         types.StringType,
 			},
 		},
 	}
@@ -131,6 +137,16 @@ func (d *apGroupDataSource) Read(
 	data.ID = types.StringValue(apGroup.ID)
 	data.Site = types.StringValue(site)
 	data.Name = types.StringValue(apGroup.Name)
+	deviceMacList := make([]types.String, len(apGroup.DeviceMacs))
+	for i, v := range apGroup.DeviceMacs {
+		deviceMacList[i] = types.StringValue(v)
+	}
+	deviceMacs, diags := types.ListValueFrom(ctx, types.StringType, deviceMacList)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	data.DeviceMacs = deviceMacs
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

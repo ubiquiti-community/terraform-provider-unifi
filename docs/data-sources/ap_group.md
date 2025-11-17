@@ -30,4 +30,5 @@ data "unifi_ap_group" "default" {
 
 ### Read-Only
 
+- `device_macs` (List of String) List of device MAC addresses in the AP group.
 - `id` (String) The ID of this AP group.
