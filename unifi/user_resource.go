@@ -463,10 +463,18 @@ func (r *userFrameworkResource) ImportState(
 // Helper functions for conversion and merging
 
 func (r *userFrameworkResource) planToUser(
-	ctx context.Context,
+	_ context.Context,
 	plan userFrameworkResourceModel,
 ) (*unifi.User, diag.Diagnostics) {
 	var diags diag.Diagnostics
+
+	if plan.ID.IsNull() && plan.Name.IsNull() && plan.MAC.IsNull() {
+		diags.AddError(
+			"Invalid User",
+			"User must have either an ID, Name, or MAC to be imported",
+		)
+		return nil, diags
+	}
 
 	user := &unifi.User{
 		ID:             plan.ID.ValueString(),
@@ -494,6 +502,15 @@ func (r *userFrameworkResource) userToModel(
 	site string,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
+
+	if user.ID == "" && user.Name == "" && user.MAC == "" {
+
+		diags.AddError(
+			"Invalid User",
+			"User must have either an ID, Name, or MAC to be imported",
+		)
+		return diags
+	}
 
 	model.ID = types.StringValue(user.ID)
 	model.Site = types.StringValue(site)
