@@ -434,6 +434,14 @@ func (r *userGroupFrameworkResource) planToUserGroup(
 ) (*unifi.UserGroup, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
+	if plan.ID.IsNull() && plan.Name.IsNull() {
+		diags.AddError(
+			"Invalid User Group",
+			"User Group must have either an ID or Name to be imported",
+		)
+		return nil, diags
+	}
+
 	userGroup := &unifi.UserGroup{
 		ID:             plan.ID.ValueString(),
 		Name:           plan.Name.ValueString(),
@@ -451,6 +459,14 @@ func (r *userGroupFrameworkResource) userGroupToModel(
 	site string,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
+
+	if model.ID.IsNull() && model.Name.IsNull() {
+		diags.AddError(
+			"Invalid User Group",
+			"User Group must have either an ID or Name to be imported",
+		)
+		return diags
+	}
 
 	model.ID = types.StringValue(userGroup.ID)
 	model.Site = types.StringValue(site)

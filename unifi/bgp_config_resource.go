@@ -141,7 +141,7 @@ func (r *bgpConfigResource) Create(
 	}
 
 	// Create the BGP configuration
-	createdBGPConfig, err := r.client.Client.CreateBGPConfig(ctx, site, bgpConfig)
+	createdBGPConfig, err := r.client.CreateBGPConfig(ctx, site, bgpConfig)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating BGP Configuration",
@@ -176,7 +176,7 @@ func (r *bgpConfigResource) Read(
 	}
 
 	// Get the BGP configuration from the API
-	bgpConfig, err := r.client.Client.GetBGPConfig(ctx, site)
+	bgpConfig, err := r.client.GetBGPConfig(ctx, site)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -229,7 +229,7 @@ func (r *bgpConfigResource) Update(
 	bgpConfig.ID = state.ID.ValueString()
 
 	// Send to API
-	updatedBGPConfig, err := r.client.Client.UpdateBGPConfig(ctx, site, bgpConfig)
+	updatedBGPConfig, err := r.client.UpdateBGPConfig(ctx, site, bgpConfig)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating BGP Configuration",
@@ -264,7 +264,7 @@ func (r *bgpConfigResource) Delete(
 	}
 
 	// Delete the BGP configuration
-	err := r.client.Client.DeleteBGPConfig(ctx, site)
+	err := r.client.DeleteBGPConfig(ctx, site)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return

@@ -1,7 +1,6 @@
 package unifi
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -39,8 +39,26 @@ func TestMain(m *testing.M) {
 	os.Exit(runAcceptanceTests(m))
 }
 
+type logConsumer struct {
+	StdOut bool
+}
+
+func (l *logConsumer) Accept(log testcontainers.Log) {
+	if log.LogType == testcontainers.StdoutLog && l.StdOut {
+		testcontainers.Logger.Printf("%s", log.Content)
+	}
+	if log.LogType == testcontainers.StderrLog {
+		testcontainers.Logger.Printf("%s", log.Content)
+	}
+}
+
 func runAcceptanceTests(m *testing.M) int {
-	dc, err := compose.NewDockerCompose("../../docker-compose.yaml")
+	// Disable Ryuk reaper to avoid connection issues in local development
+	if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
+		panic(err)
+	}
+
+	dc, err := compose.NewDockerCompose("../docker-compose.yaml")
 	if err != nil {
 		panic(err)
 	}
@@ -63,31 +81,17 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-	// Dump the container logs on exit.
-	//
-	// TODO: Use https://pkg.go.dev/github.com/testcontainers/testcontainers-go#LogConsumer instead.
-	defer func() {
-		if os.Getenv("UNIFI_STDOUT") == "" {
-			return
-		}
+	lc := &logConsumer{StdOut: os.Getenv("UNIFI_STDOUT") == ""}
 
-		stream, err := container.Logs(ctx)
-		if err != nil {
-			panic(err)
-		}
-
-		buffer := new(bytes.Buffer)
-		buffer.ReadFrom(stream)
-		testcontainers.Logger.Printf("%s", buffer)
-	}()
+	testcontainers.WithLogConsumers(lc)
 
 	endpoint, err := container.PortEndpoint(ctx, "8443/tcp", "https")
 	if err != nil {
 		panic(err)
 	}
 
-	const user = "admin"
-	const password = "admin"
+	const user = "unifi"
+	const password = "unifi"
 
 	if err = os.Setenv("UNIFI_USERNAME", user); err != nil {
 		panic(err)
@@ -113,7 +117,9 @@ func runAcceptanceTests(m *testing.M) int {
 	httpClient.Transport = transport
 	testClient.SetHTTPClient(httpClient)
 	testClient.SetBaseURL(endpoint)
-	if err = testClient.Login(ctx, user, password); err != nil {
+
+	// Wait for UniFi API to be ready and accept JSON responses
+	if err = waitForUniFiAPI(ctx, testClient, user, password); err != nil {
 		panic(err)
 	}
 
@@ -189,4 +195,49 @@ func getTestVLAN(t *testing.T) (*net.IPNet, int) {
 	}
 
 	return subnet, vlan
+}
+
+// waitForUniFiAPI waits for the UniFi API to be ready and accepting JSON requests
+// This is necessary because the container may report as healthy before the API is fully initialized.
+func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password string) error {
+	maxRetries := 120
+	retryDelay := 3 * time.Second
+
+	testcontainers.Logger.Printf(
+		"Waiting for UniFi API to be ready (max %d attempts, %v between attempts)...",
+		maxRetries,
+		retryDelay,
+	)
+
+	for i := range maxRetries {
+		err := client.Login(ctx, user, password)
+		if err == nil {
+			testcontainers.Logger.Printf("✓ UniFi API is ready after %d attempts", i+1)
+			return nil
+		}
+
+		// If we get a specific error indicating HTML response (setup wizard), keep waiting
+		errMsg := err.Error()
+		if i < maxRetries-1 {
+			if (i+1)%10 == 0 {
+				testcontainers.Logger.Printf(
+					"Still waiting... (attempt %d/%d): %v",
+					i+1,
+					maxRetries,
+					errMsg,
+				)
+			}
+			time.Sleep(retryDelay)
+			continue
+		}
+
+		return fmt.Errorf(
+			"UniFi API did not become ready after %d attempts (waited %v): %w",
+			maxRetries,
+			time.Duration(maxRetries)*retryDelay,
+			err,
+		)
+	}
+
+	return fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
 }

@@ -33,8 +33,8 @@ func TestAccBGPConfig_basic(t *testing.T) {
 
 const testAccBGPConfigConfig = `
 resource "unifi_bgp_config" "test" {
-	enabled     = true
-	description = "Test BGP configuration"
 	config      = "router bgp 65001\n neighbor 192.168.1.1 remote-as 65002"
+	description = "Test BGP configuration"
+	enabled     = true
 }
 `

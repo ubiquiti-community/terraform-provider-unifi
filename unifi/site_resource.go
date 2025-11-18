@@ -339,6 +339,15 @@ func (r *siteFrameworkResource) siteToModel(
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 
+	if site.ID == "" && site.Name == "" {
+		// If both ID and Name are empty, we can't import this site
+		diags.AddError(
+			"Invalid Site",
+			"Site must have either an ID or Name to be imported",
+		)
+		return diags
+	}
+
 	model.ID = types.StringValue(site.ID)
 	model.Name = types.StringValue(site.Name)
 	model.Description = types.StringValue(site.Description)
