@@ -67,16 +67,74 @@ resource "unifi_device" "us_24_poe" {
 ### Optional
 
 - `allow_adoption` (Boolean) Specifies whether this resource should tell the controller to adopt the device on create.
+- `bandsteering_mode` (String) Band steering mode; valid values are `off`, `equal`, and `prefer_5g`.
+- `config_network` (Attributes) Network configuration for the device. (see [below for nested schema](#nestedatt--config_network))
+- `disabled` (Boolean) Specifies whether this device should be disabled.
+- `flowctrl_enabled` (Boolean) Enable flow control.
 - `forget_on_destroy` (Boolean) Specifies whether this resource should tell the controller to forget the device on destroy.
+- `jumboframe_enabled` (Boolean) Enable jumbo frames.
+- `lcm_brightness` (Number) LCM brightness (1-100).
+- `lcm_brightness_override` (Boolean) Override LCM brightness.
+- `lcm_idle_timeout` (Number) LCM idle timeout in seconds (10-3600).
+- `lcm_idle_timeout_override` (Boolean) Override LCM idle timeout.
+- `lcm_night_mode_begins` (String) LCM night mode begin time (HH:MM format).
+- `lcm_night_mode_ends` (String) LCM night mode end time (HH:MM format).
+- `led_override` (String) LED override setting; valid values are `default`, `on`, and `off`.
+- `led_override_color` (String) LED color override (hex color code).
+- `led_override_color_brightness` (Number) LED brightness (0-100).
+- `locked` (Boolean) Specifies whether the device is locked.
 - `mac` (String) The MAC address of the device. This can be specified so that the provider can take control of a device (since devices are created through adoption).
+- `mgmt_network_id` (String) Management network ID.
 - `name` (String) The name of the device.
+- `outdoor_mode_override` (String) Outdoor mode override; valid values are `default`, `on`, and `off`.
+- `outlet_enabled` (Boolean) Enable outlet control.
+- `outlet_overrides` (Attributes List) Outlet configuration overrides. (see [below for nested schema](#nestedatt--outlet_overrides))
+- `poe_mode` (String) PoE mode; valid values are `auto`, `pasv24`, `passthrough`, and `off`.
 - `port_override` (Block Set) Settings overrides for specific switch ports. (see [below for nested schema](#nestedblock--port_override))
+- `radio_table` (Attributes List) Radio configuration table. (see [below for nested schema](#nestedatt--radio_table))
 - `site` (String) The name of the site to associate the device with.
+- `stp_priority` (String) STP priority.
+- `stp_version` (String) STP version; valid values are `stp`, `rstp`, and `disabled`.
+- `switch_vlan_enabled` (Boolean) Enable VLAN support on the switch.
+- `volume` (Number) Volume level (0-100).
+- `x_baresip_password` (String, Sensitive) Baresip password.
 
 ### Read-Only
 
-- `disabled` (Boolean) Specifies whether this device should be disabled.
+- `adopted` (Boolean) Whether the device is adopted.
 - `id` (String) The ID of the device.
+- `model` (String) Device model.
+- `state` (Number) Device state.
+- `type` (String) Device type.
+
+<a id="nestedatt--config_network"></a>
+### Nested Schema for `config_network`
+
+Optional:
+
+- `bonding_enabled` (Boolean) Enable network bonding.
+- `dns1` (String) Primary DNS server.
+- `dns2` (String) Secondary DNS server.
+- `dnssuffix` (String) DNS suffix.
+- `gateway` (String) Gateway address (for static configuration).
+- `ip` (String) IP address (for static configuration).
+- `netmask` (String) Network mask (for static configuration).
+- `type` (String) Network configuration type (dhcp or static).
+
+
+<a id="nestedatt--outlet_overrides"></a>
+### Nested Schema for `outlet_overrides`
+
+Required:
+
+- `index` (Number) Outlet index.
+
+Optional:
+
+- `cycle_enabled` (Boolean) Enable power cycle.
+- `name` (String) Outlet name.
+- `relay_state` (Boolean) Relay state (on/off).
+
 
 <a id="nestedblock--port_override"></a>
 ### Nested Schema for `port_override`
@@ -92,3 +150,29 @@ Optional:
 - `op_mode` (String) Operating mode of the port, valid values are `switch`, `mirror`, and `aggregate`.
 - `poe_mode` (String) PoE mode of the port; valid values are `auto`, `pasv24`, `passthrough`, and `off`.
 - `port_profile_id` (String) ID of the Port Profile used on this port.
+
+
+<a id="nestedatt--radio_table"></a>
+### Nested Schema for `radio_table`
+
+Optional:
+
+- `antenna_gain` (Number) Antenna gain.
+- `antenna_id` (Number) Antenna ID.
+- `assisted_roaming_enabled` (Boolean) Enable assisted roaming.
+- `assisted_roaming_rssi` (Number) Assisted roaming RSSI threshold.
+- `channel` (String) Channel number or 'auto'.
+- `dfs` (Boolean) Enable DFS (Dynamic Frequency Selection).
+- `hard_noise_floor_enabled` (Boolean) Enable hard noise floor.
+- `ht` (Number) Channel width (20, 40, 80, 160).
+- `loadbalance_enabled` (Boolean) Enable load balancing.
+- `maxsta` (Number) Maximum number of stations.
+- `min_rssi` (Number) Minimum RSSI value.
+- `min_rssi_enabled` (Boolean) Enable minimum RSSI.
+- `name` (String) Radio name.
+- `radio` (String) Radio band (ng, na, ad, 6e).
+- `sens_level` (Number) Sensitivity level.
+- `sens_level_enabled` (Boolean) Enable sensitivity level.
+- `tx_power` (String) Transmit power or 'auto'.
+- `tx_power_mode` (String) Transmit power mode (auto, medium, high, low, custom).
+- `vwire_enabled` (Boolean) Enable virtual wire.

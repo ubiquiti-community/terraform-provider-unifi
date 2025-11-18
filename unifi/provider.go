@@ -88,7 +88,7 @@ func (p *unifiProvider) Schema(
 				MarkdownDescription: "URL of the controller API. Can be specified with the `UNIFI_API` environment variable. " +
 					"You should **NOT** supply the path (`/api`), the SDK will discover the appropriate paths. This is " +
 					"to support UDM Pro style API paths as well as more standard controller paths.",
-				Required: true,
+				Optional: true,
 			},
 			"site": schema.StringAttribute{
 				MarkdownDescription: "The site in the Unifi controller this provider will manage. Can be specified with " +
