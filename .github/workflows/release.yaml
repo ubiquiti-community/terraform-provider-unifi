@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+      - uses: actions/setup-go@3a0c2c82458cbb45a3cbfeeb2b91ce8f85420560 # v5.0.2
         with:
           go-version-file: "go.mod"
           cache: true
