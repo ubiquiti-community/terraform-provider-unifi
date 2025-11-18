@@ -10,7 +10,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.13.2
 	github.com/testcontainers/testcontainers-go v0.32.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.32.0
-	github.com/ubiquiti-community/go-unifi v1.33.12
+	github.com/ubiquiti-community/go-unifi v1.33.14
 )
 
 require (
@@ -189,7 +189,6 @@ require (
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
-	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
 	github.com/spf13/cobra v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
