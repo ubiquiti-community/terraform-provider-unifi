@@ -3,13 +3,13 @@ package unifi
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -17,21 +17,21 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &bgpConfigResource{}
-	_ resource.ResourceWithImportState = &bgpConfigResource{}
+	_ resource.Resource                = &bgpResource{}
+	_ resource.ResourceWithImportState = &bgpResource{}
 )
 
-func NewBGPConfigResource() resource.Resource {
-	return &bgpConfigResource{}
+func NewBGPResource() resource.Resource {
+	return &bgpResource{}
 }
 
-// bgpConfigResource defines the resource implementation.
-type bgpConfigResource struct {
+// bgpResource defines the resource implementation.
+type bgpResource struct {
 	client *Client
 }
 
-// bgpConfigResourceModel describes the resource data model.
-type bgpConfigResourceModel struct {
+// bgpResourceModel describes the resource data model.
+type bgpResourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
 	Enabled        types.Bool   `tfsdk:"enabled"`
@@ -40,15 +40,15 @@ type bgpConfigResourceModel struct {
 	Description    types.String `tfsdk:"description"`
 }
 
-func (r *bgpConfigResource) Metadata(
+func (r *bgpResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_bgp_config"
+	resp.TypeName = req.ProviderTypeName + "_bgp"
 }
 
-func (r *bgpConfigResource) Schema(
+func (r *bgpResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
@@ -86,16 +86,20 @@ func (r *bgpConfigResource) Schema(
 			"upload_file_name": schema.StringAttribute{
 				MarkdownDescription: "The name of the uploaded configuration file.",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("frr.conf"),
 			},
 			"description": schema.StringAttribute{
 				MarkdownDescription: "Description of the BGP configuration.",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("BGP Configuration"),
 			},
 		},
 	}
 }
 
-func (r *bgpConfigResource) Configure(
+func (r *bgpResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
 	resp *resource.ConfigureResponse,
@@ -119,12 +123,12 @@ func (r *bgpConfigResource) Configure(
 	r.client = client
 }
 
-func (r *bgpConfigResource) Create(
+func (r *bgpResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
 	resp *resource.CreateResponse,
 ) {
-	var data bgpConfigResourceModel
+	var data bgpResourceModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -133,7 +137,7 @@ func (r *bgpConfigResource) Create(
 	}
 
 	// Convert to unifi.BGPConfig
-	bgpConfig := r.modelToBGPConfig(ctx, &data)
+	bgpConfig := r.modelToBGP(ctx, &data)
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -151,18 +155,18 @@ func (r *bgpConfigResource) Create(
 	}
 
 	// Convert back to model
-	r.bgpConfigToModel(ctx, createdBGPConfig, &data, site)
+	r.bgpToModel(ctx, createdBGPConfig, &data, site)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *bgpConfigResource) Read(
+func (r *bgpResource) Read(
 	ctx context.Context,
 	req resource.ReadRequest,
 	resp *resource.ReadResponse,
 ) {
-	var data bgpConfigResourceModel
+	var data bgpResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -190,19 +194,19 @@ func (r *bgpConfigResource) Read(
 	}
 
 	// Convert to model
-	r.bgpConfigToModel(ctx, bgpConfig, &data, site)
+	r.bgpToModel(ctx, bgpConfig, &data, site)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *bgpConfigResource) Update(
+func (r *bgpResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state bgpConfigResourceModel
-	var plan bgpConfigResourceModel
+	var state bgpResourceModel
+	var plan bgpResourceModel
 
 	// Read the current state
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -225,7 +229,7 @@ func (r *bgpConfigResource) Update(
 	}
 
 	// Convert the updated state to API format
-	bgpConfig := r.modelToBGPConfig(ctx, &state)
+	bgpConfig := r.modelToBGP(ctx, &state)
 	bgpConfig.ID = state.ID.ValueString()
 
 	// Send to API
@@ -239,18 +243,18 @@ func (r *bgpConfigResource) Update(
 	}
 
 	// Update state with API response
-	r.bgpConfigToModel(ctx, updatedBGPConfig, &state, site)
+	r.bgpToModel(ctx, updatedBGPConfig, &state, site)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *bgpConfigResource) Delete(
+func (r *bgpResource) Delete(
 	ctx context.Context,
 	req resource.DeleteRequest,
 	resp *resource.DeleteResponse,
 ) {
-	var data bgpConfigResourceModel
+	var data bgpResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -277,38 +281,24 @@ func (r *bgpConfigResource) Delete(
 	}
 }
 
-func (r *bgpConfigResource) ImportState(
+func (r *bgpResource) ImportState(
 	ctx context.Context,
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-
-	if len(idParts) == 2 {
-		site := idParts[0]
-		id := idParts[1]
-
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-		return
-	}
-
-	if len(idParts) == 1 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-		return
-	}
-
-	resp.Diagnostics.AddError(
-		"Invalid Import ID",
-		"Import ID must be in format 'site:id' or 'id'",
+	resource.ImportStatePassthroughID(
+		ctx,
+		path.Root("id"),
+		req,
+		resp,
 	)
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *bgpConfigResource) applyPlanToState(
+func (r *bgpResource) applyPlanToState(
 	_ context.Context,
-	plan *bgpConfigResourceModel,
-	state *bgpConfigResourceModel,
+	plan *bgpResourceModel,
+	state *bgpResourceModel,
 ) {
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
 		state.Enabled = plan.Enabled
@@ -324,10 +314,10 @@ func (r *bgpConfigResource) applyPlanToState(
 	}
 }
 
-// modelToBGPConfig converts the Terraform model to the API struct.
-func (r *bgpConfigResource) modelToBGPConfig(
+// modelToBGP converts the Terraform model to the API struct.
+func (r *bgpResource) modelToBGP(
 	_ context.Context,
-	model *bgpConfigResourceModel,
+	model *bgpResourceModel,
 ) *unifi.BGPConfig {
 	bgpConfig := &unifi.BGPConfig{
 		Enabled:        model.Enabled.ValueBool(),
@@ -339,11 +329,11 @@ func (r *bgpConfigResource) modelToBGPConfig(
 	return bgpConfig
 }
 
-// bgpConfigToModel converts the API struct to the Terraform model.
-func (r *bgpConfigResource) bgpConfigToModel(
+// bgpToModel converts the API struct to the Terraform model.
+func (r *bgpResource) bgpToModel(
 	_ context.Context,
 	bgpConfig *unifi.BGPConfig,
-	model *bgpConfigResourceModel,
+	model *bgpResourceModel,
 	site string,
 ) {
 	model.ID = types.StringValue(bgpConfig.ID)

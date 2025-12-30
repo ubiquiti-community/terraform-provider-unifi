@@ -2,14 +2,16 @@ package unifi
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
 // ParseImportID parses import IDs supporting both "id" and "site:id" formats.
-func ParseImportID(id string, minParts int, maxParts int) ([]string, diag.Diagnostics) {
+func ParseImportID(id string, minParts int, maxParts int) (map[string]string, diag.Diagnostics) {
 	var diags diag.Diagnostics
+	resp := map[string]string{}
 
 	parts := strings.SplitN(id, ":", maxParts)
 
@@ -21,5 +23,12 @@ func ParseImportID(id string, minParts int, maxParts int) ([]string, diag.Diagno
 		return nil, diags
 	}
 
-	return parts, diags
+	if len(parts) == 2 {
+		slices.Reverse(parts)
+		resp["site"] = parts[1]
+	}
+
+	resp["id"] = parts[0]
+
+	return resp, diags
 }

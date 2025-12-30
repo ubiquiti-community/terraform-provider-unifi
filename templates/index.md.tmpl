@@ -1,11 +1,12 @@
 ---
-layout: ""
-page_title: "Provider: Unifi"
+page_title: "{{ title .ProviderShortName }} Provider"
 description: |-
-  The Unifi provider provides resources to interact with a Unifi controller API.
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
 ---
 
-# Unifi Provider
+# {{ title .ProviderShortName }} Provider
+
+{{ .Description | plainmarkdown | trimspace }}
 
 The Unifi provider provides resources to interact with a Unifi controller API.
 

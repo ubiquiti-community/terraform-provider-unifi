@@ -14,16 +14,16 @@ func TestAccBGPConfig_basic(t *testing.T) {
 			{
 				Config: testAccBGPConfigConfig,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_bgp_config.test", "enabled", "true"),
+					resource.TestCheckResourceAttr("unifi_bgp.test", "enabled", "true"),
 					resource.TestCheckResourceAttr(
-						"unifi_bgp_config.test",
+						"unifi_bgp.test",
 						"description",
 						"Test BGP configuration",
 					),
 				),
 			},
 			{
-				ResourceName:      "unifi_bgp_config.test",
+				ResourceName:      "unifi_bgp.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -32,7 +32,7 @@ func TestAccBGPConfig_basic(t *testing.T) {
 }
 
 const testAccBGPConfigConfig = `
-resource "unifi_bgp_config" "test" {
+resource "unifi_bgp" "test" {
 	config      = "router bgp 65001\n neighbor 192.168.1.1 remote-as 65002"
 	description = "Test BGP configuration"
 	enabled     = true

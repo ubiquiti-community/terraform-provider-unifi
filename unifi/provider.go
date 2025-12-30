@@ -269,7 +269,7 @@ func (p *unifiProvider) Configure(
 func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewAccountFrameworkResource,
-		NewBGPConfigResource,
+		NewBGPResource,
 		NewDeviceFrameworkResource,
 		NewDNSRecordFrameworkResource,
 		NewDynamicDNSResource,

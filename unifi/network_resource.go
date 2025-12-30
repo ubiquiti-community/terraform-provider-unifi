@@ -51,15 +51,17 @@ type networkResourceModel struct {
 	NetworkGroup types.String `tfsdk:"network_group"`
 
 	// DHCP Settings
-	DhcpStart         types.String `tfsdk:"dhcp_start"`
-	DhcpStop          types.String `tfsdk:"dhcp_stop"`
-	DhcpEnabled       types.Bool   `tfsdk:"dhcp_enabled"`
-	DhcpLease         types.Int64  `tfsdk:"dhcp_lease"`
-	DhcpDNS           types.List   `tfsdk:"dhcp_dns"`
+	DhcpStart        types.String `tfsdk:"dhcp_start"`
+	DhcpStop         types.String `tfsdk:"dhcp_stop"`
+	DhcpEnabled      types.Bool   `tfsdk:"dhcp_enabled"`
+	DhcpLease        types.Int64  `tfsdk:"dhcp_lease"`
+	DhcpDNS          types.List   `tfsdk:"dhcp_dns"`
+	DhcpRelayEnabled types.Bool   `tfsdk:"dhcp_relay_enabled"`
+
+	// DHCPD Boot Settings
 	DhcpdBootEnabled  types.Bool   `tfsdk:"dhcpd_boot_enabled"`
 	DhcpdBootServer   types.String `tfsdk:"dhcpd_boot_server"`
 	DhcpdBootFilename types.String `tfsdk:"dhcpd_boot_filename"`
-	DhcpRelayEnabled  types.Bool   `tfsdk:"dhcp_relay_enabled"`
 
 	// DHCPv6 Settings
 	DhcpV6DNS     types.List   `tfsdk:"dhcp_v6_dns"`
