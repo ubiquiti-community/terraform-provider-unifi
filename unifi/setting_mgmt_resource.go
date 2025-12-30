@@ -160,7 +160,7 @@ func (r *settingMgmtResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Setting Management",
-			"Could not create setting management, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -237,7 +237,7 @@ func (r *settingMgmtResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Setting Management",
-			"Could not update setting management, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

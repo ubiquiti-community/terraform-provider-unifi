@@ -9,6 +9,12 @@ services:
       UNIFI_STDOUT: "true"
       TZ: Etc/UTC
     user: unifi
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:8443/manage/account/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     configs:
       - source: unifi-init
         target: /unifi/init.d/demo-mode

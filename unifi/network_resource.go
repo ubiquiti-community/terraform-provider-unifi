@@ -534,7 +534,7 @@ func (r *networkResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Network",
-			"Could not create network, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -631,7 +631,7 @@ func (r *networkResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Network",
-			"Could not update network, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -851,7 +851,7 @@ func (r *networkResource) Delete(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Network",
-			"Could not delete network, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/apparentlymart/go-cidr/cidr"
+	"github.com/docker/compose/v2/pkg/api"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -66,7 +67,7 @@ func runAcceptanceTests(m *testing.M) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err = dc.WithOsEnv().Up(ctx, compose.Wait(true)); err != nil {
+	if err = dc.WithOsEnv().Up(ctx, compose.Wait(true), compose.WithRecreate(api.RecreateDiverged)); err != nil {
 		panic(err)
 	}
 
@@ -120,6 +121,8 @@ func runAcceptanceTests(m *testing.M) int {
 	if err = waitForUniFiAPI(ctx, testClient, user, password); err != nil {
 		panic(err)
 	}
+
+	time.Sleep(time.Second * 30)
 
 	return m.Run()
 }

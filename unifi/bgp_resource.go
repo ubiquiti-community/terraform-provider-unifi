@@ -149,7 +149,7 @@ func (r *bgpResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating BGP Configuration",
-			"Could not create BGP configuration, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -237,7 +237,7 @@ func (r *bgpResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating BGP Configuration",
-			"Could not update BGP configuration, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -275,7 +275,7 @@ func (r *bgpResource) Delete(
 		}
 		resp.Diagnostics.AddError(
 			"Error Deleting BGP Configuration",
-			"Could not delete BGP configuration, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

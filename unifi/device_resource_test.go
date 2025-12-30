@@ -15,7 +15,7 @@ func TestAccDeviceFramework_basic(t *testing.T) {
 				Config: testAccDeviceFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("unifi_device.test", "id"),
-					resource.TestCheckResourceAttr("unifi_device.test", "name", "Test Device"),
+					resource.TestCheckResourceAttr("unifi_device.test", "name", "USG 3P"),
 				),
 			},
 			{
@@ -31,9 +31,9 @@ func TestAccDeviceFramework_basic(t *testing.T) {
 func testAccDeviceFrameworkConfig_basic() string {
 	return `
 resource "unifi_device" "test" {
-	mac  = "aa:bb:cc:dd:ee:ff"
-	name = "Test Device"
-	allow_adoption = false
+	mac  = "00:27:22:00:00:10"
+	name = "ECS 24 PoE"
+	allow_adoption = true
 	forget_on_destroy = false
 }
 `

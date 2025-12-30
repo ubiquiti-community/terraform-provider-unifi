@@ -120,7 +120,7 @@ func (r *settingUSGResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Setting USG",
-			"Could not create setting USG, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -196,7 +196,7 @@ func (r *settingUSGResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Setting USG",
-			"Could not update setting USG, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

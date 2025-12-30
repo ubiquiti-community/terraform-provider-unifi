@@ -246,7 +246,7 @@ func (r *radiusProfileResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating RADIUS Profile",
-			"Could not create RADIUS profile, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -323,7 +323,7 @@ func (r *radiusProfileResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating RADIUS Profile",
-			"Could not update RADIUS profile, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -357,7 +357,7 @@ func (r *radiusProfileResource) Delete(
 		}
 		resp.Diagnostics.AddError(
 			"Error Deleting RADIUS Profile",
-			"Could not delete RADIUS profile, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

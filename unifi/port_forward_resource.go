@@ -184,7 +184,7 @@ func (r *portForwardResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Port Forward",
-			"Could not create port forward, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -261,7 +261,7 @@ func (r *portForwardResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Port Forward",
-			"Could not update port forward, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -295,7 +295,7 @@ func (r *portForwardResource) Delete(
 		}
 		resp.Diagnostics.AddError(
 			"Error Deleting Port Forward",
-			"Could not delete port forward, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

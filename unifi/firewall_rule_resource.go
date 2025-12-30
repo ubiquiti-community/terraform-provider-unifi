@@ -297,7 +297,7 @@ func (r *firewallRuleResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Firewall Rule",
-			"Could not create firewall rule, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -374,7 +374,7 @@ func (r *firewallRuleResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Firewall Rule",
-			"Could not update firewall rule, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -408,7 +408,7 @@ func (r *firewallRuleResource) Delete(
 		}
 		resp.Diagnostics.AddError(
 			"Error Deleting Firewall Rule",
-			"Could not delete firewall rule, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

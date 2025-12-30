@@ -168,7 +168,7 @@ func (r *staticRouteFrameworkResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Static Route",
-			"Could not create static route, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -256,7 +256,7 @@ func (r *staticRouteFrameworkResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Static Route",
-			"Could not update static route, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -294,7 +294,7 @@ func (r *staticRouteFrameworkResource) Delete(
 		}
 		resp.Diagnostics.AddError(
 			"Error Deleting Static Route",
-			"Could not delete static route, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

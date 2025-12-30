@@ -186,7 +186,7 @@ func (r *dnsRecordFrameworkResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Dns Record",
-			"Could not create DNS record, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -274,7 +274,7 @@ func (r *dnsRecordFrameworkResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Dns Record",
-			"Could not update DNS record, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -309,7 +309,7 @@ func (r *dnsRecordFrameworkResource) Delete(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Dns Record",
-			"Could not delete DNS record, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

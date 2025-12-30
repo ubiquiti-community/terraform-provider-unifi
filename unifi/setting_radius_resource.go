@@ -126,7 +126,7 @@ func (r *settingRadiusResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Setting RADIUS",
-			"Could not create setting RADIUS, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -202,7 +202,7 @@ func (r *settingRadiusResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Setting RADIUS",
-			"Could not update setting RADIUS, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

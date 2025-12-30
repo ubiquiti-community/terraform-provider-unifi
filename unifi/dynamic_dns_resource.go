@@ -191,7 +191,7 @@ func (r *dynamicDNSResource) Create(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Dynamic DNS",
-			"Could not create dynamic DNS, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -306,7 +306,7 @@ func (r *dynamicDNSResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Dynamic DNS",
-			"Could not update dynamic DNS, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}
@@ -355,7 +355,7 @@ func (r *dynamicDNSResource) Delete(
 		}
 		resp.Diagnostics.AddError(
 			"Error Deleting Dynamic DNS",
-			"Could not delete dynamic DNS, unexpected error: "+err.Error(),
+			err.Error(),
 		)
 		return
 	}

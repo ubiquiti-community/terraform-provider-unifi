@@ -1022,32 +1022,12 @@ func (r *deviceResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	id := req.ID
-	site := r.client.Site
-
-	// Handle site:id or site:mac format
-	if colons := strings.Count(id, ":"); colons == 1 || colons == 6 {
-		importParts := strings.SplitN(id, ":", 2)
-		site = importParts[0]
-		id = importParts[1]
-	}
-
-	// If ID looks like a MAC address, convert to device ID
-	if macAddressRegexp.MatchString(id) {
-		mac := cleanMAC(id)
-		device, err := r.client.GetDeviceByMAC(ctx, site, mac)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Finding Device",
-				fmt.Sprintf("Could not find device with MAC %s: %s", mac, err),
-			)
-			return
-		}
-		id = device.ID
-	}
-
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+	resource.ImportStatePassthroughID(
+		ctx,
+		path.Root("id"),
+		req,
+		resp,
+	)
 }
 
 // Helper methods

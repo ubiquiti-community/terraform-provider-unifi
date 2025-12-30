@@ -212,7 +212,7 @@ func (p *unifiProvider) Configure(
 		resp.Diagnostics.AddError(
 			"Unable to Create HTTP Client",
 			"An unexpected error occurred when creating the HTTP client. "+
-				"UniFi Client Error: "+err.Error(),
+				err.Error(),
 		)
 		return
 	}
@@ -221,7 +221,7 @@ func (p *unifiProvider) Configure(
 		resp.Diagnostics.AddError(
 			"Invalid API URL",
 			"The provided API URL is invalid. "+
-				"UniFi Client Error: "+err.Error(),
+				err.Error(),
 		)
 		return
 	}
@@ -234,7 +234,7 @@ func (p *unifiProvider) Configure(
 			resp.Diagnostics.AddError(
 				"Error Logging In",
 				"Could not log in with username and password. "+
-					"UniFi Client Error: "+err.Error(),
+					err.Error(),
 			)
 			return
 		}
@@ -256,7 +256,7 @@ func (p *unifiProvider) Configure(
 		resp.Diagnostics.AddError(
 			"Error Logging In",
 			"Could not log in with username and password. "+
-				"UniFi Client Error: "+err.Error(),
+				err.Error(),
 		)
 		return
 	}
