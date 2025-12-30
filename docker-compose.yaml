@@ -26,7 +26,6 @@ services:
       - 3478:3478/udp
       - 10001:10001/udp
       - 8080:8080
-    networks: [unifi]
     restart: unless-stopped
 
 configs:
@@ -44,7 +43,3 @@ configs:
       write_config demo.num_uap 0
       write_config demo.num_ugw 1
       write_config demo.num_usw 20
-
-networks:
-  unifi:
-    driver: bridge

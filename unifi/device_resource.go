@@ -661,6 +661,174 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 							ElementType: types.Int64Type,
 						},
+						"autoneg": schema.BoolAttribute{
+							Description: "Enable auto-negotiation for port speed.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"dot1x_ctrl": schema.StringAttribute{
+							Description: "802.1X control mode.",
+							Optional:    true,
+						},
+						"dot1x_idle_timeout": schema.Int64Attribute{
+							Description: "802.1X idle timeout in seconds.",
+							Optional:    true,
+						},
+						"egress_rate_limit_kbps": schema.Int64Attribute{
+							Description: "Egress rate limit in kbps.",
+							Optional:    true,
+						},
+						"egress_rate_limit_kbps_enabled": schema.BoolAttribute{
+							Description: "Enable egress rate limiting.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"excluded_networkconf_ids": schema.ListAttribute{
+							Description: "List of network IDs to exclude from this port.",
+							Optional:    true,
+							ElementType: types.StringType,
+						},
+						"fec_mode": schema.StringAttribute{
+							Description: "Forward Error Correction mode.",
+							Optional:    true,
+						},
+						"flow_control_enabled": schema.BoolAttribute{
+							Description: "Enable flow control.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"forward": schema.StringAttribute{
+							Description: "Forwarding mode.",
+							Optional:    true,
+						},
+						"full_duplex": schema.BoolAttribute{
+							Description: "Enable full duplex mode.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"isolation": schema.BoolAttribute{
+							Description: "Enable port isolation.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"lldpmed_enabled": schema.BoolAttribute{
+							Description: "Enable LLDP-MED.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"lldpmed_notify_enabled": schema.BoolAttribute{
+							Description: "Enable LLDP-MED notifications.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"mirror_port_idx": schema.Int64Attribute{
+							Description: "Mirror port index.",
+							Optional:    true,
+						},
+						"multicast_router_networkconf_ids": schema.ListAttribute{
+							Description: "List of network IDs for multicast router.",
+							Optional:    true,
+							ElementType: types.StringType,
+						},
+						"native_networkconf_id": schema.StringAttribute{
+							Description: "Native network ID (VLAN).",
+							Optional:    true,
+						},
+						"port_keepalive_enabled": schema.BoolAttribute{
+							Description: "Enable port keepalive.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"port_security_enabled": schema.BoolAttribute{
+							Description: "Enable port security.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"port_security_mac_address": schema.ListAttribute{
+							Description: "List of MAC addresses allowed when port security is enabled.",
+							Optional:    true,
+							ElementType: types.StringType,
+						},
+						"priority_queue1_level": schema.Int64Attribute{
+							Description: "Priority queue 1 level.",
+							Optional:    true,
+						},
+						"priority_queue2_level": schema.Int64Attribute{
+							Description: "Priority queue 2 level.",
+							Optional:    true,
+						},
+						"priority_queue3_level": schema.Int64Attribute{
+							Description: "Priority queue 3 level.",
+							Optional:    true,
+						},
+						"priority_queue4_level": schema.Int64Attribute{
+							Description: "Priority queue 4 level.",
+							Optional:    true,
+						},
+						"setting_preference": schema.StringAttribute{
+							Description: "Setting preference.",
+							Optional:    true,
+						},
+						"speed": schema.Int64Attribute{
+							Description: "Port speed in Mbps.",
+							Optional:    true,
+						},
+						"stormctrl_bcast_enabled": schema.BoolAttribute{
+							Description: "Enable broadcast storm control.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"stormctrl_bcast_level": schema.Int64Attribute{
+							Description: "Broadcast storm control level.",
+							Optional:    true,
+						},
+						"stormctrl_bcast_rate": schema.Int64Attribute{
+							Description: "Broadcast storm control rate.",
+							Optional:    true,
+						},
+						"stormctrl_mcast_enabled": schema.BoolAttribute{
+							Description: "Enable multicast storm control.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"stormctrl_mcast_level": schema.Int64Attribute{
+							Description: "Multicast storm control level.",
+							Optional:    true,
+						},
+						"stormctrl_mcast_rate": schema.Int64Attribute{
+							Description: "Multicast storm control rate.",
+							Optional:    true,
+						},
+						"stormctrl_type": schema.StringAttribute{
+							Description: "Storm control type.",
+							Optional:    true,
+						},
+						"stormctrl_ucast_enabled": schema.BoolAttribute{
+							Description: "Enable unicast storm control.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"stormctrl_ucast_level": schema.Int64Attribute{
+							Description: "Unicast storm control level.",
+							Optional:    true,
+						},
+						"stormctrl_ucast_rate": schema.Int64Attribute{
+							Description: "Unicast storm control rate.",
+							Optional:    true,
+						},
+						"stp_port_mode": schema.BoolAttribute{
+							Description: "STP port mode.",
+							Optional:    true,
+							Computed:    true,
+						},
+						"tagged_vlan_mgmt": schema.StringAttribute{
+							Description: "Tagged VLAN management.",
+							Optional:    true,
+						},
+						"voice_networkconf_id": schema.StringAttribute{
+							Description: "Voice network ID.",
+							Optional:    true,
+						},
 					},
 				},
 			},
@@ -719,7 +887,16 @@ func (r *deviceResource) Create(
 	}
 
 	mac = cleanMAC(mac)
-	device, err := r.client.GetDeviceByMAC(ctx, site, mac)
+	device := new(unifi.Device)
+
+	err := retry.RetryContext(ctx, 2*time.Minute, func() *retry.RetryError {
+		d, err := r.client.GetDeviceByMAC(ctx, site, mac)
+		if err != nil {
+			return retry.RetryableError(err)
+		}
+		device = d
+		return nil
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Device",
@@ -755,7 +932,7 @@ func (r *deviceResource) Create(
 			return
 		}
 
-		device, err = r.waitForDeviceState(
+		d, err := r.waitForDeviceState(
 			ctx,
 			site, mac,
 			unifi.DeviceStateConnected,
@@ -774,10 +951,20 @@ func (r *deviceResource) Create(
 			)
 			return
 		}
+		device = d
 	}
 
 	plan.ID = types.StringValue(device.ID)
 	plan.Site = types.StringValue(site)
+	plan.Adopted = types.BoolValue(true)
+
+	if plan.ConfigNetwork.IsNull() || plan.ConfigNetwork.IsUnknown() {
+		plan.ConfigNetwork = types.ObjectNull(configNetworkAttrTypes())
+	}
+
+	// Preserve plan-only flags
+	allowAdoption := plan.AllowAdoption
+	forgetOnDestroy := plan.ForgetOnDestroy
 
 	// Apply the update operation
 	diags = r.updateDevice(ctx, &plan)
@@ -785,6 +972,10 @@ func (r *deviceResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Restore plan-only flags
+	plan.AllowAdoption = allowAdoption
+	plan.ForgetOnDestroy = forgetOnDestroy
 
 	// Set state
 	diags = resp.State.Set(ctx, plan)
@@ -802,6 +993,10 @@ func (r *deviceResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Preserve plan-only flags before reading API state
+	allowAdoption := state.AllowAdoption
+	forgetOnDestroy := state.ForgetOnDestroy
 
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()
@@ -827,6 +1022,10 @@ func (r *deviceResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Restore plan-only flags
+	state.AllowAdoption = allowAdoption
+	state.ForgetOnDestroy = forgetOnDestroy
 
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
@@ -1051,10 +1250,20 @@ func (r *deviceResource) updateDevice(
 	}
 
 	deviceReq.ID = model.ID.ValueString()
-	deviceReq.SiteID = site
 
-	device, err := r.client.UpdateDevice(ctx, site, deviceReq)
-	if err != nil {
+	// Retry UpdateDevice on "not found" errors (timing issue with API)
+	var device *unifi.Device
+	if err := retry.RetryContext(ctx, 30*time.Second, func() *retry.RetryError {
+		d, err := r.client.UpdateDevice(ctx, site, deviceReq)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return retry.RetryableError(err)
+			}
+			return retry.NonRetryableError(err)
+		}
+		device = d
+		return nil
+	}); err != nil {
 		diags.AddError(
 			"Error Updating Device",
 			fmt.Sprintf("Could not update device: %s", err),
@@ -1063,19 +1272,20 @@ func (r *deviceResource) updateDevice(
 	}
 
 	// Wait for device to be in connected state
-	device, err = r.waitForDeviceState(
+	if d, err := r.waitForDeviceState(
 		ctx,
 		site, device.MAC,
 		unifi.DeviceStateConnected,
 		[]unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning},
 		1*time.Minute,
-	)
-	if err != nil {
+	); err != nil {
 		diags.AddError(
 			"Error Waiting for Device Update",
 			fmt.Sprintf("Could not wait for device update: %s", err),
 		)
 		return diags
+	} else {
+		device = d
 	}
 
 	// Update state from API response
@@ -1090,6 +1300,8 @@ func (r *deviceResource) setResourceData(
 	model *deviceResourceModel,
 	site string,
 ) {
+	// Set core identity fields
+	model.ID = types.StringValue(device.ID)
 	model.Site = types.StringValue(site)
 
 	if device.MAC == "" {
@@ -1119,6 +1331,7 @@ func (r *deviceResource) setResourceData(
 		model.Type = types.StringValue(device.Type)
 	}
 
+	// State is always present as int
 	model.State = types.Int64Value(int64(device.State))
 
 	// LED settings
@@ -1233,7 +1446,7 @@ func (r *deviceResource) setResourceData(
 	}
 
 	// Convert config network
-	configNetwork, convDiags := r.configNetworkToFramework(ctx, &device.ConfigNetwork)
+	configNetwork, convDiags := r.configNetworkToFramework(ctx, device.ConfigNetwork)
 	diags.Append(convDiags...)
 	if !diags.HasError() {
 		model.ConfigNetwork = configNetwork
@@ -1268,9 +1481,13 @@ func (r *deviceResource) modelToAPIDevice(
 	var diags diag.Diagnostics
 
 	device := &unifi.Device{
-		MAC:      model.MAC.ValueString(),
-		Name:     model.Name.ValueString(),
-		Disabled: model.Disabled.ValueBool(),
+		MAC:  model.MAC.ValueString(),
+		Name: model.Name.ValueString(),
+	}
+
+	// Only set Disabled if it's explicitly configured
+	if !model.Disabled.IsNull() && !model.Disabled.IsUnknown() {
+		device.Disabled = model.Disabled.ValueBool()
 	}
 
 	// LED settings
@@ -1346,7 +1563,7 @@ func (r *deviceResource) modelToAPIDevice(
 		configNetwork, convDiags := r.frameworkToConfigNetwork(ctx, model.ConfigNetwork)
 		diags.Append(convDiags...)
 		if !diags.HasError() {
-			device.ConfigNetwork = *configNetwork
+			device.ConfigNetwork = configNetwork
 		}
 	}
 
@@ -1375,6 +1592,10 @@ func (r *deviceResource) modelToAPIDevice(
 		if !diags.HasError() {
 			device.OutletOverrides = outletOverrides
 		}
+	}
+
+	if !model.Adopted.IsNull() && !model.Adopted.IsUnknown() {
+		device.Adopted = model.Adopted.ValueBool()
 	}
 
 	return device, diags

@@ -69,3 +69,4 @@ __debug_bin*
 .vscode/settings.json
 
 .github/instructions/*.md
+.github/.bak

@@ -93,7 +93,7 @@ func TestAccUserFramework_fixedIP(t *testing.T) {
 func testAccUserFrameworkConfig_fixedIP() string {
 	return `
 data "unifi_network" "default" {
-	name = "default"
+	name = "Default"
 }
 
 resource "unifi_user" "test" {

@@ -15,7 +15,8 @@ func TestAccDeviceFramework_basic(t *testing.T) {
 				Config: testAccDeviceFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("unifi_device.test", "id"),
-					resource.TestCheckResourceAttr("unifi_device.test", "name", "USG 3P"),
+					resource.TestCheckResourceAttr("unifi_device.test", "name", "ECS 24 PoE"),
+					resource.TestCheckResourceAttr("unifi_device.test", "adopted", "true"),
 				),
 			},
 			{

@@ -59,7 +59,7 @@ func (r *accountFrameworkResource) Schema(
 	resp.Schema = schema.Schema{
 		MarkdownDescription: `Manages a RADIUS user account
 
-To authenticate devices based on MAC address, use the MAC address as the username and password under client creation. 
+To authenticate devices based on MAC address, use the MAC address as the username and password under client creation.
 Convert lowercase letters to uppercase, and also remove colons or periods from the MAC address.
 
 ATTENTION: If the user profile does not include a VLAN, the client will fall back to the untagged VLAN.

@@ -3,12 +3,14 @@ package unifi
 import (
 	"context"
 	"crypto/tls"
+	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
@@ -186,9 +188,9 @@ func (p *unifiProvider) Configure(
 	}
 
 	// Create HTTP client
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	c := retryablehttp.NewClient()
+	c.HTTPClient.Timeout = 30 * time.Second
+	c.Logger = log.Default()
 
 	// Configure TLS if needed
 	if allowInsecure {
@@ -199,16 +201,16 @@ func (p *unifiProvider) Configure(
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 		}
-		httpClient.Transport = transport
+		c.HTTPClient.Transport = transport
 	}
 
 	// Add cookie jar for session management
 	jar, _ := cookiejar.New(nil)
-	httpClient.Jar = jar
+	c.HTTPClient.Jar = jar
 
 	// Create UniFi client
 	client := &ui.Client{}
-	if err := client.SetHTTPClient(httpClient); err != nil {
+	if err := client.SetHTTPClient(c); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create HTTP Client",
 			"An unexpected error occurred when creating the HTTP client. "+
