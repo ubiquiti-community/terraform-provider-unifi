@@ -1,40 +1,18 @@
 ---
 services:
-  db:
-    image: mongo:latest
-    container_name: db
-    restart: always
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=unifi
-      - MONGO_INITDB_ROOT_PASSWORD=unifi
-    networks: [unifi]
   unifi:
-    image: lscr.io/linuxserver/unifi-network-application:latest
+    image: jacobalberty/unifi:latest
+    init: true
     container_name: unifi
-    depends_on:
-      - db
-    healthcheck:
-      test: ["CMD", "curl", "-f", "-k", "https://localhost:8443"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
     environment:
-      PUID: 1000
-      PGID: 1000
+      PKGURL: ""
+      UNIFI_STDOUT: "true"
       TZ: Etc/UTC
-      MONGO_USER: unifi
-      MONGO_PASS: unifi
-      MONGO_HOST: db
-      MONGO_PORT: 27017
-      MONGO_DBNAME: unifi
-      MONGO_AUTHSOURCE: admin
-    volumes:
-      - unifi-data:/config
+    user: unifi
     configs:
       - source: unifi-init
-        target: /custom-cont-init.d/99-setup-admin.sh
-        mode: 0755
+        target: /unifi/init.d/demo-mode
+        mode: 0757
         uid: "1000"
         gid: "1000"
     ports:
@@ -48,104 +26,18 @@ services:
 configs:
   unifi-init:
     content: |
-      #!/bin/bash
+      #!/bin/sh
 
-      # 1. CONFIGURATION
-      # ----------------
-      # Set your desired admin credentials here
-      ADMIN_USER="unifi"
-      ADMIN_PASS="unifi"
-      ADMIN_EMAIL="unifi@example.com"
-      SITE_NAME="Default Site"
-
-      # Path to Unifi config
-      PROP_FILE="/config/data/system.properties"
-      MONGO_HOST="$${MONGO_HOST:-mongo}"
-      MONGO_PORT="$${MONGO_PORT:-27017}"
-      MONGO_DBNAME="$${MONGO_DBNAME:-unifi}"
-
-      # 2. CHECK IF ALREADY CONFIGURED
-      # ------------------------------
-      if [ -f "$$PROP_FILE" ] && grep -q "is_default=false" "$$PROP_FILE"; then
-          echo "[custom-init] Controller already configured. Skipping admin creation."
-          exit 0
-      fi
-
-      echo "[custom-init] New installation detected. Starting auto-configuration..."
-
-      # 3. INSTALL DEPENDENCIES
-      # -----------------------
-      # We need a mongo client to talk to the DB. The image is Ubuntu-based.
-      # We install 'mongosh' (modern) or 'mongo' (legacy) depending on availability.
-      echo "[custom-init] Installing MongoDB client tools..."
-      apt-get update > /dev/null 2>&1
-      apt-get install -y curl gnupg > /dev/null 2>&1
-
-      # Add MongoDB repo to get 'mongosh' (The official client)
-      curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
-      gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
-      echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
-      tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-      apt-get update > /dev/null 2>&1
-      apt-get install -y mongodb-mongosh > /dev/null 2>&1
-
-      # 4. GENERATE PASSWORD HASH
-      # -------------------------
-      # Unifi uses SHA-512 crypt hashes. We use python3 (built-in) to generate it.
-      PASS_HASH=$$(python3 -c "import crypt; print(crypt.crypt('$${ADMIN_PASS}', crypt.mksalt(crypt.METHOD_SHA512)))")
-
-      # 5. WAIT FOR MONGODB
-      # -------------------
-      echo "[custom-init] Waiting for MongoDB at $${MONGO_HOST}:$${MONGO_PORT}..."
-      until mongosh --host "$${MONGO_HOST}" --port "$${MONGO_PORT}" --username "$${MONGO_USER}" --password "$${MONGO_PASS}" --authenticationDatabase admin --eval "db.runCommand({ ping: 1 })" > /dev/null 2>&1; do
-      sleep 2
-      echo "[custom-init] Retrying MongoDB connection..."
-      done
-
-      # 6. INJECT ADMIN USER
-      # --------------------
-      echo "[custom-init] Injecting admin user into '$${MONGO_DBNAME}' database..."
-
-      # JS payload for MongoDB
-      INIT_JS="
-      db = db.getSiblingDB('$${MONGO_DBNAME}');
-      var existingAdmin = db.admin.findOne({\"name\": \"$${ADMIN_USER}\"});
-      if (!existingAdmin) {
-          db.admin.insert({
-              \"name\": \"$${ADMIN_USER}\",
-              \"email\": \"$${ADMIN_EMAIL}\",
-              \"x_shadow\": \"$${PASS_HASH}\",
-              \"time_created\": NumberLong(Math.floor(Date.now() / 1000)),
-              \"last_site_name\": \"default\"
-          });
-          print('User injected');
-      } else {
-          print('User already exists');
+      write_config() {
+        echo "$${1}=$${2}" >> /usr/lib/unifi/data/system.properties
       }
-      "
 
-      # Execute injection with authentication
-      mongosh --host "$${MONGO_HOST}" --port "$${MONGO_PORT}" --username "$${MONGO_USER}" --password "$${MONGO_PASS}" --authenticationDatabase admin --eval "$${INIT_JS}"
+      write_config is_simulation true
 
-      # 7. FINALIZE CONFIGURATION
-      # -------------------------
-      # Set the 'is_default' flag to false so Unifi skips the wizard
-      if [ ! -f "$$PROP_FILE" ]; then
-          mkdir -p $$(dirname "$$PROP_FILE")
-          touch "$$PROP_FILE"
-      fi
-
-      # Ensure is_default is set to false
-      if grep -q "is_default=" "$$PROP_FILE"; then
-          sed -i 's/is_default=true/is_default=false/g' "$$PROP_FILE"
-      else
-          echo "is_default=false" >> "$$PROP_FILE"
-      fi
-
-      echo "[custom-init] Configuration complete. Starting Unifi..."
-
-volumes:
-  unifi-data:
+      # Increase the number of demo devices to allow more concurrent tests to be executed simultaneously.
+      write_config demo.num_uap 0
+      write_config demo.num_ugw 1
+      write_config demo.num_usw 20
 
 networks:
   unifi:

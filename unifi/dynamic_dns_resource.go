@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -21,6 +21,7 @@ import (
 var (
 	_ resource.Resource                = &dynamicDNSResource{}
 	_ resource.ResourceWithImportState = &dynamicDNSResource{}
+	_ resource.ResourceWithIdentity    = &dynamicDNSResource{}
 )
 
 func NewDynamicDNSResource() resource.Resource {
@@ -35,13 +36,18 @@ type dynamicDNSResource struct {
 // dynamicDNSResourceModel describes the resource data model.
 type dynamicDNSResourceModel struct {
 	ID        types.String `tfsdk:"id"`
-	Site      types.String `tfsdk:"site"`
 	Interface types.String `tfsdk:"interface"`
 	Service   types.String `tfsdk:"service"`
 	HostName  types.String `tfsdk:"host_name"`
 	Server    types.String `tfsdk:"server"`
 	Login     types.String `tfsdk:"login"`
 	Password  types.String `tfsdk:"password"`
+}
+
+// dynamicDNSResourceIdentityModel describes the resource identity data model.
+type dynamicDNSResourceIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
 }
 
 func (r *dynamicDNSResource) Metadata(
@@ -65,15 +71,6 @@ func (r *dynamicDNSResource) Schema(
 				MarkdownDescription: "The ID of the dynamic DNS.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site to associate the dynamic DNS with.",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
@@ -117,6 +114,23 @@ func (r *dynamicDNSResource) Schema(
 	}
 }
 
+func (r *dynamicDNSResource) IdentitySchema(
+	ctx context.Context,
+	req resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
 func (r *dynamicDNSResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
@@ -154,13 +168,17 @@ func (r *dynamicDNSResource) Create(
 		return
 	}
 
+	// Get site from request identity if provided, otherwise use provider default
+	site := r.client.Site
+	var reqIdentity dynamicDNSResourceIdentityModel
+	if diags := req.Identity.Get(ctx, &reqIdentity); !diags.HasError() {
+		if !reqIdentity.Site.IsNull() && !reqIdentity.Site.IsUnknown() {
+			site = reqIdentity.Site.ValueString()
+		}
+	}
+
 	// Convert to unifi.DynamicDNS
 	dynamicDNS := r.modelToDynamicDNS(ctx, &data)
-
-	site := data.Site.ValueString()
-	if site == "" {
-		site = r.client.Site
-	}
 
 	// Create the dynamic DNS
 	createdDynamicDNS, err := r.client.CreateDynamicDNS(ctx, site, dynamicDNS)
@@ -173,10 +191,17 @@ func (r *dynamicDNSResource) Create(
 	}
 
 	// Convert back to model
-	r.dynamicDNSToModel(ctx, createdDynamicDNS, &data, site)
+	r.dynamicDNSToModel(ctx, createdDynamicDNS, &data)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
+	// Set identity
+	identity := dynamicDNSResourceIdentityModel{
+		ID:   types.StringValue(createdDynamicDNS.ID),
+		Site: types.StringValue(site),
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *dynamicDNSResource) Read(
@@ -185,6 +210,7 @@ func (r *dynamicDNSResource) Read(
 	resp *resource.ReadResponse,
 ) {
 	var data dynamicDNSResourceModel
+	var identity dynamicDNSResourceIdentityModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -192,13 +218,20 @@ func (r *dynamicDNSResource) Read(
 		return
 	}
 
-	site := data.Site.ValueString()
+	// Read identity
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	id := identity.ID.ValueString()
+	site := identity.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
 	// Get the dynamic DNS from the API
-	dynamicDNS, err := r.client.GetDynamicDNS(ctx, site, data.ID.ValueString())
+	dynamicDNS, err := r.client.GetDynamicDNS(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -206,16 +239,19 @@ func (r *dynamicDNSResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Dynamic DNS",
-			"Could not read dynamic DNS with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read dynamic DNS with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	// Convert to model
-	r.dynamicDNSToModel(ctx, dynamicDNS, &data, site)
+	r.dynamicDNSToModel(ctx, dynamicDNS, &data)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
+	// Re-set identity (should be unchanged)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *dynamicDNSResource) Update(
@@ -225,6 +261,7 @@ func (r *dynamicDNSResource) Update(
 ) {
 	var state dynamicDNSResourceModel
 	var plan dynamicDNSResourceModel
+	var identity dynamicDNSResourceIdentityModel
 
 	// Read the current state
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -238,17 +275,24 @@ func (r *dynamicDNSResource) Update(
 		return
 	}
 
+	// Read identity
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
 
-	site := state.Site.ValueString()
+	id := identity.ID.ValueString()
+	site := identity.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
 	// Convert the updated state to API format
 	dynamicDNS := r.modelToDynamicDNS(ctx, &state)
-	dynamicDNS.ID = state.ID.ValueString()
+	dynamicDNS.ID = id
 	dynamicDNS.SiteID = site
 
 	// Send to API
@@ -262,10 +306,13 @@ func (r *dynamicDNSResource) Update(
 	}
 
 	// Update state with API response
-	r.dynamicDNSToModel(ctx, updatedDynamicDNS, &state, site)
+	r.dynamicDNSToModel(ctx, updatedDynamicDNS, &state)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+
+	// Identity should not change during update
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *dynamicDNSResource) Delete(
@@ -274,6 +321,7 @@ func (r *dynamicDNSResource) Delete(
 	resp *resource.DeleteResponse,
 ) {
 	var data dynamicDNSResourceModel
+	var identity dynamicDNSResourceIdentityModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -281,13 +329,20 @@ func (r *dynamicDNSResource) Delete(
 		return
 	}
 
-	site := data.Site.ValueString()
+	// Read identity
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	id := identity.ID.ValueString()
+	site := identity.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
 	// Delete the dynamic DNS
-	err := r.client.DeleteDynamicDNS(ctx, site, data.ID.ValueString())
+	err := r.client.DeleteDynamicDNS(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			return
@@ -305,29 +360,81 @@ func (r *dynamicDNSResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:id" or just "id" for default site
-	idParts := strings.Split(req.ID, ":")
+	var identity dynamicDNSResourceIdentityModel
 
-	if len(idParts) == 2 {
-		// site:id format
-		site := idParts[0]
-		id := idParts[1]
+	// Legacy import: "site:id" or "id"
+	// Check this FIRST before trying to use req.Identity
+	if req.ID != "" {
+		var id, site string
 
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		idParts := strings.Split(req.ID, ":")
+
+		if len(idParts) == 2 {
+			site = idParts[0]
+			id = idParts[1]
+		} else if len(idParts) == 1 {
+			id = req.ID
+			site = "" // Will use provider default
+		} else {
+			resp.Diagnostics.AddError(
+				"Invalid Import ID",
+				"Import ID must be in format 'site:id' or 'id'",
+			)
+			return
+		}
+
+		// Set identity for legacy import
+		identity.ID = types.StringValue(id)
+		if site != "" {
+			identity.Site = types.StringValue(site)
+		} else {
+			identity.Site = types.StringNull()
+		}
+
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
 		return
+	} else if req.Identity != nil {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		// Should not reach here
+		resp.Diagnostics.AddError(
+			"Missing Import Identifier",
+			"Import requires either an ID string or identity object",
+		)
 	}
 
-	if len(idParts) == 1 {
-		// Just id, use default site
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-		return
-	}
-
-	resp.Diagnostics.AddError(
-		"Invalid Import ID",
-		"Import ID must be in format 'site:id' or 'id'",
+	// Get the dynamic DNS from the API
+	dynamicDNS, err := r.client.GetDynamicDNS(
+		ctx,
+		identity.Site.ValueString(),
+		identity.ID.ValueString(),
 	)
+	if err != nil {
+		if _, ok := err.(*unifi.NotFoundError); ok {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.AddError(
+			"Error Reading Dynamic DNS",
+			"Could not read dynamic DNS with ID "+identity.ID.ValueString()+": "+err.Error(),
+		)
+		return
+	}
+
+	var data dynamicDNSResourceModel
+
+	// Convert to model
+	r.dynamicDNSToModel(ctx, dynamicDNS, &data)
+
+	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
@@ -363,6 +470,7 @@ func (r *dynamicDNSResource) modelToDynamicDNS(
 	model *dynamicDNSResourceModel,
 ) *unifi.DynamicDNS {
 	dynamicDNS := &unifi.DynamicDNS{
+		ID:        model.ID.ValueString(),
 		Interface: model.Interface.ValueString(),
 		Service:   model.Service.ValueString(),
 		HostName:  model.HostName.ValueString(),
@@ -386,10 +494,8 @@ func (r *dynamicDNSResource) dynamicDNSToModel(
 	_ context.Context,
 	dynamicDNS *unifi.DynamicDNS,
 	model *dynamicDNSResourceModel,
-	site string,
 ) {
 	model.ID = types.StringValue(dynamicDNS.ID)
-	model.Site = types.StringValue(site)
 	model.Interface = types.StringValue(dynamicDNS.Interface)
 	model.Service = types.StringValue(dynamicDNS.Service)
 	model.HostName = types.StringValue(dynamicDNS.HostName)

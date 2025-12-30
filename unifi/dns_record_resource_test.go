@@ -21,7 +21,7 @@ func TestAccDNSRecordFramework_basic(t *testing.T) {
 						"value",
 						"192.168.1.100",
 					),
-					resource.TestCheckResourceAttr("unifi_dns_record.test", "port", "80"),
+					resource.TestCheckResourceAttr("unifi_dns_record.test", "priority", "10"),
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "enabled", "true"),
 				),
 			},
@@ -37,10 +37,12 @@ func TestAccDNSRecordFramework_basic(t *testing.T) {
 func testAccDNSRecordFrameworkConfig_basic() string {
 	return `
 resource "unifi_dns_record" "test" {
-	name    = "test-record"
-	value   = "192.168.1.100"
-	port    = 80
-	enabled = true
+  name        = "test-record.example.com"
+  enabled     = true
+  priority    = 10
+  record_type = "A"
+  ttl         = 300
+  value       = "192.168.1.100"
 }
 `
 }

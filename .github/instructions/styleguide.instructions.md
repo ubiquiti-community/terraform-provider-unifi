@@ -1,6 +1,6 @@
 ---
 description: 'Terraform plugin framework migration guide.'
-tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'findTestFiles', 'githubRepo', 'new', 'openSimpleBrowser', 'problems', 'readCellOutput', 'runCommands', 'runNotebooks', 'runTasks', 'runTests', 'search', 'searchResults', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages', 'vscodeAPI', 'GistPad', 'activePullRequest', 'copilotCodingAgent']
+applyTo: '**.go'
 ---
 ## Style Guide for Terraform Plugin Framework Migration
 

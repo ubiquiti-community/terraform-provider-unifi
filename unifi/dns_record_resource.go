@@ -61,18 +61,18 @@ func (r *dnsRecordFrameworkResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages Dns record settings for different providers.",
+		MarkdownDescription: "Manages DNS record settings for different providers.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				MarkdownDescription: "The ID of the Dns record.",
+				MarkdownDescription: "The ID of the DNS record.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site to associate the Dns record with.",
+				MarkdownDescription: "The name of the site to associate the DNS record with.",
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -81,52 +81,52 @@ func (r *dnsRecordFrameworkResource) Schema(
 				},
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "The key of the Dns record.",
+				MarkdownDescription: "The key of the DNS record.",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the Dns record is enabled.",
+				MarkdownDescription: "Whether the DNS record is enabled.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 			},
 			"port": schema.Int64Attribute{
-				MarkdownDescription: "The port of the Dns record.",
+				MarkdownDescription: "The port of the DNS record.",
 				Optional:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(0, 65535),
 				},
 			},
 			"priority": schema.Int64Attribute{
-				MarkdownDescription: "The priority of the Dns record.",
+				MarkdownDescription: "The priority of the DNS record.",
 				Optional:            true,
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
 				},
 			},
 			"record_type": schema.StringAttribute{
-				MarkdownDescription: "The type of the Dns record.",
+				MarkdownDescription: "The type of the DNS record.",
 				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("A", "AAAA", "CNAME", "MX", "TXT", "SRV", "PTR"),
 				},
 			},
 			"ttl": schema.Int64Attribute{
-				MarkdownDescription: "The TTL of the Dns record.",
+				MarkdownDescription: "The TTL of the DNS record.",
 				Optional:            true,
 				Validators: []validator.Int64{
 					int64validator.AtMost(65535),
 				},
 			},
 			"value": schema.StringAttribute{
-				MarkdownDescription: "The value of the Dns record.",
+				MarkdownDescription: "The value of the DNS record.",
 				Required:            true,
 			},
 			"weight": schema.Int64Attribute{
-				MarkdownDescription: "The weight of the Dns record.",
+				MarkdownDescription: "The weight of the DNS record.",
 				Optional:            true,
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
@@ -181,12 +181,12 @@ func (r *dnsRecordFrameworkResource) Create(
 		site = r.client.Site
 	}
 
-	// Create the Dns record
+	// Create the DNS record
 	createdDNSRecord, err := r.client.CreateDNSRecord(ctx, site, dnsRecord)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Dns Record",
-			"Could not create Dns record, unexpected error: "+err.Error(),
+			"Could not create DNS record, unexpected error: "+err.Error(),
 		)
 		return
 	}
@@ -216,7 +216,7 @@ func (r *dnsRecordFrameworkResource) Read(
 		site = r.client.Site
 	}
 
-	// Get the Dns record from the API
+	// Get the DNS record from the API
 	dnsRecord, err := r.client.GetDNSRecord(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
@@ -225,7 +225,7 @@ func (r *dnsRecordFrameworkResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Dns Record",
-			"Could not read Dns record with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read DNS record with ID "+data.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
@@ -274,7 +274,7 @@ func (r *dnsRecordFrameworkResource) Update(
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Dns Record",
-			"Could not update Dns record, unexpected error: "+err.Error(),
+			"Could not update DNS record, unexpected error: "+err.Error(),
 		)
 		return
 	}
@@ -304,12 +304,12 @@ func (r *dnsRecordFrameworkResource) Delete(
 		site = r.client.Site
 	}
 
-	// Delete the Dns record
+	// Delete the DNS record
 	err := r.client.DeleteDNSRecord(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting Dns Record",
-			"Could not delete Dns record, unexpected error: "+err.Error(),
+			"Could not delete DNS record, unexpected error: "+err.Error(),
 		)
 		return
 	}

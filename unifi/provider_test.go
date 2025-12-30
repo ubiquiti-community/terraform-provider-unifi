@@ -90,8 +90,8 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-	const user = "unifi"
-	const password = "unifi"
+	const user = "admin"
+	const password = "admin"
 
 	if err = os.Setenv("UNIFI_USERNAME", user); err != nil {
 		panic(err)
@@ -117,8 +117,6 @@ func runAcceptanceTests(m *testing.M) int {
 	httpClient.Transport = transport
 	testClient.SetHTTPClient(httpClient)
 	testClient.SetBaseURL(endpoint)
-
-	// Wait for UniFi API to be ready and accept JSON responses
 	if err = waitForUniFiAPI(ctx, testClient, user, password); err != nil {
 		panic(err)
 	}

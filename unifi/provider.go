@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -306,4 +307,12 @@ func (p *unifiProvider) EphemeralResources(
 	ctx context.Context,
 ) []func() ephemeral.EphemeralResource {
 	return []func() ephemeral.EphemeralResource{}
+}
+
+func (p *unifiProvider) Actions(
+	ctx context.Context,
+) []func() action.Action {
+	return []func() action.Action{
+		NewPortAction,
+	}
 }

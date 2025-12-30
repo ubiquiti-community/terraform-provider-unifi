@@ -1,12 +1,11 @@
 version: "2"
-issues:
-  max-same-issues: 0
 linters:
+  default: none
   enable:
-    - durationcheck
-    # - errcheck
     - copyloopvar
-    # - forcetypeassert
+    - durationcheck
+    - errcheck
+    - forcetypeassert
     - godot
     - ineffassign
     - makezero
@@ -17,12 +16,21 @@ linters:
     - unconvert
     - unparam
     - unused
-    - govet
-  disable:
-    - errcheck
+    - usetesting
   exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     paths:
-      - "internal/provider/\\.*\\.go"
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 formatters:
   enable:
     - gci
@@ -39,5 +47,8 @@ formatters:
         - pattern: "a[b:len(a)]"
           replacement: "a[b:]"
   exclusions:
+    generated: lax
     paths:
-      - "internal/provider/\\.*\\.go"
+      - third_party$
+      - builtin$
+      - examples$
