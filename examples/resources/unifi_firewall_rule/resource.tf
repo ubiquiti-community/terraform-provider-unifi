@@ -1,7 +1,3 @@
-variable "ip_address" {
-  type = string
-}
-
 resource "unifi_firewall_rule" "drop_all" {
   name    = "drop all"
   action  = "drop"
@@ -11,5 +7,5 @@ resource "unifi_firewall_rule" "drop_all" {
 
   protocol = "all"
 
-  dst_address = var.ip_address
+  dst_address = "192.168.1.1"
 }

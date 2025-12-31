@@ -1,0 +1,32 @@
+---
+page_title: {{ range $index, $element := slice (split .Name "_") 1 }}{{ $element | title }} {{ end }}({{.Type}})
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{ range $index, $element := (split .Name "_") }}{{ if ne $index 0 }}{{ if ne $index 1 }} {{ end }}{{ title $element }}{{ if eq $index 1 }}{{ end }}{{ end }}{{ end }} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+{{- if .HasExamples }}
+
+## Example Usage
+
+{{- range $index, $exampleFile := .ExampleFiles }}
+
+{{tffile $exampleFile }}
+
+{{- end }}
+
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+{{- if .HasImport }}
+
+## Import
+
+Import is supported using the following syntax:
+
+{{codefile "shell" .ImportFile }}
+{{- end }}

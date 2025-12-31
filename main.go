@@ -7,60 +7,30 @@ import (
 	"context"
 	"flag"
 	"log"
-	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6/tf6server"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-mux/tf5to6server"
-	"github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
-	"github.com/ubiquiti-community/terraform-provider-unifi/internal/provider"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi"
 )
 
-const (
-	unifiProviderName = "registry.terraform.io/ubiquiti-community/unifi"
-)
-
+//go:generate go tool tfplugindocs generate -provider-name unifi
 func main() {
-	ctx := context.Background()
+	var debug bool
 
-	// Remove any date and time prefix in log package function output to
-	// prevent duplicate timestamp and incorrect log level setting
-	log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime))
-
-	debugFlag := flag.Bool("debug", false, "Start provider in debug mode.")
+	flag.BoolVar(
+		&debug,
+		"debug",
+		false,
+		"set to true to run the provider with support for debuggers like delve",
+	)
 	flag.Parse()
 
-	var serveOpts []tf6server.ServeOpt
-
-	if *debugFlag {
-		serveOpts = append(serveOpts, tf6server.WithManagedDebug())
+	opts := providerserver.ServeOpts{
+		Address: "registry.terraform.io/ubiquiti-community/unifi",
+		Debug:   debug,
 	}
 
-	upgradedSdkProvider, err := tf5to6server.UpgradeServer(
-		context.Background(),
-		provider.Provider().GRPCProvider,
-	)
-
-	providers := []func() tfprotov6.ProviderServer{
-		func() tfprotov6.ProviderServer {
-			return upgradedSdkProvider
-		},
-		providerserver.NewProtocol6(provider.NewFrameworkProvider()),
-	}
-
-	muxServer, err := tf6muxserver.NewMuxServer(ctx, providers...)
+	err := providerserver.Serve(context.Background(), unifi.New, opts)
 	if err != nil {
-		tflog.Error(ctx, "Failed to create MuxServer", map[string]any{
-			"error": err,
-		})
-		os.Exit(1)
-	}
-
-	err = tf6server.Serve(unifiProviderName, muxServer.ProviderServer, serveOpts...)
-	if err != nil {
-		log.Printf("[ERROR] Could not start serving the ProviderServer: %v", err)
-		os.Exit(1)
+		log.Fatal(err.Error())
 	}
 }

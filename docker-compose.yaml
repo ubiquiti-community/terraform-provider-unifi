@@ -1,14 +1,45 @@
 ---
 services:
   unifi:
-    image: "jacobalberty/unifi:${UNIFI_VERSION:-latest}"
+    image: jacobalberty/unifi:latest
     init: true
-    restart: "always"
+    container_name: unifi
     environment:
-      PKGURL: "${UNIFI_DOWNLOAD_URL:-}"
+      PKGURL: ""
       UNIFI_STDOUT: "true"
+      TZ: Etc/UTC
+    user: unifi
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:8443/manage/account/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    configs:
+      - source: unifi-init
+        target: /unifi/init.d/demo-mode
+        mode: 0757
+        uid: "1000"
+        gid: "1000"
     ports:
-      - "${UNIFI_HTTP_PORT:-8080}:8080/tcp"
-      - "${UNIFI_HTTPS_PORT:-8443}:8443/tcp"
-    volumes:
-      - "./scripts/init.d:/usr/local/unifi/init.d:ro"
+      - 8443:8443
+      - 3478:3478/udp
+      - 10001:10001/udp
+      - 8080:8080
+    restart: unless-stopped
+
+configs:
+  unifi-init:
+    content: |
+      #!/bin/sh
+
+      write_config() {
+        echo "$${1}=$${2}" >> /usr/lib/unifi/data/system.properties
+      }
+
+      write_config is_simulation true
+
+      # Increase the number of demo devices to allow more concurrent tests to be executed simultaneously.
+      write_config demo.num_uap 1
+      write_config demo.num_ugw 1
+      write_config demo.num_usw 5
