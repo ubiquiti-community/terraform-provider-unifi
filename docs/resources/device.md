@@ -145,10 +145,48 @@ Required:
 Optional:
 
 - `aggregate_members` (List of Number) Number of ports in the aggregate.
+- `autoneg` (Boolean) Enable auto-negotiation for port speed.
+- `dot1x_ctrl` (String) 802.1X control mode.
+- `dot1x_idle_timeout` (Number) 802.1X idle timeout in seconds.
+- `egress_rate_limit_kbps` (Number) Egress rate limit in kbps.
+- `egress_rate_limit_kbps_enabled` (Boolean) Enable egress rate limiting.
+- `excluded_networkconf_ids` (List of String) List of network IDs to exclude from this port.
+- `fec_mode` (String) Forward Error Correction mode.
+- `flow_control_enabled` (Boolean) Enable flow control.
+- `forward` (String) Forwarding mode.
+- `full_duplex` (Boolean) Enable full duplex mode.
+- `isolation` (Boolean) Enable port isolation.
+- `lldpmed_enabled` (Boolean) Enable LLDP-MED.
+- `lldpmed_notify_enabled` (Boolean) Enable LLDP-MED notifications.
+- `mirror_port_idx` (Number) Mirror port index.
+- `multicast_router_networkconf_ids` (List of String) List of network IDs for multicast router.
 - `name` (String) Human-readable name of the port.
+- `native_networkconf_id` (String) Native network ID (VLAN).
 - `op_mode` (String) Operating mode of the port, valid values are `switch`, `mirror`, and `aggregate`.
 - `poe_mode` (String) PoE mode of the port; valid values are `auto`, `pasv24`, `passthrough`, and `off`.
+- `port_keepalive_enabled` (Boolean) Enable port keepalive.
 - `port_profile_id` (String) ID of the Port Profile used on this port.
+- `port_security_enabled` (Boolean) Enable port security.
+- `port_security_mac_address` (List of String) List of MAC addresses allowed when port security is enabled.
+- `priority_queue1_level` (Number) Priority queue 1 level.
+- `priority_queue2_level` (Number) Priority queue 2 level.
+- `priority_queue3_level` (Number) Priority queue 3 level.
+- `priority_queue4_level` (Number) Priority queue 4 level.
+- `setting_preference` (String) Setting preference.
+- `speed` (Number) Port speed in Mbps.
+- `stormctrl_bcast_enabled` (Boolean) Enable broadcast storm control.
+- `stormctrl_bcast_level` (Number) Broadcast storm control level.
+- `stormctrl_bcast_rate` (Number) Broadcast storm control rate.
+- `stormctrl_mcast_enabled` (Boolean) Enable multicast storm control.
+- `stormctrl_mcast_level` (Number) Multicast storm control level.
+- `stormctrl_mcast_rate` (Number) Multicast storm control rate.
+- `stormctrl_type` (String) Storm control type.
+- `stormctrl_ucast_enabled` (Boolean) Enable unicast storm control.
+- `stormctrl_ucast_level` (Number) Unicast storm control level.
+- `stormctrl_ucast_rate` (Number) Unicast storm control rate.
+- `stp_port_mode` (Boolean) STP port mode.
+- `tagged_vlan_mgmt` (String) Tagged VLAN management.
+- `voice_networkconf_id` (String) Voice network ID.
 
 
 <a id="nestedatt--radio_table"></a>

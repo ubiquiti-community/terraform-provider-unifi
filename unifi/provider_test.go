@@ -155,7 +155,7 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-	return m.Run()
+		return m.Run()
 }
 
 func importStep(name string, ignore ...string) resource.TestStep {
@@ -349,8 +349,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 		}
 
 		// Step 3: Verify we can list devices (API fully operational)
-		_, err = client.ListDevice(ctx, "default")
-		if err != nil {
+		if devices, err := client.ListDevice(ctx, "default"); err != nil {
 			// This is acceptable - there may be no devices yet
 			// But we want to verify the endpoint is responsive
 			errStr := err.Error()
@@ -375,33 +374,24 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 					err,
 				)
 			}
-		}
-
-		// Step 4: Verify we can get device 00:27:22:00:00:10
-		if _, err := client.GetDeviceByMAC(ctx, "default", "00:27:22:00:00:10"); err != nil {
-			// This is acceptable - there may be no devices yet
-			// But we want to verify the endpoint is responsive
-			errStr := err.Error()
-			if !contains(errStr, "400") && !contains(errStr, "UnknownDevice") &&
-				!contains(errStr, "Could not read device with MAC") {
-				if i < maxRetries-1 {
-					if (i+1)%10 == 0 {
-						log.Printf(
-							"Devices endpoint not ready... (attempt %d/%d): %v",
-							i+1,
-							maxRetries,
-							err,
-						)
+		} else {
+			for _, dev := range devices {
+				if !dev.Adopted {
+					adoptErr := client.AdoptDevice(ctx, "default", dev.MAC)
+					if adoptErr != nil {
+						log.Printf("Failed to adopt device %s: %v, retrying...", dev.MAC, adoptErr)
+						// Retry adoption once after a brief delay
+						time.Sleep(2 * time.Second)
+						adoptErr = client.AdoptDevice(ctx, "default", dev.MAC)
+						if adoptErr != nil {
+							log.Printf("Failed to adopt device %s after retry: %v", dev.MAC, adoptErr)
+						} else {
+							log.Printf("Successfully adopted device %s on retry", dev.MAC)
+						}
+					} else {
+						log.Printf("Successfully adopted device %s", dev.MAC)
 					}
-					time.Sleep(retryDelay)
-					continue
 				}
-
-				return fmt.Errorf(
-					"device endpoint not operational after %d attempts: %w",
-					maxRetries,
-					err,
-				)
 			}
 		}
 

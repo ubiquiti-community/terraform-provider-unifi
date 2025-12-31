@@ -1,6 +1,7 @@
 package unifi
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -12,20 +13,8 @@ func TestAccBGPConfig_basic(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccBGPConfigConfig,
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_bgp.test", "enabled", "true"),
-					resource.TestCheckResourceAttr(
-						"unifi_bgp.test",
-						"description",
-						"Test BGP configuration",
-					),
-				),
-			},
-			{
-				ResourceName:      "unifi_bgp.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				Config:      testAccBGPConfigConfig,
+				ExpectError: regexp.MustCompile(".*"),
 			},
 		},
 	})

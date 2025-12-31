@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -22,7 +23,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util/retry"
-	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -42,14 +42,14 @@ type deviceResource struct {
 
 // deviceResourceModel describes the resource data model.
 type deviceResourceModel struct {
-	ID              types.String `tfsdk:"id"`
-	Site            types.String `tfsdk:"site"`
-	MAC             types.String `tfsdk:"mac"`
-	Name            types.String `tfsdk:"name"`
-	Disabled        types.Bool   `tfsdk:"disabled"`
-	PortOverride    types.Set    `tfsdk:"port_override"`
-	AllowAdoption   types.Bool   `tfsdk:"allow_adoption"`
-	ForgetOnDestroy types.Bool   `tfsdk:"forget_on_destroy"`
+	ID              types.String       `tfsdk:"id"`
+	Site            types.String       `tfsdk:"site"`
+	MAC             hwtypes.MACAddress `tfsdk:"mac"`
+	Name            types.String       `tfsdk:"name"`
+	Disabled        types.Bool         `tfsdk:"disabled"`
+	PortOverride    types.Set          `tfsdk:"port_override"`
+	AllowAdoption   types.Bool         `tfsdk:"allow_adoption"`
+	ForgetOnDestroy types.Bool         `tfsdk:"forget_on_destroy"`
 
 	// Network configuration
 	ConfigNetwork types.Object `tfsdk:"config_network"`
@@ -236,9 +236,7 @@ func (r *deviceResource) Schema(
 				Description: "The MAC address of the device. This can be specified so that the provider can take control of a device (since devices are created through adoption).",
 				Optional:    true,
 				Computed:    true,
-				Validators: []validator.String{
-					validators.MACAddressValidator(),
-				},
+				CustomType:  hwtypes.MACAddressType{},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
@@ -1305,9 +1303,9 @@ func (r *deviceResource) setResourceData(
 	model.Site = types.StringValue(site)
 
 	if device.MAC == "" {
-		model.MAC = types.StringNull()
+		model.MAC = hwtypes.NewMACAddressNull()
 	} else {
-		model.MAC = types.StringValue(device.MAC)
+		model.MAC = hwtypes.NewMACAddressValue(device.MAC)
 	}
 
 	if device.Name == "" {

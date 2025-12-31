@@ -145,8 +145,22 @@ func (r *bgpResource) Create(
 	}
 
 	// Create the BGP configuration
-	createdBGPConfig, err := r.client.CreateBGPConfig(ctx, site, bgpConfig)
-	if err != nil {
+	// Create the BGP configuration with retry for "not found" errors
+	var createdBGPConfig *unifi.BGPConfig
+	var err error
+
+	maxRetries := 3
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		createdBGPConfig, err = r.client.CreateBGPConfig(ctx, site, bgpConfig)
+		if err == nil {
+			break
+		}
+
+		// Retry only on "not found" errors
+		if _, ok := err.(*unifi.NotFoundError); ok && attempt < maxRetries {
+			continue
+		}
+
 		resp.Diagnostics.AddError(
 			"Error Creating BGP Configuration",
 			err.Error(),
@@ -320,10 +334,10 @@ func (r *bgpResource) modelToBGP(
 	model *bgpResourceModel,
 ) *unifi.BGPConfig {
 	bgpConfig := &unifi.BGPConfig{
-		Enabled:        model.Enabled.ValueBool(),
-		Config:         model.Config.ValueString(),
-		UploadFileName: model.UploadFileName.ValueString(),
-		Description:    model.Description.ValueString(),
+		Enabled:          model.Enabled.ValueBool(),
+		Config:           model.Config.ValueString(),
+		UploadedFileName: model.UploadFileName.ValueString(),
+		Description:      model.Description.ValueString(),
 	}
 
 	return bgpConfig
@@ -346,8 +360,8 @@ func (r *bgpResource) bgpToModel(
 		model.Config = types.StringNull()
 	}
 
-	if bgpConfig.UploadFileName != "" {
-		model.UploadFileName = types.StringValue(bgpConfig.UploadFileName)
+	if bgpConfig.UploadedFileName != "" {
+		model.UploadFileName = types.StringValue(bgpConfig.UploadedFileName)
 	} else {
 		model.UploadFileName = types.StringNull()
 	}

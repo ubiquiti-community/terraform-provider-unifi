@@ -155,7 +155,7 @@ func (r *portProfileResource) Schema(
 				Description: "The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`.",
 				Optional:    true,
 				Computed:    true,
-				Default:     stringdefault.StaticString("native"),
+				Default:     stringdefault.StaticString("all"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("all", "native", "customize", "disabled"),
 				},
@@ -689,7 +689,12 @@ func (r *portProfileResource) setResourceData(
 
 	model.LLDPMedEnabled = types.BoolValue(portProfile.LldpmedEnabled)
 
-	model.LLDPMedNotifyEnabled = types.BoolValue(portProfile.LldpmedNotifyEnabled)
+	// Only set lldpmed_notify_enabled if it was in the plan or if it's explicitly true
+	if !model.LLDPMedNotifyEnabled.IsNull() || portProfile.LldpmedNotifyEnabled {
+		model.LLDPMedNotifyEnabled = types.BoolValue(portProfile.LldpmedNotifyEnabled)
+	} else {
+		model.LLDPMedNotifyEnabled = types.BoolNull()
+	}
 
 	model.NativeNetworkConfID = types.StringNull() // Skip for now
 
@@ -719,7 +724,12 @@ func (r *portProfileResource) setResourceData(
 		model.PortSecurityMacAddress = macAddressSet
 	}
 
-	model.Speed = types.Int64Value(int64(portProfile.Speed))
+	// Only set speed if it was in the plan or if it's non-zero
+	if !model.Speed.IsNull() || portProfile.Speed != 0 {
+		model.Speed = types.Int64Value(int64(portProfile.Speed))
+	} else {
+		model.Speed = types.Int64Null()
+	}
 
 	// Convert tagged network IDs - skip for now
 	model.TaggedNetworkConfIDs = types.SetNull(types.StringType)

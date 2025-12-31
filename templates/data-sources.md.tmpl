@@ -1,11 +1,6 @@
 ---
-{{ if eq (index (split .Name "_") 1) "setting" -}}
-page_title: "{{ index (split .Name "_") 1 | title }}: {{ range $index, $element := slice (split .Name "_") 2 }}{{ $element | title }} {{ end }}({{.Type}})"
-subcategory: {{ index (split .Name "_") 1 | title }}
-{{- else -}} 
 page_title: {{ range $index, $element := slice (split .Name "_") 1 }}{{ $element | title }} {{ end }}({{.Type}})
 subcategory: ""
-{{- end }}
 description: |-
 {{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
 ---

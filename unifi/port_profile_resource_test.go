@@ -37,7 +37,6 @@ func testAccPortProfileFrameworkConfig_basic() string {
 resource "unifi_port_profile" "test" {
 	name     = "Test Port Profile"
 	autoneg  = true
-	forward  = "native"
 	op_mode  = "switch"
 }
 `
