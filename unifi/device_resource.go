@@ -3,7 +3,6 @@ package unifi
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -193,8 +192,6 @@ type outletOverrideModel struct {
 	RelayState   types.Bool   `tfsdk:"relay_state"`
 	CycleEnabled types.Bool   `tfsdk:"cycle_enabled"`
 }
-
-var macAddressRegexp = regexp.MustCompile(`^([a-fA-F0-9]{2}[:-]){5}[a-fA-F0-9]{2}$`)
 
 func (r *deviceResource) Metadata(
 	ctx context.Context,
@@ -1884,151 +1881,156 @@ func (r *deviceResource) frameworkToPortOverrides(
 
 	for _, elem := range elements {
 		var model portOverrideModel
-		diags.Append(elem.(types.Object).As(ctx, &model, basetypes.ObjectAsOptions{})...)
-		if diags.HasError() {
-			return nil, diags
-		}
-
-		idx := int(model.Number.ValueInt64())
-		po := unifi.DevicePortOverrides{
-			PortIDX: idx,
-		}
-
-		// String attributes
-		if !model.Name.IsNull() {
-			po.Name = model.Name.ValueString()
-		}
-		if !model.PortProfileID.IsNull() {
-			po.PortProfileID = model.PortProfileID.ValueString()
-		}
-		if !model.OpMode.IsNull() {
-			po.OpMode = model.OpMode.ValueString()
-		}
-		if !model.PoeMode.IsNull() {
-			po.PoeMode = model.PoeMode.ValueString()
-		}
-		if !model.Dot1XCtrl.IsNull() {
-			po.Dot1XCtrl = model.Dot1XCtrl.ValueString()
-		}
-		if !model.FecMode.IsNull() {
-			po.FecMode = model.FecMode.ValueString()
-		}
-		if !model.Forward.IsNull() {
-			po.Forward = model.Forward.ValueString()
-		}
-		if !model.NativeNetworkID.IsNull() {
-			po.NATiveNetworkID = model.NativeNetworkID.ValueString()
-		}
-		if !model.SettingPreference.IsNull() {
-			po.SettingPreference = model.SettingPreference.ValueString()
-		}
-		if !model.StormctrlType.IsNull() {
-			po.StormctrlType = model.StormctrlType.ValueString()
-		}
-		if !model.TaggedVLANMgmt.IsNull() {
-			po.TaggedVLANMgmt = model.TaggedVLANMgmt.ValueString()
-		}
-		if !model.VoiceNetworkID.IsNull() {
-			po.VoiceNetworkID = model.VoiceNetworkID.ValueString()
-		}
-
-		// Boolean attributes
-		po.Autoneg = model.Autoneg.ValueBool()
-		po.EgressRateLimitKbpsEnabled = model.EgressRateLimitKbpsEnabled.ValueBool()
-		po.FlowControlEnabled = model.FlowControlEnabled.ValueBool()
-		po.FullDuplex = model.FullDuplex.ValueBool()
-		po.Isolation = model.Isolation.ValueBool()
-		po.LldpmedEnabled = model.LldpmedEnabled.ValueBool()
-		po.LldpmedNotifyEnabled = model.LldpmedNotifyEnabled.ValueBool()
-		po.PortKeepaliveEnabled = model.PortKeepaliveEnabled.ValueBool()
-		po.PortSecurityEnabled = model.PortSecurityEnabled.ValueBool()
-		po.StormctrlBroadcastastEnabled = model.StormctrlBroadcastEnabled.ValueBool()
-		po.StormctrlMcastEnabled = model.StormctrlMcastEnabled.ValueBool()
-		po.StormctrlUcastEnabled = model.StormctrlUcastEnabled.ValueBool()
-		po.StpPortMode = model.StpPortMode.ValueBool()
-
-		// Int64 attributes
-		if !model.Dot1XIDleTimeout.IsNull() {
-			po.Dot1XIDleTimeout = int(model.Dot1XIDleTimeout.ValueInt64())
-		}
-		if !model.EgressRateLimitKbps.IsNull() {
-			po.EgressRateLimitKbps = int(model.EgressRateLimitKbps.ValueInt64())
-		}
-		if !model.MirrorPortIDX.IsNull() {
-			po.MirrorPortIDX = int(model.MirrorPortIDX.ValueInt64())
-		}
-		if !model.PriorityQueue1Level.IsNull() {
-			po.PriorityQueue1Level = int(model.PriorityQueue1Level.ValueInt64())
-		}
-		if !model.PriorityQueue2Level.IsNull() {
-			po.PriorityQueue2Level = int(model.PriorityQueue2Level.ValueInt64())
-		}
-		if !model.PriorityQueue3Level.IsNull() {
-			po.PriorityQueue3Level = int(model.PriorityQueue3Level.ValueInt64())
-		}
-		if !model.PriorityQueue4Level.IsNull() {
-			po.PriorityQueue4Level = int(model.PriorityQueue4Level.ValueInt64())
-		}
-		if !model.Speed.IsNull() {
-			po.Speed = int(model.Speed.ValueInt64())
-		}
-		if !model.StormctrlBroadcastLevel.IsNull() {
-			po.StormctrlBroadcastastLevel = int(model.StormctrlBroadcastLevel.ValueInt64())
-		}
-		if !model.StormctrlBroadcastRate.IsNull() {
-			po.StormctrlBroadcastastRate = int(model.StormctrlBroadcastRate.ValueInt64())
-		}
-		if !model.StormctrlMcastLevel.IsNull() {
-			po.StormctrlMcastLevel = int(model.StormctrlMcastLevel.ValueInt64())
-		}
-		if !model.StormctrlMcastRate.IsNull() {
-			po.StormctrlMcastRate = int(model.StormctrlMcastRate.ValueInt64())
-		}
-		if !model.StormctrlUcastLevel.IsNull() {
-			po.StormctrlUcastLevel = int(model.StormctrlUcastLevel.ValueInt64())
-		}
-		if !model.StormctrlUcastRate.IsNull() {
-			po.StormctrlUcastRate = int(model.StormctrlUcastRate.ValueInt64())
-		}
-
-		// List attributes
-		if !model.AggregateMembers.IsNull() {
-			var aggrMembers []int
-			diags.Append(model.AggregateMembers.ElementsAs(ctx, &aggrMembers, true)...)
+		if elemObj, ok := elem.(types.Object); ok {
+			diags.Append(elemObj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
 			if diags.HasError() {
 				return nil, diags
 			}
-			po.AggregateMembers = aggrMembers
-		}
 
-		if !model.ExcludedNetworkIDs.IsNull() {
-			var excludedIDs []string
-			diags.Append(model.ExcludedNetworkIDs.ElementsAs(ctx, &excludedIDs, true)...)
-			if diags.HasError() {
-				return nil, diags
+			idx := int(model.Number.ValueInt64())
+			po := unifi.DevicePortOverrides{
+				PortIDX: idx,
 			}
-			po.ExcludedNetworkIDs = excludedIDs
-		}
 
-		if !model.MulticastRouterNetworkIDs.IsNull() {
-			var multicastIDs []string
-			diags.Append(model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...)
-			if diags.HasError() {
-				return nil, diags
+			// String attributes
+			if !model.Name.IsNull() {
+				po.Name = model.Name.ValueString()
 			}
-			po.MulticastRouterNetworkIDs = multicastIDs
-		}
-
-		if !model.PortSecurityMACAddress.IsNull() {
-			var macAddresses []string
-			diags.Append(model.PortSecurityMACAddress.ElementsAs(ctx, &macAddresses, true)...)
-			if diags.HasError() {
-				return nil, diags
+			if !model.PortProfileID.IsNull() {
+				po.PortProfileID = model.PortProfileID.ValueString()
 			}
-			po.PortSecurityMACAddress = macAddresses
-		}
+			if !model.OpMode.IsNull() {
+				po.OpMode = model.OpMode.ValueString()
+			}
+			if !model.PoeMode.IsNull() {
+				po.PoeMode = model.PoeMode.ValueString()
+			}
+			if !model.Dot1XCtrl.IsNull() {
+				po.Dot1XCtrl = model.Dot1XCtrl.ValueString()
+			}
+			if !model.FecMode.IsNull() {
+				po.FecMode = model.FecMode.ValueString()
+			}
+			if !model.Forward.IsNull() {
+				po.Forward = model.Forward.ValueString()
+			}
+			if !model.NativeNetworkID.IsNull() {
+				po.NATiveNetworkID = model.NativeNetworkID.ValueString()
+			}
+			if !model.SettingPreference.IsNull() {
+				po.SettingPreference = model.SettingPreference.ValueString()
+			}
+			if !model.StormctrlType.IsNull() {
+				po.StormctrlType = model.StormctrlType.ValueString()
+			}
+			if !model.TaggedVLANMgmt.IsNull() {
+				po.TaggedVLANMgmt = model.TaggedVLANMgmt.ValueString()
+			}
+			if !model.VoiceNetworkID.IsNull() {
+				po.VoiceNetworkID = model.VoiceNetworkID.ValueString()
+			}
 
-		overrideMap[idx] = po
+			// Boolean attributes
+			po.Autoneg = model.Autoneg.ValueBool()
+			po.EgressRateLimitKbpsEnabled = model.EgressRateLimitKbpsEnabled.ValueBool()
+			po.FlowControlEnabled = model.FlowControlEnabled.ValueBool()
+			po.FullDuplex = model.FullDuplex.ValueBool()
+			po.Isolation = model.Isolation.ValueBool()
+			po.LldpmedEnabled = model.LldpmedEnabled.ValueBool()
+			po.LldpmedNotifyEnabled = model.LldpmedNotifyEnabled.ValueBool()
+			po.PortKeepaliveEnabled = model.PortKeepaliveEnabled.ValueBool()
+			po.PortSecurityEnabled = model.PortSecurityEnabled.ValueBool()
+			po.StormctrlBroadcastastEnabled = model.StormctrlBroadcastEnabled.ValueBool()
+			po.StormctrlMcastEnabled = model.StormctrlMcastEnabled.ValueBool()
+			po.StormctrlUcastEnabled = model.StormctrlUcastEnabled.ValueBool()
+			po.StpPortMode = model.StpPortMode.ValueBool()
+
+			// Int64 attributes
+			if !model.Dot1XIDleTimeout.IsNull() {
+				po.Dot1XIDleTimeout = int(model.Dot1XIDleTimeout.ValueInt64())
+			}
+			if !model.EgressRateLimitKbps.IsNull() {
+				po.EgressRateLimitKbps = int(model.EgressRateLimitKbps.ValueInt64())
+			}
+			if !model.MirrorPortIDX.IsNull() {
+				po.MirrorPortIDX = int(model.MirrorPortIDX.ValueInt64())
+			}
+			if !model.PriorityQueue1Level.IsNull() {
+				po.PriorityQueue1Level = int(model.PriorityQueue1Level.ValueInt64())
+			}
+			if !model.PriorityQueue2Level.IsNull() {
+				po.PriorityQueue2Level = int(model.PriorityQueue2Level.ValueInt64())
+			}
+			if !model.PriorityQueue3Level.IsNull() {
+				po.PriorityQueue3Level = int(model.PriorityQueue3Level.ValueInt64())
+			}
+			if !model.PriorityQueue4Level.IsNull() {
+				po.PriorityQueue4Level = int(model.PriorityQueue4Level.ValueInt64())
+			}
+			if !model.Speed.IsNull() {
+				po.Speed = int(model.Speed.ValueInt64())
+			}
+			if !model.StormctrlBroadcastLevel.IsNull() {
+				po.StormctrlBroadcastastLevel = int(model.StormctrlBroadcastLevel.ValueInt64())
+			}
+			if !model.StormctrlBroadcastRate.IsNull() {
+				po.StormctrlBroadcastastRate = int(model.StormctrlBroadcastRate.ValueInt64())
+			}
+			if !model.StormctrlMcastLevel.IsNull() {
+				po.StormctrlMcastLevel = int(model.StormctrlMcastLevel.ValueInt64())
+			}
+			if !model.StormctrlMcastRate.IsNull() {
+				po.StormctrlMcastRate = int(model.StormctrlMcastRate.ValueInt64())
+			}
+			if !model.StormctrlUcastLevel.IsNull() {
+				po.StormctrlUcastLevel = int(model.StormctrlUcastLevel.ValueInt64())
+			}
+			if !model.StormctrlUcastRate.IsNull() {
+				po.StormctrlUcastRate = int(model.StormctrlUcastRate.ValueInt64())
+			}
+
+			// List attributes
+			if !model.AggregateMembers.IsNull() {
+				var aggrMembers []int
+				diags.Append(model.AggregateMembers.ElementsAs(ctx, &aggrMembers, true)...)
+				if diags.HasError() {
+					return nil, diags
+				}
+				po.AggregateMembers = aggrMembers
+			}
+
+			if !model.ExcludedNetworkIDs.IsNull() {
+				var excludedIDs []string
+				diags.Append(model.ExcludedNetworkIDs.ElementsAs(ctx, &excludedIDs, true)...)
+				if diags.HasError() {
+					return nil, diags
+				}
+				po.ExcludedNetworkIDs = excludedIDs
+			}
+
+			if !model.MulticastRouterNetworkIDs.IsNull() {
+				var multicastIDs []string
+				diags.Append(
+					model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...)
+				if diags.HasError() {
+					return nil, diags
+				}
+				po.MulticastRouterNetworkIDs = multicastIDs
+			}
+
+			if !model.PortSecurityMACAddress.IsNull() {
+				var macAddresses []string
+				diags.Append(model.PortSecurityMACAddress.ElementsAs(ctx, &macAddresses, true)...)
+				if diags.HasError() {
+					return nil, diags
+				}
+				po.PortSecurityMACAddress = macAddresses
+			}
+
+			overrideMap[idx] = po
+		} else {
+			diags.Append(diag.NewErrorDiagnostic("Invalid port override model", "Error casting `portOverrideModel` to `types.Object`"))
+		}
 	}
 
 	pos := make([]unifi.DevicePortOverrides, 0, len(overrideMap))

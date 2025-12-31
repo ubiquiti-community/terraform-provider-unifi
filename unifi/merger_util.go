@@ -66,7 +66,10 @@ func (rm *ResourceMerger[T]) mergeResources(existing, planned *T) *T {
 	// Merge fields from planned into result
 	rm.mergeStructFields(result, plannedVal)
 
-	return result.Addr().Interface().(*T)
+	if res, ok := result.Addr().Interface().(*T); ok {
+		return res
+	}
+	return nil
 }
 
 // mergeStructFields recursively merges struct fields.

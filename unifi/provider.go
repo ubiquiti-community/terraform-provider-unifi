@@ -28,9 +28,7 @@ var (
 	_ provider.ProviderWithEphemeralResources = &unifiProvider{}
 )
 
-type unifiProvider struct {
-	version string
-}
+type unifiProvider struct{}
 
 type unifiProviderModel struct {
 	ApiKey        types.String `tfsdk:"api_key"`

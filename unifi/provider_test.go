@@ -5,22 +5,18 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"math"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
-	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -45,14 +41,16 @@ func TestMain(m *testing.M) {
 
 type logConsumer struct {
 	StdOut bool
+
+	ctx context.Context
 }
 
 func (l *logConsumer) Accept(log testcontainers.Log) {
-	if log.LogType == testcontainers.StdoutLog && l.StdOut {
-		testcontainers.Logger.Printf("%s", log.Content)
-	}
-	if log.LogType == testcontainers.StderrLog {
-		testcontainers.Logger.Printf("%s", log.Content)
+	switch log.LogType {
+	case testcontainers.StdoutLog:
+		tflog.Info(l.ctx, string(log.Content))
+	case testcontainers.StderrLog:
+		tflog.Error(l.ctx, string(log.Content))
 	}
 }
 
@@ -155,33 +153,7 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-		return m.Run()
-}
-
-func importStep(name string, ignore ...string) resource.TestStep {
-	step := resource.TestStep{
-		ResourceName:      name,
-		ImportState:       true,
-		ImportStateVerify: true,
-	}
-
-	if len(ignore) > 0 {
-		step.ImportStateVerifyIgnore = ignore
-	}
-
-	return step
-}
-
-func siteAndIDImportStateIDFunc(resourceName string) func(*terraform.State) (string, error) {
-	return func(s *terraform.State) (string, error) {
-		rs, ok := s.RootModule().Resources[resourceName]
-		if !ok {
-			return "", fmt.Errorf("not found: %s", resourceName)
-		}
-		networkID := rs.Primary.Attributes["id"]
-		site := rs.Primary.Attributes["site"]
-		return site + ":" + networkID, nil
-	}
+	return m.Run()
 }
 
 func preCheck(t *testing.T) {
@@ -197,36 +169,6 @@ func preCheck(t *testing.T) {
 			t.Fatalf("`%s` must be set for acceptance tests!", variable)
 		}
 	}
-}
-
-const (
-	vlanMin = 2
-	vlanMax = 4095
-)
-
-var (
-	network = &net.IPNet{
-		IP:   net.IPv4(10, 0, 0, 0).To4(),
-		Mask: net.IPv4Mask(255, 0, 0, 0),
-	}
-
-	vlanLock sync.Mutex
-	vlanNext = vlanMin
-)
-
-func getTestVLAN(t *testing.T) (*net.IPNet, int) {
-	vlanLock.Lock()
-	defer vlanLock.Unlock()
-
-	vlan := vlanNext
-	vlanNext++
-
-	subnet, err := cidr.Subnet(network, int(math.Ceil(math.Log2(vlanMax))), vlan)
-	if err != nil {
-		t.Error(err)
-	}
-
-	return subnet, vlan
 }
 
 // contains checks if a string contains a substring (helper to avoid importing strings).
