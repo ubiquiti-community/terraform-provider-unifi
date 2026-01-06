@@ -20,21 +20,21 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &userGroupFrameworkResource{}
-	_ resource.ResourceWithImportState = &userGroupFrameworkResource{}
+	_ resource.Resource                = &clientGroupFrameworkResource{}
+	_ resource.ResourceWithImportState = &clientGroupFrameworkResource{}
 )
 
-func NewUserGroupFrameworkResource() resource.Resource {
-	return &userGroupFrameworkResource{}
+func NewClientGroupFrameworkResource() resource.Resource {
+	return &clientGroupFrameworkResource{}
 }
 
-// userGroupFrameworkResource defines the resource implementation.
-type userGroupFrameworkResource struct {
+// clientGroupFrameworkResource defines the resource implementation.
+type clientGroupFrameworkResource struct {
 	client *Client
 }
 
-// userGroupFrameworkResourceModel describes the resource data model.
-type userGroupFrameworkResourceModel struct {
+// clientGroupFrameworkResourceModel describes the resource data model.
+type clientGroupFrameworkResourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
 	Name           types.String `tfsdk:"name"`
@@ -42,32 +42,32 @@ type userGroupFrameworkResourceModel struct {
 	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
-func (r *userGroupFrameworkResource) Metadata(
+func (r *clientGroupFrameworkResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_user_group"
+	resp.TypeName = req.ProviderTypeName + "_client_group"
 }
 
-func (r *userGroupFrameworkResource) Schema(
+func (r *clientGroupFrameworkResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Manages a user group (called "client group" in the UI), which can be used to limit bandwidth for groups of users.`,
+		MarkdownDescription: `Manages a client group, which can be used to limit bandwidth for groups of clients.`,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				MarkdownDescription: "The ID of the user group.",
+				MarkdownDescription: "The ID of the client group.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site to associate the user group with.",
+				MarkdownDescription: "The name of the site to associate the client group with.",
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -76,7 +76,7 @@ func (r *userGroupFrameworkResource) Schema(
 				},
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "The name of the user group.",
+				MarkdownDescription: "The name of the client group.",
 				Required:            true,
 			},
 			"qos_rate_max_down": schema.Int64Attribute{
@@ -187,7 +187,7 @@ func (r *userGroupFrameworkResource) Schema(
 	}
 }
 
-func (r *userGroupFrameworkResource) Configure(
+func (r *clientGroupFrameworkResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
 	resp *resource.ConfigureResponse,
@@ -211,12 +211,12 @@ func (r *userGroupFrameworkResource) Configure(
 	r.client = client
 }
 
-func (r *userGroupFrameworkResource) Create(
+func (r *clientGroupFrameworkResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
 	resp *resource.CreateResponse,
 ) {
-	var plan userGroupFrameworkResourceModel
+	var plan clientGroupFrameworkResourceModel
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -229,25 +229,25 @@ func (r *userGroupFrameworkResource) Create(
 		site = r.client.Site
 	}
 
-	// Convert the plan to UniFi UserGroup struct
-	userGroup, diags := r.planToUserGroup(ctx, plan)
+	// Convert the plan to UniFi ClientGroup struct
+	clientGroup, diags := r.planToClientGroup(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Create the UserGroup
-	createdUserGroup, err := r.client.CreateUserGroup(ctx, site, userGroup)
+	// Create the ClientGroup
+	createdClientGroup, err := r.client.CreateClientGroup(ctx, site, clientGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Creating User Group",
-			"Could not create user group: "+err.Error(),
+			"Error Creating Client Group",
+			"Could not create client group: "+err.Error(),
 		)
 		return
 	}
 
 	// Convert response back to model
-	diags = r.userGroupToModel(ctx, createdUserGroup, &plan, site)
+	diags = r.clientGroupToModel(ctx, createdClientGroup, &plan, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -257,12 +257,12 @@ func (r *userGroupFrameworkResource) Create(
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userGroupFrameworkResource) Read(
+func (r *clientGroupFrameworkResource) Read(
 	ctx context.Context,
 	req resource.ReadRequest,
 	resp *resource.ReadResponse,
 ) {
-	var state userGroupFrameworkResourceModel
+	var state clientGroupFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -277,22 +277,22 @@ func (r *userGroupFrameworkResource) Read(
 
 	id := state.ID.ValueString()
 
-	// Get the UserGroup from the API
-	userGroup, err := r.client.GetUserGroup(ctx, site, id)
+	// Get the ClientGroup from the API
+	clientGroup, err := r.client.GetClientGroup(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		resp.State.RemoveResource(ctx)
 		return
 	}
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading User Group",
-			"Could not read user group with ID "+id+": "+err.Error(),
+			"Error Reading Client Group",
+			"Could not read client group with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	// Convert API response to model
-	diags = r.userGroupToModel(ctx, userGroup, &state, site)
+	diags = r.clientGroupToModel(ctx, clientGroup, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -302,13 +302,13 @@ func (r *userGroupFrameworkResource) Read(
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userGroupFrameworkResource) Update(
+func (r *clientGroupFrameworkResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state userGroupFrameworkResourceModel
-	var plan userGroupFrameworkResourceModel
+	var state clientGroupFrameworkResourceModel
+	var plan clientGroupFrameworkResourceModel
 
 	// Step 1: Read the current state (which already contains API values from previous reads)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -331,28 +331,28 @@ func (r *userGroupFrameworkResource) Update(
 	}
 
 	// Step 3: Convert the updated state to API format
-	userGroup, diags := r.planToUserGroup(ctx, state)
+	clientGroup, diags := r.planToClientGroup(ctx, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Set required fields for update
-	userGroup.ID = state.ID.ValueString()
-	userGroup.SiteID = site
+	clientGroup.ID = state.ID.ValueString()
+	clientGroup.SiteID = site
 
 	// Step 4: Send to API
-	updatedUserGroup, err := r.client.UpdateUserGroup(ctx, site, userGroup)
+	updatedClientGroup, err := r.client.UpdateClientGroup(ctx, site, clientGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Updating User Group",
-			"Could not update user group with ID "+state.ID.ValueString()+": "+err.Error(),
+			"Error Updating Client Group",
+			"Could not update client group with ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
 	// Step 5: Update state with API response
-	diags = r.userGroupToModel(ctx, updatedUserGroup, &state, site)
+	diags = r.clientGroupToModel(ctx, updatedClientGroup, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -362,10 +362,10 @@ func (r *userGroupFrameworkResource) Update(
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *userGroupFrameworkResource) applyPlanToState(
+func (r *clientGroupFrameworkResource) applyPlanToState(
 	_ context.Context,
-	plan *userGroupFrameworkResourceModel,
-	state *userGroupFrameworkResourceModel,
+	plan *clientGroupFrameworkResourceModel,
+	state *clientGroupFrameworkResourceModel,
 ) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -379,12 +379,12 @@ func (r *userGroupFrameworkResource) applyPlanToState(
 	}
 }
 
-func (r *userGroupFrameworkResource) Delete(
+func (r *clientGroupFrameworkResource) Delete(
 	ctx context.Context,
 	req resource.DeleteRequest,
 	resp *resource.DeleteResponse,
 ) {
-	var state userGroupFrameworkResourceModel
+	var state clientGroupFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -399,20 +399,20 @@ func (r *userGroupFrameworkResource) Delete(
 
 	id := state.ID.ValueString()
 
-	err := r.client.DeleteUserGroup(ctx, site, id)
+	err := r.client.DeleteClientGroup(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		return
 	}
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Deleting User Group",
-			"Could not delete user group with ID "+id+": "+err.Error(),
+			"Error Deleting Client Group",
+			"Could not delete client group with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 }
 
-func (r *userGroupFrameworkResource) ImportState(
+func (r *clientGroupFrameworkResource) ImportState(
 	ctx context.Context,
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
@@ -428,51 +428,51 @@ func (r *userGroupFrameworkResource) ImportState(
 
 // Helper functions for conversion and merging
 
-func (r *userGroupFrameworkResource) planToUserGroup(
+func (r *clientGroupFrameworkResource) planToClientGroup(
 	_ context.Context,
-	plan userGroupFrameworkResourceModel,
-) (*unifi.UserGroup, diag.Diagnostics) {
+	plan clientGroupFrameworkResourceModel,
+) (*unifi.ClientGroup, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if plan.ID.IsNull() && plan.Name.IsNull() {
 		diags.AddError(
-			"Invalid User Group",
-			"User Group must have either an ID or Name to be imported",
+			"Invalid Client Group",
+			"Client Group must have either an ID or Name to be imported",
 		)
 		return nil, diags
 	}
 
-	userGroup := &unifi.UserGroup{
+	clientGroup := &unifi.ClientGroup{
 		ID:             plan.ID.ValueString(),
 		Name:           plan.Name.ValueString(),
 		QOSRateMaxDown: int(plan.QOSRateMaxDown.ValueInt64()),
 		QOSRateMaxUp:   int(plan.QOSRateMaxUp.ValueInt64()),
 	}
 
-	return userGroup, diags
+	return clientGroup, diags
 }
 
-func (r *userGroupFrameworkResource) userGroupToModel(
+func (r *clientGroupFrameworkResource) clientGroupToModel(
 	_ context.Context,
-	userGroup *unifi.UserGroup,
-	model *userGroupFrameworkResourceModel,
+	clientGroup *unifi.ClientGroup,
+	model *clientGroupFrameworkResourceModel,
 	site string,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	if model.ID.IsNull() && model.Name.IsNull() {
 		diags.AddError(
-			"Invalid User Group",
-			"User Group must have either an ID or Name to be imported",
+			"Invalid Client Group",
+			"Client Group must have either an ID or Name to be imported",
 		)
 		return diags
 	}
 
-	model.ID = types.StringValue(userGroup.ID)
+	model.ID = types.StringValue(clientGroup.ID)
 	model.Site = types.StringValue(site)
-	model.Name = types.StringValue(userGroup.Name)
-	model.QOSRateMaxDown = types.Int64Value(int64(userGroup.QOSRateMaxDown))
-	model.QOSRateMaxUp = types.Int64Value(int64(userGroup.QOSRateMaxUp))
+	model.Name = types.StringValue(clientGroup.Name)
+	model.QOSRateMaxDown = types.Int64Value(int64(clientGroup.QOSRateMaxDown))
+	model.QOSRateMaxUp = types.Int64Value(int64(clientGroup.QOSRateMaxUp))
 
 	return diags
 }

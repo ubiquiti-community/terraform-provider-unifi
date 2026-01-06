@@ -18,11 +18,11 @@ data "unifi_network" "lan_network" {
 }
 
 #retrieve network data from user record
-data "unifi_user" "my_device" {
+data "unifi_client" "my_device" {
   mac = "01:23:45:67:89:ab"
 }
 data "unifi_network" "my_network" {
-  id = data.unifi_user.my_device.network_id
+  id = data.unifi_client.my_device.network_id
 }
 ```
 

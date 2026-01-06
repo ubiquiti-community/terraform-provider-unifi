@@ -27,7 +27,7 @@ var providerFactories = map[string]func() (tfprotov6.ProviderServer, error){
 
 var testAccProtoV6ProviderFactories = providerFactories
 
-var testClient *unifi.Client
+var testClient *unifi.ApiClient
 
 func TestMain(m *testing.M) {
 	if os.Getenv("TF_ACC") == "" {
@@ -131,7 +131,7 @@ func runAcceptanceTests(m *testing.M) int {
 		}
 	}()
 
-	testClient = &unifi.Client{}
+	testClient = &unifi.ApiClient{}
 	httpClient := retryablehttp.NewClient()
 	httpClient.Logger = logger
 
@@ -188,7 +188,7 @@ func contains(s, substr string) bool {
 func waitForUniFiAPI(
 	ctx context.Context,
 	logger *UnifiLogger,
-	client *unifi.Client,
+	client *unifi.ApiClient,
 	user, password string,
 ) error {
 	maxRetries := 60

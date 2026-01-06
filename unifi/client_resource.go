@@ -19,26 +19,26 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &userFrameworkResource{}
-	_ resource.ResourceWithImportState = &userFrameworkResource{}
+	_ resource.Resource                = &clientFrameworkResource{}
+	_ resource.ResourceWithImportState = &clientFrameworkResource{}
 )
 
-func NewUserFrameworkResource() resource.Resource {
-	return &userFrameworkResource{}
+func NewClientFrameworkResource() resource.Resource {
+	return &clientFrameworkResource{}
 }
 
-// userFrameworkResource defines the resource implementation.
-type userFrameworkResource struct {
+// clientFrameworkResource defines the resource implementation.
+type clientFrameworkResource struct {
 	client *Client
 }
 
-// userFrameworkResourceModel describes the resource data model.
-type userFrameworkResourceModel struct {
+// clientFrameworkResourceModel describes the resource data model.
+type clientFrameworkResourceModel struct {
 	ID                  types.String `tfsdk:"id"`
 	Site                types.String `tfsdk:"site"`
 	MAC                 types.String `tfsdk:"mac"`
 	Name                types.String `tfsdk:"name"`
-	UserGroupID         types.String `tfsdk:"user_group_id"`
+	GroupID             types.String `tfsdk:"group_id"`
 	Note                types.String `tfsdk:"note"`
 	FixedIP             types.String `tfsdk:"fixed_ip"`
 	NetworkID           types.String `tfsdk:"network_id"`
@@ -53,34 +53,34 @@ type userFrameworkResourceModel struct {
 	IP       types.String `tfsdk:"ip"`
 }
 
-func (r *userFrameworkResource) Metadata(
+func (r *clientFrameworkResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_user"
+	resp.TypeName = req.ProviderTypeName + "_client"
 }
 
-func (r *userFrameworkResource) Schema(
+func (r *clientFrameworkResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Manages a user (or "client" in the UI) of the network, identified by unique MAC addresses.
+		MarkdownDescription: `Manages a client of the network, identified by unique MAC addresses.
 
-Users are created in the controller when observed on the network, so the resource defaults to allowing itself to just take over management of a MAC address, but this can be turned off.`,
+Clients are created in the controller when observed on the network, so the resource defaults to allowing itself to just take over management of a MAC address, but this can be turned off.`,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				MarkdownDescription: "The ID of the user.",
+				MarkdownDescription: "The ID of the client.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site to associate the user with.",
+				MarkdownDescription: "The name of the site to associate the client with.",
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -89,34 +89,34 @@ Users are created in the controller when observed on the network, so the resourc
 				},
 			},
 			"mac": schema.StringAttribute{
-				MarkdownDescription: "The MAC address of the user.",
+				MarkdownDescription: "The MAC address of the client.",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "The name of the user.",
+				MarkdownDescription: "The name of the client.",
 				Required:            true,
 			},
-			"user_group_id": schema.StringAttribute{
-				MarkdownDescription: "The user group ID for the user.",
+			"group_id": schema.StringAttribute{
+				MarkdownDescription: "The group ID to attach to the client (controls QoS and other group-based settings).",
 				Optional:            true,
 			},
 			"note": schema.StringAttribute{
-				MarkdownDescription: "A note with additional information for the user.",
+				MarkdownDescription: "A note with additional information for the client.",
 				Optional:            true,
 			},
 			"fixed_ip": schema.StringAttribute{
-				MarkdownDescription: "A fixed IPv4 address for this user.",
+				MarkdownDescription: "A fixed IPv4 address for this client.",
 				Optional:            true,
 			},
 			"network_id": schema.StringAttribute{
-				MarkdownDescription: "The network ID for this user.",
+				MarkdownDescription: "The network ID for this client.",
 				Optional:            true,
 			},
 			"blocked": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether this user should be blocked from the network.",
+				MarkdownDescription: "Specifies whether this client should be blocked from the network.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
@@ -126,30 +126,30 @@ Users are created in the controller when observed on the network, so the resourc
 				Optional:            true,
 			},
 			"local_dns_record": schema.StringAttribute{
-				MarkdownDescription: "Specifies the local DNS record for this user.",
+				MarkdownDescription: "Specifies the local DNS record for this client.",
 				Optional:            true,
 			},
 			"allow_existing": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether this resource should just take over control of an existing user.",
+				MarkdownDescription: "Specifies whether this resource should just take over control of an existing client.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 			},
 			"skip_forget_on_destroy": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether this resource should tell the controller to \"forget\" the user on destroy.",
+				MarkdownDescription: "Specifies whether this resource should tell the controller to \"forget\" the client on destroy.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"hostname": schema.StringAttribute{
-				MarkdownDescription: "The hostname of the user.",
+				MarkdownDescription: "The hostname of the client.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"ip": schema.StringAttribute{
-				MarkdownDescription: "The IP address of the user.",
+				MarkdownDescription: "The IP address of the client.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
@@ -159,7 +159,7 @@ Users are created in the controller when observed on the network, so the resourc
 	}
 }
 
-func (r *userFrameworkResource) Configure(
+func (r *clientFrameworkResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
 	resp *resource.ConfigureResponse,
@@ -183,12 +183,12 @@ func (r *userFrameworkResource) Configure(
 	r.client = client
 }
 
-func (r *userFrameworkResource) Create(
+func (r *clientFrameworkResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
 	resp *resource.CreateResponse,
 ) {
-	var plan userFrameworkResourceModel
+	var plan clientFrameworkResourceModel
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -201,8 +201,8 @@ func (r *userFrameworkResource) Create(
 		site = r.client.Site
 	}
 
-	// Convert the plan to UniFi User struct
-	user, diags := r.planToUser(ctx, plan)
+	// Convert the plan to UniFi Client struct
+	client, diags := r.planToClient(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -210,44 +210,44 @@ func (r *userFrameworkResource) Create(
 
 	allowExisting := plan.AllowExisting.ValueBool()
 
-	// Create the User
-	createdUser, err := r.client.CreateUser(ctx, site, user)
+	// Create the Client
+	createdClient, err := r.client.CreateClient(ctx, site, client)
 	if err != nil {
 		var apiErr *unifi.APIError
 		if !errors.As(err, &apiErr) || (apiErr.Message != "api.err.MacUsed" || !allowExisting) {
 			resp.Diagnostics.AddError(
-				"Error Creating User",
-				"Could not create user: "+err.Error(),
+				"Error Creating Client",
+				"Could not create client: "+err.Error(),
 			)
 			return
 		}
 
-		// MAC in use, just absorb the existing user
+		// MAC in use, just absorb the existing client
 		mac := plan.MAC.ValueString()
-		existingUser, err := r.client.GetUserByMAC(ctx, site, mac)
+		existingClient, err := r.client.GetClientByMAC(ctx, site, mac)
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error Getting Existing User",
-				"Could not get existing user with MAC "+mac+": "+err.Error(),
+				"Error Getting Existing Client",
+				"Could not get existing client with MAC "+mac+": "+err.Error(),
 			)
 			return
 		}
 
-		// Implement merge pattern for existing user
-		mergedUser := r.mergeUser(existingUser, user)
-		updatedUser, err := r.client.UpdateUser(ctx, site, mergedUser)
+		// Implement merge pattern for existing client
+		mergedClient := r.mergeClient(existingClient, client)
+		updatedClient, err := r.client.UpdateClient(ctx, site, mergedClient)
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error Updating Existing User",
-				"Could not update existing user: "+err.Error(),
+				"Error Updating Existing Client",
+				"Could not update existing client: "+err.Error(),
 			)
 			return
 		}
-		createdUser = updatedUser
+		createdClient = updatedClient
 	}
 
 	// Convert response back to model
-	diags = r.userToModel(ctx, createdUser, &plan, site)
+	diags = r.clientToModel(ctx, createdClient, &plan, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -257,12 +257,12 @@ func (r *userFrameworkResource) Create(
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userFrameworkResource) Read(
+func (r *clientFrameworkResource) Read(
 	ctx context.Context,
 	req resource.ReadRequest,
 	resp *resource.ReadResponse,
 ) {
-	var state userFrameworkResourceModel
+	var state clientFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -277,18 +277,18 @@ func (r *userFrameworkResource) Read(
 
 	id := state.ID.ValueString()
 
-	// Get the User from the API
-	user, err := r.client.GetUser(ctx, site, id)
+	// Get the Client from the API
+	client, err := r.client.GetClient(ctx, site, id)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading User",
-			"Could not read user with ID "+id+": "+err.Error(),
+			"Error Reading Client",
+			"Could not read client with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	// Convert API response to model
-	diags = r.userToModel(ctx, user, &state, site)
+	diags = r.clientToModel(ctx, client, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -298,13 +298,13 @@ func (r *userFrameworkResource) Read(
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *userFrameworkResource) Update(
+func (r *clientFrameworkResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state userFrameworkResourceModel
-	var plan userFrameworkResourceModel
+	var state clientFrameworkResourceModel
+	var plan clientFrameworkResourceModel
 
 	// Step 1: Read the current state (which already contains API values from previous reads)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -327,25 +327,25 @@ func (r *userFrameworkResource) Update(
 	}
 
 	// Step 3: Convert the updated state to API format
-	user, diags := r.planToUser(ctx, state)
+	client, diags := r.planToClient(ctx, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Step 4: Send to API
-	user.ID = state.ID.ValueString()
-	updatedUser, err := r.client.UpdateUser(ctx, site, user)
+	client.ID = state.ID.ValueString()
+	updatedClient, err := r.client.UpdateClient(ctx, site, client)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Updating User",
-			"Could not update user with ID "+state.ID.ValueString()+": "+err.Error(),
+			"Error Updating Client",
+			"Could not update client with ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
 	// Step 5: Update state with API response
-	diags = r.userToModel(ctx, updatedUser, &state, site)
+	diags = r.clientToModel(ctx, updatedClient, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -355,10 +355,10 @@ func (r *userFrameworkResource) Update(
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *userFrameworkResource) applyPlanToState(
+func (r *clientFrameworkResource) applyPlanToState(
 	_ context.Context,
-	plan *userFrameworkResourceModel,
-	state *userFrameworkResourceModel,
+	plan *clientFrameworkResourceModel,
+	state *clientFrameworkResourceModel,
 ) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.MAC.IsNull() && !plan.MAC.IsUnknown() {
@@ -367,8 +367,8 @@ func (r *userFrameworkResource) applyPlanToState(
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
 	}
-	if !plan.UserGroupID.IsNull() && !plan.UserGroupID.IsUnknown() {
-		state.UserGroupID = plan.UserGroupID
+	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
+		state.GroupID = plan.GroupID
 	}
 	if !plan.Note.IsNull() && !plan.Note.IsUnknown() {
 		state.Note = plan.Note
@@ -397,12 +397,12 @@ func (r *userFrameworkResource) applyPlanToState(
 	// Note: Computed attributes (Hostname, IP) are not applied from plan
 }
 
-func (r *userFrameworkResource) Delete(
+func (r *clientFrameworkResource) Delete(
 	ctx context.Context,
 	req resource.DeleteRequest,
 	resp *resource.DeleteResponse,
 ) {
-	var state userFrameworkResourceModel
+	var state clientFrameworkResourceModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -424,29 +424,29 @@ func (r *userFrameworkResource) Delete(
 	}
 
 	// lookup MAC instead of trusting state
-	u, err := r.client.GetUser(ctx, site, id)
+	c, err := r.client.GetClient(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
 		return
 	}
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading User for Delete",
-			"Could not read user with ID "+id+": "+err.Error(),
+			"Error Reading Client for Delete",
+			"Could not read client with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
-	err = r.client.DeleteUserByMAC(ctx, site, u.MAC)
+	err = r.client.DeleteClientByMAC(ctx, site, c.MAC)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Deleting User",
-			"Could not delete user with MAC "+u.MAC+": "+err.Error(),
+			"Error Deleting Client",
+			"Could not delete client with MAC "+c.MAC+": "+err.Error(),
 		)
 		return
 	}
 }
 
-func (r *userFrameworkResource) ImportState(
+func (r *clientFrameworkResource) ImportState(
 	ctx context.Context,
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
@@ -462,108 +462,113 @@ func (r *userFrameworkResource) ImportState(
 
 // Helper functions for conversion and merging
 
-func (r *userFrameworkResource) planToUser(
+func (r *clientFrameworkResource) planToClient(
 	_ context.Context,
-	plan userFrameworkResourceModel,
-) (*unifi.User, diag.Diagnostics) {
+	plan clientFrameworkResourceModel,
+) (*unifi.Client, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if plan.ID.IsNull() && plan.Name.IsNull() && plan.MAC.IsNull() {
 		diags.AddError(
-			"Invalid User",
-			"User must have either an ID, Name, or MAC to be imported",
+			"Invalid Client",
+			"Client must have either an ID, Name, or MAC to be imported",
 		)
 		return nil, diags
 	}
 
-	user := &unifi.User{
-		ID:             plan.ID.ValueString(),
-		MAC:            plan.MAC.ValueString(),
-		Name:           plan.Name.ValueString(),
-		UserGroupID:    plan.UserGroupID.ValueString(),
-		Note:           plan.Note.ValueString(),
-		FixedIP:        plan.FixedIP.ValueString(),
-		NetworkID:      plan.NetworkID.ValueString(),
-		Blocked:        plan.Blocked.ValueBool(),
+	client := &unifi.Client{
+		ID:          plan.ID.ValueString(),
+		MAC:         plan.MAC.ValueString(),
+		Name:        plan.Name.ValueString(),
+		UserGroupID: plan.GroupID.ValueString(),
+		Note:        plan.Note.ValueString(),
+		FixedIP:     plan.FixedIP.ValueString(),
+		NetworkID:   plan.NetworkID.ValueString(),
+		Blocked: func() string {
+			if plan.Blocked.ValueBool() {
+				return "true"
+			} else {
+				return "false"
+			}
+		}(),
 		LocalDNSRecord: plan.LocalDNSRecord.ValueString(),
 	}
 
-	if !plan.DevIDOverride.IsNull() && !plan.DevIDOverride.IsUnknown() {
-		user.DevIdOverride = int(plan.DevIDOverride.ValueInt64())
-	}
+	// Note: DevIDOverride is not available in the Client type
+	// if !plan.DevIDOverride.IsNull() && !plan.DevIDOverride.IsUnknown() {
+	// 	client.DevIdOverride = int(plan.DevIDOverride.ValueInt64())
+	// }
 
-	return user, diags
+	return client, diags
 }
 
-func (r *userFrameworkResource) userToModel(
+func (r *clientFrameworkResource) clientToModel(
 	_ context.Context,
-	user *unifi.User,
-	model *userFrameworkResourceModel,
+	client *unifi.Client,
+	model *clientFrameworkResourceModel,
 	site string,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	if user.ID == "" && user.Name == "" && user.MAC == "" {
+	if client.ID == "" && client.Name == "" && client.MAC == "" {
 
 		diags.AddError(
-			"Invalid User",
-			"User must have either an ID, Name, or MAC to be imported",
+			"Invalid Client",
+			"Client must have either an ID, Name, or MAC to be imported",
 		)
 		return diags
 	}
 
-	model.ID = types.StringValue(user.ID)
+	model.ID = types.StringValue(client.ID)
 	model.Site = types.StringValue(site)
-	model.MAC = types.StringValue(user.MAC)
-	model.Name = types.StringValue(user.Name)
+	model.MAC = types.StringValue(client.MAC)
+	model.Name = types.StringValue(client.Name)
 
-	if user.UserGroupID != "" {
-		model.UserGroupID = types.StringValue(user.UserGroupID)
+	if client.UserGroupID != "" {
+		model.GroupID = types.StringValue(client.UserGroupID)
 	} else {
-		model.UserGroupID = types.StringNull()
+		model.GroupID = types.StringNull()
 	}
 
-	if user.Note != "" {
-		model.Note = types.StringValue(user.Note)
+	if client.Note != "" {
+		model.Note = types.StringValue(client.Note)
 	} else {
 		model.Note = types.StringNull()
 	}
 
-	if user.FixedIP != "" {
-		model.FixedIP = types.StringValue(user.FixedIP)
+	if client.FixedIP != "" {
+		model.FixedIP = types.StringValue(client.FixedIP)
 	} else {
 		model.FixedIP = types.StringNull()
 	}
 
-	if user.NetworkID != "" {
-		model.NetworkID = types.StringValue(user.NetworkID)
+	if client.NetworkID != "" {
+		model.NetworkID = types.StringValue(client.NetworkID)
 	} else {
 		model.NetworkID = types.StringNull()
 	}
 
-	model.Blocked = types.BoolValue(user.Blocked)
+	// Blocked field is string in Client type
+	model.Blocked = types.BoolValue(client.Blocked == "true")
 
-	if user.DevIdOverride != 0 {
-		model.DevIDOverride = types.Int64Value(int64(user.DevIdOverride))
-	} else {
-		model.DevIDOverride = types.Int64Null()
-	}
+	// DevIdOverride not available in Client type
+	model.DevIDOverride = types.Int64Null()
 
-	if user.LocalDNSRecord != "" {
-		model.LocalDNSRecord = types.StringValue(user.LocalDNSRecord)
+	if client.LocalDNSRecord != "" {
+		model.LocalDNSRecord = types.StringValue(client.LocalDNSRecord)
 	} else {
 		model.LocalDNSRecord = types.StringNull()
 	}
 
 	// Computed attributes
-	if user.Hostname != "" {
-		model.Hostname = types.StringValue(user.Hostname)
+	if client.Hostname != "" {
+		model.Hostname = types.StringValue(client.Hostname)
 	} else {
 		model.Hostname = types.StringNull()
 	}
 
-	if user.IP != "" {
-		model.IP = types.StringValue(user.IP)
+	if client.LastSeen != "" {
+		model.IP = types.StringValue(client.LastSeen)
 	} else {
 		model.IP = types.StringNull()
 	}
@@ -571,8 +576,11 @@ func (r *userFrameworkResource) userToModel(
 	return diags
 }
 
-func (r *userFrameworkResource) mergeUser(existing *unifi.User, planned *unifi.User) *unifi.User {
-	// Start with the existing user to preserve all UniFi internal fields
+func (r *clientFrameworkResource) mergeClient(
+	existing *unifi.Client,
+	planned *unifi.Client,
+) *unifi.Client {
+	// Start with the existing client to preserve all UniFi internal fields
 	merged := *existing
 
 	// Override with planned values
@@ -582,7 +590,6 @@ func (r *userFrameworkResource) mergeUser(existing *unifi.User, planned *unifi.U
 	merged.FixedIP = planned.FixedIP
 	merged.NetworkID = planned.NetworkID
 	merged.Blocked = planned.Blocked
-	merged.DevIdOverride = planned.DevIdOverride
 	merged.LocalDNSRecord = planned.LocalDNSRecord
 
 	return &merged

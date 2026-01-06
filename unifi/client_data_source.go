@@ -11,24 +11,24 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ datasource.DataSource = &userDataSource{}
+var _ datasource.DataSource = &clientDataSource{}
 
-func NewUserDataSource() datasource.DataSource {
-	return &userDataSource{}
+func NewClientDataSource() datasource.DataSource {
+	return &clientDataSource{}
 }
 
-// userDataSource defines the data source implementation.
-type userDataSource struct {
+// clientDataSource defines the data source implementation.
+type clientDataSource struct {
 	client *Client
 }
 
-// userDataSourceModel describes the data source data model.
-type userDataSourceModel struct {
+// clientDataSourceModel describes the data source data model.
+type clientDataSourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
 	MAC            types.String `tfsdk:"mac"`
 	Name           types.String `tfsdk:"name"`
-	UserGroupID    types.String `tfsdk:"user_group_id"`
+	ClientGroupID  types.String `tfsdk:"client_group_id"`
 	Note           types.String `tfsdk:"note"`
 	FixedIP        types.String `tfsdk:"fixed_ip"`
 	NetworkID      types.String `tfsdk:"network_id"`
@@ -39,58 +39,58 @@ type userDataSourceModel struct {
 	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
 }
 
-func (d *userDataSource) Metadata(
+func (d *clientDataSource) Metadata(
 	ctx context.Context,
 	req datasource.MetadataRequest,
 	resp *datasource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_user"
+	resp.TypeName = req.ProviderTypeName + "_client"
 }
 
-func (d *userDataSource) Schema(
+func (d *clientDataSource) Schema(
 	ctx context.Context,
 	req datasource.SchemaRequest,
 	resp *datasource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Retrieves properties of a user (or "client" in the UI) of the network by MAC address.`,
+		MarkdownDescription: `Retrieves properties of a client of the network by MAC address.`,
 
 		Attributes: map[string]schema.Attribute{
 			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site the user is associated with.",
+				MarkdownDescription: "The name of the site the client is associated with.",
 				Optional:            true,
 				Computed:            true,
 			},
 			"mac": schema.StringAttribute{
-				MarkdownDescription: "The MAC address of the user.",
+				MarkdownDescription: "The MAC address of the client.",
 				Required:            true,
 			},
 			"id": schema.StringAttribute{
-				MarkdownDescription: "The ID of the user.",
+				MarkdownDescription: "The ID of the client.",
 				Computed:            true,
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "The name of the user.",
+				MarkdownDescription: "The name of the client.",
 				Computed:            true,
 			},
-			"user_group_id": schema.StringAttribute{
-				MarkdownDescription: "The user group ID for the user.",
+			"client_group_id": schema.StringAttribute{
+				MarkdownDescription: "The client group ID for the client.",
 				Computed:            true,
 			},
 			"note": schema.StringAttribute{
-				MarkdownDescription: "A note with additional information for the user.",
+				MarkdownDescription: "A note with additional information for the client.",
 				Computed:            true,
 			},
 			"fixed_ip": schema.StringAttribute{
-				MarkdownDescription: "Fixed IPv4 address set for this user.",
+				MarkdownDescription: "Fixed IPv4 address set for this client.",
 				Computed:            true,
 			},
 			"network_id": schema.StringAttribute{
-				MarkdownDescription: "The network ID for this user.",
+				MarkdownDescription: "The network ID for this client.",
 				Computed:            true,
 			},
 			"blocked": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether this user should be blocked from the network.",
+				MarkdownDescription: "Specifies whether this client should be blocked from the network.",
 				Computed:            true,
 			},
 			"dev_id_override": schema.Int64Attribute{
@@ -98,22 +98,22 @@ func (d *userDataSource) Schema(
 				Computed:            true,
 			},
 			"hostname": schema.StringAttribute{
-				MarkdownDescription: "The hostname of the user.",
+				MarkdownDescription: "The hostname of the client.",
 				Computed:            true,
 			},
 			"ip": schema.StringAttribute{
-				MarkdownDescription: "The IP address of the user.",
+				MarkdownDescription: "The IP address of the client.",
 				Computed:            true,
 			},
 			"local_dns_record": schema.StringAttribute{
-				MarkdownDescription: "The local DNS record for this user.",
+				MarkdownDescription: "The local DNS record for this client.",
 				Computed:            true,
 			},
 		},
 	}
 }
 
-func (d *userDataSource) Configure(
+func (d *clientDataSource) Configure(
 	ctx context.Context,
 	req datasource.ConfigureRequest,
 	resp *datasource.ConfigureResponse,
@@ -137,12 +137,12 @@ func (d *userDataSource) Configure(
 	d.client = client
 }
 
-func (d *userDataSource) Read(
+func (d *clientDataSource) Read(
 	ctx context.Context,
 	req datasource.ReadRequest,
 	resp *datasource.ReadResponse,
 ) {
-	var config userDataSourceModel
+	var config clientDataSourceModel
 
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
@@ -157,90 +157,87 @@ func (d *userDataSource) Read(
 
 	mac := config.MAC.ValueString()
 
-	// Get user by MAC address first to get IP address
-	macResp, err := d.client.GetUserByMAC(ctx, site, strings.ToLower(mac))
+	// Get client by MAC address first to get IP address
+	macResp, err := d.client.GetClientByMAC(ctx, site, strings.ToLower(mac))
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading User by MAC",
-			"Could not read user with MAC "+mac+": "+err.Error(),
+			"Error Reading Client by MAC",
+			"Could not read client with MAC "+mac+": "+err.Error(),
 		)
 		return
 	}
 
-	// Get full user details by ID
-	user, err := d.client.GetUser(ctx, site, macResp.ID)
+	// Get full client details by ID
+	client, err := d.client.GetClient(ctx, site, macResp.ID)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading User",
-			"Could not read user with ID "+macResp.ID+": "+err.Error(),
+			"Error Reading Client",
+			"Could not read client with ID "+macResp.ID+": "+err.Error(),
 		)
 		return
 	}
 
 	// For some reason the IP address is only on the MAC endpoint
-	user.IP = macResp.IP
+	client.LastSeen = macResp.LastSeen
 
 	// Convert to model
-	var state userDataSourceModel
+	var state clientDataSourceModel
 
-	state.ID = types.StringValue(user.ID)
+	state.ID = types.StringValue(client.ID)
 	state.Site = types.StringValue(site)
-	state.MAC = types.StringValue(user.MAC)
+	state.MAC = types.StringValue(client.MAC)
 
-	if user.Name != "" {
-		state.Name = types.StringValue(user.Name)
+	if client.Name != "" {
+		state.Name = types.StringValue(client.Name)
 	} else {
 		state.Name = types.StringNull()
 	}
 
-	if user.UserGroupID != "" {
-		state.UserGroupID = types.StringValue(user.UserGroupID)
+	if client.UserGroupID != "" {
+		state.ClientGroupID = types.StringValue(client.UserGroupID)
 	} else {
-		state.UserGroupID = types.StringNull()
+		state.ClientGroupID = types.StringNull()
 	}
 
-	if user.Note != "" {
-		state.Note = types.StringValue(user.Note)
+	if client.Note != "" {
+		state.Note = types.StringValue(client.Note)
 	} else {
 		state.Note = types.StringNull()
 	}
 
 	// Handle fixed IP
-	if user.UseFixedIP && user.FixedIP != "" {
-		state.FixedIP = types.StringValue(user.FixedIP)
+	if client.FixedIP != "" {
+		state.FixedIP = types.StringValue(client.FixedIP)
 	} else {
 		state.FixedIP = types.StringNull()
 	}
 
-	if user.NetworkID != "" {
-		state.NetworkID = types.StringValue(user.NetworkID)
+	if client.NetworkID != "" {
+		state.NetworkID = types.StringValue(client.NetworkID)
 	} else {
 		state.NetworkID = types.StringNull()
 	}
 
-	state.Blocked = types.BoolValue(user.Blocked)
+	state.Blocked = types.BoolValue(client.Blocked == "true")
 
-	if user.DevIdOverride != 0 {
-		state.DevIDOverride = types.Int64Value(int64(user.DevIdOverride))
-	} else {
-		state.DevIDOverride = types.Int64Null()
-	}
+	// DevIdOverride not available in Client type
+	state.DevIDOverride = types.Int64Null()
 
-	if user.Hostname != "" {
-		state.Hostname = types.StringValue(user.Hostname)
+	if client.Hostname != "" {
+		state.Hostname = types.StringValue(client.Hostname)
 	} else {
 		state.Hostname = types.StringNull()
 	}
 
-	if user.IP != "" {
-		state.IP = types.StringValue(user.IP)
+	if client.LastSeen != "" {
+		state.IP = types.StringValue(client.LastSeen)
 	} else {
 		state.IP = types.StringNull()
 	}
 
 	// Handle local DNS record
-	if user.LocalDNSRecordEnabled && user.LocalDNSRecord != "" {
-		state.LocalDNSRecord = types.StringValue(user.LocalDNSRecord)
+	if client.LocalDNSRecord != "" {
+		state.LocalDNSRecord = types.StringValue(client.LocalDNSRecord)
 	} else {
 		state.LocalDNSRecord = types.StringNull()
 	}

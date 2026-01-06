@@ -32,7 +32,7 @@ func TestAccWLANFramework_basic(t *testing.T) {
 
 func testAccWLANFrameworkConfig_basic() string {
 	return `
-data "unifi_user_group" "default" {
+data "unifi_client_group" "default" {
 	name = "Default"
 }
 

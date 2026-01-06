@@ -13,13 +13,12 @@ Manages DNS record settings for different providers.
 
 ```terraform
 resource "unifi_dns_record" "test" {
-  name        = "my-network"
+  name        = "test-record.example.com"
   enabled     = true
-  port        = 0
   priority    = 10
   record_type = "A"
   ttl         = 300
-  value       = "my-network.example.com"
+  value       = "192.168.1.100"
 }
 ```
 

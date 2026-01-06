@@ -9,7 +9,7 @@ resource "unifi_network" "my_vlan" {
   dhcp_enabled = true
 }
 
-resource "unifi_user" "test" {
+resource "unifi_client" "test" {
   mac  = "01:23:45:67:89:AB"
   name = "some client"
   note = "my note"

@@ -669,7 +669,7 @@ func (r *settingResource) readSettings(
 			return
 		}
 
-		_, mgmtSetting, err := ui.GetSetting[*settings.Mgmt](r.client.Client, ctx, site)
+		_, mgmtSetting, err := ui.GetSetting[*settings.Mgmt](r.client.ApiClient, ctx, site)
 		if err != nil {
 			diags.AddError("Error Reading Mgmt Setting", err.Error())
 			return
@@ -721,7 +721,7 @@ func (r *settingResource) readSettings(
 			return
 		}
 
-		_, radiusSetting, err := ui.GetSetting[*settings.Radius](r.client.Client, ctx, site)
+		_, radiusSetting, err := ui.GetSetting[*settings.Radius](r.client.ApiClient, ctx, site)
 		if err != nil {
 			diags.AddError("Error Reading Radius Setting", err.Error())
 			return
@@ -759,7 +759,7 @@ func (r *settingResource) readSettings(
 			return
 		}
 
-		_, usgSetting, err := ui.GetSetting[*settings.Usg](r.client.Client, ctx, site)
+		_, usgSetting, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
 		if err != nil {
 			diags.AddError("Error Reading USG Setting", err.Error())
 			return

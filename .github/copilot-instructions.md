@@ -461,7 +461,7 @@ Validators: []validator.String{
 ### Phase 2: Core Resource Migration
 Prioritize these resources for initial migration:
 1. `unifi_wifi_network` - Core WiFi network management
-2. `unifi_user` - User management
+2. `unifi_client` - Client management
 3. `unifi_port_profile` - Port profile configuration
 
 ### Phase 3: Advanced Features

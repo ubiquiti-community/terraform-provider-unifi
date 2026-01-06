@@ -40,7 +40,7 @@ type unifiProviderModel struct {
 
 // Client wraps the UniFi client with site information.
 type Client struct {
-	*ui.Client
+	*ui.ApiClient
 	Site string
 }
 
@@ -206,7 +206,7 @@ func (p *unifiProvider) Configure(
 	c.HTTPClient.Jar = jar
 
 	// Create UniFi client
-	client := &ui.Client{}
+	client := &ui.ApiClient{}
 	if err := client.SetHTTPClient(c); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create HTTP Client",
@@ -247,7 +247,7 @@ func (p *unifiProvider) Configure(
 
 	// Create wrapper client with site info
 	configuredClient := &Client{
-		Client: client,
+		ApiClient: client,
 		Site:   site,
 	}
 
@@ -281,8 +281,8 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewSettingResource,
 		NewSiteFrameworkResource,
 		NewStaticRouteFrameworkResource,
-		NewUserFrameworkResource,
-		NewUserGroupFrameworkResource,
+		NewClientFrameworkResource,
+		NewClientGroupFrameworkResource,
 		NewWANResource,
 		NewWLANFrameworkResource,
 	}
@@ -290,14 +290,14 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 
 func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewUserDataSource,
+		NewClientDataSource,
 		NewNetworkDataSource,
 		NewAccountDataSource,
 		NewAPGroupDataSource,
 		NewDNSRecordDataSource,
 		NewPortProfileDataSource,
 		NewRadiusProfileDataSource,
-		NewUserGroupDataSource,
+		NewClientGroupDataSource,
 	}
 }
 

@@ -6,21 +6,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccUserFramework_basic(t *testing.T) {
+func TestAccClientFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccUserFrameworkConfig_basic(),
+				Config: testAccClientFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_user.test", "name", "tfacc-user"),
-					resource.TestCheckResourceAttr("unifi_user.test", "mac", "01:23:45:67:89:ab"),
-					resource.TestCheckResourceAttr("unifi_user.test", "blocked", "false"),
+					resource.TestCheckResourceAttr("unifi_client.test", "name", "tfacc-client"),
+					resource.TestCheckResourceAttr("unifi_client.test", "mac", "01:23:45:67:89:ab"),
+					resource.TestCheckResourceAttr("unifi_client.test", "blocked", "false"),
 				),
 			},
 			{
-				ResourceName:            "unifi_user.test",
+				ResourceName:            "unifi_client.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"allow_existing", "skip_forget_on_destroy"},
@@ -29,27 +29,27 @@ func TestAccUserFramework_basic(t *testing.T) {
 	})
 }
 
-func testAccUserFrameworkConfig_basic() string {
+func testAccClientFrameworkConfig_basic() string {
 	return `
-resource "unifi_user" "test" {
-	name = "tfacc-user"
+resource "unifi_client" "test" {
+	name = "tfacc-client"
 	mac  = "01:23:45:67:89:ab"
 }
 `
 }
 
-func TestAccUserFramework_blocked(t *testing.T) {
+func TestAccClientFramework_blocked(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccUserFrameworkConfig_blocked(),
+				Config: testAccClientFrameworkConfig_blocked(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_user.test", "name", "tfacc-blocked-user"),
-					resource.TestCheckResourceAttr("unifi_user.test", "blocked", "true"),
+					resource.TestCheckResourceAttr("unifi_client.test", "name", "tfacc-blocked-client"),
+					resource.TestCheckResourceAttr("unifi_client.test", "blocked", "true"),
 					resource.TestCheckResourceAttr(
-						"unifi_user.test",
+						"unifi_client.test",
 						"note",
 						"Blocked for testing",
 					),
@@ -59,10 +59,10 @@ func TestAccUserFramework_blocked(t *testing.T) {
 	})
 }
 
-func testAccUserFrameworkConfig_blocked() string {
+func testAccClientFrameworkConfig_blocked() string {
 	return `
-resource "unifi_user" "test" {
-	name    = "tfacc-blocked-user"
+resource "unifi_client" "test" {
+	name    = "tfacc-blocked-client"
 	mac     = "01:23:45:67:89:ac"
 	blocked = true
 	note    = "Blocked for testing"
@@ -70,34 +70,34 @@ resource "unifi_user" "test" {
 `
 }
 
-func TestAccUserFramework_fixedIP(t *testing.T) {
+func TestAccClientFramework_fixedIP(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccUserFrameworkConfig_fixedIP(),
+				Config: testAccClientFrameworkConfig_fixedIP(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_user.test",
+						"unifi_client.test",
 						"name",
-						"tfacc-fixed-ip-user",
+						"tfacc-fixed-ip-client",
 					),
-					resource.TestCheckResourceAttr("unifi_user.test", "fixed_ip", "10.0.0.100"),
+					resource.TestCheckResourceAttr("unifi_client.test", "fixed_ip", "10.0.0.100"),
 				),
 			},
 		},
 	})
 }
 
-func testAccUserFrameworkConfig_fixedIP() string {
+func testAccClientFrameworkConfig_fixedIP() string {
 	return `
 data "unifi_network" "default" {
 	name = "Default"
 }
 
-resource "unifi_user" "test" {
-	name       = "tfacc-fixed-ip-user"
+resource "unifi_client" "test" {
+	name       = "tfacc-fixed-ip-client"
 	mac        = "01:23:45:67:89:ad"
 	fixed_ip   = "10.0.0.100"
 	network_id = data.unifi_network.default.id

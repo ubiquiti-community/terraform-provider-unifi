@@ -10,17 +10,17 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var _ datasource.DataSource = &userGroupDataSource{}
+var _ datasource.DataSource = &clientGroupDataSource{}
 
-func NewUserGroupDataSource() datasource.DataSource {
-	return &userGroupDataSource{}
+func NewClientGroupDataSource() datasource.DataSource {
+	return &clientGroupDataSource{}
 }
 
-type userGroupDataSource struct {
+type clientGroupDataSource struct {
 	client *Client
 }
 
-type userGroupDataSourceModel struct {
+type clientGroupDataSourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
 	Name           types.String `tfsdk:"name"`
@@ -28,34 +28,34 @@ type userGroupDataSourceModel struct {
 	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
-func (d *userGroupDataSource) Metadata(
+func (d *clientGroupDataSource) Metadata(
 	ctx context.Context,
 	req datasource.MetadataRequest,
 	resp *datasource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_user_group"
+	resp.TypeName = req.ProviderTypeName + "_client_group"
 }
 
-func (d *userGroupDataSource) Schema(
+func (d *clientGroupDataSource) Schema(
 	ctx context.Context,
 	req datasource.SchemaRequest,
 	resp *datasource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Data source for user groups.",
+		MarkdownDescription: "Data source for client groups.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				MarkdownDescription: "The ID of this user group.",
+				MarkdownDescription: "The ID of this client group.",
 				Computed:            true,
 			},
 			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site the user group is associated with.",
+				MarkdownDescription: "The name of the site the client group is associated with.",
 				Optional:            true,
 				Computed:            true,
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "The name of the user group to look up.",
+				MarkdownDescription: "The name of the client group to look up.",
 				Required:            true,
 			},
 			"qos_rate_max_down": schema.Int64Attribute{
@@ -70,7 +70,7 @@ func (d *userGroupDataSource) Schema(
 	}
 }
 
-func (d *userGroupDataSource) Configure(
+func (d *clientGroupDataSource) Configure(
 	ctx context.Context,
 	req datasource.ConfigureRequest,
 	resp *datasource.ConfigureResponse,
@@ -94,12 +94,12 @@ func (d *userGroupDataSource) Configure(
 	d.client = client
 }
 
-func (d *userGroupDataSource) Read(
+func (d *clientGroupDataSource) Read(
 	ctx context.Context,
 	req datasource.ReadRequest,
 	resp *datasource.ReadResponse,
 ) {
-	var data userGroupDataSourceModel
+	var data clientGroupDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -113,36 +113,36 @@ func (d *userGroupDataSource) Read(
 
 	name := data.Name.ValueString()
 
-	userGroups, err := d.client.ListUserGroup(ctx, site)
+	clientGroups, err := d.client.ListClientGroup(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading User Groups",
-			"Could not read user groups: "+err.Error(),
+			"Error Reading Client Groups",
+			"Could not read client groups: "+err.Error(),
 		)
 		return
 	}
 
-	var userGroup *unifi.UserGroup
-	for _, group := range userGroups {
+	var clientGroup *unifi.ClientGroup
+	for _, group := range clientGroups {
 		if group.Name == name {
-			userGroup = &group
+			clientGroup = &group
 			break
 		}
 	}
 
-	if userGroup == nil {
+	if clientGroup == nil {
 		resp.Diagnostics.AddError(
-			"User Group Not Found",
-			fmt.Sprintf("User group with name %s not found", name),
+			"Client Group Not Found",
+			fmt.Sprintf("Client group with name %s not found", name),
 		)
 		return
 	}
 
-	data.ID = types.StringValue(userGroup.ID)
+	data.ID = types.StringValue(clientGroup.ID)
 	data.Site = types.StringValue(site)
-	data.Name = types.StringValue(userGroup.Name)
-	data.QOSRateMaxDown = types.Int64Value(int64(userGroup.QOSRateMaxDown))
-	data.QOSRateMaxUp = types.Int64Value(int64(userGroup.QOSRateMaxUp))
+	data.Name = types.StringValue(clientGroup.Name)
+	data.QOSRateMaxDown = types.Int64Value(int64(clientGroup.QOSRateMaxDown))
+	data.QOSRateMaxUp = types.Int64Value(int64(clientGroup.QOSRateMaxUp))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
