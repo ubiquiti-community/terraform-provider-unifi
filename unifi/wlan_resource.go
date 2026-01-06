@@ -3,9 +3,11 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,10 +17,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -46,11 +50,19 @@ type wlanScheduleModel struct {
 	Name        types.String `tfsdk:"name"`
 }
 
+// wlanMacFilterModel represents the MAC filter configuration for WLAN.
+type wlanMacFilterModel struct {
+	Enabled types.Bool   `tfsdk:"enabled"`
+	List    types.Set    `tfsdk:"list"`
+	Policy  types.String `tfsdk:"policy"`
+}
+
 // wlanFrameworkResourceModel describes the resource data model.
 type wlanFrameworkResourceModel struct {
 	ID                       types.String `tfsdk:"id"`
 	Site                     types.String `tfsdk:"site"`
 	Name                     types.String `tfsdk:"name"`
+	NetworkID                types.String `tfsdk:"network_id"`
 	UserGroupID              types.String `tfsdk:"user_group_id"`
 	Security                 types.String `tfsdk:"security"`
 	WPA3Support              types.Bool   `tfsdk:"wpa3_support"`
@@ -59,11 +71,17 @@ type wlanFrameworkResourceModel struct {
 	Passphrase               types.String `tfsdk:"passphrase"`
 	HideSSID                 types.Bool   `tfsdk:"hide_ssid"`
 	IsGuest                  types.Bool   `tfsdk:"is_guest"`
+	Enabled                  types.Bool   `tfsdk:"enabled"`
+	ApGroupIDs               types.Set    `tfsdk:"ap_group_ids"`
+	ApGroupMode              types.String `tfsdk:"ap_group_mode"`
+	VLANEnabled              types.Bool   `tfsdk:"vlan_enabled"`
+	VLAN                     types.Int64  `tfsdk:"vlan"`
+	WLANBand                 types.String `tfsdk:"wlan_band"`
+	WLANBands                types.Set    `tfsdk:"wlan_bands"`
 	MulticastEnhance         types.Bool   `tfsdk:"multicast_enhance"`
-	MacFilterEnabled         types.Bool   `tfsdk:"mac_filter_enabled"`
-	MacFilterList            types.Set    `tfsdk:"mac_filter_list"`
-	MacFilterPolicy          types.String `tfsdk:"mac_filter_policy"`
+	MacFilter                types.Object `tfsdk:"mac_filter"`
 	RadiusProfileID          types.String `tfsdk:"radius_profile_id"`
+	NasIDentifierType        types.String `tfsdk:"nas_identifier_type"`
 	Schedule                 types.List   `tfsdk:"schedule"`
 	No2GhzOui                types.Bool   `tfsdk:"no2ghz_oui"`
 	L2Isolation              types.Bool   `tfsdk:"l2_isolation"`
@@ -112,6 +130,10 @@ func (r *wlanFrameworkResource) Schema(
 			"name": schema.StringAttribute{
 				MarkdownDescription: "The SSID of the network.",
 				Required:            true,
+			},
+			"network_id": schema.StringAttribute{
+				MarkdownDescription: "ID of the network for this WLAN.",
+				Optional:            true,
 			},
 			"user_group_id": schema.StringAttribute{
 				MarkdownDescription: "ID of the user group to use for this network.",
@@ -162,35 +184,106 @@ func (r *wlanFrameworkResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
+			"enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable or disable the WLAN.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(true),
+			},
+			"ap_group_ids": schema.SetAttribute{
+				MarkdownDescription: "List of AP group IDs to apply this WLAN to.",
+				Optional:            true,
+				ElementType:         types.StringType,
+			},
+			"ap_group_mode": schema.StringAttribute{
+				MarkdownDescription: "Access point group mode.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("all"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("all", "groups", "devices"),
+				},
+			},
+			"vlan_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable VLAN tagging.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"vlan": schema.Int64Attribute{
+				MarkdownDescription: "VLAN ID.",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.Between(2, 4095),
+				},
+			},
+			"wlan_band": schema.StringAttribute{
+				MarkdownDescription: "WLAN band.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("both"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("2g", "5g", "both"),
+				},
+			},
+			"wlan_bands": schema.SetAttribute{
+				MarkdownDescription: "List of WLAN bands.",
+				Optional:            true,
+				Computed:            true,
+				Default: setdefault.StaticValue(types.SetValueMust(types.StringType, []attr.Value{
+					types.StringValue("2g"),
+					types.StringValue("5g"),
+				})),
+				ElementType: types.StringType,
+				Validators: []validator.Set{
+					setvalidator.ValueStringsAre(stringvalidator.OneOf("2g", "5g", "6g")),
+				},
+			},
 			"multicast_enhance": schema.BoolAttribute{
 				MarkdownDescription: "Indicates whether or not Multicast Enhance is turned of for the network.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
-			"mac_filter_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Indicates whether or not the MAC filter is turned of for the network.",
+			"mac_filter": schema.SingleNestedAttribute{
+				MarkdownDescription: "MAC address filtering configuration.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"mac_filter_list": schema.SetAttribute{
-				MarkdownDescription: "List of MAC addresses to filter (only valid if `mac_filter_enabled` is `true`).",
-				Optional:            true,
-				ElementType:         types.StringType,
-			},
-			"mac_filter_policy": schema.StringAttribute{
-				MarkdownDescription: "MAC address filter policy (only valid if `mac_filter_enabled` is `true`).",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("deny"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("allow", "deny"),
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Indicates whether or not the MAC filter is turned on for the network.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"list": schema.SetAttribute{
+						MarkdownDescription: "List of MAC addresses to filter (only valid if `enabled` is `true`).",
+						Optional:            true,
+						ElementType:         types.StringType,
+					},
+					"policy": schema.StringAttribute{
+						MarkdownDescription: "MAC address filter policy (only valid if `enabled` is `true`).",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("deny"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("allow", "deny"),
+						},
+					},
 				},
 			},
 			"radius_profile_id": schema.StringAttribute{
 				MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`.",
 				Optional:            true,
+			},
+			"nas_identifier_type": schema.StringAttribute{
+				MarkdownDescription: "NAS identifier type for RADIUS.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("bssid"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("ap_name", "ap_mac", "bssid", "site_name", "custom"),
+				},
 			},
 			"no2ghz_oui": schema.BoolAttribute{
 				MarkdownDescription: "Connect high performance clients to 5 GHz only.",
@@ -413,16 +506,27 @@ func (r *wlanFrameworkResource) Read(
 		site = r.client.Site
 	}
 
-	id := state.ID.ValueString()
+	var wlan *unifi.WLAN
+	var err error
 
-	// Get the WLAN from the API
-	wlan, err := r.client.GetWLAN(ctx, site, id)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading WLAN",
-			"Could not read WLAN with ID "+id+": "+err.Error(),
-		)
-		return
+	if !state.ID.IsNull() && !state.ID.IsUnknown() {
+		wlan, err = r.client.GetWLAN(ctx, site, state.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading WLAN",
+				"Could not read WLAN with ID "+state.ID.ValueString()+": "+err.Error(),
+			)
+			return
+		}
+	} else {
+		wlan, err = r.client.GetWLANByName(ctx, site, state.Name.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading WLAN",
+				"Could not read WLAN with Name "+state.Name.ValueString()+": "+err.Error(),
+			)
+			return
+		}
 	}
 
 	// Convert API response to model
@@ -502,6 +606,9 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
 	}
+	if !plan.NetworkID.IsNull() && !plan.NetworkID.IsUnknown() {
+		state.NetworkID = plan.NetworkID
+	}
 	if !plan.UserGroupID.IsNull() && !plan.UserGroupID.IsUnknown() {
 		state.UserGroupID = plan.UserGroupID
 	}
@@ -526,20 +633,38 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.IsGuest.IsNull() && !plan.IsGuest.IsUnknown() {
 		state.IsGuest = plan.IsGuest
 	}
+	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
+		state.Enabled = plan.Enabled
+	}
+	if !plan.ApGroupIDs.IsNull() && !plan.ApGroupIDs.IsUnknown() {
+		state.ApGroupIDs = plan.ApGroupIDs
+	}
+	if !plan.ApGroupMode.IsNull() && !plan.ApGroupMode.IsUnknown() {
+		state.ApGroupMode = plan.ApGroupMode
+	}
+	if !plan.VLANEnabled.IsNull() && !plan.VLANEnabled.IsUnknown() {
+		state.VLANEnabled = plan.VLANEnabled
+	}
+	if !plan.VLAN.IsNull() && !plan.VLAN.IsUnknown() {
+		state.VLAN = plan.VLAN
+	}
+	if !plan.WLANBand.IsNull() && !plan.WLANBand.IsUnknown() {
+		state.WLANBand = plan.WLANBand
+	}
+	if !plan.WLANBands.IsNull() && !plan.WLANBands.IsUnknown() {
+		state.WLANBands = plan.WLANBands
+	}
 	if !plan.MulticastEnhance.IsNull() && !plan.MulticastEnhance.IsUnknown() {
 		state.MulticastEnhance = plan.MulticastEnhance
 	}
-	if !plan.MacFilterEnabled.IsNull() && !plan.MacFilterEnabled.IsUnknown() {
-		state.MacFilterEnabled = plan.MacFilterEnabled
-	}
-	if !plan.MacFilterList.IsNull() && !plan.MacFilterList.IsUnknown() {
-		state.MacFilterList = plan.MacFilterList
-	}
-	if !plan.MacFilterPolicy.IsNull() && !plan.MacFilterPolicy.IsUnknown() {
-		state.MacFilterPolicy = plan.MacFilterPolicy
+	if !plan.MacFilter.IsNull() && !plan.MacFilter.IsUnknown() {
+		state.MacFilter = plan.MacFilter
 	}
 	if !plan.RadiusProfileID.IsNull() && !plan.RadiusProfileID.IsUnknown() {
 		state.RadiusProfileID = plan.RadiusProfileID
+	}
+	if !plan.NasIDentifierType.IsNull() && !plan.NasIDentifierType.IsUnknown() {
+		state.NasIDentifierType = plan.NasIDentifierType
 	}
 	if !plan.Schedule.IsNull() && !plan.Schedule.IsUnknown() {
 		state.Schedule = plan.Schedule
@@ -611,10 +736,17 @@ func (r *wlanFrameworkResource) ImportState(
 	idParts := strings.Split(req.ID, ":")
 	if len(idParts) == 2 {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
-	} else {
-		resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+		req.ID = idParts[1]
 	}
+
+	rootAttributeName := "name"
+	if strings.HasPrefix(req.ID, "name=") {
+		req.ID = strings.TrimPrefix(req.ID, "name=")
+	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+		rootAttributeName = "id"
+	}
+
+	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
 }
 
 // Helper functions for conversion and merging
@@ -628,6 +760,7 @@ func (r *wlanFrameworkResource) planToWLAN(
 	wlan := &unifi.WLAN{
 		ID:                       plan.ID.ValueString(),
 		Name:                     plan.Name.ValueString(),
+		NetworkID:                plan.NetworkID.ValueString(),
 		UserGroupID:              plan.UserGroupID.ValueString(),
 		Security:                 plan.Security.ValueString(),
 		WPA3Support:              plan.WPA3Support.ValueBool(),
@@ -636,9 +769,13 @@ func (r *wlanFrameworkResource) planToWLAN(
 		XPassphrase:              plan.Passphrase.ValueString(),
 		HideSSID:                 plan.HideSSID.ValueBool(),
 		IsGuest:                  plan.IsGuest.ValueBool(),
-		MACFilterEnabled:         plan.MacFilterEnabled.ValueBool(),
-		MACFilterPolicy:          plan.MacFilterPolicy.ValueString(),
+		Enabled:                  plan.Enabled.ValueBool(),
+		ApGroupMode:              plan.ApGroupMode.ValueString(),
+		VLANEnabled:              plan.VLANEnabled.ValueBool(),
+		VLAN:                     int(plan.VLAN.ValueInt64()),
+		MulticastEnhanceEnabled:  plan.MulticastEnhance.ValueBool(),
 		RADIUSProfileID:          plan.RadiusProfileID.ValueString(),
+		NasIDentifierType:        plan.NasIDentifierType.ValueString(),
 		No2GhzOui:                plan.No2GhzOui.ValueBool(),
 		L2Isolation:              plan.L2Isolation.ValueBool(),
 		ProxyArp:                 plan.ProxyArp.ValueBool(),
@@ -656,20 +793,72 @@ func (r *wlanFrameworkResource) planToWLAN(
 		DTIMMode:           "default",
 		WPAEnc:             "ccmp",
 		WPAMode:            "wpa2",
-		Enabled:            true,
 		NameCombineEnabled: true,
 	}
 
-	// Handle MAC filter list
-	if !plan.MacFilterList.IsNull() && !plan.MacFilterList.IsUnknown() {
-		var macList []types.String
-		diags.Append(plan.MacFilterList.ElementsAs(ctx, &macList, false)...)
+	// Handle MAC filter
+	if !plan.MacFilter.IsNull() && !plan.MacFilter.IsUnknown() {
+		var macFilter wlanMacFilterModel
+		diags.Append(plan.MacFilter.As(ctx, &macFilter, basetypes.ObjectAsOptions{})...)
 		if diags.HasError() {
 			return nil, diags
 		}
 
-		for _, mac := range macList {
-			wlan.MACFilterList = append(wlan.MACFilterList, mac.ValueString())
+		wlan.MACFilterEnabled = macFilter.Enabled.ValueBool()
+		wlan.MACFilterPolicy = macFilter.Policy.ValueString()
+
+		if !macFilter.List.IsNull() && !macFilter.List.IsUnknown() {
+			var macList []types.String
+			diags.Append(macFilter.List.ElementsAs(ctx, &macList, false)...)
+			if diags.HasError() {
+				return nil, diags
+			}
+
+			for _, mac := range macList {
+				wlan.MACFilterList = append(wlan.MACFilterList, mac.ValueString())
+			}
+		}
+	}
+
+	// Handle AP group IDs
+	if !plan.ApGroupIDs.IsNull() && !plan.ApGroupIDs.IsUnknown() {
+		var apGroupList []types.String
+		diags.Append(plan.ApGroupIDs.ElementsAs(ctx, &apGroupList, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+
+		for _, apGroupID := range apGroupList {
+			wlan.ApGroupIDs = append(wlan.ApGroupIDs, apGroupID.ValueString())
+		}
+	}
+
+	// Handle WLAN bands
+	if !plan.WLANBands.IsNull() && !plan.WLANBands.IsUnknown() {
+		var contains2g, contains5g bool
+
+		var wlanBandsList []types.String
+		diags.Append(plan.WLANBands.ElementsAs(ctx, &wlanBandsList, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+
+		for _, band := range wlanBandsList {
+			switch band.ValueString() {
+			case "2g":
+				contains2g = true
+			case "5g":
+				contains5g = true
+			}
+			wlan.WLANBands = append(wlan.WLANBands, band.ValueString())
+		}
+
+		if contains2g && contains5g {
+			wlan.WLANBand = "both"
+		} else if contains2g {
+			wlan.WLANBand = "2g"
+		} else if contains5g {
+			wlan.WLANBand = "5g"
 		}
 	}
 
@@ -710,6 +899,13 @@ func (r *wlanFrameworkResource) wlanToModel(
 	model.ID = types.StringValue(wlan.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(wlan.Name)
+
+	if wlan.NetworkID != "" {
+		model.NetworkID = types.StringValue(wlan.NetworkID)
+	} else {
+		model.NetworkID = types.StringNull()
+	}
+
 	model.UserGroupID = types.StringValue(wlan.UserGroupID)
 	model.Security = types.StringValue(wlan.Security)
 	model.WPA3Support = types.BoolValue(wlan.WPA3Support)
@@ -728,19 +924,74 @@ func (r *wlanFrameworkResource) wlanToModel(
 
 	model.HideSSID = types.BoolValue(wlan.HideSSID)
 	model.IsGuest = types.BoolValue(wlan.IsGuest)
-	model.MulticastEnhance = types.BoolValue(wlan.MulticastEnhanceEnabled)
-	model.MacFilterEnabled = types.BoolValue(wlan.MACFilterEnabled)
+	model.Enabled = types.BoolValue(wlan.Enabled)
 
-	if wlan.MACFilterPolicy != "" {
-		model.MacFilterPolicy = types.StringValue(wlan.MACFilterPolicy)
+	if wlan.ApGroupMode != "" {
+		model.ApGroupMode = types.StringValue(wlan.ApGroupMode)
 	} else {
-		model.MacFilterPolicy = types.StringValue("deny")
+		model.ApGroupMode = types.StringValue("all")
 	}
+
+	model.VLANEnabled = types.BoolValue(wlan.VLANEnabled)
+	if wlan.VLAN > 0 {
+		model.VLAN = types.Int64Value(int64(wlan.VLAN))
+	} else {
+		model.VLAN = types.Int64Null()
+	}
+
+	if wlan.WLANBand != "" {
+		model.WLANBand = types.StringValue(wlan.WLANBand)
+	} else {
+		model.WLANBand = types.StringValue("both")
+	}
+
+	model.MulticastEnhance = types.BoolValue(wlan.MulticastEnhanceEnabled)
+
+	// Handle MAC filter
+	macFilterEnabled := types.BoolValue(wlan.MACFilterEnabled)
+	macFilterPolicy := types.StringValue("deny")
+	if wlan.MACFilterPolicy != "" {
+		macFilterPolicy = types.StringValue(wlan.MACFilterPolicy)
+	}
+
+	var macFilterList types.Set
+	if len(wlan.MACFilterList) > 0 {
+		macValues := make([]attr.Value, len(wlan.MACFilterList))
+		for i, mac := range wlan.MACFilterList {
+			macValues[i] = types.StringValue(mac)
+		}
+		var d diag.Diagnostics
+		macFilterList, d = types.SetValue(types.StringType, macValues)
+		diags.Append(d...)
+	} else {
+		macFilterList = types.SetNull(types.StringType)
+	}
+
+	macFilterObj, d := types.ObjectValue(
+		map[string]attr.Type{
+			"enabled": types.BoolType,
+			"list":    types.SetType{ElemType: types.StringType},
+			"policy":  types.StringType,
+		},
+		map[string]attr.Value{
+			"enabled": macFilterEnabled,
+			"list":    macFilterList,
+			"policy":  macFilterPolicy,
+		},
+	)
+	diags.Append(d...)
+	model.MacFilter = macFilterObj
 
 	if wlan.RADIUSProfileID != "" {
 		model.RadiusProfileID = types.StringValue(wlan.RADIUSProfileID)
 	} else {
 		model.RadiusProfileID = types.StringNull()
+	}
+
+	if wlan.NasIDentifierType != "" {
+		model.NasIDentifierType = types.StringValue(wlan.NasIDentifierType)
+	} else {
+		model.NasIDentifierType = types.StringValue("bssid")
 	}
 
 	model.No2GhzOui = types.BoolValue(wlan.No2GhzOui)
@@ -759,17 +1010,30 @@ func (r *wlanFrameworkResource) wlanToModel(
 	model.MinimumDataRate2GKbps = types.Int64Value(int64(wlan.MinrateNgDataRateKbps))
 	model.MinimumDataRate5GKbps = types.Int64Value(int64(wlan.MinrateNaDataRateKbps))
 
-	// Handle MAC filter list
-	if len(wlan.MACFilterList) > 0 {
-		macValues := make([]attr.Value, len(wlan.MACFilterList))
-		for i, mac := range wlan.MACFilterList {
-			macValues[i] = types.StringValue(mac)
+	// Handle AP group IDs
+	if len(wlan.ApGroupIDs) > 0 {
+		apGroupValues := make([]attr.Value, len(wlan.ApGroupIDs))
+		for i, id := range wlan.ApGroupIDs {
+			apGroupValues[i] = types.StringValue(id)
 		}
-		macSet, d := types.SetValue(types.StringType, macValues)
+		apGroupSet, d := types.SetValue(types.StringType, apGroupValues)
 		diags.Append(d...)
-		model.MacFilterList = macSet
+		model.ApGroupIDs = apGroupSet
 	} else {
-		model.MacFilterList = types.SetNull(types.StringType)
+		model.ApGroupIDs = types.SetNull(types.StringType)
+	}
+
+	// Handle WLAN bands
+	if len(wlan.WLANBands) > 0 {
+		bandValues := make([]attr.Value, len(wlan.WLANBands))
+		for i, band := range wlan.WLANBands {
+			bandValues[i] = types.StringValue(band)
+		}
+		bandSet, d := types.SetValue(types.StringType, bandValues)
+		diags.Append(d...)
+		model.WLANBands = bandSet
+	} else {
+		model.WLANBands = types.SetNull(types.StringType)
 	}
 
 	// Handle schedule - convert WLANScheduleWithDuration back to individual schedule entries

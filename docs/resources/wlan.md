@@ -60,18 +60,21 @@ resource "unifi_wlan" "wifi" {
 
 ### Optional
 
+- `ap_group_ids` (Set of String) List of AP group IDs to apply this WLAN to.
+- `ap_group_mode` (String) Access point group mode.
 - `bss_transition` (Boolean) Improves client roaming by providing connection details of nearby APs.
+- `enabled` (Boolean) Enable or disable the WLAN.
 - `fast_roaming_enabled` (Boolean) Enable fast roaming, aka 802.11r.
 - `hide_ssid` (Boolean) Indicates whether or not to hide the SSID from broadcast.
 - `is_guest` (Boolean) Indicates that this is a guest WLAN and should use guest behaviors.
 - `l2_isolation` (Boolean) Isolates stations on layer 2 (ethernet) level.
-- `mac_filter_enabled` (Boolean) Indicates whether or not the MAC filter is turned of for the network.
-- `mac_filter_list` (Set of String) List of MAC addresses to filter (only valid if `mac_filter_enabled` is `true`).
-- `mac_filter_policy` (String) MAC address filter policy (only valid if `mac_filter_enabled` is `true`).
+- `mac_filter` (Attributes) MAC address filtering configuration. (see [below for nested schema](#nestedatt--mac_filter))
 - `minimum_data_rate_2g_kbps` (Number) Minimum data rate for 2G clients in Kbps.
 - `minimum_data_rate_5g_kbps` (Number) Minimum data rate for 5G clients in Kbps.
 - `minrate_setting_preference` (String) Minimum rate setting preference.
 - `multicast_enhance` (Boolean) Indicates whether or not Multicast Enhance is turned of for the network.
+- `nas_identifier_type` (String) NAS identifier type for RADIUS.
+- `network_id` (String) ID of the network for this WLAN.
 - `no2ghz_oui` (Boolean) Connect high performance clients to 5 GHz only.
 - `passphrase` (String, Sensitive) The passphrase for the network, this is only required if `security` is not set to `open`.
 - `pmf_mode` (String) Enable Protected Management Frames. This cannot be disabled if using WPA 3.
@@ -80,12 +83,26 @@ resource "unifi_wlan" "wifi" {
 - `schedule` (Block List) Start and stop schedules for the WLAN (see [below for nested schema](#nestedblock--schedule))
 - `site` (String) The name of the site to associate the WLAN with.
 - `uapsd` (Boolean) Enable Unscheduled Automatic Power Save Delivery.
+- `vlan` (Number) VLAN ID.
+- `vlan_enabled` (Boolean) Enable VLAN tagging.
+- `wlan_band` (String) WLAN band.
+- `wlan_bands` (Set of String) List of WLAN bands.
 - `wpa3_support` (Boolean) Enable WPA 3 support (security must be `wpapsk` and PMF must be turned on).
 - `wpa3_transition` (Boolean) Enable WPA 3 and WPA 2 support (security must be `wpapsk` and `wpa3_support` must be true).
 
 ### Read-Only
 
 - `id` (String) The ID of the WLAN.
+
+<a id="nestedatt--mac_filter"></a>
+### Nested Schema for `mac_filter`
+
+Optional:
+
+- `enabled` (Boolean) Indicates whether or not the MAC filter is turned on for the network.
+- `list` (Set of String) List of MAC addresses to filter (only valid if `enabled` is `true`).
+- `policy` (String) MAC address filter policy (only valid if `enabled` is `true`).
+
 
 <a id="nestedblock--schedule"></a>
 ### Nested Schema for `schedule`

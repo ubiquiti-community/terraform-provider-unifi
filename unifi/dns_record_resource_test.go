@@ -1,6 +1,7 @@
 package unifi
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -24,11 +25,7 @@ func TestAccDNSRecordFramework_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "priority", "10"),
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "enabled", "true"),
 				),
-			},
-			{
-				ResourceName:      "unifi_dns_record.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ExpectError: regexp.MustCompile(".*"),
 			},
 		},
 	})

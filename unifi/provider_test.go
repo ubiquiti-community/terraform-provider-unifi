@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -60,15 +59,17 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-	_ = compose.WithLogger(log.Default())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger := NewLogger(ctx)
+
+	_ = compose.WithLogger(logger)
 
 	dc, err := compose.NewDockerCompose("../docker-compose.yaml")
 	if err != nil {
 		panic(err)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Don't wait for health check in compose.Up - we'll do our own waiting with waitForUniFiAPI
 	// The health check has a 90s start_period which can cause timeouts in testcontainers
@@ -98,7 +99,7 @@ func runAcceptanceTests(m *testing.M) int {
 	}
 
 	endpoint := fmt.Sprintf("https://%s:%s", host, mappedPort.Port())
-	log.Printf("UniFi controller endpoint: %s", endpoint)
+	logger.Printf("UniFi controller endpoint: %s", endpoint)
 
 	const user = "admin"
 	const password = "admin"
@@ -124,7 +125,7 @@ func runAcceptanceTests(m *testing.M) int {
 	}
 
 	defer func() {
-		log.Print("RUNNING TEAR DOWN")
+		logger.Printf("RUNNING TEAR DOWN")
 		if err := dc.Down(context.Background(), compose.RemoveOrphans(true), compose.RemoveImagesLocal); err != nil {
 			panic(err)
 		}
@@ -132,6 +133,7 @@ func runAcceptanceTests(m *testing.M) int {
 
 	testClient = &unifi.Client{}
 	httpClient := retryablehttp.NewClient()
+	httpClient.Logger = logger
 
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -149,7 +151,7 @@ func runAcceptanceTests(m *testing.M) int {
 	if err = testClient.SetBaseURL(endpoint); err != nil {
 		panic(err)
 	}
-	if err = waitForUniFiAPI(ctx, testClient, user, password); err != nil {
+	if err = waitForUniFiAPI(ctx, logger, testClient, user, password); err != nil {
 		panic(err)
 	}
 
@@ -183,11 +185,16 @@ func contains(s, substr string) bool {
 
 // waitForUniFiAPI waits for the UniFi API to be ready and accepting JSON requests
 // Docker health check ensures the container is ready, this validates full API initialization.
-func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password string) error {
+func waitForUniFiAPI(
+	ctx context.Context,
+	logger *UnifiLogger,
+	client *unifi.Client,
+	user, password string,
+) error {
 	maxRetries := 60
 	retryDelay := 3 * time.Second
 
-	log.Printf(
+	logger.Printf(
 		"Waiting for UniFi API to be ready (max %d attempts, %v between attempts)...",
 		maxRetries,
 		retryDelay,
@@ -201,7 +208,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 			errMsg := err.Error()
 			if i < maxRetries-1 {
 				if (i+1)%10 == 0 {
-					log.Printf(
+					logger.Printf(
 						"Still waiting for login... (attempt %d/%d): %v",
 						i+1,
 						maxRetries,
@@ -221,7 +228,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 		}
 
 		if !loginSuccessful {
-			log.Printf("✓ Login successful after %d attempts", i+1)
+			logger.Printf("✓ Login successful after %d attempts", i+1)
 			loginSuccessful = true
 		}
 
@@ -231,7 +238,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 
 			if _, ok := err.(*unifi.LoginRequiredError); ok {
 				if err = client.Login(ctx, user, password); err != nil {
-					log.Println("Failed to login")
+					logger.Printf("Failed to login\n")
 				}
 				continue
 			}
@@ -242,7 +249,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 				contains(errStr, "404") {
 				if i < maxRetries-1 {
 					if (i+1)%10 == 0 {
-						log.Printf(
+						logger.Printf(
 							"Sites not initialized yet... (attempt %d/%d)",
 							i+1,
 							maxRetries,
@@ -255,7 +262,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 				// Unexpected error
 				if i < maxRetries-1 {
 					if (i+1)%10 == 0 {
-						log.Printf(
+						logger.Printf(
 							"Sites endpoint error... (attempt %d/%d): %v",
 							i+1,
 							maxRetries,
@@ -277,7 +284,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 		if len(sites) == 0 {
 			if i < maxRetries-1 {
 				if (i+1)%10 == 0 {
-					log.Printf(
+					logger.Printf(
 						"No sites found yet... (attempt %d/%d)",
 						i+1,
 						maxRetries,
@@ -299,7 +306,7 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 				!contains(errStr, "not found") {
 				if i < maxRetries-1 {
 					if (i+1)%10 == 0 {
-						log.Printf(
+						logger.Printf(
 							"Devices endpoint not ready... (attempt %d/%d): %v",
 							i+1,
 							maxRetries,
@@ -321,23 +328,88 @@ func waitForUniFiAPI(ctx context.Context, client *unifi.Client, user, password s
 				if !dev.Adopted {
 					adoptErr := client.AdoptDevice(ctx, "default", dev.MAC)
 					if adoptErr != nil {
-						log.Printf("Failed to adopt device %s: %v, retrying...", dev.MAC, adoptErr)
+						logger.Printf("Failed to adopt device %s: %v, retrying...", dev.MAC, adoptErr)
 						// Retry adoption once after a brief delay
 						time.Sleep(2 * time.Second)
 						adoptErr = client.AdoptDevice(ctx, "default", dev.MAC)
 						if adoptErr != nil {
-							log.Printf("Failed to adopt device %s after retry: %v", dev.MAC, adoptErr)
+							logger.Printf("Failed to adopt device %s after retry: %v", dev.MAC, adoptErr)
 						} else {
-							log.Printf("Successfully adopted device %s on retry", dev.MAC)
+							logger.Printf("Successfully adopted device %s on retry", dev.MAC)
 						}
 					} else {
-						log.Printf("Successfully adopted device %s", dev.MAC)
+						logger.Printf("Successfully adopted device %s", dev.MAC)
 					}
 				}
 			}
 		}
 
-		log.Printf(
+		// Step 4: Verify networks are initialized
+		networks, err := client.ListNetwork(ctx, "default")
+		if err != nil {
+
+			if _, ok := err.(*unifi.LoginRequiredError); ok {
+				if err = client.Login(ctx, user, password); err != nil {
+					logger.Printf("Failed to login\n")
+				}
+				continue
+			}
+
+			// Not found errors are expected during initialization
+			errStr := err.Error()
+			if contains(errStr, "not found") || contains(errStr, "NotFound") ||
+				contains(errStr, "404") {
+				if i < maxRetries-1 {
+					if (i+1)%10 == 0 {
+						logger.Printf(
+							"Networks not initialized yet... (attempt %d/%d)",
+							i+1,
+							maxRetries,
+						)
+					}
+					time.Sleep(retryDelay)
+					continue
+				}
+			} else {
+				// Unexpected error
+				if i < maxRetries-1 {
+					if (i+1)%10 == 0 {
+						logger.Printf(
+							"Networks endpoint error... (attempt %d/%d): %v",
+							i+1,
+							maxRetries,
+							err,
+						)
+					}
+					time.Sleep(retryDelay)
+					continue
+				}
+
+				return fmt.Errorf(
+					"UniFi API networks not ready after %d attempts: %w",
+					maxRetries,
+					err,
+				)
+			}
+		}
+
+		if len(networks) == 0 {
+			if i < maxRetries-1 {
+				if (i+1)%10 == 0 {
+					logger.Printf(
+						"No networks found yet... (attempt %d/%d)",
+						i+1,
+						maxRetries,
+					)
+				}
+				time.Sleep(retryDelay)
+				continue
+			}
+
+			return fmt.Errorf("no networks available after %d attempts", maxRetries)
+		}
+
+		logger.Printf(
 			"✓ UniFi API fully ready (login + %d sites + devices endpoint) after %d attempts",
 			len(sites),
 			i+1,

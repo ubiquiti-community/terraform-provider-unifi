@@ -12,6 +12,7 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     rebase-strategy: auto
+
     schedule:
       # Check for updates to Go modules every weekday
       interval: "daily"

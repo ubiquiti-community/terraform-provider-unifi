@@ -93,10 +93,10 @@ type settingUSGModel struct {
 	UDPOtherTimeout                types.Int64  `tfsdk:"udp_other_timeout"`
 	UDPStreamTimeout               types.Int64  `tfsdk:"udp_stream_timeout"`
 	UnbindWANMonitors              types.Bool   `tfsdk:"unbind_wan_monitors"`
-	UpnpEnabled                    types.Bool   `tfsdk:"upnp_enabled"`
-	UpnpNATPmpEnabled              types.Bool   `tfsdk:"upnp_nat_pmp_enabled"`
-	UpnpSecureMode                 types.Bool   `tfsdk:"upnp_secure_mode"`
-	UpnpWANInterface               types.String `tfsdk:"upnp_wan_interface"`
+	UPnPEnabled                    types.Bool   `tfsdk:"upnp_enabled"`
+	UPnPNATPmpEnabled              types.Bool   `tfsdk:"upnp_nat_pmp_enabled"`
+	UPnPSecureMode                 types.Bool   `tfsdk:"upnp_secure_mode"`
+	UPnPWANInterface               types.String `tfsdk:"upnp_wan_interface"`
 }
 
 type settingResourceModel struct {
@@ -1145,17 +1145,17 @@ func (r *settingResource) usgModelToSetting(
 	if !model.UnbindWANMonitors.IsNull() {
 		setting.UnbindWANMonitors = model.UnbindWANMonitors.ValueBool()
 	}
-	if !model.UpnpEnabled.IsNull() {
-		setting.UpnpEnabled = model.UpnpEnabled.ValueBool()
+	if !model.UPnPEnabled.IsNull() {
+		setting.UPnPEnabled = model.UPnPEnabled.ValueBool()
 	}
-	if !model.UpnpNATPmpEnabled.IsNull() {
-		setting.UpnpNATPmpEnabled = model.UpnpNATPmpEnabled.ValueBool()
+	if !model.UPnPNATPmpEnabled.IsNull() {
+		setting.UPnPNATPmpEnabled = model.UPnPNATPmpEnabled.ValueBool()
 	}
-	if !model.UpnpSecureMode.IsNull() {
-		setting.UpnpSecureMode = model.UpnpSecureMode.ValueBool()
+	if !model.UPnPSecureMode.IsNull() {
+		setting.UPnPSecureMode = model.UPnPSecureMode.ValueBool()
 	}
-	if !model.UpnpWANInterface.IsNull() {
-		setting.UpnpWANInterface = model.UpnpWANInterface.ValueString()
+	if !model.UPnPWANInterface.IsNull() {
+		setting.UPnPWANInterface = model.UPnPWANInterface.ValueString()
 	}
 
 	return setting
@@ -1407,32 +1407,32 @@ func (r *settingResource) usgSettingToModel(
 		model.UnbindWANMonitors = types.BoolNull()
 	}
 
-	if !plan.UpnpEnabled.IsNull() && !plan.UpnpEnabled.IsUnknown() {
-		model.UpnpEnabled = types.BoolValue(setting.UpnpEnabled)
+	if !plan.UPnPEnabled.IsNull() && !plan.UPnPEnabled.IsUnknown() {
+		model.UPnPEnabled = types.BoolValue(setting.UPnPEnabled)
 	} else {
-		model.UpnpEnabled = types.BoolNull()
+		model.UPnPEnabled = types.BoolNull()
 	}
 
-	if !plan.UpnpNATPmpEnabled.IsNull() && !plan.UpnpNATPmpEnabled.IsUnknown() {
-		model.UpnpNATPmpEnabled = types.BoolValue(setting.UpnpNATPmpEnabled)
+	if !plan.UPnPNATPmpEnabled.IsNull() && !plan.UPnPNATPmpEnabled.IsUnknown() {
+		model.UPnPNATPmpEnabled = types.BoolValue(setting.UPnPNATPmpEnabled)
 	} else {
-		model.UpnpNATPmpEnabled = types.BoolNull()
+		model.UPnPNATPmpEnabled = types.BoolNull()
 	}
 
-	if !plan.UpnpSecureMode.IsNull() && !plan.UpnpSecureMode.IsUnknown() {
-		model.UpnpSecureMode = types.BoolValue(setting.UpnpSecureMode)
+	if !plan.UPnPSecureMode.IsNull() && !plan.UPnPSecureMode.IsUnknown() {
+		model.UPnPSecureMode = types.BoolValue(setting.UPnPSecureMode)
 	} else {
-		model.UpnpSecureMode = types.BoolNull()
+		model.UPnPSecureMode = types.BoolNull()
 	}
 
-	if !plan.UpnpWANInterface.IsNull() && !plan.UpnpWANInterface.IsUnknown() {
-		if setting.UpnpWANInterface != "" {
-			model.UpnpWANInterface = types.StringValue(setting.UpnpWANInterface)
+	if !plan.UPnPWANInterface.IsNull() && !plan.UPnPWANInterface.IsUnknown() {
+		if setting.UPnPWANInterface != "" {
+			model.UPnPWANInterface = types.StringValue(setting.UPnPWANInterface)
 		} else {
-			model.UpnpWANInterface = types.StringNull()
+			model.UPnPWANInterface = types.StringNull()
 		}
 	} else {
-		model.UpnpWANInterface = types.StringNull()
+		model.UPnPWANInterface = types.StringNull()
 	}
 
 	return model

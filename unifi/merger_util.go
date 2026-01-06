@@ -167,7 +167,7 @@ func (rm *ResourceMerger[T]) shouldSkipField(fieldName string) bool {
 
 // isZeroMeaningful determines if a zero value is meaningful for a field.
 // Some fields like VLAN ID=0 or Port=0 might be meaningful.
-func (rm *ResourceMerger[T]) isZeroMeaningful(field reflect.Value) bool {
+func (rm *ResourceMerger[T]) isZeroMeaningful(_ reflect.Value) bool {
 	// For now, we'll be conservative and not merge zero values
 	// This can be expanded based on specific field requirements
 	return false

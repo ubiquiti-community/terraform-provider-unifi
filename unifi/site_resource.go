@@ -2,8 +2,9 @@ package unifi
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -159,20 +160,32 @@ func (r *siteFrameworkResource) Read(
 		return
 	}
 
-	id := state.ID.ValueString()
+	var err error
+	var site *unifi.Site
 
-	// Get the Site from the API
-	site, err := r.client.GetSite(ctx, id)
-	if _, ok := err.(*unifi.NotFoundError); ok {
-		resp.State.RemoveResource(ctx)
-		return
-	}
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading Site",
-			"Could not read site with ID "+id+": "+err.Error(),
-		)
-		return
+	if !state.ID.IsNull() && !state.ID.IsUnknown() {
+		// Get the Site from the API
+		site, err = r.client.GetSite(ctx, state.ID.ValueString())
+		if err != nil {
+			if _, ok := err.(*unifi.NotFoundError); ok {
+				resp.State.RemoveResource(ctx)
+				return
+			} else {
+				resp.Diagnostics.AddError(
+					"Error Reading Site",
+					"Could not read site with ID "+state.ID.ValueString()+": "+err.Error(),
+				)
+				return
+			}
+		}
+	} else {
+		site, err = r.client.GetSiteByName(ctx, state.Name.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading Site",
+				"Could not read site with Name "+state.Name.ValueString()+": "+err.Error(),
+			)
+		}
 	}
 
 	// Convert API response to model
@@ -288,46 +301,14 @@ func (r *siteFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	id := req.ID
-
-	// First try to import by ID
-	_, err := r.client.GetSite(ctx, id)
-	if err != nil {
-		var nf *unifi.NotFoundError
-		if !errors.As(err, &nf) {
-			resp.Diagnostics.AddError(
-				"Error Importing Site",
-				"Could not read site with ID "+id+": "+err.Error(),
-			)
-			return
-		}
-	} else {
-		// ID is valid
-		resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-		return
+	rootAttributeName := "name"
+	if after, ok := strings.CutPrefix(req.ID, "name="); ok {
+		req.ID = after
+	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+		rootAttributeName = "id"
 	}
 
-	// If not found by ID, try to lookup site by name
-	sites, err := r.client.ListSites(ctx)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Listing Sites for Import",
-			"Could not list sites: "+err.Error(),
-		)
-		return
-	}
-
-	for _, s := range sites {
-		if s.Name == id {
-			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), s.ID)...)
-			return
-		}
-	}
-
-	resp.Diagnostics.AddError(
-		"Site Not Found",
-		fmt.Sprintf("Unable to find site %q on controller", id),
-	)
+	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
 }
 
 // Helper functions for conversion and merging

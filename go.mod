@@ -3,7 +3,6 @@ module github.com/ubiquiti-community/terraform-provider-unifi
 go 1.24.9
 
 require (
-	github.com/apparentlymart/go-cidr v1.1.0
 	github.com/docker/compose/v2 v2.40.3
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/terraform-plugin-framework v1.17.0
@@ -14,7 +13,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.14.0
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
-	github.com/ubiquiti-community/go-unifi v1.33.16
+	github.com/ubiquiti-community/go-unifi v1.33.17
 )
 
 require (

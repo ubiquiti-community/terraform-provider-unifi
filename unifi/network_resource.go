@@ -568,14 +568,30 @@ func (r *networkResource) Read(
 		site = r.client.Site
 	}
 
-	// Get the network
-	network, err := r.client.GetNetwork(ctx, site, data.ID.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading Network",
-			"Could not read network ID "+data.ID.ValueString()+": "+err.Error(),
-		)
-		return
+	var err error
+	var network *unifi.Network
+
+	if !data.ID.IsNull() && !data.ID.IsUnknown() {
+
+		// Get the network
+		network, err = r.client.GetNetwork(ctx, site, data.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading Network",
+				"Could not read network ID "+data.ID.ValueString()+": "+err.Error(),
+			)
+			return
+		}
+
+	} else {
+		network, err = r.client.GetNetworkByName(ctx, site, data.Name.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading Network",
+				"Could not read network name "+data.Name.ValueString()+": "+err.Error(),
+			)
+			return
+		}
 	}
 
 	// Convert to model
@@ -862,58 +878,20 @@ func (r *networkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:id" or "name=NetworkName"
 	idParts := strings.Split(req.ID, ":")
-
 	if len(idParts) == 2 {
-		// site:id format
-		site := idParts[0]
-		id := idParts[1]
-
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-		return
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+		req.ID = idParts[1]
 	}
 
-	// Check for name=NetworkName format
+	rootAttributeName := "name"
 	if strings.HasPrefix(req.ID, "name=") {
-		networkName := strings.TrimPrefix(req.ID, "name=")
-
-		// Find network by name in default site
-		site := r.client.Site
-		networks, err := r.client.ListNetwork(ctx, site)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Listing Networks",
-				fmt.Sprintf("Could not list networks to find by name: %s", err.Error()),
-			)
-			return
-		}
-
-		var networkID string
-		for _, network := range networks {
-			if network.Name == networkName {
-				networkID = network.ID
-				break
-			}
-		}
-
-		if networkID == "" {
-			resp.Diagnostics.AddError(
-				"Error Finding Network",
-				fmt.Sprintf("Could not find network with name %s", networkName),
-			)
-			return
-		}
-
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), networkID)...)
-		return
+		req.ID = strings.TrimPrefix(req.ID, "name=")
+	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+		rootAttributeName = "id"
 	}
 
-	// Default format: just the ID in default site
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), r.client.Site)...)
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
 }
 
 // Helper function to find network ID by name

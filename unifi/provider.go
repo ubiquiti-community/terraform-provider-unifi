@@ -3,7 +3,6 @@ package unifi
 import (
 	"context"
 	"crypto/tls"
-	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -188,7 +187,7 @@ func (p *unifiProvider) Configure(
 	// Create HTTP client
 	c := retryablehttp.NewClient()
 	c.HTTPClient.Timeout = 30 * time.Second
-	c.Logger = log.Default()
+	c.Logger = NewLogger(ctx)
 
 	// Configure TLS if needed
 	if allowInsecure {
@@ -284,6 +283,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewStaticRouteFrameworkResource,
 		NewUserFrameworkResource,
 		NewUserGroupFrameworkResource,
+		NewWANResource,
 		NewWLANFrameworkResource,
 	}
 }
