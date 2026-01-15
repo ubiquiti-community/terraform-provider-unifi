@@ -248,7 +248,7 @@ func (p *unifiProvider) Configure(
 	// Create wrapper client with site info
 	configuredClient := &Client{
 		ApiClient: client,
-		Site:   site,
+		Site:      site,
 	}
 
 	if err := configuredClient.Login(ctx, username, password); err != nil {
@@ -291,6 +291,8 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewClientDataSource,
+		NewClientInfoDataSource,
+		NewClientInfoListDataSource,
 		NewNetworkDataSource,
 		NewAccountDataSource,
 		NewAPGroupDataSource,

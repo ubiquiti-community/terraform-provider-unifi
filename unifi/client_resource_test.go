@@ -46,7 +46,11 @@ func TestAccClientFramework_blocked(t *testing.T) {
 			{
 				Config: testAccClientFrameworkConfig_blocked(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_client.test", "name", "tfacc-blocked-client"),
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"name",
+						"tfacc-blocked-client",
+					),
 					resource.TestCheckResourceAttr("unifi_client.test", "blocked", "true"),
 					resource.TestCheckResourceAttr(
 						"unifi_client.test",
