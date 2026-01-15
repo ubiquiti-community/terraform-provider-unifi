@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/models"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var _ datasource.DataSource = &clientInfoDataSource{}
@@ -61,6 +62,7 @@ type clientInfoDataSourceModel struct {
 	SwPort                    types.Int64  `tfsdk:"sw_port"`
 	LastUplinkMAC             types.String `tfsdk:"last_uplink_mac"`
 	LastUplinkName            types.String `tfsdk:"last_uplink_name"`
+	LastUplinkRemotePort      types.Int64  `tfsdk:"last_uplink_remote_port"`
 	LastConnectionNetworkID   types.String `tfsdk:"last_connection_network_id"`
 	LastConnectionNetworkName types.String `tfsdk:"last_connection_network_name"`
 }
@@ -144,47 +146,48 @@ func (d *clientInfoDataSource) Read(
 		return
 	}
 
-	data.ID = types.StringValue(clientInfo.Id)
-	data.Name = types.StringValue(clientInfo.Name)
-	data.DisplayName = types.StringValue(clientInfo.DisplayName)
-	data.Hostname = types.StringValue(clientInfo.Hostname)
-	data.IP = types.StringValue(clientInfo.IP)
-	data.FixedIP = types.StringValue(clientInfo.FixedIP)
-	data.NetworkID = types.StringValue(clientInfo.NetworkId)
-	data.NetworkName = types.StringValue(clientInfo.NetworkName)
-	data.UsergroupID = types.StringValue(clientInfo.UsergroupId)
+	data.ID = util.StringValueOrNull(clientInfo.Id)
+	data.Name = util.StringValueOrNull(clientInfo.Name)
+	data.DisplayName = util.StringValueOrNull(clientInfo.DisplayName)
+	data.Hostname = util.StringValueOrNull(clientInfo.Hostname)
+	data.IP = util.StringValueOrNull(clientInfo.IP)
+	data.FixedIP = util.StringValueOrNull(clientInfo.FixedIP)
+	data.NetworkID = util.StringValueOrNull(clientInfo.NetworkId)
+	data.NetworkName = util.StringValueOrNull(clientInfo.NetworkName)
+	data.UsergroupID = util.StringValueOrNull(clientInfo.UsergroupId)
 	data.Blocked = types.BoolValue(clientInfo.Blocked)
 	data.IsGuest = types.BoolValue(clientInfo.IsGuest)
 	data.IsWired = types.BoolValue(clientInfo.IsWired)
 	data.Authorized = types.BoolValue(clientInfo.Authorized)
-	data.Status = types.StringValue(clientInfo.Status)
-	data.Uptime = types.Int64Value(int64(clientInfo.Uptime))
-	data.FirstSeen = types.Int64Value(int64(clientInfo.FirstSeen))
-	data.LastSeen = types.Int64Value(int64(clientInfo.LastSeen))
-	data.Oui = types.StringValue(clientInfo.Oui)
-	data.LocalDNSRecord = types.StringValue(clientInfo.LocalDNSRecord)
+	data.Status = util.StringValueOrNull(clientInfo.Status)
+	data.Uptime = types.Int64PointerValue(clientInfo.Uptime)
+	data.FirstSeen = types.Int64PointerValue(clientInfo.FirstSeen)
+	data.LastSeen = types.Int64PointerValue(clientInfo.LastSeen)
+	data.Oui = util.StringValueOrNull(clientInfo.Oui)
+	data.LocalDNSRecord = util.StringValueOrNull(clientInfo.LocalDNSRecord)
 	data.LocalDNSRecordEnabled = types.BoolValue(clientInfo.LocalDNSRecordEnabled)
 	data.UseFixedIP = types.BoolValue(clientInfo.UseFixedip)
-	data.APMAC = types.StringValue(clientInfo.ApMac)
-	data.Channel = types.Int64Value(int64(clientInfo.Channel))
-	data.Radio = types.StringValue(clientInfo.Radio)
-	data.RadioName = types.StringValue(clientInfo.RadioName)
-	data.Essid = types.StringValue(clientInfo.Essid)
-	data.BSSID = types.StringValue(clientInfo.Bssid)
-	data.Signal = types.Int64Value(int64(clientInfo.Signal))
-	data.RSSI = types.Int64Value(int64(clientInfo.Rssi))
-	data.Noise = types.Int64Value(int64(clientInfo.Noise))
-	data.TxRate = types.Int64Value(int64(clientInfo.TxRate))
-	data.RxRate = types.Int64Value(int64(clientInfo.RxRate))
-	data.TxBytes = types.Int64Value(int64(clientInfo.TxBytes))
-	data.RxBytes = types.Int64Value(int64(clientInfo.RxBytes))
-	data.WiredRateMbps = types.Int64Value(int64(clientInfo.WiredRateMbps))
-	data.SwPort = types.Int64Value(int64(clientInfo.SwPort))
-	data.LastUplinkMAC = types.StringValue(clientInfo.LastUplinkMac)
-	data.LastUplinkName = types.StringValue(clientInfo.LastUplinkName)
-	data.LastConnectionNetworkID = types.StringValue(clientInfo.LastConnectionNetworkId)
-	data.LastConnectionNetworkName = types.StringValue(clientInfo.LastConnectionNetworkName)
-	data.Site = types.StringValue(site)
+	data.APMAC = util.StringValueOrNull(clientInfo.ApMac)
+	data.Channel = types.Int64PointerValue(clientInfo.Channel)
+	data.Radio = util.StringValueOrNull(clientInfo.Radio)
+	data.RadioName = util.StringValueOrNull(clientInfo.RadioName)
+	data.Essid = util.StringValueOrNull(clientInfo.Essid)
+	data.BSSID = util.StringValueOrNull(clientInfo.Bssid)
+	data.Signal = types.Int64PointerValue(clientInfo.Signal)
+	data.RSSI = types.Int64PointerValue(clientInfo.Rssi)
+	data.Noise = types.Int64PointerValue(clientInfo.Noise)
+	data.TxRate = types.Int64PointerValue(clientInfo.TxRate)
+	data.RxRate = types.Int64PointerValue(clientInfo.RxRate)
+	data.TxBytes = types.Int64PointerValue(clientInfo.TxBytes)
+	data.RxBytes = types.Int64PointerValue(clientInfo.RxBytes)
+	data.WiredRateMbps = types.Int64PointerValue(clientInfo.WiredRateMbps)
+	data.SwPort = types.Int64PointerValue(clientInfo.SwPort)
+	data.LastUplinkMAC = util.StringValueOrNull(clientInfo.LastUplinkMac)
+	data.LastUplinkName = util.StringValueOrNull(clientInfo.LastUplinkName)
+	data.LastConnectionNetworkID = util.StringValueOrNull(clientInfo.LastConnectionNetworkId)
+	data.LastConnectionNetworkName = util.StringValueOrNull(clientInfo.LastConnectionNetworkName)
+	data.LastUplinkRemotePort = types.Int64PointerValue(clientInfo.LastUplinkRemotePort)
+	data.Site = util.StringValueOrNull(site)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

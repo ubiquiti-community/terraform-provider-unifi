@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var _ basetypes.ObjectTypable = &ClientInfoObjectType{}
@@ -370,47 +371,49 @@ func ClientInfoValue(
 	diagnostics := diag.Diagnostics{}
 
 	clientObj := map[string]attr.Value{
-		"id":                           stringValueOrNull(clientInfo.Id),
-		"mac":                          stringValueOrNull(clientInfo.Mac),
-		"name":                         stringValueOrNull(clientInfo.Name),
-		"display_name":                 stringValueOrNull(clientInfo.DisplayName),
-		"hostname":                     stringValueOrNull(clientInfo.Hostname),
-		"ip":                           stringValueOrNull(clientInfo.IP),
-		"fixed_ip":                     stringValueOrNull(clientInfo.FixedIP),
-		"network_id":                   stringValueOrNull(clientInfo.NetworkId),
-		"network_name":                 stringValueOrNull(clientInfo.NetworkName),
-		"usergroup_id":                 stringValueOrNull(clientInfo.UsergroupId),
-		"blocked":                      types.BoolValue(clientInfo.Blocked),
-		"is_guest":                     types.BoolValue(clientInfo.IsGuest),
-		"is_wired":                     types.BoolValue(clientInfo.IsWired),
-		"authorized":                   types.BoolValue(clientInfo.Authorized),
-		"status":                       stringValueOrNull(clientInfo.Status),
-		"uptime":                       types.Int64Value(int64(clientInfo.Uptime)),
-		"first_seen":                   types.Int64Value(int64(clientInfo.FirstSeen)),
-		"last_seen":                    types.Int64Value(int64(clientInfo.LastSeen)),
-		"oui":                          stringValueOrNull(clientInfo.Oui),
-		"local_dns_record":             stringValueOrNull(clientInfo.LocalDNSRecord),
-		"local_dns_record_enabled":     types.BoolValue(clientInfo.LocalDNSRecordEnabled),
-		"use_fixedip":                  types.BoolValue(clientInfo.UseFixedip),
-		"ap_mac":                       stringValueOrNull(clientInfo.ApMac),
-		"channel":                      types.Int64Value(int64(clientInfo.Channel)),
-		"radio":                        stringValueOrNull(clientInfo.Radio),
-		"radio_name":                   stringValueOrNull(clientInfo.RadioName),
-		"essid":                        stringValueOrNull(clientInfo.Essid),
-		"bssid":                        stringValueOrNull(clientInfo.Bssid),
-		"signal":                       types.Int64Value(int64(clientInfo.Signal)),
-		"rssi":                         types.Int64Value(int64(clientInfo.Rssi)),
-		"noise":                        types.Int64Value(int64(clientInfo.Noise)),
-		"tx_rate":                      types.Int64Value(int64(clientInfo.TxRate)),
-		"rx_rate":                      types.Int64Value(int64(clientInfo.RxRate)),
-		"tx_bytes":                     types.Int64Value(int64(clientInfo.TxBytes)),
-		"rx_bytes":                     types.Int64Value(int64(clientInfo.RxBytes)),
-		"wired_rate_mbps":              types.Int64Value(int64(clientInfo.WiredRateMbps)),
-		"sw_port":                      types.Int64Value(int64(clientInfo.SwPort)),
-		"last_uplink_mac":              stringValueOrNull(clientInfo.LastUplinkMac),
-		"last_uplink_name":             stringValueOrNull(clientInfo.LastUplinkName),
-		"last_connection_network_id":   stringValueOrNull(clientInfo.LastConnectionNetworkId),
-		"last_connection_network_name": stringValueOrNull(clientInfo.LastConnectionNetworkName),
+		"id":                         util.StringValueOrNull(clientInfo.Id),
+		"mac":                        util.StringValueOrNull(clientInfo.Mac),
+		"name":                       util.StringValueOrNull(clientInfo.Name),
+		"display_name":               util.StringValueOrNull(clientInfo.DisplayName),
+		"hostname":                   util.StringValueOrNull(clientInfo.Hostname),
+		"ip":                         util.StringValueOrNull(clientInfo.IP),
+		"fixed_ip":                   util.StringValueOrNull(clientInfo.FixedIP),
+		"network_id":                 util.StringValueOrNull(clientInfo.NetworkId),
+		"network_name":               util.StringValueOrNull(clientInfo.NetworkName),
+		"usergroup_id":               util.StringValueOrNull(clientInfo.UsergroupId),
+		"blocked":                    types.BoolValue(clientInfo.Blocked),
+		"is_guest":                   types.BoolValue(clientInfo.IsGuest),
+		"is_wired":                   types.BoolValue(clientInfo.IsWired),
+		"authorized":                 types.BoolValue(clientInfo.Authorized),
+		"status":                     util.StringValueOrNull(clientInfo.Status),
+		"uptime":                     types.Int64PointerValue(clientInfo.Uptime),
+		"first_seen":                 types.Int64PointerValue(clientInfo.FirstSeen),
+		"last_seen":                  types.Int64PointerValue(clientInfo.LastSeen),
+		"oui":                        util.StringValueOrNull(clientInfo.Oui),
+		"local_dns_record":           util.StringValueOrNull(clientInfo.LocalDNSRecord),
+		"local_dns_record_enabled":   types.BoolValue(clientInfo.LocalDNSRecordEnabled),
+		"use_fixedip":                types.BoolValue(clientInfo.UseFixedip),
+		"ap_mac":                     util.StringValueOrNull(clientInfo.ApMac),
+		"channel":                    types.Int64PointerValue(clientInfo.Channel),
+		"radio":                      util.StringValueOrNull(clientInfo.Radio),
+		"radio_name":                 util.StringValueOrNull(clientInfo.RadioName),
+		"essid":                      util.StringValueOrNull(clientInfo.Essid),
+		"bssid":                      util.StringValueOrNull(clientInfo.Bssid),
+		"signal":                     types.Int64PointerValue(clientInfo.Signal),
+		"rssi":                       types.Int64PointerValue(clientInfo.Rssi),
+		"noise":                      types.Int64PointerValue(clientInfo.Noise),
+		"tx_rate":                    types.Int64PointerValue(clientInfo.TxRate),
+		"rx_rate":                    types.Int64PointerValue(clientInfo.RxRate),
+		"tx_bytes":                   types.Int64PointerValue(clientInfo.TxBytes),
+		"rx_bytes":                   types.Int64PointerValue(clientInfo.RxBytes),
+		"wired_rate_mbps":            types.Int64PointerValue(clientInfo.WiredRateMbps),
+		"sw_port":                    types.Int64PointerValue(clientInfo.SwPort),
+		"last_uplink_mac":            util.StringValueOrNull(clientInfo.LastUplinkMac),
+		"last_uplink_name":           util.StringValueOrNull(clientInfo.LastUplinkName),
+		"last_connection_network_id": util.StringValueOrNull(clientInfo.LastConnectionNetworkId),
+		"last_connection_network_name": util.StringValueOrNull(
+			clientInfo.LastConnectionNetworkName,
+		),
 	}
 
 	if objValue, diags := types.ObjectValue(attrTypesMap(), clientObj); diags.HasError() {
@@ -420,12 +423,4 @@ func ClientInfoValue(
 	}
 
 	return diagnostics
-}
-
-// stringValueOrNull returns a types.StringValue if the string is non-empty, otherwise types.StringNull.
-func stringValueOrNull(s string) types.String {
-	if s == "" {
-		return types.StringNull()
-	}
-	return types.StringValue(s)
 }
