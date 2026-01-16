@@ -265,6 +265,8 @@ func (p *unifiProvider) Configure(
 	resp.DataSourceData = configuredClient
 	resp.ResourceData = configuredClient
 	resp.EphemeralResourceData = configuredClient
+	resp.ActionData = configuredClient
+	resp.ListResourceData = configuredClient
 }
 
 func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resource {

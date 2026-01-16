@@ -1520,23 +1520,6 @@ func (r *clientResource) List(
 		site = r.client.Site
 	}
 
-	// Resolve network_id if network_name is provided
-	networkID := config.NetworkID.ValueString()
-	if !config.NetworkName.IsNull() && !config.NetworkName.IsUnknown() {
-		networkName := config.NetworkName.ValueString()
-		network, err := r.client.GetNetworkByName(ctx, site, networkName)
-		if err != nil {
-			result := req.NewListResult(ctx)
-			result.Diagnostics.AddError(
-				"Error Getting Network by Name",
-				"Could not get network with name "+networkName+": "+err.Error(),
-			)
-			stream.Results = list.ListResultsStreamDiagnostics(result.Diagnostics)
-			return
-		}
-		networkID = network.ID
-	}
-
 	// List all clients
 	clients, err := r.client.ListClient(ctx, site)
 	if err != nil {
@@ -1552,10 +1535,6 @@ func (r *clientResource) List(
 	// Define the function that will push results into the stream
 	stream.Results = func(push func(list.ListResult) bool) {
 		for _, client := range clients {
-			// Apply network filter if specified
-			if networkID != "" && client.NetworkID != networkID {
-				continue
-			}
 
 			// Initialize a new result object for each client
 			result := req.NewListResult(ctx)
@@ -1570,7 +1549,14 @@ func (r *clientResource) List(
 			}
 
 			// Set resource identity data on the result
-			result.Diagnostics.Append(result.Identity.Set(ctx, client.ID)...)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(ctx, path.Root("id"), types.StringValue(client.ID))...)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("mac"),
+					types.StringValue(client.MAC),
+				)...)
 
 			// Convert the client to the resource model
 			var model clientResourceModel
