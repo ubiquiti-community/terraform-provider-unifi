@@ -445,8 +445,8 @@ func (r *clientGroupFrameworkResource) planToClientGroup(
 	clientGroup := &unifi.ClientGroup{
 		ID:             plan.ID.ValueString(),
 		Name:           plan.Name.ValueString(),
-		QOSRateMaxDown: int(plan.QOSRateMaxDown.ValueInt64()),
-		QOSRateMaxUp:   int(plan.QOSRateMaxUp.ValueInt64()),
+		QOSRateMaxDown: plan.QOSRateMaxDown.ValueInt64(),
+		QOSRateMaxUp:   plan.QOSRateMaxUp.ValueInt64(),
 	}
 
 	return clientGroup, diags

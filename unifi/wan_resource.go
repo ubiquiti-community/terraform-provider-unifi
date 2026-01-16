@@ -793,11 +793,11 @@ func (r *wanResource) modelToNetwork(
 		WANType:             model.Type.ValueString(),
 		WANTypeV6:           model.TypeV6.ValueString(),
 		WANVLANEnabled:      model.VlanEnabled.ValueBool(),
-		WANVLAN:             int(model.Vlan.ValueInt64()),
-		WANEgressQOS:        int(model.EgressQoS.ValueInt64()),
+		WANVLAN:             model.Vlan.ValueInt64(),
+		WANEgressQOS:        model.EgressQoS.ValueInt64(),
 		WANEgressQOSEnabled: model.EgressQoSEnabled.ValueBoolPointer(),
-		WANDHCPCos:          int(model.DHCPCoS.ValueInt64()),
-		WANDHCPv6Cos:        int(model.DHCPV6CoS.ValueInt64()),
+		WANDHCPCos:          model.DHCPCoS.ValueInt64(),
+		WANDHCPv6Cos:        model.DHCPV6CoS.ValueInt64(),
 	}
 
 	// DNS Settings
@@ -817,7 +817,7 @@ func (r *wanResource) modelToNetwork(
 	network.WANIPV6DNSPreference = model.IPv6DNSPreference.ValueString()
 
 	// DHCPv6 Settings
-	network.WANDHCPv6PDSize = int(model.DHCPV6PDSize.ValueInt64())
+	network.WANDHCPv6PDSize = model.DHCPV6PDSize.ValueInt64()
 	network.WANDHCPv6PDSizeAuto = model.DHCPV6PDSizeAuto.ValueBool()
 	network.IPV6WANDelegationType = model.IPv6WANDelegationType.ValueString()
 
@@ -829,7 +829,7 @@ func (r *wanResource) modelToNetwork(
 			network.WANDHCPv6Options = make([]unifi.NetworkWANDHCPv6Options, len(dhcpV6Options))
 			for i, opt := range dhcpV6Options {
 				network.WANDHCPv6Options[i] = unifi.NetworkWANDHCPv6Options{
-					OptionNumber: int(opt.OptionNumber.ValueInt64()),
+					OptionNumber: opt.OptionNumber.ValueInt64(),
 					Value:        opt.Value.ValueString(),
 				}
 			}
@@ -839,10 +839,10 @@ func (r *wanResource) modelToNetwork(
 	// Smart Queue Settings
 	network.WANSmartQEnabled = model.SmartQEnabled.ValueBool()
 	if !model.SmartQUpRate.IsNull() && !model.SmartQUpRate.IsUnknown() {
-		network.WANSmartQUpRate = int(model.SmartQUpRate.ValueInt64())
+		network.WANSmartQUpRate = model.SmartQUpRate.ValueInt64()
 	}
 	if !model.SmartQDownRate.IsNull() && !model.SmartQDownRate.IsUnknown() {
-		network.WANSmartQDownRate = int(model.SmartQDownRate.ValueInt64())
+		network.WANSmartQDownRate = model.SmartQDownRate.ValueInt64()
 	}
 
 	// UPnP Settings
@@ -855,8 +855,8 @@ func (r *wanResource) modelToNetwork(
 
 	// Load Balance Settings
 	network.WANLoadBalanceType = model.LoadBalanceType.ValueString()
-	network.WANLoadBalanceWeight = int(model.LoadBalanceWeight.ValueInt64())
-	network.WANFailoverPriority = int(model.FailoverPriority.ValueInt64())
+	network.WANLoadBalanceWeight = model.LoadBalanceWeight.ValueInt64()
+	network.WANFailoverPriority = model.FailoverPriority.ValueInt64()
 
 	// IGMP Settings
 	network.IGMPProxyFor = model.IGMPProxyFor.ValueString()
@@ -874,7 +874,7 @@ func (r *wanResource) modelToNetwork(
 			dhcpOptions := make([]unifi.NetworkWANDHCPOptions, len(dhcpOptionsModel))
 			for i, opt := range dhcpOptionsModel {
 				dhcpOptions[i] = unifi.NetworkWANDHCPOptions{
-					OptionNumber: int(opt.OptionNumber.ValueInt64()),
+					OptionNumber: opt.OptionNumber.ValueInt64(),
 					Value:        opt.Value.ValueString(),
 				}
 			}
@@ -896,8 +896,8 @@ func (r *wanResource) modelToNetwork(
 			model.ProviderCapabilities.As(ctx, &providerCaps, basetypes.ObjectAsOptions{})...)
 		if !diags.HasError() {
 			network.WANProviderCapabilities = unifi.NetworkWANProviderCapabilities{
-				DownloadKilobitsPerSecond: int(providerCaps.DownloadKbps.ValueInt64()),
-				UploadKilobitsPerSecond:   int(providerCaps.UploadKbps.ValueInt64()),
+				DownloadKilobitsPerSecond: providerCaps.DownloadKbps.ValueInt64(),
+				UploadKilobitsPerSecond:   providerCaps.UploadKbps.ValueInt64(),
 			}
 		}
 	}

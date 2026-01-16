@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -36,6 +37,7 @@ type clientDataSourceModel struct {
 	DevIDOverride  types.Int64  `tfsdk:"dev_id_override"`
 	Hostname       types.String `tfsdk:"hostname"`
 	IP             types.String `tfsdk:"ip"`
+	LastIP         types.String `tfsdk:"last_ip"`
 	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
 }
 
@@ -103,6 +105,10 @@ func (d *clientDataSource) Schema(
 			},
 			"ip": schema.StringAttribute{
 				MarkdownDescription: "The IP address of the client.",
+				Computed:            true,
+			},
+			"last_ip": schema.StringAttribute{
+				MarkdownDescription: "The last IP address of the client.",
 				Computed:            true,
 			},
 			"local_dns_record": schema.StringAttribute{
@@ -218,7 +224,7 @@ func (d *clientDataSource) Read(
 		state.NetworkID = types.StringNull()
 	}
 
-	state.Blocked = types.BoolValue(client.Blocked == "true")
+	state.Blocked = types.BoolValue(client.Blocked)
 
 	// DevIdOverride not available in Client type
 	state.DevIDOverride = types.Int64Null()
@@ -229,11 +235,7 @@ func (d *clientDataSource) Read(
 		state.Hostname = types.StringNull()
 	}
 
-	if client.LastSeen != "" {
-		state.IP = types.StringValue(client.LastSeen)
-	} else {
-		state.IP = types.StringNull()
-	}
+	state.IP = util.StringValueOrNull(client.IP)
 
 	// Handle local DNS record
 	if client.LocalDNSRecord != "" {

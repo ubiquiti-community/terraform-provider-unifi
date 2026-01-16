@@ -362,11 +362,11 @@ func (r *accountFrameworkResource) modelToAccount(
 	}
 
 	if !model.TunnelType.IsNull() {
-		account.TunnelType = int(model.TunnelType.ValueInt64())
+		account.TunnelType = model.TunnelType.ValueInt64()
 	}
 
 	if !model.TunnelMediumType.IsNull() {
-		account.TunnelMediumType = int(model.TunnelMediumType.ValueInt64())
+		account.TunnelMediumType = model.TunnelMediumType.ValueInt64()
 	}
 
 	if !model.NetworkID.IsNull() {

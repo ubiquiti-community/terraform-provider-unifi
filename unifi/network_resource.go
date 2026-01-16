@@ -908,7 +908,7 @@ func (r *networkResource) modelToNetwork(
 	}
 
 	if !model.VlanID.IsNull() {
-		network.VLAN = int(model.VlanID.ValueInt64())
+		network.VLAN = model.VlanID.ValueInt64()
 	}
 
 	if !model.Subnet.IsNull() {
@@ -930,7 +930,7 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPDEnabled = model.DhcpEnabled.ValueBool()
 	}
 	if !model.DhcpLease.IsNull() {
-		network.DHCPDLeaseTime = int(model.DhcpLease.ValueInt64())
+		network.DHCPDLeaseTime = model.DhcpLease.ValueInt64()
 	}
 
 	// Convert DHCP DNS list

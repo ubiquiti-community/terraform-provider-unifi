@@ -70,3 +70,5 @@ __debug_bin*
 
 .github/instructions/*.md
 .github/.bak
+
+.test

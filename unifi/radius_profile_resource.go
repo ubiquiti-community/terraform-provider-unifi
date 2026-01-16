@@ -435,7 +435,7 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 		Name:                  model.Name.ValueString(),
 		AccountingEnabled:     model.AccountingEnabled.ValueBool(),
 		InterimUpdateEnabled:  model.InterimUpdateEnabled.ValueBool(),
-		InterimUpdateInterval: int(model.InterimUpdateInterval.ValueInt64()),
+		InterimUpdateInterval: model.InterimUpdateInterval.ValueInt64(),
 		UseUsgAcctServer:      model.UseUSGAcctServer.ValueBool(),
 		UseUsgAuthServer:      model.UseUSGAuthServer.ValueBool(),
 		VLANEnabled:           model.VlanEnabled.ValueBool(),
@@ -447,7 +447,7 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 			radiusProfile.AuthServers,
 			unifi.RADIUSProfileAuthServers{
 				IP:      authServer.IP.ValueString(),
-				Port:    int(authServer.Port.ValueInt64()),
+				Port:    authServer.Port.ValueInt64(),
 				XSecret: authServer.XSecret.ValueString(),
 			},
 		)
@@ -458,7 +458,7 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 			radiusProfile.AcctServers,
 			unifi.RADIUSProfileAcctServers{
 				IP:      acctServer.IP.ValueString(),
-				Port:    int(acctServer.Port.ValueInt64()),
+				Port:    acctServer.Port.ValueInt64(),
 				XSecret: acctServer.XSecret.ValueString(),
 			},
 		)

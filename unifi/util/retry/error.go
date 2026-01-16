@@ -14,7 +14,7 @@ type NotFoundError struct {
 	LastRequest  any
 	LastResponse any
 	Message      string
-	Retries      int
+	Retries      int64
 }
 
 func (e *NotFoundError) Error() string {

@@ -4,36 +4,64 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"net"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &clientFrameworkResource{}
-	_ resource.ResourceWithImportState = &clientFrameworkResource{}
+	_ resource.Resource                = &clientResource{}
+	_ resource.ResourceWithImportState = &clientResource{}
+	_ resource.ResourceWithIdentity    = &clientResource{}
+	_ resource.ResourceWithImportState = &clientResource{}
 )
 
-func NewClientFrameworkResource() resource.Resource {
-	return &clientFrameworkResource{}
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &clientResource{}
+	_ list.ListResourceWithConfigure = &clientResource{}
+)
+
+const (
+	defaultSkipForgetOnDestroy = false
+	defaultAllowExisting       = true
+)
+
+func NewClientResource() resource.Resource {
+	return &clientResource{}
 }
 
-// clientFrameworkResource defines the resource implementation.
-type clientFrameworkResource struct {
+func NewClientListResource() list.ListResource {
+	return &clientResource{}
+}
+
+// clientResource defines the resource implementation.
+type clientResource struct {
 	client *Client
 }
 
-// clientFrameworkResourceModel describes the resource data model.
-type clientFrameworkResourceModel struct {
+// clientResourceModel describes the resource data model.
+type clientResourceModel struct {
 	ID                  types.String `tfsdk:"id"`
 	Site                types.String `tfsdk:"site"`
 	MAC                 types.String `tfsdk:"mac"`
@@ -49,11 +77,106 @@ type clientFrameworkResourceModel struct {
 	SkipForgetOnDestroy types.Bool   `tfsdk:"skip_forget_on_destroy"`
 
 	// Computed attributes
-	Hostname types.String `tfsdk:"hostname"`
-	IP       types.String `tfsdk:"ip"`
+	Hostname            types.String `tfsdk:"hostname"`
+	IP                  types.String `tfsdk:"ip"`
+	Anomalies           types.Int64  `tfsdk:"anomalies"`
+	AssocTime           types.Int64  `tfsdk:"assoc_time"`
+	Authorized          types.Bool   `tfsdk:"authorized"`
+	DisconnectTimestamp types.Int64  `tfsdk:"disconnect_timestamp"`
+	EagerlyDiscovered   types.Bool   `tfsdk:"eagerly_discovered"`
+	FingerprintOverride types.Bool   `tfsdk:"fingerprint_override"`
+	FirstSeen           types.Int64  `tfsdk:"first_seen"`
+	HostnameSource      types.String `tfsdk:"hostname_source"`
+	IPv6Addresses       types.List   `tfsdk:"ipv6_addresses"`
+	IsWired             types.Bool   `tfsdk:"is_wired"`
+	LatestAssocTime     types.Int64  `tfsdk:"latest_assoc_time"`
+	Network             types.String `tfsdk:"network"`
+	Noted               types.Bool   `tfsdk:"noted"`
+	OUI                 types.String `tfsdk:"oui"`
+	QOSPolicyApplied    types.Bool   `tfsdk:"qos_policy_applied"`
+	Satisfaction        types.Int64  `tfsdk:"satisfaction"`
+	TxRetries           types.Int64  `tfsdk:"tx_retries"`
+	Uptime              types.Int64  `tfsdk:"uptime"`
+	UserID              types.String `tfsdk:"user_id"`
+	VLAN                types.Int64  `tfsdk:"vlan"`
+
+	// Nested computed attributes
+	Gateway     types.Object `tfsdk:"gateway"`
+	GuestStatus types.Object `tfsdk:"guest_status"`
+	Last        types.Object `tfsdk:"last"`
+	Switch      types.Object `tfsdk:"switch"`
+	UptimeStats types.Object `tfsdk:"uptime_stats"`
+	WiFi        types.Object `tfsdk:"wifi"`
+	Wired       types.Object `tfsdk:"wired"`
 }
 
-func (r *clientFrameworkResource) Metadata(
+type clientGatewayModel struct {
+	MAC  types.String `tfsdk:"mac"`
+	VLAN types.Int64  `tfsdk:"vlan"`
+}
+
+type clientGuestStatusModel struct {
+	IsGuest      types.Bool `tfsdk:"is_guest"`
+	IsGuestByUGW types.Bool `tfsdk:"is_guest_by_ugw"`
+	IsGuestByUSW types.Bool `tfsdk:"is_guest_by_usw"`
+}
+
+type clientLastModel struct {
+	Identity1x            types.String `tfsdk:"identity_1x"`
+	ConnectionNetworkID   types.String `tfsdk:"connection_network_id"`
+	ConnectionNetworkName types.String `tfsdk:"connection_network_name"`
+	IP                    types.String `tfsdk:"ip"`
+	IPv6                  types.List   `tfsdk:"ipv6"`
+	ReachableByGW         types.Int64  `tfsdk:"reachable_by_gw"`
+	Seen                  types.Int64  `tfsdk:"seen"`
+	SeenByUGW             types.Int64  `tfsdk:"seen_by_ugw"`
+	SeenByUSW             types.Int64  `tfsdk:"seen_by_usw"`
+	UplinkMAC             types.String `tfsdk:"uplink_mac"`
+	UplinkName            types.String `tfsdk:"uplink_name"`
+	UplinkRemotePort      types.Int64  `tfsdk:"uplink_remote_port"`
+}
+
+type clientSwitchModel struct {
+	Depth types.Int64  `tfsdk:"depth"`
+	MAC   types.String `tfsdk:"mac"`
+	Port  types.Int64  `tfsdk:"port"`
+}
+
+type clientUptimeStatsModel struct {
+	Uptime      types.Int64 `tfsdk:"uptime"`
+	UptimeByUGW types.Int64 `tfsdk:"uptime_by_ugw"`
+	UptimeByUSW types.Int64 `tfsdk:"uptime_by_usw"`
+}
+
+type clientWiFiModel struct {
+	TxAttempts          types.Int64   `tfsdk:"tx_attempts"`
+	TxDropped           types.Int64   `tfsdk:"tx_dropped"`
+	TxRetriesPercentage types.Float64 `tfsdk:"tx_retries_percentage"`
+}
+
+type clientWiredModel struct {
+	RateMbps  types.Int64   `tfsdk:"rate_mbps"`
+	RxBytes   types.Int64   `tfsdk:"rx_bytes"`
+	RxBytesR  types.Float64 `tfsdk:"rx_bytes_r"`
+	RxPackets types.Int64   `tfsdk:"rx_packets"`
+	TxBytes   types.Int64   `tfsdk:"tx_bytes"`
+	TxBytesR  types.Float64 `tfsdk:"tx_bytes_r"`
+	TxPackets types.Int64   `tfsdk:"tx_packets"`
+}
+
+type clientIdentityModel struct {
+	ID  types.String `tfsdk:"id"`
+	MAC types.String `tfsdk:"mac"`
+}
+
+// clientListConfigModel describes the list configuration model.
+type clientListConfigModel struct {
+	Site        types.String `tfsdk:"site"`
+	NetworkID   types.String `tfsdk:"network_id"`
+	NetworkName types.String `tfsdk:"network_name"`
+}
+
+func (r *clientResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
@@ -61,7 +184,25 @@ func (r *clientFrameworkResource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_client"
 }
 
-func (r *clientFrameworkResource) Schema(
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *clientResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+			"mac": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+func (r *clientResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
@@ -97,49 +238,86 @@ Clients are created in the controller when observed on the network, so the resou
 			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the client.",
-				Required:            true,
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"group_id": schema.StringAttribute{
 				MarkdownDescription: "The group ID to attach to the client (controls QoS and other group-based settings).",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"note": schema.StringAttribute{
 				MarkdownDescription: "A note with additional information for the client.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"fixed_ip": schema.StringAttribute{
 				MarkdownDescription: "A fixed IPv4 address for this client.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"network_id": schema.StringAttribute{
 				MarkdownDescription: "The network ID for this client.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"blocked": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this client should be blocked from the network.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dev_id_override": schema.Int64Attribute{
 				MarkdownDescription: "Override the device fingerprint.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseNonNullStateForUnknown(),
+				},
 			},
 			"local_dns_record": schema.StringAttribute{
 				MarkdownDescription: "Specifies the local DNS record for this client.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"allow_existing": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this resource should just take over control of an existing client.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				Default:             booldefault.StaticBool(defaultAllowExisting),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"skip_forget_on_destroy": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this resource should tell the controller to \"forget\" the client on destroy.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				Default:             booldefault.StaticBool(defaultSkipForgetOnDestroy),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "The hostname of the client.",
@@ -155,11 +333,447 @@ Clients are created in the controller when observed on the network, so the resou
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"anomalies": schema.Int64Attribute{
+				MarkdownDescription: "Number of anomalies detected for this client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"assoc_time": schema.Int64Attribute{
+				MarkdownDescription: "Association time timestamp.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"authorized": schema.BoolAttribute{
+				MarkdownDescription: "Whether the client is authorized.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"disconnect_timestamp": schema.Int64Attribute{
+				MarkdownDescription: "Timestamp of last disconnect.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"eagerly_discovered": schema.BoolAttribute{
+				MarkdownDescription: "Whether the client was eagerly discovered.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"fingerprint_override": schema.BoolAttribute{
+				MarkdownDescription: "Whether device fingerprint is overridden.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"first_seen": schema.Int64Attribute{
+				MarkdownDescription: "Timestamp when client was first seen.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"hostname_source": schema.StringAttribute{
+				MarkdownDescription: "Source of the hostname.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"ipv6_addresses": schema.ListAttribute{
+				MarkdownDescription: "List of IPv6 addresses assigned to the client.",
+				Computed:            true,
+				ElementType:         types.StringType,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"is_wired": schema.BoolAttribute{
+				MarkdownDescription: "Whether the client is connected via wired connection.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"latest_assoc_time": schema.Int64Attribute{
+				MarkdownDescription: "Latest association time timestamp.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"network": schema.StringAttribute{
+				MarkdownDescription: "Network name the client is connected to.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"noted": schema.BoolAttribute{
+				MarkdownDescription: "Whether the client has a note.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"oui": schema.StringAttribute{
+				MarkdownDescription: "Organizationally Unique Identifier from MAC address.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"qos_policy_applied": schema.BoolAttribute{
+				MarkdownDescription: "Whether QoS policy is applied to this client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"satisfaction": schema.Int64Attribute{
+				MarkdownDescription: "Client satisfaction score.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"tx_retries": schema.Int64Attribute{
+				MarkdownDescription: "Number of transmission retries.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"uptime": schema.Int64Attribute{
+				MarkdownDescription: "Client uptime in seconds.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"user_id": schema.StringAttribute{
+				MarkdownDescription: "User ID associated with the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"vlan": schema.Int64Attribute{
+				MarkdownDescription: "VLAN ID the client is on.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"gateway": schema.SingleNestedAttribute{
+				MarkdownDescription: "Gateway information for the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"mac": schema.StringAttribute{
+						MarkdownDescription: "MAC address of the gateway.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"vlan": schema.Int64Attribute{
+						MarkdownDescription: "VLAN ID on the gateway.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"guest_status": schema.SingleNestedAttribute{
+				MarkdownDescription: "Guest status information for the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"is_guest": schema.BoolAttribute{
+						MarkdownDescription: "Whether the client is a guest.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"is_guest_by_ugw": schema.BoolAttribute{
+						MarkdownDescription: "Whether the client is a guest according to UGW.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"is_guest_by_usw": schema.BoolAttribute{
+						MarkdownDescription: "Whether the client is a guest according to USW.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"last": schema.SingleNestedAttribute{
+				MarkdownDescription: "Last known information about the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"identity_1x": schema.StringAttribute{
+						MarkdownDescription: "Last 802.1X identity.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"connection_network_id": schema.StringAttribute{
+						MarkdownDescription: "Last connection network ID.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"connection_network_name": schema.StringAttribute{
+						MarkdownDescription: "Last connection network name.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"ip": schema.StringAttribute{
+						MarkdownDescription: "Last known IP address.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"ipv6": schema.ListAttribute{
+						MarkdownDescription: "Last known IPv6 addresses.",
+						Computed:            true,
+						ElementType:         types.StringType,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"reachable_by_gw": schema.Int64Attribute{
+						MarkdownDescription: "Timestamp when last reachable by gateway.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"seen": schema.Int64Attribute{
+						MarkdownDescription: "Timestamp when client was last seen.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"seen_by_ugw": schema.Int64Attribute{
+						MarkdownDescription: "Timestamp when last seen by UGW.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"seen_by_usw": schema.Int64Attribute{
+						MarkdownDescription: "Timestamp when last seen by USW.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"uplink_mac": schema.StringAttribute{
+						MarkdownDescription: "MAC address of last uplink.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"uplink_name": schema.StringAttribute{
+						MarkdownDescription: "Name of last uplink.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"uplink_remote_port": schema.Int64Attribute{
+						MarkdownDescription: "Remote port of last uplink.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"switch": schema.SingleNestedAttribute{
+				MarkdownDescription: "Switch connection information for the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"depth": schema.Int64Attribute{
+						MarkdownDescription: "Switch depth in the network topology.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"mac": schema.StringAttribute{
+						MarkdownDescription: "MAC address of the connected switch.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"port": schema.Int64Attribute{
+						MarkdownDescription: "Switch port the client is connected to.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"uptime_stats": schema.SingleNestedAttribute{
+				MarkdownDescription: "Uptime statistics for the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"uptime": schema.Int64Attribute{
+						MarkdownDescription: "Client uptime in seconds.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"uptime_by_ugw": schema.Int64Attribute{
+						MarkdownDescription: "Client uptime as reported by UGW.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"uptime_by_usw": schema.Int64Attribute{
+						MarkdownDescription: "Client uptime as reported by USW.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"wifi": schema.SingleNestedAttribute{
+				MarkdownDescription: "WiFi connection statistics for the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"tx_attempts": schema.Int64Attribute{
+						MarkdownDescription: "Number of WiFi transmission attempts.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"tx_dropped": schema.Int64Attribute{
+						MarkdownDescription: "Number of dropped WiFi transmissions.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"tx_retries_percentage": schema.Float64Attribute{
+						MarkdownDescription: "Percentage of WiFi transmission retries.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Float64{
+							float64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"wired": schema.SingleNestedAttribute{
+				MarkdownDescription: "Wired connection statistics for the client.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"rate_mbps": schema.Int64Attribute{
+						MarkdownDescription: "Wired connection rate in Mbps.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"rx_bytes": schema.Int64Attribute{
+						MarkdownDescription: "Bytes received on wired connection.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"rx_bytes_r": schema.Float64Attribute{
+						MarkdownDescription: "Bytes received rate on wired connection.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Float64{
+							float64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"rx_packets": schema.Int64Attribute{
+						MarkdownDescription: "Packets received on wired connection.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"tx_bytes": schema.Int64Attribute{
+						MarkdownDescription: "Bytes transmitted on wired connection.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"tx_bytes_r": schema.Float64Attribute{
+						MarkdownDescription: "Bytes transmitted rate on wired connection.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Float64{
+							float64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"tx_packets": schema.Int64Attribute{
+						MarkdownDescription: "Packets transmitted on wired connection.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
 		},
 	}
 }
 
-func (r *clientFrameworkResource) Configure(
+func (r *clientResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
 	resp *resource.ConfigureResponse,
@@ -183,17 +797,30 @@ func (r *clientFrameworkResource) Configure(
 	r.client = client
 }
 
-func (r *clientFrameworkResource) Create(
+func (r *clientResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
 	resp *resource.CreateResponse,
 ) {
-	var plan clientFrameworkResourceModel
+	var plan clientResourceModel
+	var id clientIdentityModel
 
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &id)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if (id.MAC.IsNull() || id.MAC.IsUnknown()) && (!plan.MAC.IsNull() && !plan.MAC.IsUnknown()) {
+		id.MAC = plan.MAC
+	}
+
+	if (id.ID.IsNull() || id.ID.IsUnknown()) && (!plan.ID.IsNull() && !plan.ID.IsUnknown()) {
+		id.ID = plan.ID
 	}
 
 	site := plan.Site.ValueString()
@@ -253,21 +880,40 @@ func (r *clientFrameworkResource) Create(
 		return
 	}
 
+	if id.MAC.ValueString() != plan.MAC.ValueString() {
+		id.MAC = plan.MAC
+	}
+
+	if id.ID.ValueString() != plan.ID.ValueString() {
+		id.ID = plan.ID
+	}
+
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *clientFrameworkResource) Read(
+func (r *clientResource) Read(
 	ctx context.Context,
 	req resource.ReadRequest,
 	resp *resource.ReadResponse,
 ) {
-	var state clientFrameworkResourceModel
-
-	diags := req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	var id clientIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &id)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	var state clientResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !id.MAC.IsNull() && !id.MAC.IsUnknown() {
+		state.MAC = id.MAC
+	}
+
+	if !id.ID.IsNull() && !id.ID.IsUnknown() {
+		state.ID = id.ID
 	}
 
 	site := state.Site.ValueString()
@@ -275,36 +921,79 @@ func (r *clientFrameworkResource) Read(
 		site = r.client.Site
 	}
 
-	id := state.ID.ValueString()
+	mac := id.MAC.ValueString()
 
 	// Get the Client from the API
-	client, err := r.client.GetClient(ctx, site, id)
-	if err != nil {
+	var client *unifi.Client
+	var err error
+
+	// If we have a MAC address, try to get by MAC first
+	if mac != "" {
+		client, err = r.client.GetClientByMAC(ctx, site, mac)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading Client",
+				"Could not read client with MAC "+mac+": "+err.Error(),
+			)
+			return
+		}
+	} else if id.ID.ValueString() != "" {
+		// Otherwise use ID
+		client, err = r.client.GetClient(ctx, site, id.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading Client",
+				"Could not read client with ID "+id.ID.ValueString()+": "+err.Error(),
+			)
+			return
+		}
+	} else {
 		resp.Diagnostics.AddError(
-			"Error Reading Client",
-			"Could not read client with ID "+id+": "+err.Error(),
+			"Invalid State",
+			"Client must have either an ID or MAC address",
 		)
 		return
 	}
 
 	// Convert API response to model
-	diags = r.clientToModel(ctx, client, &state, site)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(r.clientToModel(ctx, client, &state, site)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = resp.State.Set(ctx, state)
-	resp.Diagnostics.Append(diags...)
+	if id.MAC.IsNull() || id.MAC.IsUnknown() {
+		id.MAC = state.MAC
+	}
+
+	if id.ID.IsNull() || id.ID.IsUnknown() {
+		id.ID = state.ID
+	}
+
+	if state.AllowExisting.IsNull() || state.AllowExisting.IsUnknown() {
+		state.AllowExisting = types.BoolValue(defaultAllowExisting)
+	}
+
+	if state.SkipForgetOnDestroy.IsNull() || state.SkipForgetOnDestroy.IsUnknown() {
+		state.SkipForgetOnDestroy = types.BoolValue(defaultSkipForgetOnDestroy)
+	}
+
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, id)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-func (r *clientFrameworkResource) Update(
+func (r *clientResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state clientFrameworkResourceModel
-	var plan clientFrameworkResourceModel
+	var state clientResourceModel
+	var plan clientResourceModel
+	var id clientIdentityModel
+
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &id)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Step 1: Read the current state (which already contains API values from previous reads)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -316,6 +1005,14 @@ func (r *clientFrameworkResource) Update(
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if (id.MAC.IsNull() || id.MAC.IsUnknown()) && (!plan.MAC.IsNull() && !plan.MAC.IsUnknown()) {
+		id.MAC = plan.MAC
+	}
+
+	if (id.ID.IsNull() || id.ID.IsUnknown()) && (!plan.ID.IsNull() && !plan.ID.IsUnknown()) {
+		id.ID = plan.ID
 	}
 
 	// Step 2: Apply the plan changes to the state object
@@ -351,14 +1048,22 @@ func (r *clientFrameworkResource) Update(
 		return
 	}
 
+	if id.MAC.ValueString() != state.MAC.ValueString() {
+		id.MAC = state.MAC
+	}
+
+	if id.ID.ValueString() != state.ID.ValueString() {
+		id.ID = state.ID
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *clientFrameworkResource) applyPlanToState(
+func (r *clientResource) applyPlanToState(
 	_ context.Context,
-	plan *clientFrameworkResourceModel,
-	state *clientFrameworkResourceModel,
+	plan *clientResourceModel,
+	state *clientResourceModel,
 ) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.MAC.IsNull() && !plan.MAC.IsUnknown() {
@@ -397,12 +1102,12 @@ func (r *clientFrameworkResource) applyPlanToState(
 	// Note: Computed attributes (Hostname, IP) are not applied from plan
 }
 
-func (r *clientFrameworkResource) Delete(
+func (r *clientResource) Delete(
 	ctx context.Context,
 	req resource.DeleteRequest,
 	resp *resource.DeleteResponse,
 ) {
-	var state clientFrameworkResourceModel
+	var state clientResourceModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -446,25 +1151,54 @@ func (r *clientFrameworkResource) Delete(
 	}
 }
 
-func (r *clientFrameworkResource) ImportState(
+func (r *clientResource) ImportState(
 	ctx context.Context,
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
+	pathAttr := "id"
+
+	var idModel clientIdentityModel
+	if d := req.Identity.Get(ctx, &idModel); !d.HasError() {
+		if !idModel.MAC.IsNull() && !idModel.MAC.IsUnknown() {
+			pathAttr = "mac"
+		}
+	} else if req.ID != "" {
+		if _, err := net.ParseMAC(req.ID); err == nil {
+			pathAttr = "mac"
+		}
 	} else {
-		resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+		resp.Diagnostics.Append(d...)
+		return
 	}
+
+	if req.ID != "" {
+		if pathAttr == "id" {
+			idModel.ID = util.StringValueOrNull(req.ID)
+		} else {
+			idModel.MAC = util.StringValueOrNull(req.ID)
+		}
+	}
+
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resource.ImportStatePassthroughWithIdentity(
+		ctx,
+		path.Root(pathAttr),
+		path.Root(pathAttr),
+		req,
+		resp,
+	)
 }
 
 // Helper functions for conversion and merging
 
-func (r *clientFrameworkResource) planToClient(
+func (r *clientResource) planToClient(
 	_ context.Context,
-	plan clientFrameworkResourceModel,
+	plan clientResourceModel,
 ) (*unifi.Client, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
@@ -477,41 +1211,34 @@ func (r *clientFrameworkResource) planToClient(
 	}
 
 	client := &unifi.Client{
-		ID:          plan.ID.ValueString(),
-		MAC:         plan.MAC.ValueString(),
-		Name:        plan.Name.ValueString(),
-		UserGroupID: plan.GroupID.ValueString(),
-		Note:        plan.Note.ValueString(),
-		FixedIP:     plan.FixedIP.ValueString(),
-		NetworkID:   plan.NetworkID.ValueString(),
-		Blocked: func() string {
-			if plan.Blocked.ValueBool() {
-				return "true"
-			} else {
-				return "false"
-			}
-		}(),
+		ID:             plan.ID.ValueString(),
+		MAC:            plan.MAC.ValueString(),
+		Name:           plan.Name.ValueString(),
+		UserGroupID:    plan.GroupID.ValueString(),
+		Note:           plan.Note.ValueString(),
+		FixedIP:        plan.FixedIP.ValueString(),
+		NetworkID:      plan.NetworkID.ValueString(),
+		Blocked:        plan.Blocked.ValueBool(),
 		LocalDNSRecord: plan.LocalDNSRecord.ValueString(),
 	}
 
 	// Note: DevIDOverride is not available in the Client type
 	// if !plan.DevIDOverride.IsNull() && !plan.DevIDOverride.IsUnknown() {
-	// 	client.DevIdOverride = int(plan.DevIDOverride.ValueInt64())
+	// 	client.DevIdOverride = plan.DevIDOverride.ValueInt64()
 	// }
 
 	return client, diags
 }
 
-func (r *clientFrameworkResource) clientToModel(
-	_ context.Context,
+func (r *clientResource) clientToModel(
+	ctx context.Context,
 	client *unifi.Client,
-	model *clientFrameworkResourceModel,
+	model *clientResourceModel,
 	site string,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	if client.ID == "" && client.Name == "" && client.MAC == "" {
-
 		diags.AddError(
 			"Invalid Client",
 			"Client must have either an ID, Name, or MAC to be imported",
@@ -519,64 +1246,219 @@ func (r *clientFrameworkResource) clientToModel(
 		return diags
 	}
 
-	model.ID = types.StringValue(client.ID)
-	model.Site = types.StringValue(site)
-	model.MAC = types.StringValue(client.MAC)
-	model.Name = types.StringValue(client.Name)
+	model.ID = util.StringValueOrNull(client.ID)
+	model.Site = util.StringValueOrNull(site)
+	model.MAC = util.StringValueOrNull(client.MAC)
+	model.Name = util.StringValueOrNull(client.Name)
+	model.GroupID = util.StringValueOrNull(client.UserGroupID)
+	model.Note = util.StringValueOrNull(client.Note)
+	model.FixedIP = util.StringValueOrNull(client.FixedIP)
+	model.NetworkID = util.StringValueOrNull(client.NetworkID)
 
-	if client.UserGroupID != "" {
-		model.GroupID = types.StringValue(client.UserGroupID)
-	} else {
-		model.GroupID = types.StringNull()
-	}
-
-	if client.Note != "" {
-		model.Note = types.StringValue(client.Note)
-	} else {
-		model.Note = types.StringNull()
-	}
-
-	if client.FixedIP != "" {
-		model.FixedIP = types.StringValue(client.FixedIP)
-	} else {
-		model.FixedIP = types.StringNull()
-	}
-
-	if client.NetworkID != "" {
-		model.NetworkID = types.StringValue(client.NetworkID)
-	} else {
-		model.NetworkID = types.StringNull()
-	}
-
-	// Blocked field is string in Client type
-	model.Blocked = types.BoolValue(client.Blocked == "true")
-
-	// DevIdOverride not available in Client type
-	model.DevIDOverride = types.Int64Null()
-
-	if client.LocalDNSRecord != "" {
-		model.LocalDNSRecord = types.StringValue(client.LocalDNSRecord)
-	} else {
-		model.LocalDNSRecord = types.StringNull()
-	}
+	model.Blocked = types.BoolValue(client.Blocked)
+	model.DevIDOverride = types.Int64PointerValue(client.DevIdOverride)
+	model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
 
 	// Computed attributes
-	if client.Hostname != "" {
-		model.Hostname = types.StringValue(client.Hostname)
+	model.Hostname = util.StringValueOrNull(client.Hostname)
+
+	model.Anomalies = types.Int64PointerValue(client.Anomalies)
+	model.AssocTime = types.Int64PointerValue(client.AssocTime)
+	model.Authorized = types.BoolValue(client.Authorized)
+	model.DisconnectTimestamp = types.Int64PointerValue(client.DisconnectTimestamp)
+	model.EagerlyDiscovered = types.BoolValue(client.EagerlyDiscovered)
+	model.FingerprintOverride = types.BoolValue(client.FingerprintOverride)
+	model.FirstSeen = types.Int64PointerValue(client.FirstSeen)
+	model.HostnameSource = util.StringValueOrNull(client.HostnameSource)
+	model.IsWired = types.BoolValue(client.IsWired)
+	model.LatestAssocTime = types.Int64PointerValue(client.LatestAssocTime)
+	model.Network = util.StringValueOrNull(client.Network)
+	model.Noted = types.BoolValue(client.Noted)
+	model.OUI = util.StringValueOrNull(client.OUI)
+	model.QOSPolicyApplied = types.BoolValue(client.QOSPolicyApplied)
+	model.Satisfaction = types.Int64PointerValue(client.Satisfaction)
+	model.TxRetries = types.Int64PointerValue(client.TxRetries)
+	model.Uptime = types.Int64PointerValue(client.Uptime)
+	model.UserID = util.StringValueOrNull(client.UserID)
+	model.VLAN = types.Int64PointerValue(client.VLAN)
+
+	// IPv6 addresses list
+	if len(client.IPv6Addresses) > 0 {
+		ipv6Values := make([]attr.Value, len(client.IPv6Addresses))
+		for i, addr := range client.IPv6Addresses {
+			ipv6Values[i] = util.StringValueOrNull(addr)
+		}
+		var listDiags diag.Diagnostics
+		model.IPv6Addresses, listDiags = types.ListValue(types.StringType, ipv6Values)
+		diags.Append(listDiags...)
 	} else {
-		model.Hostname = types.StringNull()
+		model.IPv6Addresses = types.ListNull(types.StringType)
 	}
 
-	if client.LastSeen != "" {
-		model.IP = types.StringValue(client.LastSeen)
+	// Gateway nested object
+	gatewayAttrs := map[string]attr.Type{
+		"mac":  types.StringType,
+		"vlan": types.Int64Type,
+	}
+	if client.GWMAC != "" || client.GWVLAN != nil {
+		gatewayValues := map[string]attr.Value{
+			"mac":  util.StringValueOrNull(client.GWMAC),
+			"vlan": types.Int64PointerValue(client.GWVLAN),
+		}
+		var objDiags diag.Diagnostics
+		model.Gateway, objDiags = types.ObjectValue(gatewayAttrs, gatewayValues)
+		diags.Append(objDiags...)
 	} else {
-		model.IP = types.StringNull()
+		model.Gateway = types.ObjectNull(gatewayAttrs)
+	}
+
+	// Guest status nested object
+	guestStatusAttrs := map[string]attr.Type{
+		"is_guest":        types.BoolType,
+		"is_guest_by_ugw": types.BoolType,
+		"is_guest_by_usw": types.BoolType,
+	}
+	guestStatusValues := map[string]attr.Value{
+		"is_guest":        types.BoolValue(client.IsGuest),
+		"is_guest_by_ugw": types.BoolValue(client.IsGuestByUGW),
+		"is_guest_by_usw": types.BoolValue(client.IsGuestByUSW),
+	}
+	var guestDiags diag.Diagnostics
+	model.GuestStatus, guestDiags = types.ObjectValue(guestStatusAttrs, guestStatusValues)
+	diags.Append(guestDiags...)
+
+	// Last nested object
+	lastAttrs := map[string]attr.Type{
+		"identity_1x":             types.StringType,
+		"connection_network_id":   types.StringType,
+		"connection_network_name": types.StringType,
+		"ip":                      types.StringType,
+		"ipv6":                    types.ListType{ElemType: types.StringType},
+		"reachable_by_gw":         types.Int64Type,
+		"seen":                    types.Int64Type,
+		"seen_by_ugw":             types.Int64Type,
+		"seen_by_usw":             types.Int64Type,
+		"uplink_mac":              types.StringType,
+		"uplink_name":             types.StringType,
+		"uplink_remote_port":      types.Int64Type,
+	}
+
+	var lastIPv6 basetypes.ListValue
+	if len(client.LastIPv6) > 0 {
+		lastIPv6Values := make([]attr.Value, len(client.LastIPv6))
+		for i, addr := range client.LastIPv6 {
+			lastIPv6Values[i] = util.StringValueOrNull(addr)
+		}
+		var listDiags diag.Diagnostics
+		lastIPv6, listDiags = types.ListValue(types.StringType, lastIPv6Values)
+		diags.Append(listDiags...)
+	} else {
+		lastIPv6 = types.ListNull(types.StringType)
+	}
+
+	lastValues := map[string]attr.Value{
+		"identity_1x":             util.StringValueOrNull(client.Last1xIdentity),
+		"connection_network_id":   util.StringValueOrNull(client.LastConnectionNetworkID),
+		"connection_network_name": util.StringValueOrNull(client.LastConnectionNetworkName),
+		"ip":                      util.StringValueOrNull(client.LastIP),
+		"ipv6":                    lastIPv6,
+		"reachable_by_gw":         types.Int64PointerValue(client.LastReachableByGW),
+		"seen":                    types.Int64PointerValue(client.LastSeen),
+		"seen_by_ugw":             types.Int64PointerValue(client.LastSeenByUGW),
+		"seen_by_usw":             types.Int64PointerValue(client.LastSeenByUSW),
+		"uplink_mac":              util.StringValueOrNull(client.LastUplinkMAC),
+		"uplink_name":             util.StringValueOrNull(client.LastUplinkName),
+		"uplink_remote_port":      types.Int64PointerValue(client.LastUplinkRemotePort),
+	}
+	var lastDiags diag.Diagnostics
+	model.Last, lastDiags = types.ObjectValue(lastAttrs, lastValues)
+	diags.Append(lastDiags...)
+
+	// Switch nested object
+	switchAttrs := map[string]attr.Type{
+		"depth": types.Int64Type,
+		"mac":   types.StringType,
+		"port":  types.Int64Type,
+	}
+	if client.SwMAC != "" || client.SwDepth != nil || client.SwPort != nil {
+		switchValues := map[string]attr.Value{
+			"depth": types.Int64PointerValue(client.SwDepth),
+			"mac":   util.StringValueOrNull(client.SwMAC),
+			"port":  types.Int64PointerValue(client.SwPort),
+		}
+		var switchDiags diag.Diagnostics
+		model.Switch, switchDiags = types.ObjectValue(switchAttrs, switchValues)
+		diags.Append(switchDiags...)
+	} else {
+		model.Switch = types.ObjectNull(switchAttrs)
+	}
+
+	// Uptime stats nested object
+	uptimeStatsAttrs := map[string]attr.Type{
+		"uptime":        types.Int64Type,
+		"uptime_by_ugw": types.Int64Type,
+		"uptime_by_usw": types.Int64Type,
+	}
+	uptimeStatsValues := map[string]attr.Value{
+		"uptime":        types.Int64PointerValue(client.Uptime),
+		"uptime_by_ugw": types.Int64PointerValue(client.UptimeByUGW),
+		"uptime_by_usw": types.Int64PointerValue(client.UptimeByUSW),
+	}
+	var uptimeDiags diag.Diagnostics
+	model.UptimeStats, uptimeDiags = types.ObjectValue(uptimeStatsAttrs, uptimeStatsValues)
+	diags.Append(uptimeDiags...)
+
+	// WiFi nested object
+	wifiAttrs := map[string]attr.Type{
+		"tx_attempts":           types.Int64Type,
+		"tx_dropped":            types.Int64Type,
+		"tx_retries_percentage": types.Float64Type,
+	}
+	if client.WiFiTxAttempts != nil || client.WiFiTxDropped != nil ||
+		client.WiFiTxRetriesPercentage != 0 {
+		wifiValues := map[string]attr.Value{
+			"tx_attempts":           types.Int64PointerValue(client.WiFiTxAttempts),
+			"tx_dropped":            types.Int64PointerValue(client.WiFiTxDropped),
+			"tx_retries_percentage": types.Float64Value(client.WiFiTxRetriesPercentage),
+		}
+		var wifiDiags diag.Diagnostics
+		model.WiFi, wifiDiags = types.ObjectValue(wifiAttrs, wifiValues)
+		diags.Append(wifiDiags...)
+	} else {
+		model.WiFi = types.ObjectNull(wifiAttrs)
+	}
+
+	// Wired nested object
+	wiredAttrs := map[string]attr.Type{
+		"rate_mbps":  types.Int64Type,
+		"rx_bytes":   types.Int64Type,
+		"rx_bytes_r": types.Float64Type,
+		"rx_packets": types.Int64Type,
+		"tx_bytes":   types.Int64Type,
+		"tx_bytes_r": types.Float64Type,
+		"tx_packets": types.Int64Type,
+	}
+	if client.WiredRateMbps != nil || client.WiredRxBytes != nil || client.WiredTxBytes != nil {
+		wiredValues := map[string]attr.Value{
+			"rate_mbps":  types.Int64PointerValue(client.WiredRateMbps),
+			"rx_bytes":   types.Int64PointerValue(client.WiredRxBytes),
+			"rx_bytes_r": types.Float64Value(client.WiredRxBytesR),
+			"rx_packets": types.Int64PointerValue(client.WiredRxPackets),
+			"tx_bytes":   types.Int64PointerValue(client.WiredTxBytes),
+			"tx_bytes_r": types.Float64Value(client.WiredTxBytesR),
+			"tx_packets": types.Int64PointerValue(client.WiredTxPackets),
+		}
+		var wiredDiags diag.Diagnostics
+		model.Wired, wiredDiags = types.ObjectValue(wiredAttrs, wiredValues)
+		diags.Append(wiredDiags...)
+	} else {
+		model.Wired = types.ObjectNull(wiredAttrs)
 	}
 
 	return diags
 }
 
-func (r *clientFrameworkResource) mergeClient(
+func (r *clientResource) mergeClient(
 	existing *unifi.Client,
 	planned *unifi.Client,
 ) *unifi.Client {
@@ -593,4 +1475,117 @@ func (r *clientFrameworkResource) mergeClient(
 	merged.LocalDNSRecord = planned.LocalDNSRecord
 
 	return &merged
+}
+
+func (r *clientResource) ListResourceConfigSchema(
+	ctx context.Context,
+	req list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List clients in a site, optionally filtered by network.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list clients from.",
+				Optional:            true,
+			},
+			"network_id": listschema.StringAttribute{
+				MarkdownDescription: "Filter clients by network ID.",
+				Optional:            true,
+			},
+			"network_name": listschema.StringAttribute{
+				MarkdownDescription: "Filter clients by network name.",
+				Optional:            true,
+			},
+		},
+	}
+}
+
+func (r *clientResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config clientListConfigModel
+
+	// Read list config data into the model
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Resolve network_id if network_name is provided
+	networkID := config.NetworkID.ValueString()
+	if !config.NetworkName.IsNull() && !config.NetworkName.IsUnknown() {
+		networkName := config.NetworkName.ValueString()
+		network, err := r.client.GetNetworkByName(ctx, site, networkName)
+		if err != nil {
+			result := req.NewListResult(ctx)
+			result.Diagnostics.AddError(
+				"Error Getting Network by Name",
+				"Could not get network with name "+networkName+": "+err.Error(),
+			)
+			stream.Results = list.ListResultsStreamDiagnostics(result.Diagnostics)
+			return
+		}
+		networkID = network.ID
+	}
+
+	// List all clients
+	clients, err := r.client.ListClient(ctx, site)
+	if err != nil {
+		result := req.NewListResult(ctx)
+		result.Diagnostics.AddError(
+			"Error Listing Clients",
+			"Could not list clients: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(result.Diagnostics)
+		return
+	}
+
+	// Define the function that will push results into the stream
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, client := range clients {
+			// Apply network filter if specified
+			if networkID != "" && client.NetworkID != networkID {
+				continue
+			}
+
+			// Initialize a new result object for each client
+			result := req.NewListResult(ctx)
+
+			// Set the user-friendly name of this client
+			if client.Name != "" {
+				result.DisplayName = client.Name
+			} else if client.Hostname != "" {
+				result.DisplayName = client.Hostname
+			} else {
+				result.DisplayName = client.MAC
+			}
+
+			// Set resource identity data on the result
+			result.Diagnostics.Append(result.Identity.Set(ctx, client.ID)...)
+
+			// Convert the client to the resource model
+			var model clientResourceModel
+			modelDiags := r.clientToModel(ctx, &client, &model, site)
+			result.Diagnostics.Append(modelDiags...)
+
+			// Set the resource information on the result
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			// Send the result to the stream.
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

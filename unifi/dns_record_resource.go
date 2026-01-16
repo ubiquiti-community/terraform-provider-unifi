@@ -393,11 +393,11 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(
 	}
 
 	if !model.Port.IsNull() {
-		dnsRecord.Port = int(model.Port.ValueInt64())
+		dnsRecord.Port = model.Port.ValueInt64()
 	}
 
 	if !model.Priority.IsNull() {
-		dnsRecord.Priority = int(model.Priority.ValueInt64())
+		dnsRecord.Priority = model.Priority.ValueInt64()
 	}
 
 	if !model.RecordType.IsNull() {
@@ -405,11 +405,11 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(
 	}
 
 	if !model.TTL.IsNull() {
-		dnsRecord.Ttl = int(model.TTL.ValueInt64())
+		dnsRecord.Ttl = model.TTL.ValueInt64()
 	}
 
 	if !model.Weight.IsNull() {
-		dnsRecord.Weight = int(model.Weight.ValueInt64())
+		dnsRecord.Weight = model.Weight.ValueInt64()
 	}
 
 	return dnsRecord

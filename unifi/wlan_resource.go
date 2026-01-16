@@ -772,7 +772,7 @@ func (r *wlanFrameworkResource) planToWLAN(
 		Enabled:                  plan.Enabled.ValueBool(),
 		ApGroupMode:              plan.ApGroupMode.ValueString(),
 		VLANEnabled:              plan.VLANEnabled.ValueBool(),
-		VLAN:                     int(plan.VLAN.ValueInt64()),
+		VLAN:                     plan.VLAN.ValueInt64(),
 		MulticastEnhanceEnabled:  plan.MulticastEnhance.ValueBool(),
 		RADIUSProfileID:          plan.RadiusProfileID.ValueString(),
 		NasIDentifierType:        plan.NasIDentifierType.ValueString(),
@@ -784,9 +784,9 @@ func (r *wlanFrameworkResource) planToWLAN(
 		FastRoamingEnabled:       plan.FastRoamingEnabled.ValueBool(),
 		MinrateSettingPreference: plan.MinrateSettingPreference.ValueString(),
 		MinrateNgEnabled:         plan.MinimumDataRate2GKbps.ValueInt64() != 0,
-		MinrateNgDataRateKbps:    int(plan.MinimumDataRate2GKbps.ValueInt64()),
+		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64(),
 		MinrateNaEnabled:         plan.MinimumDataRate5GKbps.ValueInt64() != 0,
-		MinrateNaDataRateKbps:    int(plan.MinimumDataRate5GKbps.ValueInt64()),
+		MinrateNaDataRateKbps:    plan.MinimumDataRate5GKbps.ValueInt64(),
 
 		// Set defaults that UniFi expects
 		GroupRekey:         3600,
@@ -875,9 +875,9 @@ func (r *wlanFrameworkResource) planToWLAN(
 				wlan.ScheduleWithDuration,
 				unifi.WLANScheduleWithDuration{
 					StartDaysOfWeek: []string{sched.DayOfWeek.ValueString()},
-					StartHour:       int(sched.StartHour.ValueInt64()),
-					StartMinute:     int(sched.StartMinute.ValueInt64()),
-					DurationMinutes: int(sched.Duration.ValueInt64()),
+					StartHour:       sched.StartHour.ValueInt64(),
+					StartMinute:     sched.StartMinute.ValueInt64(),
+					DurationMinutes: sched.Duration.ValueInt64(),
 					Name:            sched.Name.ValueString(),
 				},
 			)

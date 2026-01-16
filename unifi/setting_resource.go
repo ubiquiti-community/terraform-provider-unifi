@@ -972,13 +972,13 @@ func (r *settingResource) radiusModelToSetting(
 		setting.AccountingEnabled = model.AccountingEnabled.ValueBool()
 	}
 	if !model.AcctPort.IsNull() {
-		setting.AcctPort = int(model.AcctPort.ValueInt64())
+		setting.AcctPort = model.AcctPort.ValueInt64()
 	}
 	if !model.AuthPort.IsNull() {
-		setting.AuthPort = int(model.AuthPort.ValueInt64())
+		setting.AuthPort = model.AuthPort.ValueInt64()
 	}
 	if !model.InterimUpdateInterval.IsNull() {
-		setting.InterimUpdateInterval = int(model.InterimUpdateInterval.ValueInt64())
+		setting.InterimUpdateInterval = model.InterimUpdateInterval.ValueInt64()
 	}
 	if !model.Secret.IsNull() {
 		setting.XSecret = model.Secret.ValueString()
@@ -1074,7 +1074,7 @@ func (r *settingResource) usgModelToSetting(
 		setting.H323Module = model.H323Module.ValueBool()
 	}
 	if !model.ICMPTimeout.IsNull() {
-		setting.ICMPTimeout = int(model.ICMPTimeout.ValueInt64())
+		setting.ICMPTimeout = model.ICMPTimeout.ValueInt64()
 	}
 	if !model.MssClamp.IsNull() {
 		setting.MssClamp = model.MssClamp.ValueString()
@@ -1089,7 +1089,7 @@ func (r *settingResource) usgModelToSetting(
 		setting.OffloadSch = model.OffloadSch.ValueBool()
 	}
 	if !model.OtherTimeout.IsNull() {
-		setting.OtherTimeout = int(model.OtherTimeout.ValueInt64())
+		setting.OtherTimeout = model.OtherTimeout.ValueInt64()
 	}
 	if !model.PptpModule.IsNull() {
 		setting.PptpModule = model.PptpModule.ValueBool()
@@ -1107,28 +1107,28 @@ func (r *settingResource) usgModelToSetting(
 		setting.SynCookies = model.SynCookies.ValueBool()
 	}
 	if !model.TCPCloseTimeout.IsNull() {
-		setting.TCPCloseTimeout = int(model.TCPCloseTimeout.ValueInt64())
+		setting.TCPCloseTimeout = model.TCPCloseTimeout.ValueInt64()
 	}
 	if !model.TCPCloseWaitTimeout.IsNull() {
-		setting.TCPCloseWaitTimeout = int(model.TCPCloseWaitTimeout.ValueInt64())
+		setting.TCPCloseWaitTimeout = model.TCPCloseWaitTimeout.ValueInt64()
 	}
 	if !model.TCPEstablishedTimeout.IsNull() {
-		setting.TCPEstablishedTimeout = int(model.TCPEstablishedTimeout.ValueInt64())
+		setting.TCPEstablishedTimeout = model.TCPEstablishedTimeout.ValueInt64()
 	}
 	if !model.TCPFinWaitTimeout.IsNull() {
-		setting.TCPFinWaitTimeout = int(model.TCPFinWaitTimeout.ValueInt64())
+		setting.TCPFinWaitTimeout = model.TCPFinWaitTimeout.ValueInt64()
 	}
 	if !model.TCPLastAckTimeout.IsNull() {
-		setting.TCPLastAckTimeout = int(model.TCPLastAckTimeout.ValueInt64())
+		setting.TCPLastAckTimeout = model.TCPLastAckTimeout.ValueInt64()
 	}
 	if !model.TCPSynRecvTimeout.IsNull() {
-		setting.TCPSynRecvTimeout = int(model.TCPSynRecvTimeout.ValueInt64())
+		setting.TCPSynRecvTimeout = model.TCPSynRecvTimeout.ValueInt64()
 	}
 	if !model.TCPSynSentTimeout.IsNull() {
-		setting.TCPSynSentTimeout = int(model.TCPSynSentTimeout.ValueInt64())
+		setting.TCPSynSentTimeout = model.TCPSynSentTimeout.ValueInt64()
 	}
 	if !model.TCPTimeWaitTimeout.IsNull() {
-		setting.TCPTimeWaitTimeout = int(model.TCPTimeWaitTimeout.ValueInt64())
+		setting.TCPTimeWaitTimeout = model.TCPTimeWaitTimeout.ValueInt64()
 	}
 	if !model.TFTPModule.IsNull() {
 		setting.TFTPModule = model.TFTPModule.ValueBool()
@@ -1137,10 +1137,10 @@ func (r *settingResource) usgModelToSetting(
 		setting.TimeoutSettingPreference = model.TimeoutSettingPreference.ValueString()
 	}
 	if !model.UDPOtherTimeout.IsNull() {
-		setting.UDPOtherTimeout = int(model.UDPOtherTimeout.ValueInt64())
+		setting.UDPOtherTimeout = model.UDPOtherTimeout.ValueInt64()
 	}
 	if !model.UDPStreamTimeout.IsNull() {
-		setting.UDPStreamTimeout = int(model.UDPStreamTimeout.ValueInt64())
+		setting.UDPStreamTimeout = model.UDPStreamTimeout.ValueInt64()
 	}
 	if !model.UnbindWANMonitors.IsNull() {
 		setting.UnbindWANMonitors = model.UnbindWANMonitors.ValueBool()

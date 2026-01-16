@@ -369,7 +369,7 @@ func (r *staticRouteFrameworkResource) modelToRouting(
 		Type:                "static-route",
 		Name:                model.Name.ValueString(),
 		StaticRouteNetwork:  model.Network.ValueString(), // TODO: Apply cidrZeroBased if needed
-		StaticRouteDistance: int(model.Distance.ValueInt64()),
+		StaticRouteDistance: model.Distance.ValueInt64(),
 		StaticRouteType:     routeType,
 	}
 

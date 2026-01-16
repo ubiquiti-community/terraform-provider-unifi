@@ -1326,7 +1326,7 @@ func (r *deviceResource) setResourceData(
 		model.Type = types.StringValue(device.Type)
 	}
 
-	// State is always present as int
+	// State is always present as int64
 	model.State = types.Int64Value(int64(device.State))
 
 	// LED settings
@@ -1493,7 +1493,7 @@ func (r *deviceResource) modelToAPIDevice(
 		device.LedOverrideColor = model.LedOverrideColor.ValueString()
 	}
 	if !model.LedOverrideColorBrightness.IsNull() {
-		device.LedOverrideColorBrightness = int(model.LedOverrideColorBrightness.ValueInt64())
+		device.LedOverrideColorBrightness = model.LedOverrideColorBrightness.ValueInt64()
 	}
 
 	// Device features
@@ -1523,7 +1523,7 @@ func (r *deviceResource) modelToAPIDevice(
 		device.OutdoorModeOverride = model.OutdoorModeOverride.ValueString()
 	}
 	if !model.Volume.IsNull() {
-		device.Volume = int(model.Volume.ValueInt64())
+		device.Volume = model.Volume.ValueInt64()
 	}
 	if !model.XBaresipPassword.IsNull() {
 		device.XBaresipPassword = model.XBaresipPassword.ValueString()
@@ -1531,11 +1531,11 @@ func (r *deviceResource) modelToAPIDevice(
 
 	// LCD/LCM settings
 	if !model.LcmBrightness.IsNull() {
-		device.LcmBrightness = int(model.LcmBrightness.ValueInt64())
+		device.LcmBrightness = model.LcmBrightness.ValueInt64()
 	}
 	device.LcmBrightnessOverride = model.LcmBrightnessOverride.ValueBool()
 	if !model.LcmIDleTimeout.IsNull() {
-		device.LcmIDleTimeout = int(model.LcmIDleTimeout.ValueInt64())
+		device.LcmIDleTimeout = model.LcmIDleTimeout.ValueInt64()
 	}
 	device.LcmIDleTimeoutOverride = model.LcmIDleTimeoutOverride.ValueBool()
 	if !model.LcmNightModeBegins.IsNull() {
@@ -1877,7 +1877,7 @@ func (r *deviceResource) frameworkToPortOverrides(
 	var diags diag.Diagnostics
 
 	elements := portOverrideSet.Elements()
-	overrideMap := make(map[int]unifi.DevicePortOverrides)
+	overrideMap := make(map[int64]unifi.DevicePortOverrides)
 
 	for _, elem := range elements {
 		var model portOverrideModel
@@ -1887,7 +1887,7 @@ func (r *deviceResource) frameworkToPortOverrides(
 				return nil, diags
 			}
 
-			idx := int(model.Number.ValueInt64())
+			idx := model.Number.ValueInt64()
 			po := unifi.DevicePortOverrides{
 				PortIDX: idx,
 			}
@@ -1947,51 +1947,51 @@ func (r *deviceResource) frameworkToPortOverrides(
 
 			// Int64 attributes
 			if !model.Dot1XIDleTimeout.IsNull() {
-				po.Dot1XIDleTimeout = int(model.Dot1XIDleTimeout.ValueInt64())
+				po.Dot1XIDleTimeout = model.Dot1XIDleTimeout.ValueInt64()
 			}
 			if !model.EgressRateLimitKbps.IsNull() {
-				po.EgressRateLimitKbps = int(model.EgressRateLimitKbps.ValueInt64())
+				po.EgressRateLimitKbps = model.EgressRateLimitKbps.ValueInt64()
 			}
 			if !model.MirrorPortIDX.IsNull() {
-				po.MirrorPortIDX = int(model.MirrorPortIDX.ValueInt64())
+				po.MirrorPortIDX = model.MirrorPortIDX.ValueInt64()
 			}
 			if !model.PriorityQueue1Level.IsNull() {
-				po.PriorityQueue1Level = int(model.PriorityQueue1Level.ValueInt64())
+				po.PriorityQueue1Level = model.PriorityQueue1Level.ValueInt64()
 			}
 			if !model.PriorityQueue2Level.IsNull() {
-				po.PriorityQueue2Level = int(model.PriorityQueue2Level.ValueInt64())
+				po.PriorityQueue2Level = model.PriorityQueue2Level.ValueInt64()
 			}
 			if !model.PriorityQueue3Level.IsNull() {
-				po.PriorityQueue3Level = int(model.PriorityQueue3Level.ValueInt64())
+				po.PriorityQueue3Level = model.PriorityQueue3Level.ValueInt64()
 			}
 			if !model.PriorityQueue4Level.IsNull() {
-				po.PriorityQueue4Level = int(model.PriorityQueue4Level.ValueInt64())
+				po.PriorityQueue4Level = model.PriorityQueue4Level.ValueInt64()
 			}
 			if !model.Speed.IsNull() {
-				po.Speed = int(model.Speed.ValueInt64())
+				po.Speed = model.Speed.ValueInt64()
 			}
 			if !model.StormctrlBroadcastLevel.IsNull() {
-				po.StormctrlBroadcastastLevel = int(model.StormctrlBroadcastLevel.ValueInt64())
+				po.StormctrlBroadcastastLevel = model.StormctrlBroadcastLevel.ValueInt64()
 			}
 			if !model.StormctrlBroadcastRate.IsNull() {
-				po.StormctrlBroadcastastRate = int(model.StormctrlBroadcastRate.ValueInt64())
+				po.StormctrlBroadcastastRate = model.StormctrlBroadcastRate.ValueInt64()
 			}
 			if !model.StormctrlMcastLevel.IsNull() {
-				po.StormctrlMcastLevel = int(model.StormctrlMcastLevel.ValueInt64())
+				po.StormctrlMcastLevel = model.StormctrlMcastLevel.ValueInt64()
 			}
 			if !model.StormctrlMcastRate.IsNull() {
-				po.StormctrlMcastRate = int(model.StormctrlMcastRate.ValueInt64())
+				po.StormctrlMcastRate = model.StormctrlMcastRate.ValueInt64()
 			}
 			if !model.StormctrlUcastLevel.IsNull() {
-				po.StormctrlUcastLevel = int(model.StormctrlUcastLevel.ValueInt64())
+				po.StormctrlUcastLevel = model.StormctrlUcastLevel.ValueInt64()
 			}
 			if !model.StormctrlUcastRate.IsNull() {
-				po.StormctrlUcastRate = int(model.StormctrlUcastRate.ValueInt64())
+				po.StormctrlUcastRate = model.StormctrlUcastRate.ValueInt64()
 			}
 
 			// List attributes
 			if !model.AggregateMembers.IsNull() {
-				var aggrMembers []int
+				var aggrMembers []int64
 				diags.Append(model.AggregateMembers.ElementsAs(ctx, &aggrMembers, true)...)
 				if diags.HasError() {
 					return nil, diags
@@ -2211,7 +2211,7 @@ func stringOrNull(s string) types.String {
 }
 
 // int64OrNull returns a types.Int64 with the value or null if zero.
-func int64OrNull(i int) types.Int64 {
+func int64OrNull(i int64) types.Int64 {
 	if i == 0 {
 		return types.Int64Null()
 	}
@@ -2398,21 +2398,21 @@ func (r *deviceResource) frameworkToRadioTable(
 		radio := unifi.DeviceRadioTable{
 			Radio:                  model.Radio.ValueString(),
 			Channel:                model.Channel.ValueString(),
-			Ht:                     int(model.Ht.ValueInt64()),
+			Ht:                     model.Ht.ValueInt64(),
 			TxPower:                model.TxPower.ValueString(),
 			TxPowerMode:            model.TxPowerMode.ValueString(),
 			MinRssiEnabled:         model.MinRssiEnabled.ValueBool(),
-			MinRssi:                int(model.MinRssi.ValueInt64()),
-			AntennaGain:            int(model.AntennaGain.ValueInt64()),
-			AntennaID:              int(model.AntennaID.ValueInt64()),
+			MinRssi:                model.MinRssi.ValueInt64(),
+			AntennaGain:            model.AntennaGain.ValueInt64(),
+			AntennaID:              model.AntennaID.ValueInt64(),
 			AssistedRoamingEnabled: model.AssistedRoamingEnabled.ValueBool(),
-			AssistedRoamingRssi:    int(model.AssistedRoamingRssi.ValueInt64()),
+			AssistedRoamingRssi:    model.AssistedRoamingRssi.ValueInt64(),
 			Dfs:                    model.Dfs.ValueBool(),
 			HardNoiseFloorEnabled:  model.HardNoiseFloorEnabled.ValueBool(),
 			LoadbalanceEnabled:     model.LoadbalanceEnabled.ValueBool(),
-			Maxsta:                 int(model.Maxsta.ValueInt64()),
+			Maxsta:                 model.Maxsta.ValueInt64(),
 			Name:                   model.Name.ValueString(),
-			SensLevel:              int(model.SensLevel.ValueInt64()),
+			SensLevel:              model.SensLevel.ValueInt64(),
 			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
 			VwireEnabled:           model.VwireEnabled.ValueBool(),
 		}
@@ -2450,7 +2450,7 @@ func (r *deviceResource) frameworkToOutletOverrides(
 		}
 
 		outlet := unifi.DeviceOutletOverrides{
-			Index:        int(model.Index.ValueInt64()),
+			Index:        model.Index.ValueInt64(),
 			Name:         model.Name.ValueString(),
 			RelayState:   model.RelayState.ValueBool(),
 			CycleEnabled: model.CycleEnabled.ValueBool(),

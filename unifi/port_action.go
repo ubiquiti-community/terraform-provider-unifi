@@ -120,7 +120,7 @@ func (a *portAction) Invoke(
 	}
 
 	deviceMAC := config.DeviceMAC.ValueString()
-	portNumber := int(config.PortNumber.ValueInt64())
+	portNumber := config.PortNumber.ValueInt64()
 
 	// Get the device first to retrieve its ID
 	device, err := a.client.GetDeviceByMAC(ctx, a.client.Site, deviceMAC)

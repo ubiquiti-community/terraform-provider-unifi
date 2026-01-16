@@ -12,8 +12,6 @@ import (
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
-var _ basetypes.ObjectTypable = &ClientInfoObjectType{}
-
 var (
 	_ basetypes.ObjectTypable  = ClientInfoObjectType{}
 	_ basetypes.ObjectValuable = ClientInfoObjectValue{}
@@ -57,7 +55,16 @@ type ClientInfoObjectValue struct {
 func (v ClientInfoObjectValue) Type(ctx context.Context) attr.Type {
 	return ClientInfoObjectType{
 		ObjectType: basetypes.ObjectType{
-			AttrTypes: attrTypesMap(),
+			AttrTypes: AttributeTypes(),
+		},
+	}
+}
+
+// Type returns the custom object type.
+func (v ClientInfoObjectValue) ValueType(ctx context.Context) attr.Type {
+	return ClientInfoObjectType{
+		ObjectType: basetypes.ObjectType{
+			AttrTypes: AttributeTypes(),
 		},
 	}
 }
@@ -75,7 +82,7 @@ func (v ClientInfoObjectValue) Equal(o attr.Value) bool {
 func NewClientInfoObjectType() ClientInfoObjectType {
 	return ClientInfoObjectType{
 		ObjectType: basetypes.ObjectType{
-			AttrTypes: attrTypesMap(),
+			AttrTypes: AttributeTypes(),
 		},
 	}
 }
@@ -84,7 +91,7 @@ func NewClientInfoObjectTypeFromData(data unifi.ClientInfo) {
 }
 
 // ClientInfoAttrTypes returns the attribute types for the client info object.
-func attrTypesMap() map[string]attr.Type {
+func AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"id":                           types.StringType,
 		"mac":                          types.StringType,
@@ -125,12 +132,13 @@ func attrTypesMap() map[string]attr.Type {
 		"sw_port":                      types.Int64Type,
 		"last_uplink_mac":              types.StringType,
 		"last_uplink_name":             types.StringType,
+		"last_uplink_remote_port":      types.Int64Type,
 		"last_connection_network_id":   types.StringType,
 		"last_connection_network_name": types.StringType,
 	}
 }
 
-func attributesMap() map[string]schema.Attribute {
+func Attributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"id": schema.StringAttribute{
 			MarkdownDescription: "The ID of the client.",
@@ -288,6 +296,10 @@ func attributesMap() map[string]schema.Attribute {
 			MarkdownDescription: "The name of the last uplink device.",
 			Computed:            true,
 		},
+		"last_uplink_remote_port": schema.Int64Attribute{
+			MarkdownDescription: "The remote port of the last uplink device.",
+			Computed:            true,
+		},
 		"last_connection_network_id": schema.StringAttribute{
 			MarkdownDescription: "The network ID of the last connection.",
 			Computed:            true,
@@ -301,7 +313,7 @@ func attributesMap() map[string]schema.Attribute {
 
 // ClientInfoSchemaAttributes returns the schema attributes for client info.
 func ClientInfoDataSourceSchema() map[string]schema.Attribute {
-	attrs := attributesMap()
+	attrs := Attributes()
 	attrs["site"] = schema.StringAttribute{
 		MarkdownDescription: "The name of the site to retrieve the client from.",
 		Optional:            true,
@@ -320,10 +332,10 @@ func ClientInfoListAttribute() schema.Attribute {
 		MarkdownDescription: "List of active clients.",
 		Computed:            true,
 		NestedObject: schema.NestedAttributeObject{
-			Attributes: attributesMap(),
+			Attributes: Attributes(),
 			CustomType: ClientInfoObjectType{
 				ObjectType: types.ObjectType{
-					AttrTypes: attrTypesMap(),
+					AttrTypes: AttributeTypes(),
 				},
 			},
 		},
@@ -341,20 +353,19 @@ func ClientListValue(
 	clientObjects := make([]ClientInfoObjectValue, 0, len(clientInfoList))
 
 	for _, c := range clientInfoList {
-		var clientObj types.Object
+		var clientObj ClientInfoObjectValue
 		diags := ClientInfoValue(ctx, &c, &clientObj)
 		diagnostics.Append(diags...)
 		if diags.HasError() {
 			continue
 		}
-
-		vo := ClientInfoObjectValue{
-			Object: clientObj,
-		}
-		clientObjects = append(clientObjects, vo)
+		clientObjects = append(clientObjects, clientObj)
 	}
 
-	if clientsList, diags := types.ListValueFrom(ctx, NewClientInfoObjectType(), clientObjects); diags.HasError() {
+	elementType := basetypes.ObjectType{
+		AttrTypes: AttributeTypes(),
+	}
+	if clientsList, diags := types.ListValueFrom(ctx, elementType, clientObjects); diags.HasError() {
 		diagnostics.Append(diags...)
 	} else {
 		*target = clientsList
@@ -363,14 +374,11 @@ func ClientListValue(
 	return diagnostics
 }
 
-func ClientInfoValue(
+func ClientInfoAttrValues(
 	ctx context.Context,
 	clientInfo *unifi.ClientInfo,
-	target *types.Object,
-) diag.Diagnostics {
-	diagnostics := diag.Diagnostics{}
-
-	clientObj := map[string]attr.Value{
+) map[string]attr.Value {
+	return map[string]attr.Value{
 		"id":                         util.StringValueOrNull(clientInfo.Id),
 		"mac":                        util.StringValueOrNull(clientInfo.Mac),
 		"name":                       util.StringValueOrNull(clientInfo.Name),
@@ -410,16 +418,29 @@ func ClientInfoValue(
 		"sw_port":                    types.Int64PointerValue(clientInfo.SwPort),
 		"last_uplink_mac":            util.StringValueOrNull(clientInfo.LastUplinkMac),
 		"last_uplink_name":           util.StringValueOrNull(clientInfo.LastUplinkName),
+		"last_uplink_remote_port":    types.Int64PointerValue(clientInfo.LastUplinkRemotePort),
 		"last_connection_network_id": util.StringValueOrNull(clientInfo.LastConnectionNetworkId),
 		"last_connection_network_name": util.StringValueOrNull(
 			clientInfo.LastConnectionNetworkName,
 		),
 	}
+}
 
-	if objValue, diags := types.ObjectValue(attrTypesMap(), clientObj); diags.HasError() {
+func ClientInfoValue(
+	ctx context.Context,
+	clientInfo *unifi.ClientInfo,
+	target *ClientInfoObjectValue,
+) diag.Diagnostics {
+	diagnostics := diag.Diagnostics{}
+
+	clientObj := ClientInfoAttrValues(ctx, clientInfo)
+
+	if objValue, diags := types.ObjectValue(AttributeTypes(), clientObj); diags.HasError() {
 		diagnostics.Append(diags...)
 	} else {
-		*target = objValue
+		*target = ClientInfoObjectValue{
+			Object: objValue,
+		}
 	}
 
 	return diagnostics

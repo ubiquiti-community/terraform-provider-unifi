@@ -540,7 +540,7 @@ func (r *firewallRuleResource) modelToFirewallRule(
 		Name:      model.Name.ValueString(),
 		Action:    model.Action.ValueString(),
 		Ruleset:   model.Ruleset.ValueString(),
-		RuleIndex: int(model.RuleIndex.ValueInt64()),
+		RuleIndex: model.RuleIndex.ValueInt64(),
 		Enabled:   model.Enabled.ValueBool(),
 	}
 

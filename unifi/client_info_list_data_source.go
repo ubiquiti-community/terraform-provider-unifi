@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/models"
 )
 
@@ -47,7 +48,13 @@ func (d *clientInfoListDataSource) Schema(
 				Optional:            true,
 				Computed:            true,
 			},
-			"clients": models.ClientInfoListAttribute(),
+			"clients": schema.ListNestedAttribute{
+				MarkdownDescription: "List of active clients on the network.",
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: models.Attributes(),
+				},
+			},
 		},
 	}
 }
@@ -102,20 +109,24 @@ func (d *clientInfoListDataSource) Read(
 		return
 	}
 
-	resp.Diagnostics.Append(models.ClientListValue(ctx, clientInfoList, &data.Clients)...)
-	if resp.Diagnostics.HasError() {
+	clientObjects := make([]basetypes.ObjectValue, len(clientInfoList))
+	for i, ci := range clientInfoList {
+		v := models.ClientInfoAttrValues(ctx, &ci)
+		o, d := types.ObjectValue(models.AttributeTypes(), v)
+		if resp.Diagnostics.Append(d...); resp.Diagnostics.HasError() {
+			return
+		}
+		clientObjects[i] = o
+	}
+
+	if clist, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: models.AttributeTypes()}, clientObjects); d.HasError() {
+		resp.Diagnostics.Append(d...)
 		return
+	} else {
+		data.Clients = clist
 	}
 
 	data.Site = types.StringValue(site)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-}
-
-// stringValueOrNull returns a types.StringValue if the string is non-empty, otherwise types.StringNull.
-func stringValueOrNull(s string) types.String {
-	if s == "" {
-		return types.StringNull()
-	}
-	return types.StringValue(s)
 }

@@ -607,7 +607,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 	}
 
 	if !model.Dot1XIdleTimeout.IsNull() && !model.Dot1XIdleTimeout.IsUnknown() {
-		timeout := int(model.Dot1XIdleTimeout.ValueInt64())
+		timeout := model.Dot1XIdleTimeout.ValueInt64()
 		portProfile.Dot1XIDleTimeout = timeout
 	}
 
@@ -643,7 +643,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 	}
 
 	if !model.Speed.IsNull() && !model.Speed.IsUnknown() {
-		portProfile.Speed = int(model.Speed.ValueInt64())
+		portProfile.Speed = model.Speed.ValueInt64()
 	}
 
 	// Convert tagged network IDs - skip for now as field name is unclear

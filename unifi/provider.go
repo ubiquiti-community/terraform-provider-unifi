@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
+	"github.com/hashicorp/terraform-plugin-framework/list"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -25,6 +26,7 @@ import (
 var (
 	_ provider.Provider                       = &unifiProvider{}
 	_ provider.ProviderWithEphemeralResources = &unifiProvider{}
+	_ provider.ProviderWithListResources      = &unifiProvider{}
 )
 
 type unifiProvider struct{}
@@ -281,7 +283,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewSettingResource,
 		NewSiteFrameworkResource,
 		NewStaticRouteFrameworkResource,
-		NewClientFrameworkResource,
+		NewClientResource,
 		NewClientGroupFrameworkResource,
 		NewWANResource,
 		NewWLANFrameworkResource,
@@ -314,5 +316,12 @@ func (p *unifiProvider) Actions(
 ) []func() action.Action {
 	return []func() action.Action{
 		NewPortAction,
+	}
+}
+
+// ListResources implements [provider.ProviderWithListResources].
+func (p *unifiProvider) ListResources(context.Context) []func() list.ListResource {
+	return []func() list.ListResource{
+		NewClientListResource,
 	}
 }

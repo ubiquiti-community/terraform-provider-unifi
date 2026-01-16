@@ -33,10 +33,10 @@ type StateChangeConf struct {
 	Timeout        time.Duration    // The amount of time to wait before timeout
 	MinTimeout     time.Duration    // Smallest time to wait before refreshes
 	PollInterval   time.Duration    // Override MinTimeout/backoff and only poll this often
-	NotFoundChecks int              // Number of times to allow not found (nil result from Refresh)
+	NotFoundChecks int64            // Number of times to allow not found (nil result from Refresh)
 
 	// This is to work around inconsistent APIs
-	ContinuousTargetOccurence int // Number of times the Target state has to occur continuously
+	ContinuousTargetOccurence int64 // Number of times the Target state has to occur continuously
 }
 
 // WaitForStateContext watches an object and waits for it to achieve the state
@@ -58,8 +58,7 @@ type StateChangeConf struct {
 func (conf *StateChangeConf) WaitForStateContext(ctx context.Context) (any, error) {
 	log.Printf("[DEBUG] Waiting for state to become: %s", conf.Target)
 
-	notfoundTick := 0
-	targetOccurence := 0
+	var targetOccurence, notfoundTick int64 = 0, 0
 
 	// Set a default for times to check for not found
 	if conf.NotFoundChecks == 0 {
