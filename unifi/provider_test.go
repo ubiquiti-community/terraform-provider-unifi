@@ -73,7 +73,8 @@ func runAcceptanceTests(m *testing.M) int {
 
 	// Don't wait for health check in compose.Up - we'll do our own waiting with waitForUniFiAPI
 	// The health check has a 90s start_period which can cause timeouts in testcontainers
-	if err = dc.WithOsEnv().Up(ctx, compose.Wait(true), compose.WithRecreate(api.RecreateDiverged)); err != nil {
+	if err = dc.WithOsEnv().
+		Up(ctx, compose.Wait(true), compose.WithRecreate(api.RecreateDiverged)); err != nil {
 		panic(err)
 	}
 
@@ -126,7 +127,11 @@ func runAcceptanceTests(m *testing.M) int {
 
 	defer func() {
 		logger.Printf("RUNNING TEAR DOWN")
-		if err := dc.Down(context.Background(), compose.RemoveOrphans(true), compose.RemoveImagesLocal); err != nil {
+		if err := dc.Down(
+			context.Background(),
+			compose.RemoveOrphans(true),
+			compose.RemoveImagesLocal,
+		); err != nil {
 			panic(err)
 		}
 	}()
@@ -328,12 +333,20 @@ func waitForUniFiAPI(
 				if !dev.Adopted {
 					adoptErr := client.AdoptDevice(ctx, "default", dev.MAC)
 					if adoptErr != nil {
-						logger.Printf("Failed to adopt device %s: %v, retrying...", dev.MAC, adoptErr)
+						logger.Printf(
+							"Failed to adopt device %s: %v, retrying...",
+							dev.MAC,
+							adoptErr,
+						)
 						// Retry adoption once after a brief delay
 						time.Sleep(2 * time.Second)
 						adoptErr = client.AdoptDevice(ctx, "default", dev.MAC)
 						if adoptErr != nil {
-							logger.Printf("Failed to adopt device %s after retry: %v", dev.MAC, adoptErr)
+							logger.Printf(
+								"Failed to adopt device %s after retry: %v",
+								dev.MAC,
+								adoptErr,
+							)
 						} else {
 							logger.Printf("Successfully adopted device %s on retry", dev.MAC)
 						}

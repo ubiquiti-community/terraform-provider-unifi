@@ -365,7 +365,11 @@ func ClientListValue(
 	elementType := basetypes.ObjectType{
 		AttrTypes: AttributeTypes(),
 	}
-	if clientsList, diags := types.ListValueFrom(ctx, elementType, clientObjects); diags.HasError() {
+	if clientsList, diags := types.ListValueFrom(
+		ctx,
+		elementType,
+		clientObjects,
+	); diags.HasError() {
 		diagnostics.Append(diags...)
 	} else {
 		*target = clientsList

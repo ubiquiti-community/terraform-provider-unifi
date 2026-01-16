@@ -15,9 +15,16 @@ func TestAccClientInfoListDataSource_basic(t *testing.T) {
 				Config: testAccClientInfoListDataSourceConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					// Verify the data source has clients attribute
-					resource.TestCheckResourceAttrSet("data.unifi_client_info_list.test", "clients.#"),
+					resource.TestCheckResourceAttrSet(
+						"data.unifi_client_info_list.test",
+						"clients.#",
+					),
 					// Verify site is set
-					resource.TestCheckResourceAttr("data.unifi_client_info_list.test", "site", "default"),
+					resource.TestCheckResourceAttr(
+						"data.unifi_client_info_list.test",
+						"site",
+						"default",
+					),
 				),
 			},
 		},

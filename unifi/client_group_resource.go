@@ -471,8 +471,8 @@ func (r *clientGroupFrameworkResource) clientGroupToModel(
 	model.ID = types.StringValue(clientGroup.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(clientGroup.Name)
-	model.QOSRateMaxDown = types.Int64Value(int64(clientGroup.QOSRateMaxDown))
-	model.QOSRateMaxUp = types.Int64Value(int64(clientGroup.QOSRateMaxUp))
+	model.QOSRateMaxDown = types.Int64Value(clientGroup.QOSRateMaxDown)
+	model.QOSRateMaxUp = types.Int64Value(clientGroup.QOSRateMaxUp)
 
 	return diags
 }

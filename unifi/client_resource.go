@@ -110,60 +110,6 @@ type clientResourceModel struct {
 	Wired       types.Object `tfsdk:"wired"`
 }
 
-type clientGatewayModel struct {
-	MAC  types.String `tfsdk:"mac"`
-	VLAN types.Int64  `tfsdk:"vlan"`
-}
-
-type clientGuestStatusModel struct {
-	IsGuest      types.Bool `tfsdk:"is_guest"`
-	IsGuestByUGW types.Bool `tfsdk:"is_guest_by_ugw"`
-	IsGuestByUSW types.Bool `tfsdk:"is_guest_by_usw"`
-}
-
-type clientLastModel struct {
-	Identity1x            types.String `tfsdk:"identity_1x"`
-	ConnectionNetworkID   types.String `tfsdk:"connection_network_id"`
-	ConnectionNetworkName types.String `tfsdk:"connection_network_name"`
-	IP                    types.String `tfsdk:"ip"`
-	IPv6                  types.List   `tfsdk:"ipv6"`
-	ReachableByGW         types.Int64  `tfsdk:"reachable_by_gw"`
-	Seen                  types.Int64  `tfsdk:"seen"`
-	SeenByUGW             types.Int64  `tfsdk:"seen_by_ugw"`
-	SeenByUSW             types.Int64  `tfsdk:"seen_by_usw"`
-	UplinkMAC             types.String `tfsdk:"uplink_mac"`
-	UplinkName            types.String `tfsdk:"uplink_name"`
-	UplinkRemotePort      types.Int64  `tfsdk:"uplink_remote_port"`
-}
-
-type clientSwitchModel struct {
-	Depth types.Int64  `tfsdk:"depth"`
-	MAC   types.String `tfsdk:"mac"`
-	Port  types.Int64  `tfsdk:"port"`
-}
-
-type clientUptimeStatsModel struct {
-	Uptime      types.Int64 `tfsdk:"uptime"`
-	UptimeByUGW types.Int64 `tfsdk:"uptime_by_ugw"`
-	UptimeByUSW types.Int64 `tfsdk:"uptime_by_usw"`
-}
-
-type clientWiFiModel struct {
-	TxAttempts          types.Int64   `tfsdk:"tx_attempts"`
-	TxDropped           types.Int64   `tfsdk:"tx_dropped"`
-	TxRetriesPercentage types.Float64 `tfsdk:"tx_retries_percentage"`
-}
-
-type clientWiredModel struct {
-	RateMbps  types.Int64   `tfsdk:"rate_mbps"`
-	RxBytes   types.Int64   `tfsdk:"rx_bytes"`
-	RxBytesR  types.Float64 `tfsdk:"rx_bytes_r"`
-	RxPackets types.Int64   `tfsdk:"rx_packets"`
-	TxBytes   types.Int64   `tfsdk:"tx_bytes"`
-	TxBytesR  types.Float64 `tfsdk:"tx_bytes_r"`
-	TxPackets types.Int64   `tfsdk:"tx_packets"`
-}
-
 type clientIdentityModel struct {
 	ID  types.String `tfsdk:"id"`
 	MAC types.String `tfsdk:"mac"`
@@ -1231,7 +1177,7 @@ func (r *clientResource) planToClient(
 }
 
 func (r *clientResource) clientToModel(
-	ctx context.Context,
+	_ context.Context,
 	client *unifi.Client,
 	model *clientResourceModel,
 	site string,

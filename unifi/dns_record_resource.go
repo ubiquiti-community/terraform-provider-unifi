@@ -430,13 +430,13 @@ func (r *dnsRecordFrameworkResource) dnsRecordToModel(
 	model.Enabled = types.BoolValue(dnsRecord.Enabled)
 
 	if dnsRecord.Port != 0 {
-		model.Port = types.Int64Value(int64(dnsRecord.Port))
+		model.Port = types.Int64Value(dnsRecord.Port)
 	} else {
 		model.Port = types.Int64Null()
 	}
 
 	if dnsRecord.Priority != 0 {
-		model.Priority = types.Int64Value(int64(dnsRecord.Priority))
+		model.Priority = types.Int64Value(dnsRecord.Priority)
 	} else {
 		model.Priority = types.Int64Null()
 	}
@@ -448,13 +448,13 @@ func (r *dnsRecordFrameworkResource) dnsRecordToModel(
 	}
 
 	if dnsRecord.Ttl != 0 {
-		model.TTL = types.Int64Value(int64(dnsRecord.Ttl))
+		model.TTL = types.Int64Value(dnsRecord.Ttl)
 	} else {
 		model.TTL = types.Int64Null()
 	}
 
 	if dnsRecord.Weight != 0 {
-		model.Weight = types.Int64Value(int64(dnsRecord.Weight))
+		model.Weight = types.Int64Value(dnsRecord.Weight)
 	} else {
 		model.Weight = types.Int64Null()
 	}

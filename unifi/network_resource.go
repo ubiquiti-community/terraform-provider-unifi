@@ -991,7 +991,7 @@ func (r *networkResource) networkToModel(
 	model.Purpose = types.StringValue(network.Purpose)
 
 	if network.VLAN != 0 {
-		model.VlanID = types.Int64Value(int64(network.VLAN))
+		model.VlanID = types.Int64Value(network.VLAN)
 	} else {
 		model.VlanID = types.Int64Null()
 	}
@@ -1024,7 +1024,7 @@ func (r *networkResource) networkToModel(
 	model.DhcpEnabled = types.BoolValue(network.DHCPDEnabled)
 
 	if network.DHCPDLeaseTime != 0 {
-		model.DhcpLease = types.Int64Value(int64(network.DHCPDLeaseTime))
+		model.DhcpLease = types.Int64Value(network.DHCPDLeaseTime)
 	} else {
 		model.DhcpLease = types.Int64Value(86400) // Default value
 	}

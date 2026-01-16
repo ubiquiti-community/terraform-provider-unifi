@@ -933,13 +933,13 @@ func (r *wanResource) networkToModel(
 
 	// VLAN Settings
 	model.VlanEnabled = types.BoolValue(network.WANVLANEnabled)
-	model.Vlan = types.Int64Value(int64(network.WANVLAN))
+	model.Vlan = types.Int64Value(network.WANVLAN)
 
 	// QoS Settings
-	model.EgressQoS = types.Int64Value(int64(network.WANEgressQOS))
+	model.EgressQoS = types.Int64Value(network.WANEgressQOS)
 	model.EgressQoSEnabled = types.BoolPointerValue(network.WANEgressQOSEnabled)
-	model.DHCPCoS = types.Int64Value(int64(network.WANDHCPCos))
-	model.DHCPV6CoS = types.Int64Value(int64(network.WANDHCPv6Cos))
+	model.DHCPCoS = types.Int64Value(network.WANDHCPCos)
+	model.DHCPV6CoS = types.Int64Value(network.WANDHCPv6Cos)
 
 	// DNS Settings
 	if network.WANDNS1 == "" {
@@ -979,7 +979,7 @@ func (r *wanResource) networkToModel(
 	}
 
 	// DHCPv6 Settings
-	model.DHCPV6PDSize = types.Int64Value(int64(network.WANDHCPv6PDSize))
+	model.DHCPV6PDSize = types.Int64Value(network.WANDHCPv6PDSize)
 	model.DHCPV6PDSizeAuto = types.BoolValue(network.WANDHCPv6PDSizeAuto)
 
 	if network.IPV6WANDelegationType == "" {
@@ -999,7 +999,7 @@ func (r *wanResource) networkToModel(
 			dhcpV6OptionsValues[i], _ = types.ObjectValue(
 				dhcpV6OptionAttrTypes,
 				map[string]attr.Value{
-					"option_number": types.Int64Value(int64(opt.OptionNumber)),
+					"option_number": types.Int64Value(opt.OptionNumber),
 					"value":         types.StringValue(opt.Value),
 				},
 			)
@@ -1021,12 +1021,12 @@ func (r *wanResource) networkToModel(
 	if network.WANSmartQUpRate == 0 {
 		model.SmartQUpRate = types.Int64Null()
 	} else {
-		model.SmartQUpRate = types.Int64Value(int64(network.WANSmartQUpRate))
+		model.SmartQUpRate = types.Int64Value(network.WANSmartQUpRate)
 	}
 	if network.WANSmartQDownRate == 0 {
 		model.SmartQDownRate = types.Int64Null()
 	} else {
-		model.SmartQDownRate = types.Int64Value(int64(network.WANSmartQDownRate))
+		model.SmartQDownRate = types.Int64Value(network.WANSmartQDownRate)
 	}
 
 	// UPnP Settings
@@ -1045,8 +1045,8 @@ func (r *wanResource) networkToModel(
 	} else {
 		model.LoadBalanceType = types.StringValue(network.WANLoadBalanceType)
 	}
-	model.LoadBalanceWeight = types.Int64Value(int64(network.WANLoadBalanceWeight))
-	model.FailoverPriority = types.Int64Value(int64(network.WANFailoverPriority))
+	model.LoadBalanceWeight = types.Int64Value(network.WANLoadBalanceWeight)
+	model.FailoverPriority = types.Int64Value(network.WANFailoverPriority)
 
 	// IGMP Settings
 	if network.IGMPProxyFor == "" {
@@ -1071,7 +1071,7 @@ func (r *wanResource) networkToModel(
 			dhcpOptionsValues[i], _ = types.ObjectValue(
 				dhcpOptionAttrTypes,
 				map[string]attr.Value{
-					"option_number": types.Int64Value(int64(opt.OptionNumber)),
+					"option_number": types.Int64Value(opt.OptionNumber),
 					"value":         types.StringValue(opt.Value),
 				},
 			)
@@ -1108,10 +1108,10 @@ func (r *wanResource) networkToModel(
 		}
 		providerCapsValues := map[string]attr.Value{
 			"download_kilobits_per_second": types.Int64Value(
-				int64(network.WANProviderCapabilities.DownloadKilobitsPerSecond),
+				network.WANProviderCapabilities.DownloadKilobitsPerSecond,
 			),
 			"upload_kilobits_per_second": types.Int64Value(
-				int64(network.WANProviderCapabilities.UploadKilobitsPerSecond),
+				network.WANProviderCapabilities.UploadKilobitsPerSecond,
 			),
 		}
 		model.ProviderCapabilities, diags = types.ObjectValue(

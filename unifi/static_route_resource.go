@@ -401,7 +401,7 @@ func (r *staticRouteFrameworkResource) routingToModel(
 	model.Name = types.StringValue(routing.Name)
 	model.Network = types.StringValue(routing.StaticRouteNetwork)
 	model.Type = types.StringValue(routing.StaticRouteType)
-	model.Distance = types.Int64Value(int64(routing.StaticRouteDistance))
+	model.Distance = types.Int64Value(routing.StaticRouteDistance)
 
 	if routing.StaticRouteNexthop != "" {
 		model.NextHop = types.StringValue(routing.StaticRouteNexthop)

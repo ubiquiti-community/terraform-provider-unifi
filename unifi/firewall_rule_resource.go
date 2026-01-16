@@ -632,7 +632,7 @@ func (r *firewallRuleResource) firewallRuleToModel(
 	model.Name = types.StringValue(firewallRule.Name)
 	model.Action = types.StringValue(firewallRule.Action)
 	model.Ruleset = types.StringValue(firewallRule.Ruleset)
-	model.RuleIndex = types.Int64Value(int64(firewallRule.RuleIndex))
+	model.RuleIndex = types.Int64Value(firewallRule.RuleIndex)
 	model.Enabled = types.BoolValue(firewallRule.Enabled)
 
 	if firewallRule.Protocol != "" {

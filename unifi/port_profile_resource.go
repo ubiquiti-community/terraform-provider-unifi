@@ -675,7 +675,7 @@ func (r *portProfileResource) setResourceData(
 		model.Dot1XCtrl = types.StringValue(portProfile.Dot1XCtrl)
 	}
 
-	model.Dot1XIdleTimeout = types.Int64Value(int64(portProfile.Dot1XIDleTimeout))
+	model.Dot1XIdleTimeout = types.Int64Value(portProfile.Dot1XIDleTimeout)
 
 	if portProfile.Forward == "" {
 		model.Forward = types.StringValue("native")
@@ -726,7 +726,7 @@ func (r *portProfileResource) setResourceData(
 
 	// Only set speed if it was in the plan or if it's non-zero
 	if !model.Speed.IsNull() || portProfile.Speed != 0 {
-		model.Speed = types.Int64Value(int64(portProfile.Speed))
+		model.Speed = types.Int64Value(portProfile.Speed)
 	} else {
 		model.Speed = types.Int64Null()
 	}

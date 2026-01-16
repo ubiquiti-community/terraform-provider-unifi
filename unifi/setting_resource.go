@@ -1002,19 +1002,19 @@ func (r *settingResource) radiusSettingToModel(
 	}
 
 	if !plan.AcctPort.IsNull() && !plan.AcctPort.IsUnknown() {
-		model.AcctPort = types.Int64Value(int64(setting.AcctPort))
+		model.AcctPort = types.Int64Value(setting.AcctPort)
 	} else {
 		model.AcctPort = types.Int64Null()
 	}
 
 	if !plan.AuthPort.IsNull() && !plan.AuthPort.IsUnknown() {
-		model.AuthPort = types.Int64Value(int64(setting.AuthPort))
+		model.AuthPort = types.Int64Value(setting.AuthPort)
 	} else {
 		model.AuthPort = types.Int64Null()
 	}
 
 	if !plan.InterimUpdateInterval.IsNull() && !plan.InterimUpdateInterval.IsUnknown() {
-		model.InterimUpdateInterval = types.Int64Value(int64(setting.InterimUpdateInterval))
+		model.InterimUpdateInterval = types.Int64Value(setting.InterimUpdateInterval)
 	} else {
 		model.InterimUpdateInterval = types.Int64Null()
 	}
@@ -1256,7 +1256,7 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.ICMPTimeout.IsNull() && !plan.ICMPTimeout.IsUnknown() {
-		model.ICMPTimeout = types.Int64Value(int64(setting.ICMPTimeout))
+		model.ICMPTimeout = types.Int64Value(setting.ICMPTimeout)
 	} else {
 		model.ICMPTimeout = types.Int64Null()
 	}
@@ -1290,7 +1290,7 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.OtherTimeout.IsNull() && !plan.OtherTimeout.IsUnknown() {
-		model.OtherTimeout = types.Int64Value(int64(setting.OtherTimeout))
+		model.OtherTimeout = types.Int64Value(setting.OtherTimeout)
 	} else {
 		model.OtherTimeout = types.Int64Null()
 	}
@@ -1326,49 +1326,49 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.TCPCloseTimeout.IsNull() && !plan.TCPCloseTimeout.IsUnknown() {
-		model.TCPCloseTimeout = types.Int64Value(int64(setting.TCPCloseTimeout))
+		model.TCPCloseTimeout = types.Int64Value(setting.TCPCloseTimeout)
 	} else {
 		model.TCPCloseTimeout = types.Int64Null()
 	}
 
 	if !plan.TCPCloseWaitTimeout.IsNull() && !plan.TCPCloseWaitTimeout.IsUnknown() {
-		model.TCPCloseWaitTimeout = types.Int64Value(int64(setting.TCPCloseWaitTimeout))
+		model.TCPCloseWaitTimeout = types.Int64Value(setting.TCPCloseWaitTimeout)
 	} else {
 		model.TCPCloseWaitTimeout = types.Int64Null()
 	}
 
 	if !plan.TCPEstablishedTimeout.IsNull() && !plan.TCPEstablishedTimeout.IsUnknown() {
-		model.TCPEstablishedTimeout = types.Int64Value(int64(setting.TCPEstablishedTimeout))
+		model.TCPEstablishedTimeout = types.Int64Value(setting.TCPEstablishedTimeout)
 	} else {
 		model.TCPEstablishedTimeout = types.Int64Null()
 	}
 
 	if !plan.TCPFinWaitTimeout.IsNull() && !plan.TCPFinWaitTimeout.IsUnknown() {
-		model.TCPFinWaitTimeout = types.Int64Value(int64(setting.TCPFinWaitTimeout))
+		model.TCPFinWaitTimeout = types.Int64Value(setting.TCPFinWaitTimeout)
 	} else {
 		model.TCPFinWaitTimeout = types.Int64Null()
 	}
 
 	if !plan.TCPLastAckTimeout.IsNull() && !plan.TCPLastAckTimeout.IsUnknown() {
-		model.TCPLastAckTimeout = types.Int64Value(int64(setting.TCPLastAckTimeout))
+		model.TCPLastAckTimeout = types.Int64Value(setting.TCPLastAckTimeout)
 	} else {
 		model.TCPLastAckTimeout = types.Int64Null()
 	}
 
 	if !plan.TCPSynRecvTimeout.IsNull() && !plan.TCPSynRecvTimeout.IsUnknown() {
-		model.TCPSynRecvTimeout = types.Int64Value(int64(setting.TCPSynRecvTimeout))
+		model.TCPSynRecvTimeout = types.Int64Value(setting.TCPSynRecvTimeout)
 	} else {
 		model.TCPSynRecvTimeout = types.Int64Null()
 	}
 
 	if !plan.TCPSynSentTimeout.IsNull() && !plan.TCPSynSentTimeout.IsUnknown() {
-		model.TCPSynSentTimeout = types.Int64Value(int64(setting.TCPSynSentTimeout))
+		model.TCPSynSentTimeout = types.Int64Value(setting.TCPSynSentTimeout)
 	} else {
 		model.TCPSynSentTimeout = types.Int64Null()
 	}
 
 	if !plan.TCPTimeWaitTimeout.IsNull() && !plan.TCPTimeWaitTimeout.IsUnknown() {
-		model.TCPTimeWaitTimeout = types.Int64Value(int64(setting.TCPTimeWaitTimeout))
+		model.TCPTimeWaitTimeout = types.Int64Value(setting.TCPTimeWaitTimeout)
 	} else {
 		model.TCPTimeWaitTimeout = types.Int64Null()
 	}
@@ -1390,13 +1390,13 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.UDPOtherTimeout.IsNull() && !plan.UDPOtherTimeout.IsUnknown() {
-		model.UDPOtherTimeout = types.Int64Value(int64(setting.UDPOtherTimeout))
+		model.UDPOtherTimeout = types.Int64Value(setting.UDPOtherTimeout)
 	} else {
 		model.UDPOtherTimeout = types.Int64Null()
 	}
 
 	if !plan.UDPStreamTimeout.IsNull() && !plan.UDPStreamTimeout.IsUnknown() {
-		model.UDPStreamTimeout = types.Int64Value(int64(setting.UDPStreamTimeout))
+		model.UDPStreamTimeout = types.Int64Value(setting.UDPStreamTimeout)
 	} else {
 		model.UDPStreamTimeout = types.Int64Null()
 	}

@@ -934,7 +934,7 @@ func (r *wlanFrameworkResource) wlanToModel(
 
 	model.VLANEnabled = types.BoolValue(wlan.VLANEnabled)
 	if wlan.VLAN > 0 {
-		model.VLAN = types.Int64Value(int64(wlan.VLAN))
+		model.VLAN = types.Int64Value(wlan.VLAN)
 	} else {
 		model.VLAN = types.Int64Null()
 	}
@@ -1007,8 +1007,8 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.MinrateSettingPreference = types.StringValue("auto")
 	}
 
-	model.MinimumDataRate2GKbps = types.Int64Value(int64(wlan.MinrateNgDataRateKbps))
-	model.MinimumDataRate5GKbps = types.Int64Value(int64(wlan.MinrateNaDataRateKbps))
+	model.MinimumDataRate2GKbps = types.Int64Value(wlan.MinrateNgDataRateKbps)
+	model.MinimumDataRate5GKbps = types.Int64Value(wlan.MinrateNaDataRateKbps)
 
 	// Handle AP group IDs
 	if len(wlan.ApGroupIDs) > 0 {
@@ -1052,9 +1052,9 @@ func (r *wlanFrameworkResource) wlanToModel(
 					},
 					map[string]attr.Value{
 						"day_of_week":  types.StringValue(dow),
-						"start_hour":   types.Int64Value(int64(sched.StartHour)),
-						"start_minute": types.Int64Value(int64(sched.StartMinute)),
-						"duration":     types.Int64Value(int64(sched.DurationMinutes)),
+						"start_hour":   types.Int64Value(sched.StartHour),
+						"start_minute": types.Int64Value(sched.StartMinute),
+						"duration":     types.Int64Value(sched.DurationMinutes),
 						"name":         types.StringValue(sched.Name),
 					},
 				)

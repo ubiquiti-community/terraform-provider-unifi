@@ -57,10 +57,7 @@ func ConvertInt64ToAPIValue(val types.Int64) *int64 {
 
 // ConvertInt64FromAPIValue converts an API int64 pointer to types.Int64.
 func ConvertInt64FromAPIValue(val *int64) types.Int64 {
-	if val == nil {
-		return types.Int64Null()
-	}
-	return types.Int64Value(int64(*val))
+	return types.Int64PointerValue(val)
 }
 
 // ConvertStringSliceToAPIValue converts a Terraform types.List of strings to a Go string slice.
@@ -159,20 +156,4 @@ func StringValueOrNull(val string) types.String {
 		return types.StringNull()
 	}
 	return types.StringValue(val)
-}
-
-// BoolValueOrNull returns types.BoolValue or types.BoolNull based on pointer.
-func BoolValueOrNull(val *bool) types.Bool {
-	if val == nil {
-		return types.BoolNull()
-	}
-	return types.BoolValue(*val)
-}
-
-// Int64ValueOrNull returns types.Int64Value or types.Int64Null based on pointer.
-func Int64ValueOrNull(val *int64) types.Int64 {
-	if val == nil {
-		return types.Int64Null()
-	}
-	return types.Int64Value(int64(*val))
 }

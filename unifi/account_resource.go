@@ -387,8 +387,8 @@ func (r *accountFrameworkResource) accountToModel(
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(account.Name)
 	model.Password = types.StringValue(account.XPassword)
-	model.TunnelType = types.Int64Value(int64(account.TunnelType))
-	model.TunnelMediumType = types.Int64Value(int64(account.TunnelMediumType))
+	model.TunnelType = types.Int64Value(account.TunnelType)
+	model.TunnelMediumType = types.Int64Value(account.TunnelMediumType)
 
 	if account.NetworkID != "" {
 		model.NetworkID = types.StringValue(account.NetworkID)

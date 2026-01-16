@@ -119,7 +119,11 @@ func (d *clientInfoListDataSource) Read(
 		clientObjects[i] = o
 	}
 
-	if clist, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: models.AttributeTypes()}, clientObjects); d.HasError() {
+	if clist, d := types.ListValueFrom(
+		ctx,
+		types.ObjectType{AttrTypes: models.AttributeTypes()},
+		clientObjects,
+	); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	} else {

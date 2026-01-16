@@ -37,6 +37,7 @@ data "unifi_client" "default" {
 - `hostname` (String) The hostname of the client.
 - `id` (String) The ID of the client.
 - `ip` (String) The IP address of the client.
+- `last_ip` (String) The last IP address of the client.
 - `local_dns_record` (String) The local DNS record for this client.
 - `name` (String) The name of the client.
 - `network_id` (String) The network ID for this client.

@@ -1345,7 +1345,9 @@ func (r *deviceResource) setResourceData(
 	if device.LedOverrideColorBrightness == 0 {
 		model.LedOverrideColorBrightness = types.Int64Null()
 	} else {
-		model.LedOverrideColorBrightness = types.Int64Value(int64(device.LedOverrideColorBrightness))
+		model.LedOverrideColorBrightness = types.Int64Value(
+			device.LedOverrideColorBrightness,
+		)
 	}
 
 	// Device features
@@ -1392,7 +1394,7 @@ func (r *deviceResource) setResourceData(
 	if device.Volume == 0 {
 		model.Volume = types.Int64Null()
 	} else {
-		model.Volume = types.Int64Value(int64(device.Volume))
+		model.Volume = types.Int64Value(device.Volume)
 	}
 
 	if device.XBaresipPassword == "" {
@@ -1405,7 +1407,7 @@ func (r *deviceResource) setResourceData(
 	if device.LcmBrightness == 0 {
 		model.LcmBrightness = types.Int64Null()
 	} else {
-		model.LcmBrightness = types.Int64Value(int64(device.LcmBrightness))
+		model.LcmBrightness = types.Int64Value(device.LcmBrightness)
 	}
 
 	model.LcmBrightnessOverride = types.BoolValue(device.LcmBrightnessOverride)
@@ -1413,7 +1415,7 @@ func (r *deviceResource) setResourceData(
 	if device.LcmIDleTimeout == 0 {
 		model.LcmIDleTimeout = types.Int64Null()
 	} else {
-		model.LcmIDleTimeout = types.Int64Value(int64(device.LcmIDleTimeout))
+		model.LcmIDleTimeout = types.Int64Value(device.LcmIDleTimeout)
 	}
 
 	model.LcmIDleTimeoutOverride = types.BoolValue(device.LcmIDleTimeoutOverride)
@@ -1611,7 +1613,7 @@ func (r *deviceResource) portOverridesToFramework(
 	elements := make([]attr.Value, 0, len(pos))
 	for _, po := range pos {
 		model := portOverrideModel{
-			Number: types.Int64Value(int64(po.PortIDX)),
+			Number: types.Int64Value(po.PortIDX),
 		}
 
 		// String attributes
@@ -1706,85 +1708,85 @@ func (r *deviceResource) portOverridesToFramework(
 		if po.Dot1XIDleTimeout == 0 {
 			model.Dot1XIDleTimeout = types.Int64Null()
 		} else {
-			model.Dot1XIDleTimeout = types.Int64Value(int64(po.Dot1XIDleTimeout))
+			model.Dot1XIDleTimeout = types.Int64Value(po.Dot1XIDleTimeout)
 		}
 
 		if po.EgressRateLimitKbps == 0 {
 			model.EgressRateLimitKbps = types.Int64Null()
 		} else {
-			model.EgressRateLimitKbps = types.Int64Value(int64(po.EgressRateLimitKbps))
+			model.EgressRateLimitKbps = types.Int64Value(po.EgressRateLimitKbps)
 		}
 
 		if po.MirrorPortIDX == 0 {
 			model.MirrorPortIDX = types.Int64Null()
 		} else {
-			model.MirrorPortIDX = types.Int64Value(int64(po.MirrorPortIDX))
+			model.MirrorPortIDX = types.Int64Value(po.MirrorPortIDX)
 		}
 
 		if po.PriorityQueue1Level == 0 {
 			model.PriorityQueue1Level = types.Int64Null()
 		} else {
-			model.PriorityQueue1Level = types.Int64Value(int64(po.PriorityQueue1Level))
+			model.PriorityQueue1Level = types.Int64Value(po.PriorityQueue1Level)
 		}
 
 		if po.PriorityQueue2Level == 0 {
 			model.PriorityQueue2Level = types.Int64Null()
 		} else {
-			model.PriorityQueue2Level = types.Int64Value(int64(po.PriorityQueue2Level))
+			model.PriorityQueue2Level = types.Int64Value(po.PriorityQueue2Level)
 		}
 
 		if po.PriorityQueue3Level == 0 {
 			model.PriorityQueue3Level = types.Int64Null()
 		} else {
-			model.PriorityQueue3Level = types.Int64Value(int64(po.PriorityQueue3Level))
+			model.PriorityQueue3Level = types.Int64Value(po.PriorityQueue3Level)
 		}
 
 		if po.PriorityQueue4Level == 0 {
 			model.PriorityQueue4Level = types.Int64Null()
 		} else {
-			model.PriorityQueue4Level = types.Int64Value(int64(po.PriorityQueue4Level))
+			model.PriorityQueue4Level = types.Int64Value(po.PriorityQueue4Level)
 		}
 
 		if po.Speed == 0 {
 			model.Speed = types.Int64Null()
 		} else {
-			model.Speed = types.Int64Value(int64(po.Speed))
+			model.Speed = types.Int64Value(po.Speed)
 		}
 
 		if po.StormctrlBroadcastastLevel == 0 {
 			model.StormctrlBroadcastLevel = types.Int64Null()
 		} else {
-			model.StormctrlBroadcastLevel = types.Int64Value(int64(po.StormctrlBroadcastastLevel))
+			model.StormctrlBroadcastLevel = types.Int64Value(po.StormctrlBroadcastastLevel)
 		}
 
 		if po.StormctrlBroadcastastRate == 0 {
 			model.StormctrlBroadcastRate = types.Int64Null()
 		} else {
-			model.StormctrlBroadcastRate = types.Int64Value(int64(po.StormctrlBroadcastastRate))
+			model.StormctrlBroadcastRate = types.Int64Value(po.StormctrlBroadcastastRate)
 		}
 
 		if po.StormctrlMcastLevel == 0 {
 			model.StormctrlMcastLevel = types.Int64Null()
 		} else {
-			model.StormctrlMcastLevel = types.Int64Value(int64(po.StormctrlMcastLevel))
+			model.StormctrlMcastLevel = types.Int64Value(po.StormctrlMcastLevel)
 		}
 
 		if po.StormctrlMcastRate == 0 {
 			model.StormctrlMcastRate = types.Int64Null()
 		} else {
-			model.StormctrlMcastRate = types.Int64Value(int64(po.StormctrlMcastRate))
+			model.StormctrlMcastRate = types.Int64Value(po.StormctrlMcastRate)
 		}
 
 		if po.StormctrlUcastLevel == 0 {
 			model.StormctrlUcastLevel = types.Int64Null()
 		} else {
-			model.StormctrlUcastLevel = types.Int64Value(int64(po.StormctrlUcastLevel))
+			model.StormctrlUcastLevel = types.Int64Value(po.StormctrlUcastLevel)
 		}
 
 		if po.StormctrlUcastRate == 0 {
 			model.StormctrlUcastRate = types.Int64Null()
 		} else {
-			model.StormctrlUcastRate = types.Int64Value(int64(po.StormctrlUcastRate))
+			model.StormctrlUcastRate = types.Int64Value(po.StormctrlUcastRate)
 		}
 
 		// List attributes
@@ -1793,7 +1795,7 @@ func (r *deviceResource) portOverridesToFramework(
 		} else {
 			aggrMemberValues := make([]attr.Value, 0, len(po.AggregateMembers))
 			for _, member := range po.AggregateMembers {
-				aggrMemberValues = append(aggrMemberValues, types.Int64Value(int64(member)))
+				aggrMemberValues = append(aggrMemberValues, types.Int64Value(member))
 			}
 			listVal, listDiags := types.ListValue(types.Int64Type, aggrMemberValues)
 			diags.Append(listDiags...)
@@ -2029,7 +2031,12 @@ func (r *deviceResource) frameworkToPortOverrides(
 
 			overrideMap[idx] = po
 		} else {
-			diags.Append(diag.NewErrorDiagnostic("Invalid port override model", "Error casting `portOverrideModel` to `types.Object`"))
+			diags.Append(
+				diag.NewErrorDiagnostic(
+					"Invalid port override model",
+					"Error casting `portOverrideModel` to `types.Object`",
+				),
+			)
 		}
 	}
 
@@ -2215,7 +2222,7 @@ func int64OrNull(i int64) types.Int64 {
 	if i == 0 {
 		return types.Int64Null()
 	}
-	return types.Int64Value(int64(i))
+	return types.Int64Value(i)
 }
 
 // configNetworkToFramework converts API ConfigNetwork to Framework types.
@@ -2315,7 +2322,7 @@ func (r *deviceResource) outletOverridesToFramework(
 	elements := make([]attr.Value, 0, len(outlets))
 	for _, outlet := range outlets {
 		model := outletOverrideModel{
-			Index:        types.Int64Value(int64(outlet.Index)),
+			Index:        types.Int64Value(outlet.Index),
 			Name:         stringOrNull(outlet.Name),
 			RelayState:   types.BoolValue(outlet.RelayState),
 			CycleEnabled: types.BoolValue(outlet.CycleEnabled),

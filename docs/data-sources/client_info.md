@@ -64,6 +64,7 @@ data "unifi_client_info" "site_specific" {
 - `last_seen` (Number) Unix timestamp when the client was last seen.
 - `last_uplink_mac` (String) The MAC address of the last uplink device.
 - `last_uplink_name` (String) The name of the last uplink device.
+- `last_uplink_remote_port` (Number) The remote port of the last uplink device.
 - `local_dns_record` (String) The local DNS record for this client.
 - `local_dns_record_enabled` (Boolean) Whether local DNS record is enabled for this client.
 - `name` (String) The name of the client.

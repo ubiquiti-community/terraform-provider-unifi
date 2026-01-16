@@ -425,7 +425,7 @@ func (d *networkDataSource) setDataSourceData(
 	if network.VLAN == 0 {
 		model.VlanID = types.Int64Null()
 	} else {
-		model.VlanID = types.Int64Value(int64(network.VLAN))
+		model.VlanID = types.Int64Value(network.VLAN)
 	}
 
 	if network.IPSubnet == "" {
@@ -457,7 +457,7 @@ func (d *networkDataSource) setDataSourceData(
 	model.DHCPDEnabled = types.BoolValue(network.DHCPDEnabled)
 
 	// Use a default DHCP lease time since the actual field name is not clear
-	model.DHCPDLease = types.Int64Value(int64(network.DHCPDLeaseTime)) // 24 hours default
+	model.DHCPDLease = types.Int64Value(network.DHCPDLeaseTime) // 24 hours default
 
 	// Convert string slices to Framework lists - use empty list for now
 	model.DHCPDDNS = types.ListNull(types.StringType)

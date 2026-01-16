@@ -478,7 +478,7 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	model.Name = types.StringValue(radiusProfile.Name)
 	model.AccountingEnabled = types.BoolValue(radiusProfile.AccountingEnabled)
 	model.InterimUpdateEnabled = types.BoolValue(radiusProfile.InterimUpdateEnabled)
-	model.InterimUpdateInterval = types.Int64Value(int64(radiusProfile.InterimUpdateInterval))
+	model.InterimUpdateInterval = types.Int64Value(radiusProfile.InterimUpdateInterval)
 	model.UseUSGAcctServer = types.BoolValue(radiusProfile.UseUsgAcctServer)
 	model.UseUSGAuthServer = types.BoolValue(radiusProfile.UseUsgAuthServer)
 	model.VlanEnabled = types.BoolValue(radiusProfile.VLANEnabled)
@@ -488,7 +488,7 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	for _, authServer := range radiusProfile.AuthServers {
 		model.AuthServer = append(model.AuthServer, radiusServerModel{
 			IP:      types.StringValue(authServer.IP),
-			Port:    types.Int64Value(int64(authServer.Port)),
+			Port:    types.Int64Value(authServer.Port),
 			XSecret: types.StringValue(authServer.XSecret),
 		})
 	}
@@ -497,7 +497,7 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	for _, acctServer := range radiusProfile.AcctServers {
 		model.AcctServer = append(model.AcctServer, radiusServerModel{
 			IP:      types.StringValue(acctServer.IP),
-			Port:    types.Int64Value(int64(acctServer.Port)),
+			Port:    types.Int64Value(acctServer.Port),
 			XSecret: types.StringValue(acctServer.XSecret),
 		})
 	}

@@ -14,7 +14,11 @@ func TestAccClientGroupFramework_basic(t *testing.T) {
 			{
 				Config: testAccClientGroupFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_client_group.test", "name", "tfacc-group"),
+					resource.TestCheckResourceAttr(
+						"unifi_client_group.test",
+						"name",
+						"tfacc-group",
+					),
 					resource.TestCheckResourceAttr(
 						"unifi_client_group.test",
 						"qos_rate_max_down",

@@ -153,7 +153,7 @@ func (d *dnsRecordDataSource) Read(
 	data.Name = types.StringValue(dnsRecord.Key)
 	data.Type = types.StringValue(dnsRecord.RecordType)
 	data.Value = types.StringValue(dnsRecord.Value)
-	data.TTL = types.Int64Value(int64(dnsRecord.Ttl))
+	data.TTL = types.Int64Value(dnsRecord.Ttl)
 	data.Enabled = types.BoolValue(dnsRecord.Enabled)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

@@ -31,7 +31,7 @@ output "total_clients" {
 
 ### Read-Only
 
-- `clients` (Attributes List) List of active clients. (see [below for nested schema](#nestedatt--clients))
+- `clients` (Attributes List) List of active clients on the network. (see [below for nested schema](#nestedatt--clients))
 
 <a id="nestedatt--clients"></a>
 ### Nested Schema for `clients`
@@ -57,6 +57,7 @@ Read-Only:
 - `last_seen` (Number) Unix timestamp when the client was last seen.
 - `last_uplink_mac` (String) The MAC address of the last uplink device.
 - `last_uplink_name` (String) The name of the last uplink device.
+- `last_uplink_remote_port` (Number) The remote port of the last uplink device.
 - `local_dns_record` (String) The local DNS record for this client.
 - `local_dns_record_enabled` (Boolean) Whether local DNS record is enabled for this client.
 - `mac` (String) The MAC address of the client.
