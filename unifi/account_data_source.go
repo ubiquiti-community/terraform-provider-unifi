@@ -153,8 +153,8 @@ func (d *accountDataSource) Read(
 	data.Site = types.StringValue(site)
 	data.Name = types.StringValue(account.Name)
 	data.Password = types.StringValue(account.XPassword)
-	data.TunnelType = types.Int64Value(account.TunnelType)
-	data.TunnelMediumType = types.Int64Value(account.TunnelMediumType)
+	data.TunnelType = types.Int64PointerValue(account.TunnelType)
+	data.TunnelMediumType = types.Int64PointerValue(account.TunnelMediumType)
 	data.NetworkID = types.StringValue(account.NetworkID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

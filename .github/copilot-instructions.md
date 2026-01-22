@@ -1,63 +1,47 @@
-# Terraform Provider Migration: SDK v2 to Plugin Framework
+# Terraform Provider Development Guide: Plugin Framework
 
 ## Overview
 
-This guide provides detailed instructions for migrating a Terraform provider from SDK v2 to the newer Plugin Framework, based on real-world experience migrating terraform-provider-ironic and recommendations for terraform-provider-unifi.
+This guide provides comprehensive instructions for developing resources in the terraform-provider-unifi using the Terraform Plugin Framework. The provider is built entirely on the Plugin Framework (no SDK v2 dependencies).
 
 ## Prerequisites
 
-- **Target Repository**: [terraform-provider-unifi (terraform-provider-mux branch)](https://github.com/ubiquiti-community/terraform-provider-unifi/tree/terraform-provider-mux)
-- **Framework**: Terraform Plugin Framework v1.0+
-- **Go Version**: 1.19+
+- **Repository**: [terraform-provider-unifi](https://github.com/ubiquiti-community/terraform-provider-unifi)
+- **Framework**: Terraform Plugin Framework v1.12+
+- **Go Version**: 1.22+
+- **API Client**: [go-unifi](https://github.com/ubiquiti-community/go-unifi)
 
 ## Key Documentation References
 
 - [Plugin Framework Overview](https://developer.hashicorp.com/terraform/plugin/framework)
-- [Migration Guide from SDK v2](https://developer.hashicorp.com/terraform/plugin/framework/migrating)
 - [Provider Framework Tutorial](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework)
 - [Schema Concepts](https://developer.hashicorp.com/terraform/plugin/framework/handling-data/schemas)
 - [Resource Implementation](https://developer.hashicorp.com/terraform/plugin/framework/resources)
+- [Nested Attributes](https://developer.hashicorp.com/terraform/plugin/framework/handling-data/attributes#nested-attribute-types)
+- [Testing Framework](https://developer.hashicorp.com/terraform/plugin/framework/testing)
 
-## Migration Steps
+## Project Structure
 
-### 1. Project Structure Reorganization
+The provider uses a flat structure within the `unifi/` directory:
 
-**Current Structure** (SDK v2):
 ```
-internal/
-├── provider/
-├── resources/
-└── datasources/
-```
-
-**Target Structure** (Plugin Framework):
-```
-{provider_name}/          # Use 'unifi' for terraform-provider-unifi
-├── provider.go
-├── resource_*.go
-├── data_source_*.go
-└── util/
-    └── conversion.go
-```
-
-### 2. Update Dependencies
-
-Update `go.mod`:
-```go
-module github.com/ubiquiti-community/terraform-provider-unifi
-
-require (
-    github.com/hashicorp/terraform-plugin-framework v1.4.2
-    github.com/hashicorp/terraform-plugin-framework-validators v0.12.0
-    github.com/hashicorp/terraform-plugin-go v0.19.0
-    github.com/hashicorp/terraform-plugin-mux v0.12.0
-    // Keep existing dependencies for SDK v2 resources during transition
-)
+terraform-provider-unifi/
+├── main.go                    # Provider entry point
+├── unifi/
+│   ├── provider.go           # Provider implementation
+│   ├── provider_test.go      # Provider tests
+│   ├── resource_*.go         # Resource implementations
+│   ├── data_source_*.go      # Data source implementations
+│   ├── *_action.go           # Action implementations
+│   └── util/                 # Utility functions
+│       ├── conversion.go     # Type conversion helpers
+│       └── retry/           # Retry logic
+└── docs/                     # Generated documentation
 ```
 
-### 3. Main Provider Entry Point
+## Provider Entry Point
 
-**For Framework-Only Provider** (like ironic):
+The provider uses the Plugin Framework's server implementation:
 ```go
 package main
 
@@ -66,11 +50,11 @@ import (
     "flag"
     "log"
 
-    provider "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
     "github.com/hashicorp/terraform-plugin-framework/providerserver"
+    "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
 )
 
-//go:generate go tool github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name unifi
+//go:generate go tool tfplugindocs generate -provider-name unifi
 func main() {
     var debug bool
 
@@ -87,98 +71,76 @@ func main() {
         Debug:   debug,
     }
 
-    err := providerserver.Serve(context.Background(), provider.New(), opts)
+    err := providerserver.Serve(context.Background(), unifi.New, opts)
     if err != nil {
         log.Fatal(err.Error())
     }
 }
 ```
 
-**For Mixed Provider** (SDK v2 + Framework):
-```go
-package main
+## Provider Implementation
 
-import (
-    "context"
-    "flag"
-    "log"
+The provider implements multiple interfaces to support various features:
 
-    "github.com/hashicorp/terraform-plugin-framework/providerserver"
-    "github.com/hashicorp/terraform-plugin-mux/tf5to6server"
-    "github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
-    
-    // SDK v2 provider (existing)
-    sdkProvider "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
-    // Plugin Framework provider (new)
-    frameworkProvider "github.com/ubiquiti-community/terraform-provider-unifi/unifi"
-)
-
-func main() {
-    var debug bool
-    flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers")
-    flag.Parse()
-
-    ctx := context.Background()
-
-    // Upgrade SDK v2 provider to protocol version 6
-    upgradedSdkProvider, err := tf5to6server.UpgradeServer(
-        ctx,
-        sdkProvider.New().GRPCProvider,
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // Create muxed provider
-    muxServer, err := tf6muxserver.NewMuxServer(ctx,
-        upgradedSdkProvider,
-        providerserver.NewProtocol6(frameworkProvider.New()),
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    err = muxServer.Serve(ctx, &tf6muxserver.ServeOpts{
-        Address: "registry.terraform.io/ubiquiti-community/unifi",
-        Debug:   debug,
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-}
-```
-
-### 4. Provider Implementation
-
-Create `unifi/provider.go`:
 ```go
 package unifi
 
 import (
-    "context"
+    "github.com/hashicorp/terraform-plugin-framework/action"
     "github.com/hashicorp/terraform-plugin-framework/datasource"
+    "github.com/hashicorp/terraform-plugin-framework/ephemeral"
+    "github.com/hashicorp/terraform-plugin-framework/list"
     "github.com/hashicorp/terraform-plugin-framework/provider"
-    "github.com/hashicorp/terraform-plugin-framework/provider/schema"
     "github.com/hashicorp/terraform-plugin-framework/resource"
-    "github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-type unifiProvider struct {
-    version string
-}
+// Ensure provider defined types fully satisfy framework interfaces.
+var (
+    _ provider.Provider                       = &unifiProvider{}
+    _ provider.ProviderWithEphemeralResources = &unifiProvider{}
+    _ provider.ProviderWithListResources      = &unifiProvider{}
+)
+
+type unifiProvider struct{}
 
 type unifiProviderModel struct {
-    Username      types.String `tfsdk:"username"`
-    Password      types.String `tfsdk:"password"`
-    APIUrl        types.String `tfsdk:"api_url"`
-    AllowInsecure types.Bool   `tfsdk:"allow_insecure"`
+    ApiKey         types.String `tfsdk:"api_key"`
+    Username       types.String `tfsdk:"username"`
+    Password       types.String `tfsdk:"password"`
+    ApiUrl         types.String `tfsdk:"api_url"`
+    Site           types.String `tfsdk:"site"`
+    AllowInsecure  types.Bool   `tfsdk:"allow_insecure"`
+    CloudConnector types.Bool   `tfsdk:"cloud_connector"`
+    HardwareID     types.String `tfsdk:"hardware_id"`
+}
+
+// Client wraps the UniFi client with site information.
+type Client struct {
+    *unifi.ApiClient
+    Site string
 }
 
 func New() provider.Provider {
     return &unifiProvider{}
 }
+```
 
-func (p *unifiProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+### Provider Methods
+
+```go
+func (p *unifiProvider) Metadata(
+    ctx context.Context,
+    req provider.MetadataRequest,
+    resp *provider.MetadataResponse,
+) {
+    resp.TypeName = "unifi"
+}
+
+func (p *unifiProvider) Schema(
+    ctx context.Context,
+    req provider.SchemaRequest,
+    resp *provider.SchemaResponse,
+) {
     resp.Schema = schema.Schema{
         Attributes: map[string]schema.Attribute{
             "username": schema.StringAttribute{
@@ -194,15 +156,36 @@ func (p *unifiProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
                 Optional:    true,
                 Description: "URL of the UniFi controller",
             },
+            "api_key": schema.StringAttribute{
+                Optional:    true,
+                Sensitive:   true,
+                Description: "API key for UniFi controller (cloud connector)",
+            },
             "allow_insecure": schema.BoolAttribute{
                 Optional:    true,
-                Description: "Allow insecure connections",
+                Description: "Allow insecure TLS connections",
+            },
+            "site": schema.StringAttribute{
+                Optional:    true,
+                Description: "UniFi site name (defaults to 'default')",
+            },
+            "cloud_connector": schema.BoolAttribute{
+                Optional:    true,
+                Description: "Use UniFi Cloud Connector authentication",
+            },
+            "hardware_id": schema.StringAttribute{
+                Optional:    true,
+                Description: "Hardware ID for cloud connector authentication",
             },
         },
     }
 }
 
-func (p *unifiProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+func (p *unifiProvider) Configure(
+    ctx context.Context,
+    req provider.ConfigureRequest,
+    resp *provider.ConfigureResponse,
+) {
     var config unifiProviderModel
     diags := req.Config.Get(ctx, &config)
     resp.Diagnostics.Append(diags...)
@@ -210,32 +193,84 @@ func (p *unifiProvider) Configure(ctx context.Context, req provider.ConfigureReq
         return
     }
 
-    // Configure your UniFi client here
-    // Store client in resp.DataSourceData and resp.ResourceData
+    // Read configuration from environment variables or config
+    // Create HTTP client with proper TLS settings
+    // Authenticate with UniFi controller
+    // Store configured client in provider data
+    
+    configuredClient := &Client{
+        ApiClient: client,
+        Site:      site,
+    }
+
+    resp.DataSourceData = configuredClient
+    resp.ResourceData = configuredClient
+    resp.EphemeralResourceData = configuredClient
+    resp.ActionData = configuredClient
+    resp.ListResourceData = configuredClient
 }
 
 func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resource {
     return []func() resource.Resource{
-        // Add your new framework resources here
-        // NewWifiNetworkResource,
+        NewAccountFrameworkResource,
+        NewBGPResource,
+        NewClientResource,
+        NewDeviceFrameworkResource,
+        NewDNSRecordFrameworkResource,
+        NewDynamicDNSResource,
+        NewFirewallGroupFrameworkResource,
+        NewFirewallRuleResource,
+        NewNetworkResource,
+        NewPortForwardResource,
+        NewPortProfileFrameworkResource,
+        NewRadiusProfileResource,
+        NewSettingResource,
+        NewSiteFrameworkResource,
+        NewStaticRouteFrameworkResource,
+        NewClientGroupFrameworkResource,
+        NewWANResource,
+        NewWLANFrameworkResource,
+        NewVirtualNetworkResource,
     }
 }
 
 func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
     return []func() datasource.DataSource{
-        // Add your new framework data sources here
+        NewClientDataSource,
+        NewClientInfoDataSource,
+        NewClientInfoListDataSource,
+        NewNetworkDataSource,
+        NewAccountDataSource,
+        NewAPGroupDataSource,
+        NewDNSRecordDataSource,
+        NewPortProfileDataSource,
+        NewRadiusProfileDataSource,
+        NewClientGroupDataSource,
     }
 }
 
-func (p *unifiProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-    resp.TypeName = "unifi"
-    resp.Version = p.version
+func (p *unifiProvider) ListResources(ctx context.Context) []func() list.ListResource {
+    return []func() list.ListResource{
+        NewClientListResource,
+    }
+}
+
+func (p *unifiProvider) Actions(ctx context.Context) []func() action.Action {
+    return []func() action.Action{
+        NewPortAction,
+    }
+}
+
+func (p *unifiProvider) EphemeralResources(
+    ctx context.Context,
+) []func() ephemeral.EphemeralResource {
+    return []func() ephemeral.EphemeralResource{}
 }
 ```
 
-### 5. Resource Migration Pattern
+## Resource Implementation Pattern
 
-For each SDK v2 resource, create a new Plugin Framework version:
+Resources follow a consistent pattern in this provider:
 
 **Example: WiFi Network Resource** (`unifi/resource_wifi_network.go`):
 ```go
@@ -377,50 +412,311 @@ func (r *wifiNetworkResource) Configure(ctx context.Context, req resource.Config
 }
 ```
 
-### 6. Data Source Migration
+## Nested Objects and Complex Schemas
 
-Create corresponding data sources following similar patterns to resources.
+### Best Practices for Nested Attributes
 
-### 7. Testing Migration
+The Plugin Framework provides nested attribute types that are preferred over object attributes:
 
-Update tests to use the new test patterns:
+- **`SingleNestedAttribute`**: For a single object with defined attributes
+- **`ListNestedAttribute`**: For an ordered collection of nested objects
+- **`SetNestedAttribute`**: For an unordered, unique collection of nested objects
+- **`MapNestedAttribute`**: For a mapping of string keys to nested objects
+
+**Key Points:**
+- Use nested attribute types instead of `ObjectAttribute` for better control
+- Each nested attribute must define its own configurability (`Required`, `Optional`, `Computed`)
+- The `NestedObject` field defines the schema of nested elements
+- Nested attributes support validation, plan modification, and description at each level
+
+### Example: Virtual Network with Nested DHCP Configuration
+
+See [virtual_network_resource.go](../unifi/virtual_network_resource.go) for a comprehensive example of nested objects.
+
+#### Schema Definition
+
 ```go
-func TestAccWifiNetwork_basic(t *testing.T) {
-    resource.Test(t, resource.TestCase{
-        PreCheck:                 func() { testAccPreCheck(t) },
-        ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-        Steps: []resource.TestStep{
-            {
-                Config: testAccWifiNetworkConfig_basic(),
-                Check: resource.ComposeTestCheckFunc(
-                    resource.TestCheckResourceAttr("unifi_wifi_network.test", "name", "test-network"),
-                ),
-            },
-            {
-                ResourceName:      "unifi_wifi_network.test",
-                ImportState:       true,
-                ImportStateVerify: true,
+type dhcpBootModel struct {
+    Enabled  types.Bool   `tfsdk:"enabled"`
+    Server   types.String `tfsdk:"server"`
+    Filename types.String `tfsdk:"filename"`
+}
+
+func (m dhcpBootModel) AttributeTypes() map[string]attr.Type {
+    return map[string]attr.Type{
+        "enabled":  types.BoolType,
+        "server":   types.StringType,
+        "filename": types.StringType,
+    }
+}
+
+type dhcpServerModel struct {
+    Boot           types.Object `tfsdk:"boot"`
+    Enabled        types.Bool   `tfsdk:"enabled"`
+    Start          types.String `tfsdk:"start"`
+    Stop           types.String `tfsdk:"stop"`
+    GatewayEnabled types.Bool   `tfsdk:"gateway_enabled"`
+    DnsEnabled     types.Bool   `tfsdk:"dns_enabled"`
+    DnsServers     types.List   `tfsdk:"dns_servers"`
+}
+
+func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
+    return map[string]attr.Type{
+        "boot":            types.ObjectType{AttrTypes: dhcpBootModel{}.AttributeTypes()},
+        "enabled":         types.BoolType,
+        "start":           types.StringType,
+        "stop":            types.StringType,
+        "gateway_enabled": types.BoolType,
+        "dns_enabled":     types.BoolType,
+        "dns_servers":     types.ListType{ElemType: types.StringType},
+    }
+}
+
+type virtualNetworkResourceModel struct {
+    ID         types.String `tfsdk:"id"`
+    Site       types.String `tfsdk:"site"`
+    Name       types.String `tfsdk:"name"`
+    Subnet     types.String `tfsdk:"subnet"`
+    DhcpServer types.Object `tfsdk:"dhcp_server"`
+    DhcpRelay  types.Object `tfsdk:"dhcp_relay"`
+}
+
+// In Schema method:
+resp.Schema = schema.Schema{
+    Attributes: map[string]schema.Attribute{
+        "dhcp_server": schema.SingleNestedAttribute{
+            Optional:            true,
+            MarkdownDescription: "DHCP server configuration",
+            Attributes: map[string]schema.Attribute{
+                "boot": schema.SingleNestedAttribute{
+                    Optional: true,
+                    Attributes: map[string]schema.Attribute{
+                        "enabled": schema.BoolAttribute{
+                            Optional: true,
+                        },
+                        "server": schema.StringAttribute{
+                            Optional: true,
+                        },
+                        "filename": schema.StringAttribute{
+                            Optional: true,
+                        },
+                    },
+                },
+                "enabled": schema.BoolAttribute{
+                    Required: true,
+                },
+                "start": schema.StringAttribute{
+                    Optional: true,
+                },
+                "stop": schema.StringAttribute{
+                    Optional: true,
+                },
+                "dns_servers": schema.ListAttribute{
+                    Optional:    true,
+                    ElementType: types.StringType,
+                },
             },
         },
-    })
+    },
 }
 ```
 
-## Critical Migration Considerations
+#### Mapping Nested Objects to API Prefixed Fields
 
-### 1. State Compatibility
-- **Issue**: Plugin Framework handles state differently than SDK v2
-- **Solution**: Implement proper state upgrade logic if needed
-- **Test**: Ensure existing Terraform states work with new provider
+The UniFi API often uses flat structures with prefixed fields (e.g., `dhcpd_*`, `dhcpd_boot_*`). 
+Nested Terraform objects provide a better user experience:
 
-### 2. Type Conversion Patterns
-Based on ironic provider experience:
+**Terraform Configuration:**
+```hcl
+resource "unifi_virtual_network" "example" {
+  name   = "example"
+  subnet = "10.0.0.0/24"
+  
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.0.100"
+    stop    = "10.0.0.200"
+    
+    boot = {
+      enabled  = true
+      server   = "10.0.0.1"
+      filename = "boot.cfg"
+    }
+    
+    dns_servers = ["8.8.8.8", "8.8.4.4"]
+  }
+}
+```
+
+**Conversion to API Model:**
+
 ```go
-// Handle null vs empty consistently
-if apiResponse.Field == "" {
-    model.Field = types.StringNull()
+func modelToNetwork(
+    ctx context.Context,
+    model *virtualNetworkResourceModel,
+) (*unifi.Network, diag.Diagnostics) {
+    var diags diag.Diagnostics
+    
+    network := &unifi.Network{
+        Name:   model.Name.ValueString(),
+        Subnet: model.Subnet.ValueString(),
+    }
+    
+    // Handle DHCP server configuration
+    if !model.DhcpServer.IsNull() && !model.DhcpServer.IsUnknown() {
+        var dhcpServer dhcpServerModel
+        d := model.DhcpServer.As(ctx, &dhcpServer, basetypes.ObjectAsOptions{})
+        diags.Append(d...)
+        if !diags.HasError() {
+            // Map dhcp_server.enabled -> DHCPDEnabled
+            network.DHCPDEnabled = dhcpServer.Enabled.ValueBool()
+            network.DHCPDStart = dhcpServer.Start.ValueStringPointer()
+            network.DHCPDStop = dhcpServer.Stop.ValueStringPointer()
+            network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
+            
+            // Handle nested boot configuration
+            if !dhcpServer.Boot.IsNull() && !dhcpServer.Boot.IsUnknown() {
+                var dhcpBoot dhcpBootModel
+                d := dhcpServer.Boot.As(ctx, &dhcpBoot, basetypes.ObjectAsOptions{})
+                diags.Append(d...)
+                if !diags.HasError() {
+                    // Map dhcp_server.boot.* -> DHCPDBoot*
+                    network.DHCPDBootEnabled = dhcpBoot.Enabled.ValueBool()
+                    network.DHCPDBootServer = dhcpBoot.Server.ValueString()
+                    network.DHCPDBootFilename = dhcpBoot.Filename.ValueStringPointer()
+                }
+            }
+            
+            // Handle DNS servers list
+            if !dhcpServer.DnsServers.IsNull() && !dhcpServer.DnsServers.IsUnknown() {
+                var dnsServers []string
+                d := dhcpServer.DnsServers.ElementsAs(ctx, &dnsServers, false)
+                diags.Append(d...)
+                if !diags.HasError() {
+                    // API uses DHCPDDNS1, DHCPDDNS2, DHCPDDNS3, DHCPDDNS4
+                    for i, dns := range dnsServers {
+                        if i >= 4 {
+                            break
+                        }
+                        switch i {
+                        case 0:
+                            network.DHCPDDNS1 = dns
+                        case 1:
+                            network.DHCPDDNS2 = dns
+                        case 2:
+                            network.DHCPDDNS3 = dns
+                        case 3:
+                            network.DHCPDDNS4 = dns
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return network, diags
+}
+```
+
+**Conversion from API Model:**
+
+```go
+func networkToModel(
+    ctx context.Context,
+    network *unifi.Network,
+    model *virtualNetworkResourceModel,
+    site string,
+    previousModel *virtualNetworkResourceModel,
+) diag.Diagnostics {
+    var diags diag.Diagnostics
+    
+    model.ID = types.StringValue(network.ID)
+    model.Site = types.StringValue(site)
+    model.Name = types.StringValue(network.Name)
+    model.Subnet = types.StringValue(network.Subnet)
+    
+    // Only populate dhcp_server if it was configured in previous state
+    // or if this is an import and DHCP is enabled
+    shouldPopulateDhcp := !previousModel.DhcpServer.IsNull() || network.DHCPDEnabled
+    
+    if shouldPopulateDhcp {
+        // Create nested boot object if boot is enabled
+        var bootObj types.Object
+        if network.DHCPDBootEnabled {
+            bootModel := dhcpBootModel{
+                Enabled:  types.BoolValue(network.DHCPDBootEnabled),
+                Server:   types.StringValue(network.DHCPDBootServer),
+                Filename: types.StringPointerValue(network.DHCPDBootFilename),
+            }
+            var d diag.Diagnostics
+            bootObj, d = types.ObjectValueFrom(ctx, dhcpBootModel{}.AttributeTypes(), bootModel)
+            diags.Append(d...)
+        } else {
+            bootObj = types.ObjectNull(dhcpBootModel{}.AttributeTypes())
+        }
+        
+        // Collect DNS servers into list
+        var dnsServersList types.List
+        dnsServers := []string{}
+        if network.DHCPDDNS1 != "" {
+            dnsServers = append(dnsServers, network.DHCPDDNS1)
+        }
+        if network.DHCPDDNS2 != "" {
+            dnsServers = append(dnsServers, network.DHCPDDNS2)
+        }
+        if len(dnsServers) > 0 {
+            var d diag.Diagnostics
+            dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)
+            diags.Append(d...)
+        } else {
+            dnsServersList = types.ListNull(types.StringType)
+        }
+        
+        // Create DHCP server object
+        dhcpServerModel := dhcpServerModel{
+            Boot:           bootObj,
+            Enabled:        types.BoolValue(network.DHCPDEnabled),
+            Start:          types.StringPointerValue(network.DHCPDStart),
+            Stop:           types.StringPointerValue(network.DHCPDStop),
+            GatewayEnabled: types.BoolValue(network.DHCPDGatewayEnabled),
+            DnsEnabled:     types.BoolValue(network.DHCPDDNSEnabled),
+            DnsServers:     dnsServersList,
+        }
+        
+        var d diag.Diagnostics
+        model.DhcpServer, d = types.ObjectValueFrom(ctx, dhcpServerModel.AttributeTypes(), dhcpServerModel)
+        diags.Append(d...)
+    } else {
+        model.DhcpServer = types.ObjectNull(dhcpServerModel{}.AttributeTypes())
+    }
+    
+    return diags
+}
+```
+
+### Key Patterns for Nested Objects
+
+1. **Define Helper Models**: Create structs for each nested object level
+2. **Implement AttributeTypes()**: Return the type map for each model
+3. **Use SingleNestedAttribute**: In schema definition with nested Attributes map
+4. **Handle Null/Unknown**: Always check before accessing nested values
+5. **Preserve State**: Only populate nested objects that were configured or during import
+6. **Map to API Prefixes**: Convert nested structure to flat API fields with consistent prefixes
+7. **Convert from API**: Reverse the mapping, grouping prefixed fields back into nested objects
+
+## Type Conversion Best Practices
+
+### Handling Null vs Empty Values
+
+```go
+// ❌ Wrong: Always setting values
+model.LastError = types.StringValue(apiResponse.LastError)
+
+// ✅ Correct: Handle empty strings as null
+if apiResponse.LastError == "" {
+    model.LastError = types.StringNull()
 } else {
-    model.Field = types.StringValue(apiResponse.Field)
+    model.LastError = types.StringValue(apiResponse.LastError)
 }
 
 // Lists should be null when empty
@@ -435,94 +731,207 @@ if len(apiResponse.Items) > 0 {
 }
 ```
 
-### 3. Import Functionality
-- Ensure no-op plans after import
-- Handle computed vs configured attributes properly
-- Test import scenarios thoroughly
+### Pointer Handling
 
-### 4. Validation Migration
 ```go
-// SDK v2
-validateFunc: validation.StringInSlice([]string{"option1", "option2"}, false)
+// ValueStringPointer: Returns nil if types.String is null
+network.DHCPDStart = dhcpServer.Start.ValueStringPointer()
 
-// Plugin Framework
-Validators: []validator.String{
-    stringvalidator.OneOf("option1", "option2"),
+// StringPointerValue: Creates types.StringNull if pointer is nil
+model.Start = types.StringPointerValue(network.DHCPDStart)
+```
+
+## Testing
+
+### Provider Factory Setup
+
+In `provider_test.go`:
+
+```go
+var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
+    "unifi": providerserver.NewProtocol6WithError(New()),
+}
+
+func testAccPreCheck(t *testing.T) {
+    if os.Getenv("UNIFI_API_URL") == "" {
+        t.Fatal("UNIFI_API_URL must be set for acceptance tests")
+    }
 }
 ```
 
-## UniFi-Specific Migration Strategy
+### Acceptance Tests
 
-### Phase 1: Infrastructure Setup
-1. Update `terraform-provider-mux` branch with Plugin Framework provider
-2. Set up muxing in `main.go`
-3. Create basic provider structure in `unifi/` directory
+```go
+func TestAccWLAN_basic(t *testing.T) {
+    resource.Test(t, resource.TestCase{
+        PreCheck:                 func() { testAccPreCheck(t) },
+        ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+        Steps: []resource.TestStep{
+            {
+                Config: testAccWLANConfig_basic(),
+                Check: resource.ComposeTestCheckFunc(
+                    resource.TestCheckResourceAttr("unifi_wlan.test", "name", "test-network"),
+                    resource.TestCheckResourceAttr("unifi_wlan.test", "ssid", "test-ssid"),
+                ),
+            },
+            {
+                ResourceName:            "unifi_wlan.test",
+                ImportState:             true,
+                ImportStateVerify:       true,
+                ImportStateVerifyIgnore: []string{"passphrase"}, // Sensitive fields
+            },
+        },
+    })
+}
 
-### Phase 2: Core Resource Migration
-Prioritize these resources for initial migration:
-1. `unifi_wifi_network` - Core WiFi network management
-2. `unifi_client` - Client management
-3. `unifi_port_profile` - Port profile configuration
+func testAccWLANConfig_basic() string {
+    return `
+resource "unifi_wlan" "test" {
+  name       = "test-network"
+  ssid       = "test-ssid"
+  security   = "wpapsk"
+  passphrase = "testpassword123"
+  vlan_id    = 10
+}
+`
+}
+```
 
-### Phase 3: Advanced Features
-1. Complex nested resources
-2. Advanced validation patterns
-3. Custom plan modifiers
+## Data Source Implementation
 
-### Phase 4: Testing & Documentation
-1. Comprehensive acceptance tests
-2. Import testing
-3. Documentation updates
+Data sources follow similar patterns to resources but are read-only:
+
+```go
+type wlanDataSource struct {
+    client *Client
+}
+
+func (d *wlanDataSource) Read(
+    ctx context.Context,
+    req datasource.ReadRequest,
+    resp *datasource.ReadResponse,
+) {
+    var config wlanDataSourceModel
+    diags := req.Config.Get(ctx, &config)
+    resp.Diagnostics.Append(diags...)
+    if resp.Diagnostics.HasError() {
+        return
+    }
+
+    // Query API based on config parameters
+    // Populate state with results
+    
+    diags = resp.State.Set(ctx, &state)
+    resp.Diagnostics.Append(diags...)
+}
+```
+
+## Import Functionality
+
+Support both simple and complex import formats:
+
+```go
+func (r *wlanFrameworkResource) ImportState(
+    ctx context.Context,
+    req resource.ImportStateRequest,
+    resp *resource.ImportStateResponse,
+) {
+    // Support formats: "id" or "site:id"
+    idParts := strings.Split(req.ID, ":")
+    if len(idParts) == 2 {
+        resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+        resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
+    } else {
+        resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+    }
+}
+```
+
+For complex identifiers (like MAC addresses):
+
+```go
+func (r *clientResource) ImportState(
+    ctx context.Context,
+    req resource.ImportStateRequest,
+    resp *resource.ImportStateResponse,
+) {
+    // Try to parse as MAC address
+    _, err := net.ParseMAC(req.ID)
+    if err == nil {
+        // It's a MAC address
+        resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("mac"), req.ID)...)
+    } else {
+        // Regular ID or site:id format
+        idParts := strings.Split(req.ID, ":")
+        if len(idParts) == 2 {
+            resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+            resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
+        } else {
+            resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+        }
+    }
+}
+```
 
 ## Common Pitfalls & Solutions
 
-### 1. Schema Definition Differences
-- **Issue**: Attribute syntax differs between SDK v2 and Framework
-- **Solution**: Use schema validation tools and reference examples
+### 1. Schema Definition
+- **Issue**: Forgetting to mark computed attributes
+- **Solution**: Attributes set by API (like ID, timestamps) must be `Computed: true`
 
 ### 2. Client Configuration
-- **Issue**: Provider configuration handling changes
-- **Solution**: Store client in provider data, access in resources via `req.ProviderData`
+- **Issue**: Nil client in resource methods
+- **Solution**: Always check `req.ProviderData == nil` in Configure method
 
 ### 3. State Management
-- **Issue**: Framework handles null/unknown differently
-- **Solution**: Always check for null/unknown before operations, use consistent patterns
+- **Issue**: Framework handles null/unknown differently than expected
+- **Solution**: Always check `IsNull()` and `IsUnknown()` before operations
 
-### 4. Complex Nested Attributes
-- **Issue**: Framework requires explicit nested attribute schemas
-- **Solution**: Define nested object schemas explicitly, avoid interface{} types
-
-### 5. Import State Mismatches
+### 4. Import State Mismatches
 - **Issue**: Plan shows changes after importing a resource
-- **Solution**: Ensure consistent null handling in read functions
-```go
-// ❌ Wrong: Always setting values
-model.LastError = types.StringValue(apiResponse.LastError)
+- **Solution**: Ensure Read method handles null values consistently with Create/Update
 
-// ✅ Correct: Handle empty strings as null
-if apiResponse.LastError == "" {
-    model.LastError = types.StringNull()
-} else {
-    model.LastError = types.StringValue(apiResponse.LastError)
-}
+### 5. Nested Object Complexity
+- **Issue**: Difficult to maintain deeply nested objects
+- **Solution**: Limit nesting to 2-3 levels; use helper functions for conversions
+
+## Validation
+
+Use built-in validators for common patterns:
+
+```go
+import (
+    "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+    "github.com/hashicorp/terraform-plugin-framework/schema/validator"
+)
+
+"security": schema.StringAttribute{
+    Optional: true,
+    Validators: []validator.String{
+        stringvalidator.OneOf("open", "wep", "wpapsk", "wpaeap", "wpa3"),
+    },
+},
+"vlan_id": schema.Int64Attribute{
+    Optional: true,
+    Validators: []validator.Int64{
+        int64validator.Between(1, 4094),
+    },
+},
 ```
 
 ## Validation Checklist
 
-- [ ] All existing resources have Framework equivalents
-- [ ] State compatibility maintained
-- [ ] Import functionality works
-- [ ] Tests pass with both providers
-- [ ] Documentation updated
+- [ ] All resources implement required interfaces
+- [ ] Import functionality works correctly
+- [ ] Tests pass with acceptance test suite
+- [ ] Documentation generated with tfplugindocs
 - [ ] No-op plans after apply/import
 - [ ] Error handling follows Framework patterns
-- [ ] Performance impact assessed
+- [ ] Nested objects map correctly to API fields
+- [ ] Null/empty values handled consistently
 
 ## Resources for Reference
 
-- [Ironic Provider Example](https://github.com/appkins-org/terraform-provider-ironic) - Complete migration example
-- [Framework Migration Guide](https://developer.hashicorp.com/terraform/plugin/framework/migrating)
-- [Muxing Documentation](https://developer.hashicorp.com/terraform/plugin/mux)
+- [Plugin Framework Documentation](https://developer.hashicorp.com/terraform/plugin/framework)
 - [Framework Testing](https://developer.hashicorp.com/terraform/plugin/framework/testing)
-
-This migration approach allows for gradual transition while maintaining backward compatibility through provider muxing.
+- [go-unifi API Client](https://github.com/ubiquiti-community/go-unifi)

@@ -140,7 +140,7 @@ Optional:
 
 Required:
 
-- `number` (Number) Switch port number.
+- `index` (Number) Switch port index.
 
 Optional:
 

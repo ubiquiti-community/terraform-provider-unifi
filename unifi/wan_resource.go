@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
@@ -786,40 +787,32 @@ func (r *wanResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Name:                model.Name.ValueString(),
-		Purpose:             "wan", // Statically set to "wan"
-		WANNetworkGroup:     "WAN", // Statically set to "WAN"
-		HiddenID:            "WAN", // Statically set to "WAN"
-		WANType:             model.Type.ValueString(),
-		WANTypeV6:           model.TypeV6.ValueString(),
+		Name:                model.Name.ValueStringPointer(),
+		Purpose:             unifi.PurposeWAN, // Statically set to "wan"
+		WANNetworkGroup:     util.Ptr("WAN"),  // Statically set to "WAN"
+		HiddenID:            "WAN",            // Statically set to "WAN"
+		WANType:             model.Type.ValueStringPointer(),
+		WANTypeV6:           model.TypeV6.ValueStringPointer(),
 		WANVLANEnabled:      model.VlanEnabled.ValueBool(),
-		WANVLAN:             model.Vlan.ValueInt64(),
-		WANEgressQOS:        model.EgressQoS.ValueInt64(),
+		WANVLAN:             model.Vlan.ValueInt64Pointer(),
+		WANEgressQOS:        model.EgressQoS.ValueInt64Pointer(),
 		WANEgressQOSEnabled: model.EgressQoSEnabled.ValueBoolPointer(),
-		WANDHCPCos:          model.DHCPCoS.ValueInt64(),
-		WANDHCPv6Cos:        model.DHCPV6CoS.ValueInt64(),
-	}
+		WANDHCPCos:          model.DHCPCoS.ValueInt64Pointer(),
+		WANDHCPv6Cos:        model.DHCPV6CoS.ValueInt64Pointer(),
 
-	// DNS Settings
-	if !model.DNS1.IsNull() && !model.DNS1.IsUnknown() {
-		network.WANDNS1 = model.DNS1.ValueString()
+		// DNS Settings
+		WANDNS1:              model.DNS1.ValueStringPointer(),
+		WANDNS2:              model.DNS2.ValueStringPointer(),
+		WANIPV6DNS1:          model.IPv6DNS1.ValueStringPointer(),
+		WANIPV6DNS2:          model.IPv6DNS2.ValueStringPointer(),
+		WANDNSPreference:     model.DNSPreference.ValueStringPointer(),
+		WANIPV6DNSPreference: model.IPv6DNSPreference.ValueStringPointer(),
 	}
-	if !model.DNS2.IsNull() && !model.DNS2.IsUnknown() {
-		network.WANDNS2 = model.DNS2.ValueString()
-	}
-	if !model.IPv6DNS1.IsNull() && !model.IPv6DNS1.IsUnknown() {
-		network.WANIPV6DNS1 = model.IPv6DNS1.ValueString()
-	}
-	if !model.IPv6DNS2.IsNull() && !model.IPv6DNS2.IsUnknown() {
-		network.WANIPV6DNS2 = model.IPv6DNS2.ValueString()
-	}
-	network.WANDNSPreference = model.DNSPreference.ValueString()
-	network.WANIPV6DNSPreference = model.IPv6DNSPreference.ValueString()
 
 	// DHCPv6 Settings
-	network.WANDHCPv6PDSize = model.DHCPV6PDSize.ValueInt64()
+	network.WANDHCPv6PDSize = model.DHCPV6PDSize.ValueInt64Pointer()
 	network.WANDHCPv6PDSizeAuto = model.DHCPV6PDSizeAuto.ValueBool()
-	network.IPV6WANDelegationType = model.IPv6WANDelegationType.ValueString()
+	network.IPV6WANDelegationType = model.IPv6WANDelegationType.ValueStringPointer()
 
 	// Convert DHCPv6 options list
 	if !model.DHCPV6Options.IsNull() && !model.DHCPV6Options.IsUnknown() {
@@ -829,8 +822,8 @@ func (r *wanResource) modelToNetwork(
 			network.WANDHCPv6Options = make([]unifi.NetworkWANDHCPv6Options, len(dhcpV6Options))
 			for i, opt := range dhcpV6Options {
 				network.WANDHCPv6Options[i] = unifi.NetworkWANDHCPv6Options{
-					OptionNumber: opt.OptionNumber.ValueInt64(),
-					Value:        opt.Value.ValueString(),
+					OptionNumber: opt.OptionNumber.ValueInt64Pointer(),
+					Value:        opt.Value.ValueStringPointer(),
 				}
 			}
 		}
@@ -838,28 +831,22 @@ func (r *wanResource) modelToNetwork(
 
 	// Smart Queue Settings
 	network.WANSmartQEnabled = model.SmartQEnabled.ValueBool()
-	if !model.SmartQUpRate.IsNull() && !model.SmartQUpRate.IsUnknown() {
-		network.WANSmartQUpRate = model.SmartQUpRate.ValueInt64()
-	}
-	if !model.SmartQDownRate.IsNull() && !model.SmartQDownRate.IsUnknown() {
-		network.WANSmartQDownRate = model.SmartQDownRate.ValueInt64()
-	}
+	network.WANSmartQUpRate = model.SmartQUpRate.ValueInt64Pointer()
+	network.WANSmartQDownRate = model.SmartQDownRate.ValueInt64Pointer()
 
 	// UPnP Settings
 	network.UPnPLanEnabled = model.UPnPEnabled.ValueBool()
-	if !model.UPnPWANInterface.IsNull() && !model.UPnPWANInterface.IsUnknown() {
-		network.UPnPWANInterface = model.UPnPWANInterface.ValueString()
-	}
+	network.UPnPWANInterface = model.UPnPWANInterface.ValueStringPointer()
 	network.UPnPNatPMPEnabled = model.UPnPEnabled.ValueBoolPointer()
 	network.UPnPSecureMode = model.UPnPSecureMode.ValueBoolPointer()
 
 	// Load Balance Settings
-	network.WANLoadBalanceType = model.LoadBalanceType.ValueString()
-	network.WANLoadBalanceWeight = model.LoadBalanceWeight.ValueInt64()
-	network.WANFailoverPriority = model.FailoverPriority.ValueInt64()
+	network.WANLoadBalanceType = model.LoadBalanceType.ValueStringPointer()
+	network.WANLoadBalanceWeight = model.LoadBalanceWeight.ValueInt64Pointer()
+	network.WANFailoverPriority = model.FailoverPriority.ValueInt64Pointer()
 
 	// IGMP Settings
-	network.IGMPProxyFor = model.IGMPProxyFor.ValueString()
+	network.IGMPProxyFor = model.IGMPProxyFor.ValueStringPointer()
 	network.IGMPProxyUpstream = model.IGMPProxyUpstream.ValueBool()
 
 	// Additional Settings
@@ -874,8 +861,8 @@ func (r *wanResource) modelToNetwork(
 			dhcpOptions := make([]unifi.NetworkWANDHCPOptions, len(dhcpOptionsModel))
 			for i, opt := range dhcpOptionsModel {
 				dhcpOptions[i] = unifi.NetworkWANDHCPOptions{
-					OptionNumber: opt.OptionNumber.ValueInt64(),
-					Value:        opt.Value.ValueString(),
+					OptionNumber: opt.OptionNumber.ValueInt64Pointer(),
+					Value:        opt.Value.ValueStringPointer(),
 				}
 			}
 			network.WANDHCPOptions = dhcpOptions
@@ -896,8 +883,8 @@ func (r *wanResource) modelToNetwork(
 			model.ProviderCapabilities.As(ctx, &providerCaps, basetypes.ObjectAsOptions{})...)
 		if !diags.HasError() {
 			network.WANProviderCapabilities = unifi.NetworkWANProviderCapabilities{
-				DownloadKilobitsPerSecond: providerCaps.DownloadKbps.ValueInt64(),
-				UploadKilobitsPerSecond:   providerCaps.UploadKbps.ValueInt64(),
+				DownloadKilobitsPerSecond: providerCaps.DownloadKbps.ValueInt64Pointer(),
+				UploadKilobitsPerSecond:   providerCaps.UploadKbps.ValueInt64Pointer(),
 			}
 		}
 	}
@@ -916,77 +903,38 @@ func (r *wanResource) networkToModel(
 
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
-	model.Name = types.StringValue(network.Name)
+	model.Name = types.StringPointerValue(network.Name)
 
 	// WAN Type Settings
-	if network.WANType == "" {
-		model.Type = types.StringNull()
-	} else {
-		model.Type = types.StringValue(network.WANType)
-	}
+	model.Type = types.StringPointerValue(network.WANType)
 
-	if network.WANTypeV6 == "" {
-		model.TypeV6 = types.StringNull()
-	} else {
-		model.TypeV6 = types.StringValue(network.WANTypeV6)
-	}
+	model.TypeV6 = types.StringPointerValue(network.WANTypeV6)
 
 	// VLAN Settings
 	model.VlanEnabled = types.BoolValue(network.WANVLANEnabled)
-	model.Vlan = types.Int64Value(network.WANVLAN)
+	model.Vlan = types.Int64PointerValue(network.WANVLAN)
 
 	// QoS Settings
-	model.EgressQoS = types.Int64Value(network.WANEgressQOS)
+	model.EgressQoS = types.Int64PointerValue(network.WANEgressQOS)
 	model.EgressQoSEnabled = types.BoolPointerValue(network.WANEgressQOSEnabled)
-	model.DHCPCoS = types.Int64Value(network.WANDHCPCos)
-	model.DHCPV6CoS = types.Int64Value(network.WANDHCPv6Cos)
+	model.DHCPCoS = types.Int64PointerValue(network.WANDHCPCos)
+	model.DHCPV6CoS = types.Int64PointerValue(network.WANDHCPv6Cos)
 
 	// DNS Settings
-	if network.WANDNS1 == "" {
-		model.DNS1 = types.StringNull()
-	} else {
-		model.DNS1 = types.StringValue(network.WANDNS1)
-	}
+	model.DNS1 = types.StringPointerValue(network.WANDNS1)
+	model.DNS2 = types.StringPointerValue(network.WANDNS2)
+	model.IPv6DNS1 = types.StringPointerValue(network.WANIPV6DNS1)
+	model.IPv6DNS2 = types.StringPointerValue(network.WANIPV6DNS2)
 
-	if network.WANDNS2 == "" {
-		model.DNS2 = types.StringNull()
-	} else {
-		model.DNS2 = types.StringValue(network.WANDNS2)
-	}
+	model.DNSPreference = types.StringPointerValue(network.WANDNSPreference)
 
-	if network.WANIPV6DNS1 == "" {
-		model.IPv6DNS1 = types.StringNull()
-	} else {
-		model.IPv6DNS1 = types.StringValue(network.WANIPV6DNS1)
-	}
-
-	if network.WANIPV6DNS2 == "" {
-		model.IPv6DNS2 = types.StringNull()
-	} else {
-		model.IPv6DNS2 = types.StringValue(network.WANIPV6DNS2)
-	}
-
-	if network.WANDNSPreference == "" {
-		model.DNSPreference = types.StringNull()
-	} else {
-		model.DNSPreference = types.StringValue(network.WANDNSPreference)
-	}
-
-	if network.WANIPV6DNSPreference == "" {
-		model.IPv6DNSPreference = types.StringNull()
-	} else {
-		model.IPv6DNSPreference = types.StringValue(network.WANIPV6DNSPreference)
-	}
+	model.IPv6DNSPreference = types.StringPointerValue(network.WANIPV6DNSPreference)
 
 	// DHCPv6 Settings
-	model.DHCPV6PDSize = types.Int64Value(network.WANDHCPv6PDSize)
+	model.DHCPV6PDSize = types.Int64PointerValue(network.WANDHCPv6PDSize)
 	model.DHCPV6PDSizeAuto = types.BoolValue(network.WANDHCPv6PDSizeAuto)
 
-	if network.IPV6WANDelegationType == "" {
-		model.IPv6WANDelegationType = types.StringNull()
-	} else {
-		model.IPv6WANDelegationType = types.StringValue(network.IPV6WANDelegationType)
-	}
+	model.IPv6WANDelegationType = types.StringPointerValue(network.IPV6WANDelegationType)
 
 	// Convert DHCPv6 options to list
 	if len(network.WANDHCPv6Options) > 0 {
@@ -999,8 +947,8 @@ func (r *wanResource) networkToModel(
 			dhcpV6OptionsValues[i], _ = types.ObjectValue(
 				dhcpV6OptionAttrTypes,
 				map[string]attr.Value{
-					"option_number": types.Int64Value(opt.OptionNumber),
-					"value":         types.StringValue(opt.Value),
+					"option_number": types.Int64PointerValue(opt.OptionNumber),
+					"value":         types.StringPointerValue(opt.Value),
 				},
 			)
 		}
@@ -1018,42 +966,22 @@ func (r *wanResource) networkToModel(
 
 	// Smart Queue Settings
 	model.SmartQEnabled = types.BoolValue(network.WANSmartQEnabled)
-	if network.WANSmartQUpRate == 0 {
-		model.SmartQUpRate = types.Int64Null()
-	} else {
-		model.SmartQUpRate = types.Int64Value(network.WANSmartQUpRate)
-	}
-	if network.WANSmartQDownRate == 0 {
-		model.SmartQDownRate = types.Int64Null()
-	} else {
-		model.SmartQDownRate = types.Int64Value(network.WANSmartQDownRate)
-	}
+	model.SmartQUpRate = types.Int64PointerValue(network.WANSmartQUpRate)
+	model.SmartQDownRate = types.Int64PointerValue(network.WANSmartQDownRate)
 
 	// UPnP Settings
 	model.UPnPEnabled = types.BoolPointerValue(network.UPnPEnabled)
-	if network.UPnPWANInterface == "" {
-		model.UPnPWANInterface = types.StringNull()
-	} else {
-		model.UPnPWANInterface = types.StringValue(network.UPnPWANInterface)
-	}
+	model.UPnPWANInterface = types.StringPointerValue(network.UPnPWANInterface)
 	model.UPnPNatPMPEnabled = types.BoolPointerValue(network.UPnPNatPMPEnabled)
 	model.UPnPSecureMode = types.BoolPointerValue(network.UPnPSecureMode)
 
 	// Load Balance Settings
-	if network.WANLoadBalanceType == "" {
-		model.LoadBalanceType = types.StringNull()
-	} else {
-		model.LoadBalanceType = types.StringValue(network.WANLoadBalanceType)
-	}
-	model.LoadBalanceWeight = types.Int64Value(network.WANLoadBalanceWeight)
-	model.FailoverPriority = types.Int64Value(network.WANFailoverPriority)
+	model.LoadBalanceType = types.StringPointerValue(network.WANLoadBalanceType)
+	model.LoadBalanceWeight = types.Int64PointerValue(network.WANLoadBalanceWeight)
+	model.FailoverPriority = types.Int64PointerValue(network.WANFailoverPriority)
 
 	// IGMP Settings
-	if network.IGMPProxyFor == "" {
-		model.IGMPProxyFor = types.StringNull()
-	} else {
-		model.IGMPProxyFor = types.StringValue(network.IGMPProxyFor)
-	}
+	model.IGMPProxyFor = types.StringPointerValue(network.IGMPProxyFor)
 	model.IGMPProxyUpstream = types.BoolValue(network.IGMPProxyUpstream)
 
 	// Additional Settings
@@ -1071,8 +999,8 @@ func (r *wanResource) networkToModel(
 			dhcpOptionsValues[i], _ = types.ObjectValue(
 				dhcpOptionAttrTypes,
 				map[string]attr.Value{
-					"option_number": types.Int64Value(opt.OptionNumber),
-					"value":         types.StringValue(opt.Value),
+					"option_number": types.Int64PointerValue(opt.OptionNumber),
+					"value":         types.StringPointerValue(opt.Value),
 				},
 			)
 		}
@@ -1100,17 +1028,17 @@ func (r *wanResource) networkToModel(
 	}
 
 	// Provider Capabilities
-	if network.WANProviderCapabilities.DownloadKilobitsPerSecond > 0 ||
-		network.WANProviderCapabilities.UploadKilobitsPerSecond > 0 {
+	if network.WANProviderCapabilities.DownloadKilobitsPerSecond != nil ||
+		network.WANProviderCapabilities.UploadKilobitsPerSecond != nil {
 		providerCapsAttrTypes := map[string]attr.Type{
 			"download_kilobits_per_second": types.Int64Type,
 			"upload_kilobits_per_second":   types.Int64Type,
 		}
 		providerCapsValues := map[string]attr.Value{
-			"download_kilobits_per_second": types.Int64Value(
+			"download_kilobits_per_second": types.Int64PointerValue(
 				network.WANProviderCapabilities.DownloadKilobitsPerSecond,
 			),
-			"upload_kilobits_per_second": types.Int64Value(
+			"upload_kilobits_per_second": types.Int64PointerValue(
 				network.WANProviderCapabilities.UploadKilobitsPerSecond,
 			),
 		}

@@ -606,10 +606,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 		portProfile.Dot1XCtrl = model.Dot1XCtrl.ValueString()
 	}
 
-	if !model.Dot1XIdleTimeout.IsNull() && !model.Dot1XIdleTimeout.IsUnknown() {
-		timeout := model.Dot1XIdleTimeout.ValueInt64()
-		portProfile.Dot1XIDleTimeout = timeout
-	}
+	portProfile.Dot1XIDleTimeout = model.Dot1XIdleTimeout.ValueInt64Pointer()
 
 	if !model.Forward.IsNull() && !model.Forward.IsUnknown() {
 		portProfile.Forward = model.Forward.ValueString()
@@ -642,9 +639,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 		}
 	}
 
-	if !model.Speed.IsNull() && !model.Speed.IsUnknown() {
-		portProfile.Speed = model.Speed.ValueInt64()
-	}
+	portProfile.Speed = model.Speed.ValueInt64Pointer()
 
 	// Convert tagged network IDs - skip for now as field name is unclear
 
@@ -675,7 +670,7 @@ func (r *portProfileResource) setResourceData(
 		model.Dot1XCtrl = types.StringValue(portProfile.Dot1XCtrl)
 	}
 
-	model.Dot1XIdleTimeout = types.Int64Value(portProfile.Dot1XIDleTimeout)
+	model.Dot1XIdleTimeout = types.Int64PointerValue(portProfile.Dot1XIDleTimeout)
 
 	if portProfile.Forward == "" {
 		model.Forward = types.StringValue("native")
@@ -725,11 +720,7 @@ func (r *portProfileResource) setResourceData(
 	}
 
 	// Only set speed if it was in the plan or if it's non-zero
-	if !model.Speed.IsNull() || portProfile.Speed != 0 {
-		model.Speed = types.Int64Value(portProfile.Speed)
-	} else {
-		model.Speed = types.Int64Null()
-	}
+	model.Speed = types.Int64PointerValue(portProfile.Speed)
 
 	// Convert tagged network IDs - skip for now
 	model.TaggedNetworkConfIDs = types.SetNull(types.StringType)

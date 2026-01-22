@@ -903,35 +903,31 @@ func (r *networkResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Name:    model.Name.ValueString(),
+		Name:    model.Name.ValueStringPointer(),
 		Purpose: model.Purpose.ValueString(),
 	}
 
-	if !model.VlanID.IsNull() {
-		network.VLAN = model.VlanID.ValueInt64()
-	}
+	network.VLAN = model.VlanID.ValueInt64Pointer()
 
 	if !model.Subnet.IsNull() {
-		network.IPSubnet = model.Subnet.ValueString()
+		network.IPSubnet = model.Subnet.ValueStringPointer()
 	}
 
 	if !model.NetworkGroup.IsNull() {
-		network.NetworkGroup = model.NetworkGroup.ValueString()
+		network.NetworkGroup = model.NetworkGroup.ValueStringPointer()
 	}
 
 	// DHCP Settings
 	if !model.DhcpStart.IsNull() {
-		network.DHCPDStart = model.DhcpStart.ValueString()
+		network.DHCPDStart = model.DhcpStart.ValueStringPointer()
 	}
 	if !model.DhcpStop.IsNull() {
-		network.DHCPDStop = model.DhcpStop.ValueString()
+		network.DHCPDStop = model.DhcpStop.ValueStringPointer()
 	}
 	if !model.DhcpEnabled.IsNull() {
 		network.DHCPDEnabled = model.DhcpEnabled.ValueBool()
 	}
-	if !model.DhcpLease.IsNull() {
-		network.DHCPDLeaseTime = model.DhcpLease.ValueInt64()
-	}
+	network.DHCPDLeaseTime = model.DhcpLease.ValueInt64Pointer()
 
 	// Convert DHCP DNS list
 	if !model.DhcpDNS.IsNull() {
@@ -965,7 +961,7 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPDBootServer = model.DhcpdBootServer.ValueString()
 	}
 	if !model.DhcpdBootFilename.IsNull() {
-		network.DHCPDBootFilename = model.DhcpdBootFilename.ValueString()
+		network.DHCPDBootFilename = model.DhcpdBootFilename.ValueStringPointer()
 	}
 	if !model.DhcpRelayEnabled.IsNull() {
 		network.DHCPRelayEnabled = model.DhcpRelayEnabled.ValueBool()
@@ -987,47 +983,22 @@ func (r *networkResource) networkToModel(
 
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
-	model.Name = types.StringValue(network.Name)
+	model.Name = types.StringPointerValue(network.Name)
 	model.Purpose = types.StringValue(network.Purpose)
 
-	if network.VLAN != 0 {
-		model.VlanID = types.Int64Value(network.VLAN)
-	} else {
-		model.VlanID = types.Int64Null()
-	}
+	model.VlanID = types.Int64PointerValue(network.VLAN)
 
-	if network.IPSubnet != "" {
-		model.Subnet = types.StringValue(network.IPSubnet)
-	} else {
-		model.Subnet = types.StringNull()
-	}
-
-	if network.NetworkGroup != "" {
-		model.NetworkGroup = types.StringValue(network.NetworkGroup)
-	} else {
-		model.NetworkGroup = types.StringValue("LAN") // Default value
-	}
+	model.Subnet = types.StringPointerValue(network.IPSubnet)
+	model.NetworkGroup = types.StringPointerValue(network.NetworkGroup)
 
 	// DHCP Settings
-	if network.DHCPDStart != "" {
-		model.DhcpStart = types.StringValue(network.DHCPDStart)
-	} else {
-		model.DhcpStart = types.StringNull()
-	}
+	model.DhcpStart = types.StringPointerValue(network.DHCPDStart)
 
-	if network.DHCPDStop != "" {
-		model.DhcpStop = types.StringValue(network.DHCPDStop)
-	} else {
-		model.DhcpStop = types.StringNull()
-	}
+	model.DhcpStop = types.StringPointerValue(network.DHCPDStop)
 
 	model.DhcpEnabled = types.BoolValue(network.DHCPDEnabled)
 
-	if network.DHCPDLeaseTime != 0 {
-		model.DhcpLease = types.Int64Value(network.DHCPDLeaseTime)
-	} else {
-		model.DhcpLease = types.Int64Value(86400) // Default value
-	}
+	model.DhcpLease = types.Int64PointerValue(network.DHCPDLeaseTime)
 
 	// Convert DHCP DNS from individual fields to list
 	dhcpDNSSlice := []string{}
@@ -1057,11 +1028,7 @@ func (r *networkResource) networkToModel(
 		model.DhcpdBootServer = types.StringNull()
 	}
 
-	if network.DHCPDBootFilename != "" {
-		model.DhcpdBootFilename = types.StringValue(network.DHCPDBootFilename)
-	} else {
-		model.DhcpdBootFilename = types.StringNull()
-	}
+	model.DhcpdBootFilename = types.StringPointerValue(network.DHCPDBootFilename)
 
 	model.DhcpRelayEnabled = types.BoolValue(network.DHCPRelayEnabled)
 

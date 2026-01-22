@@ -968,18 +968,10 @@ func (r *settingResource) radiusModelToSetting(
 ) *settings.Radius {
 	setting := &settings.Radius{}
 
-	if !model.AccountingEnabled.IsNull() {
-		setting.AccountingEnabled = model.AccountingEnabled.ValueBool()
-	}
-	if !model.AcctPort.IsNull() {
-		setting.AcctPort = model.AcctPort.ValueInt64()
-	}
-	if !model.AuthPort.IsNull() {
-		setting.AuthPort = model.AuthPort.ValueInt64()
-	}
-	if !model.InterimUpdateInterval.IsNull() {
-		setting.InterimUpdateInterval = model.InterimUpdateInterval.ValueInt64()
-	}
+	setting.AccountingEnabled = model.AccountingEnabled.ValueBool()
+	setting.AcctPort = model.AcctPort.ValueInt64Pointer()
+	setting.AuthPort = model.AuthPort.ValueInt64Pointer()
+	setting.InterimUpdateInterval = model.InterimUpdateInterval.ValueInt64Pointer()
 	if !model.Secret.IsNull() {
 		setting.XSecret = model.Secret.ValueString()
 	}
@@ -995,29 +987,13 @@ func (r *settingResource) radiusSettingToModel(
 	model := &settingRadiusModel{}
 
 	// Only populate fields that were explicitly configured in the plan
-	if !plan.AccountingEnabled.IsNull() && !plan.AccountingEnabled.IsUnknown() {
-		model.AccountingEnabled = types.BoolValue(setting.AccountingEnabled)
-	} else {
-		model.AccountingEnabled = types.BoolNull()
-	}
+	model.AccountingEnabled = types.BoolValue(setting.AccountingEnabled)
 
-	if !plan.AcctPort.IsNull() && !plan.AcctPort.IsUnknown() {
-		model.AcctPort = types.Int64Value(setting.AcctPort)
-	} else {
-		model.AcctPort = types.Int64Null()
-	}
+	model.AcctPort = types.Int64PointerValue(setting.AcctPort)
 
-	if !plan.AuthPort.IsNull() && !plan.AuthPort.IsUnknown() {
-		model.AuthPort = types.Int64Value(setting.AuthPort)
-	} else {
-		model.AuthPort = types.Int64Null()
-	}
+	model.AuthPort = types.Int64PointerValue(setting.AuthPort)
 
-	if !plan.InterimUpdateInterval.IsNull() && !plan.InterimUpdateInterval.IsUnknown() {
-		model.InterimUpdateInterval = types.Int64Value(setting.InterimUpdateInterval)
-	} else {
-		model.InterimUpdateInterval = types.Int64Null()
-	}
+	model.InterimUpdateInterval = types.Int64PointerValue(setting.InterimUpdateInterval)
 
 	if !plan.Secret.IsNull() && !plan.Secret.IsUnknown() {
 		if setting.XSecret != "" {

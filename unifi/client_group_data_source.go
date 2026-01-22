@@ -141,8 +141,8 @@ func (d *clientGroupDataSource) Read(
 	data.ID = types.StringValue(clientGroup.ID)
 	data.Site = types.StringValue(site)
 	data.Name = types.StringValue(clientGroup.Name)
-	data.QOSRateMaxDown = types.Int64Value(clientGroup.QOSRateMaxDown)
-	data.QOSRateMaxUp = types.Int64Value(clientGroup.QOSRateMaxUp)
+	data.QOSRateMaxDown = types.Int64PointerValue(clientGroup.QOSRateMaxDown)
+	data.QOSRateMaxUp = types.Int64PointerValue(clientGroup.QOSRateMaxUp)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

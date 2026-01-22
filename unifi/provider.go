@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -32,12 +34,14 @@ var (
 type unifiProvider struct{}
 
 type unifiProviderModel struct {
-	ApiKey        types.String `tfsdk:"api_key"`
-	Username      types.String `tfsdk:"username"`
-	Password      types.String `tfsdk:"password"`
-	ApiUrl        types.String `tfsdk:"api_url"`
-	Site          types.String `tfsdk:"site"`
-	AllowInsecure types.Bool   `tfsdk:"allow_insecure"`
+	ApiKey         types.String `tfsdk:"api_key"`
+	Username       types.String `tfsdk:"username"`
+	Password       types.String `tfsdk:"password"`
+	ApiUrl         types.String `tfsdk:"api_url"`
+	Site           types.String `tfsdk:"site"`
+	AllowInsecure  types.Bool   `tfsdk:"allow_insecure"`
+	CloudConnector types.Bool   `tfsdk:"cloud_connector"`
+	HardwareID     types.String `tfsdk:"hardware_id"`
 }
 
 // Client wraps the UniFi client with site information.
@@ -100,7 +104,19 @@ func (p *unifiProvider) Schema(
 			"allow_insecure": schema.BoolAttribute{
 				MarkdownDescription: "Skip verification of TLS certificates of API requests. You may need to set this to `true` " +
 					"if you are using your local API without setting up a signed certificate. Can be specified with the " +
-					"`UNIFI_INSECURE` environment variable.",
+					"`UNIFI_INSECURE` environment variable. Ignored when `cloud_connector` is enabled.",
+				Optional: true,
+			},
+			"cloud_connector": schema.BoolAttribute{
+				MarkdownDescription: "Use UniFi Cloud Connector API to access the controller. When enabled, requires `api_key` " +
+					"authentication and automatically routes requests through https://api.ui.com. Can be specified with the " +
+					"`UNIFI_CLOUD_CONNECTOR` environment variable. The `api_url` field is ignored when this is enabled.",
+				Optional: true,
+			},
+			"hardware_id": schema.StringAttribute{
+				MarkdownDescription: "Hardware ID of the UniFi console to connect to when using Cloud Connector. " +
+					"If not specified, defaults to the first console where owner=true. Can be specified with the " +
+					"`UNIFI_HARDWARE_ID` environment variable. Only used when `cloud_connector` is enabled.",
 				Optional: true,
 			},
 		},
@@ -155,6 +171,20 @@ func (p *unifiProvider) Configure(
 		}
 	}
 
+	cloudConnector := config.CloudConnector.ValueBool()
+	if !cloudConnector {
+		if v := os.Getenv("UNIFI_CLOUD_CONNECTOR"); v != "" {
+			cloudConnector = v == "true"
+		}
+	}
+
+	hardwareID := config.HardwareID.ValueString()
+	if hardwareID == "" {
+		if v := os.Getenv("UNIFI_HARDWARE_ID"); v != "" {
+			hardwareID = v
+		}
+	}
+
 	site := config.Site.ValueString()
 	if site == "" {
 		if v := os.Getenv("UNIFI_SITE"); v != "" {
@@ -165,21 +195,47 @@ func (p *unifiProvider) Configure(
 		site = "default"
 	}
 
-	// Validate required fields
-	if apiUrl == "" {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("api_url"),
-			"Missing API URL Configuration",
-			"While configuring the provider, the API URL was not found in the configuration or UNIFI_API environment variable.",
-		)
-	}
+	ctx = tflog.SetField(ctx, "unifi_api_url", apiUrl)
+	ctx = tflog.SetField(ctx, "unifi_api_key", apiKey)
+	ctx = tflog.SetField(ctx, "unifi_username", username)
+	ctx = tflog.SetField(ctx, "unifi_password", password)
+	ctx = tflog.SetField(ctx, "unifi_site", site)
+	ctx = tflog.SetField(ctx, "unifi_allow_insecure", allowInsecure)
+	ctx = tflog.SetField(ctx, "unifi_cloud_connector", cloudConnector)
+	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "unifi_api_key")
+	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "unifi_password")
 
-	if apiKey == "" && (username == "" || password == "") {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("api_key"),
-			"Missing Authentication Configuration",
-			"Either api_key or both username and password must be provided.",
-		)
+	tflog.Debug(ctx, "Creating Unifi client")
+
+	// Validate required fields
+	if cloudConnector {
+		// Cloud Connector requires API key only
+		if apiKey == "" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("api_key"),
+				"Missing API Key for Cloud Connector",
+				"Cloud Connector mode requires an API key. Username/password authentication is not supported.",
+			)
+		}
+		// Force secure connections for cloud
+		allowInsecure = false
+	} else {
+		// Direct connection validation
+		if apiUrl == "" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("api_url"),
+				"Missing API URL Configuration",
+				"While configuring the provider, the API URL was not found in the configuration or UNIFI_API environment variable.",
+			)
+		}
+
+		if apiKey == "" && (username == "" || password == "") {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("api_key"),
+				"Missing Authentication Configuration",
+				"Either api_key or both username and password must be provided.",
+			)
+		}
 	}
 
 	if resp.Diagnostics.HasError() {
@@ -218,48 +274,72 @@ func (p *unifiProvider) Configure(
 		return
 	}
 
-	if err := client.SetBaseURL(apiUrl); err != nil {
-		resp.Diagnostics.AddError(
-			"Invalid API URL",
-			"The provided API URL is invalid. "+
-				err.Error(),
-		)
-		return
-	}
-
-	// Set authentication
+	// Set authentication (must be done before cloud connector setup)
 	if apiKey != "" {
 		client.SetAPIKey(apiKey)
-	} else if username != "" && password != "" {
-		if err := client.Login(ctx, username, password); err != nil {
+	}
+
+	// Configure Cloud Connector or Direct Connection
+	if cloudConnector {
+		// Enable Cloud Connector mode
+		var consoleID string
+		var err error
+
+		if hardwareID != "" {
+			// Use specific hardware ID
+			consoleID, err = client.EnableCloudConnectorByHardwareID(ctx, hardwareID)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error Enabling Cloud Connector",
+					fmt.Sprintf(
+						"Could not find console with hardware ID %s: %s",
+						hardwareID,
+						err.Error(),
+					),
+				)
+				return
+			}
+		} else {
+			// Use default selection (first owner host)
+			consoleID, err = client.EnableCloudConnector(ctx, -1)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error Enabling Cloud Connector",
+					"Could not enable Cloud Connector mode: "+err.Error(),
+				)
+				return
+			}
+		}
+
+		// Log the selected console ID for debugging
+		_ = consoleID // Console ID is now set in the client
+	} else {
+		// Direct connection mode
+		if err := client.SetBaseURL(apiUrl); err != nil {
 			resp.Diagnostics.AddError(
-				"Error Logging In",
-				"Could not log in with username and password. "+
+				"Invalid API URL",
+				"The provided API URL is invalid. "+
 					err.Error(),
 			)
 			return
 		}
-	} else {
-		resp.Diagnostics.AddError(
-			"Missing Authentication Configuration",
-			"Either api_key or both username and password must be provided.",
-		)
-		return
+
+		if apiKey == "" && username != "" && password != "" {
+			if err := client.Login(ctx, username, password); err != nil {
+				resp.Diagnostics.AddError(
+					"Error Logging In",
+					"Could not log in with username and password. "+
+						err.Error(),
+				)
+				return
+			}
+		}
 	}
 
 	// Create wrapper client with site info
 	configuredClient := &Client{
 		ApiClient: client,
 		Site:      site,
-	}
-
-	if err := configuredClient.Login(ctx, username, password); err != nil {
-		resp.Diagnostics.AddError(
-			"Error Logging In",
-			"Could not log in with username and password. "+
-				err.Error(),
-		)
-		return
 	}
 
 	resp.DataSourceData = configuredClient
@@ -289,6 +369,8 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewClientGroupFrameworkResource,
 		NewWANResource,
 		NewWLANFrameworkResource,
+		NewVirtualNetworkResource,
+		NewVPNClientResource,
 	}
 }
 

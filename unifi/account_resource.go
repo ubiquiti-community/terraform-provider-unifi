@@ -361,13 +361,9 @@ func (r *accountFrameworkResource) modelToAccount(
 		XPassword: model.Password.ValueString(),
 	}
 
-	if !model.TunnelType.IsNull() {
-		account.TunnelType = model.TunnelType.ValueInt64()
-	}
+	account.TunnelType = model.TunnelType.ValueInt64Pointer()
 
-	if !model.TunnelMediumType.IsNull() {
-		account.TunnelMediumType = model.TunnelMediumType.ValueInt64()
-	}
+	account.TunnelMediumType = model.TunnelMediumType.ValueInt64Pointer()
 
 	if !model.NetworkID.IsNull() {
 		account.NetworkID = model.NetworkID.ValueString()
@@ -387,8 +383,8 @@ func (r *accountFrameworkResource) accountToModel(
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(account.Name)
 	model.Password = types.StringValue(account.XPassword)
-	model.TunnelType = types.Int64Value(account.TunnelType)
-	model.TunnelMediumType = types.Int64Value(account.TunnelMediumType)
+	model.TunnelType = types.Int64PointerValue(account.TunnelType)
+	model.TunnelMediumType = types.Int64PointerValue(account.TunnelMediumType)
 
 	if account.NetworkID != "" {
 		model.NetworkID = types.StringValue(account.NetworkID)

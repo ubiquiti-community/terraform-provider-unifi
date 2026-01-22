@@ -445,8 +445,8 @@ func (r *clientGroupFrameworkResource) planToClientGroup(
 	clientGroup := &unifi.ClientGroup{
 		ID:             plan.ID.ValueString(),
 		Name:           plan.Name.ValueString(),
-		QOSRateMaxDown: plan.QOSRateMaxDown.ValueInt64(),
-		QOSRateMaxUp:   plan.QOSRateMaxUp.ValueInt64(),
+		QOSRateMaxDown: plan.QOSRateMaxDown.ValueInt64Pointer(),
+		QOSRateMaxUp:   plan.QOSRateMaxUp.ValueInt64Pointer(),
 	}
 
 	return clientGroup, diags
@@ -471,8 +471,8 @@ func (r *clientGroupFrameworkResource) clientGroupToModel(
 	model.ID = types.StringValue(clientGroup.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(clientGroup.Name)
-	model.QOSRateMaxDown = types.Int64Value(clientGroup.QOSRateMaxDown)
-	model.QOSRateMaxUp = types.Int64Value(clientGroup.QOSRateMaxUp)
+	model.QOSRateMaxDown = types.Int64PointerValue(clientGroup.QOSRateMaxDown)
+	model.QOSRateMaxUp = types.Int64PointerValue(clientGroup.QOSRateMaxUp)
 
 	return diags
 }

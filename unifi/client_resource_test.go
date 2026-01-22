@@ -20,10 +20,9 @@ func TestAccClientFramework_basic(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:            "unifi_client.test",
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"allow_existing", "skip_forget_on_destroy"},
+				ResourceName:    "unifi_client.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
 			},
 		},
 	})
@@ -87,7 +86,11 @@ func TestAccClientFramework_fixedIP(t *testing.T) {
 						"name",
 						"tfacc-fixed-ip-client",
 					),
-					resource.TestCheckResourceAttr("unifi_client.test", "fixed_ip", "10.0.0.100"),
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"fixed_ip",
+						"192.168.2.100",
+					),
 				),
 			},
 		},
@@ -96,15 +99,23 @@ func TestAccClientFramework_fixedIP(t *testing.T) {
 
 func testAccClientFrameworkConfig_fixedIP() string {
 	return `
-data "unifi_network" "default" {
-	name = "Default"
+resource "unifi_virtual_network" "test" {
+	name    = "Test"
+	subnet  = "192.168.2.1/24"
+	vlan    = 2
+
+	dhcp_server = {
+		enabled    = true
+		start = "192.168.2.6"
+		stop  = "192.168.2.254"
+	}
 }
 
 resource "unifi_client" "test" {
 	name       = "tfacc-fixed-ip-client"
 	mac        = "01:23:45:67:89:ad"
-	fixed_ip   = "10.0.0.100"
-	network_id = data.unifi_network.default.id
+	fixed_ip   = "192.168.2.100"
+	network_id = unifi_virtual_network.test.id
 }
 `
 }

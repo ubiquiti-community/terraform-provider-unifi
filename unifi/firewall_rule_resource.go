@@ -540,7 +540,7 @@ func (r *firewallRuleResource) modelToFirewallRule(
 		Name:      model.Name.ValueString(),
 		Action:    model.Action.ValueString(),
 		Ruleset:   model.Ruleset.ValueString(),
-		RuleIndex: model.RuleIndex.ValueInt64(),
+		RuleIndex: model.RuleIndex.ValueInt64Pointer(),
 		Enabled:   model.Enabled.ValueBool(),
 	}
 
@@ -632,7 +632,7 @@ func (r *firewallRuleResource) firewallRuleToModel(
 	model.Name = types.StringValue(firewallRule.Name)
 	model.Action = types.StringValue(firewallRule.Action)
 	model.Ruleset = types.StringValue(firewallRule.Ruleset)
-	model.RuleIndex = types.Int64Value(firewallRule.RuleIndex)
+	model.RuleIndex = types.Int64PointerValue(firewallRule.RuleIndex)
 	model.Enabled = types.BoolValue(firewallRule.Enabled)
 
 	if firewallRule.Protocol != "" {

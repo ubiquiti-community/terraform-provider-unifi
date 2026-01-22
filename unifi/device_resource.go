@@ -63,7 +63,7 @@ type deviceResourceModel struct {
 	FlowctrlEnabled   types.Bool   `tfsdk:"flowctrl_enabled"`
 	JumboframeEnabled types.Bool   `tfsdk:"jumboframe_enabled"`
 	StpVersion        types.String `tfsdk:"stp_version"`
-	StpPriority       types.String `tfsdk:"stp_priority"`
+	StpPriority       types.Int64  `tfsdk:"stp_priority"`
 	Locked            types.Bool   `tfsdk:"locked"`
 
 	// PoE settings
@@ -104,7 +104,7 @@ type deviceResourceModel struct {
 
 // portOverrideModel describes the port override data model.
 type portOverrideModel struct {
-	Number                     types.Int64  `tfsdk:"number"`
+	Index                      types.Int64  `tfsdk:"index"`
 	Name                       types.String `tfsdk:"name"`
 	PortProfileID              types.String `tfsdk:"port_profile_id"`
 	OpMode                     types.String `tfsdk:"op_mode"`
@@ -148,6 +148,10 @@ type portOverrideModel struct {
 	StpPortMode                types.Bool   `tfsdk:"stp_port_mode"`
 	TaggedVLANMgmt             types.String `tfsdk:"tagged_vlan_mgmt"`
 	VoiceNetworkID             types.String `tfsdk:"voice_networkconf_id"`
+}
+
+func (m portOverrideModel) AttributeTypes() map[string]attr.Type {
+	return portOverrideAttrTypes()
 }
 
 // configNetworkModel describes the config network data model.
@@ -623,8 +627,8 @@ func (r *deviceResource) Schema(
 				Description: "Settings overrides for specific switch ports.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
-						"number": schema.Int64Attribute{
-							Description: "Switch port number.",
+						"index": schema.Int64Attribute{
+							Description: "Switch port index.",
 							Required:    true,
 						},
 						"name": schema.StringAttribute{
@@ -1342,13 +1346,9 @@ func (r *deviceResource) setResourceData(
 		model.LedOverrideColor = types.StringValue(device.LedOverrideColor)
 	}
 
-	if device.LedOverrideColorBrightness == 0 {
-		model.LedOverrideColorBrightness = types.Int64Null()
-	} else {
-		model.LedOverrideColorBrightness = types.Int64Value(
-			device.LedOverrideColorBrightness,
-		)
-	}
+	model.LedOverrideColorBrightness = types.Int64PointerValue(
+		device.LedOverrideColorBrightness,
+	)
 
 	// Device features
 	if device.BandsteeringMode == "" {
@@ -1366,11 +1366,7 @@ func (r *deviceResource) setResourceData(
 		model.StpVersion = types.StringValue(device.StpVersion)
 	}
 
-	if device.StpPriority == "" {
-		model.StpPriority = types.StringNull()
-	} else {
-		model.StpPriority = types.StringValue(device.StpPriority)
-	}
+	model.StpPriority = types.Int64PointerValue(device.StpPriority)
 
 	model.Locked = types.BoolValue(device.Locked)
 
@@ -1391,11 +1387,7 @@ func (r *deviceResource) setResourceData(
 		model.OutdoorModeOverride = types.StringValue(device.OutdoorModeOverride)
 	}
 
-	if device.Volume == 0 {
-		model.Volume = types.Int64Null()
-	} else {
-		model.Volume = types.Int64Value(device.Volume)
-	}
+	model.Volume = types.Int64PointerValue(device.Volume)
 
 	if device.XBaresipPassword == "" {
 		model.XBaresipPassword = types.StringNull()
@@ -1404,19 +1396,11 @@ func (r *deviceResource) setResourceData(
 	}
 
 	// LCD/LCM settings
-	if device.LcmBrightness == 0 {
-		model.LcmBrightness = types.Int64Null()
-	} else {
-		model.LcmBrightness = types.Int64Value(device.LcmBrightness)
-	}
+	model.LcmBrightness = types.Int64PointerValue(device.LcmBrightness)
 
 	model.LcmBrightnessOverride = types.BoolValue(device.LcmBrightnessOverride)
 
-	if device.LcmIDleTimeout == 0 {
-		model.LcmIDleTimeout = types.Int64Null()
-	} else {
-		model.LcmIDleTimeout = types.Int64Value(device.LcmIDleTimeout)
-	}
+	model.LcmIDleTimeout = types.Int64PointerValue(device.LcmIDleTimeout)
 
 	model.LcmIDleTimeoutOverride = types.BoolValue(device.LcmIDleTimeoutOverride)
 
@@ -1495,7 +1479,7 @@ func (r *deviceResource) modelToAPIDevice(
 		device.LedOverrideColor = model.LedOverrideColor.ValueString()
 	}
 	if !model.LedOverrideColorBrightness.IsNull() {
-		device.LedOverrideColorBrightness = model.LedOverrideColorBrightness.ValueInt64()
+		device.LedOverrideColorBrightness = model.LedOverrideColorBrightness.ValueInt64Pointer()
 	}
 
 	// Device features
@@ -1507,9 +1491,7 @@ func (r *deviceResource) modelToAPIDevice(
 	if !model.StpVersion.IsNull() {
 		device.StpVersion = model.StpVersion.ValueString()
 	}
-	if !model.StpPriority.IsNull() {
-		device.StpPriority = model.StpPriority.ValueString()
-	}
+	device.StpPriority = model.StpPriority.ValueInt64Pointer()
 	device.Locked = model.Locked.ValueBool()
 
 	// PoE settings
@@ -1525,7 +1507,7 @@ func (r *deviceResource) modelToAPIDevice(
 		device.OutdoorModeOverride = model.OutdoorModeOverride.ValueString()
 	}
 	if !model.Volume.IsNull() {
-		device.Volume = model.Volume.ValueInt64()
+		device.Volume = model.Volume.ValueInt64Pointer()
 	}
 	if !model.XBaresipPassword.IsNull() {
 		device.XBaresipPassword = model.XBaresipPassword.ValueString()
@@ -1533,11 +1515,11 @@ func (r *deviceResource) modelToAPIDevice(
 
 	// LCD/LCM settings
 	if !model.LcmBrightness.IsNull() {
-		device.LcmBrightness = model.LcmBrightness.ValueInt64()
+		device.LcmBrightness = model.LcmBrightness.ValueInt64Pointer()
 	}
 	device.LcmBrightnessOverride = model.LcmBrightnessOverride.ValueBool()
 	if !model.LcmIDleTimeout.IsNull() {
-		device.LcmIDleTimeout = model.LcmIDleTimeout.ValueInt64()
+		device.LcmIDleTimeout = model.LcmIDleTimeout.ValueInt64Pointer()
 	}
 	device.LcmIDleTimeoutOverride = model.LcmIDleTimeoutOverride.ValueBool()
 	if !model.LcmNightModeBegins.IsNull() {
@@ -1613,7 +1595,7 @@ func (r *deviceResource) portOverridesToFramework(
 	elements := make([]attr.Value, 0, len(pos))
 	for _, po := range pos {
 		model := portOverrideModel{
-			Number: types.Int64Value(po.PortIDX),
+			Index: types.Int64PointerValue(po.PortIDX),
 		}
 
 		// String attributes
@@ -1705,89 +1687,30 @@ func (r *deviceResource) portOverridesToFramework(
 		model.StpPortMode = types.BoolValue(po.StpPortMode)
 
 		// Int64 attributes
-		if po.Dot1XIDleTimeout == 0 {
-			model.Dot1XIDleTimeout = types.Int64Null()
-		} else {
-			model.Dot1XIDleTimeout = types.Int64Value(po.Dot1XIDleTimeout)
-		}
+		model.Dot1XIDleTimeout = types.Int64PointerValue(po.Dot1XIDleTimeout)
 
-		if po.EgressRateLimitKbps == 0 {
-			model.EgressRateLimitKbps = types.Int64Null()
-		} else {
-			model.EgressRateLimitKbps = types.Int64Value(po.EgressRateLimitKbps)
-		}
+		model.EgressRateLimitKbps = types.Int64PointerValue(po.EgressRateLimitKbps)
 
-		if po.MirrorPortIDX == 0 {
-			model.MirrorPortIDX = types.Int64Null()
-		} else {
-			model.MirrorPortIDX = types.Int64Value(po.MirrorPortIDX)
-		}
+		model.MirrorPortIDX = types.Int64PointerValue(po.MirrorPortIDX)
 
-		if po.PriorityQueue1Level == 0 {
-			model.PriorityQueue1Level = types.Int64Null()
-		} else {
-			model.PriorityQueue1Level = types.Int64Value(po.PriorityQueue1Level)
-		}
+		model.PriorityQueue1Level = types.Int64PointerValue(po.PriorityQueue1Level)
 
-		if po.PriorityQueue2Level == 0 {
-			model.PriorityQueue2Level = types.Int64Null()
-		} else {
-			model.PriorityQueue2Level = types.Int64Value(po.PriorityQueue2Level)
-		}
+		model.PriorityQueue2Level = types.Int64PointerValue(po.PriorityQueue2Level)
+		model.PriorityQueue3Level = types.Int64PointerValue(po.PriorityQueue3Level)
+		model.PriorityQueue4Level = types.Int64PointerValue(po.PriorityQueue4Level)
+		model.Speed = types.Int64PointerValue(po.Speed)
 
-		if po.PriorityQueue3Level == 0 {
-			model.PriorityQueue3Level = types.Int64Null()
-		} else {
-			model.PriorityQueue3Level = types.Int64Value(po.PriorityQueue3Level)
-		}
+		model.StormctrlBroadcastLevel = types.Int64PointerValue(po.StormctrlBroadcastastLevel)
 
-		if po.PriorityQueue4Level == 0 {
-			model.PriorityQueue4Level = types.Int64Null()
-		} else {
-			model.PriorityQueue4Level = types.Int64Value(po.PriorityQueue4Level)
-		}
+		model.StormctrlBroadcastRate = types.Int64PointerValue(po.StormctrlBroadcastastRate)
 
-		if po.Speed == 0 {
-			model.Speed = types.Int64Null()
-		} else {
-			model.Speed = types.Int64Value(po.Speed)
-		}
+		model.StormctrlMcastLevel = types.Int64PointerValue(po.StormctrlMcastLevel)
 
-		if po.StormctrlBroadcastastLevel == 0 {
-			model.StormctrlBroadcastLevel = types.Int64Null()
-		} else {
-			model.StormctrlBroadcastLevel = types.Int64Value(po.StormctrlBroadcastastLevel)
-		}
+		model.StormctrlMcastRate = types.Int64PointerValue(po.StormctrlMcastRate)
 
-		if po.StormctrlBroadcastastRate == 0 {
-			model.StormctrlBroadcastRate = types.Int64Null()
-		} else {
-			model.StormctrlBroadcastRate = types.Int64Value(po.StormctrlBroadcastastRate)
-		}
+		model.StormctrlUcastLevel = types.Int64PointerValue(po.StormctrlUcastLevel)
 
-		if po.StormctrlMcastLevel == 0 {
-			model.StormctrlMcastLevel = types.Int64Null()
-		} else {
-			model.StormctrlMcastLevel = types.Int64Value(po.StormctrlMcastLevel)
-		}
-
-		if po.StormctrlMcastRate == 0 {
-			model.StormctrlMcastRate = types.Int64Null()
-		} else {
-			model.StormctrlMcastRate = types.Int64Value(po.StormctrlMcastRate)
-		}
-
-		if po.StormctrlUcastLevel == 0 {
-			model.StormctrlUcastLevel = types.Int64Null()
-		} else {
-			model.StormctrlUcastLevel = types.Int64Value(po.StormctrlUcastLevel)
-		}
-
-		if po.StormctrlUcastRate == 0 {
-			model.StormctrlUcastRate = types.Int64Null()
-		} else {
-			model.StormctrlUcastRate = types.Int64Value(po.StormctrlUcastRate)
-		}
+		model.StormctrlUcastRate = types.Int64PointerValue(po.StormctrlUcastRate)
 
 		// List attributes
 		if len(po.AggregateMembers) == 0 {
@@ -1851,7 +1774,7 @@ func (r *deviceResource) portOverridesToFramework(
 		}
 
 		// Convert model to object
-		objVal, objDiags := types.ObjectValueFrom(ctx, portOverrideAttrTypes(), model)
+		objVal, objDiags := types.ObjectValueFrom(ctx, model.AttributeTypes(), model)
 		diags.Append(objDiags...)
 		if diags.HasError() {
 			continue
@@ -1889,9 +1812,9 @@ func (r *deviceResource) frameworkToPortOverrides(
 				return nil, diags
 			}
 
-			idx := model.Number.ValueInt64()
+			idx := model.Index.ValueInt64()
 			po := unifi.DevicePortOverrides{
-				PortIDX: idx,
+				PortIDX: model.Index.ValueInt64Pointer(),
 			}
 
 			// String attributes
@@ -1949,46 +1872,46 @@ func (r *deviceResource) frameworkToPortOverrides(
 
 			// Int64 attributes
 			if !model.Dot1XIDleTimeout.IsNull() {
-				po.Dot1XIDleTimeout = model.Dot1XIDleTimeout.ValueInt64()
+				po.Dot1XIDleTimeout = model.Dot1XIDleTimeout.ValueInt64Pointer()
 			}
 			if !model.EgressRateLimitKbps.IsNull() {
-				po.EgressRateLimitKbps = model.EgressRateLimitKbps.ValueInt64()
+				po.EgressRateLimitKbps = model.EgressRateLimitKbps.ValueInt64Pointer()
 			}
 			if !model.MirrorPortIDX.IsNull() {
-				po.MirrorPortIDX = model.MirrorPortIDX.ValueInt64()
+				po.MirrorPortIDX = model.MirrorPortIDX.ValueInt64Pointer()
 			}
 			if !model.PriorityQueue1Level.IsNull() {
-				po.PriorityQueue1Level = model.PriorityQueue1Level.ValueInt64()
+				po.PriorityQueue1Level = model.PriorityQueue1Level.ValueInt64Pointer()
 			}
 			if !model.PriorityQueue2Level.IsNull() {
-				po.PriorityQueue2Level = model.PriorityQueue2Level.ValueInt64()
+				po.PriorityQueue2Level = model.PriorityQueue2Level.ValueInt64Pointer()
 			}
 			if !model.PriorityQueue3Level.IsNull() {
-				po.PriorityQueue3Level = model.PriorityQueue3Level.ValueInt64()
+				po.PriorityQueue3Level = model.PriorityQueue3Level.ValueInt64Pointer()
 			}
 			if !model.PriorityQueue4Level.IsNull() {
-				po.PriorityQueue4Level = model.PriorityQueue4Level.ValueInt64()
+				po.PriorityQueue4Level = model.PriorityQueue4Level.ValueInt64Pointer()
 			}
 			if !model.Speed.IsNull() {
-				po.Speed = model.Speed.ValueInt64()
+				po.Speed = model.Speed.ValueInt64Pointer()
 			}
 			if !model.StormctrlBroadcastLevel.IsNull() {
-				po.StormctrlBroadcastastLevel = model.StormctrlBroadcastLevel.ValueInt64()
+				po.StormctrlBroadcastastLevel = model.StormctrlBroadcastLevel.ValueInt64Pointer()
 			}
 			if !model.StormctrlBroadcastRate.IsNull() {
-				po.StormctrlBroadcastastRate = model.StormctrlBroadcastRate.ValueInt64()
+				po.StormctrlBroadcastastRate = model.StormctrlBroadcastRate.ValueInt64Pointer()
 			}
 			if !model.StormctrlMcastLevel.IsNull() {
-				po.StormctrlMcastLevel = model.StormctrlMcastLevel.ValueInt64()
+				po.StormctrlMcastLevel = model.StormctrlMcastLevel.ValueInt64Pointer()
 			}
 			if !model.StormctrlMcastRate.IsNull() {
-				po.StormctrlMcastRate = model.StormctrlMcastRate.ValueInt64()
+				po.StormctrlMcastRate = model.StormctrlMcastRate.ValueInt64Pointer()
 			}
 			if !model.StormctrlUcastLevel.IsNull() {
-				po.StormctrlUcastLevel = model.StormctrlUcastLevel.ValueInt64()
+				po.StormctrlUcastLevel = model.StormctrlUcastLevel.ValueInt64Pointer()
 			}
 			if !model.StormctrlUcastRate.IsNull() {
-				po.StormctrlUcastRate = model.StormctrlUcastRate.ValueInt64()
+				po.StormctrlUcastRate = model.StormctrlUcastRate.ValueInt64Pointer()
 			}
 
 			// List attributes
@@ -2113,7 +2036,7 @@ func cleanMAC(mac string) string {
 // portOverrideAttrTypes returns the attribute types for port override objects.
 func portOverrideAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"number":                           types.Int64Type,
+		"index":                            types.Int64Type,
 		"name":                             types.StringType,
 		"port_profile_id":                  types.StringType,
 		"op_mode":                          types.StringType,
@@ -2270,21 +2193,21 @@ func (r *deviceResource) radioTableToFramework(
 		model := radioTableModel{
 			Radio:                  stringOrNull(radio.Radio),
 			Channel:                stringOrNull(radio.Channel),
-			Ht:                     int64OrNull(radio.Ht),
+			Ht:                     types.Int64PointerValue(radio.Ht),
 			TxPower:                stringOrNull(radio.TxPower),
 			TxPowerMode:            stringOrNull(radio.TxPowerMode),
 			MinRssiEnabled:         types.BoolValue(radio.MinRssiEnabled),
-			MinRssi:                int64OrNull(radio.MinRssi),
-			AntennaGain:            int64OrNull(radio.AntennaGain),
-			AntennaID:              int64OrNull(radio.AntennaID),
+			MinRssi:                types.Int64PointerValue(radio.MinRssi),
+			AntennaGain:            types.Int64PointerValue(radio.AntennaGain),
+			AntennaID:              types.Int64PointerValue(radio.AntennaID),
 			AssistedRoamingEnabled: types.BoolValue(radio.AssistedRoamingEnabled),
-			AssistedRoamingRssi:    int64OrNull(radio.AssistedRoamingRssi),
+			AssistedRoamingRssi:    types.Int64PointerValue(radio.AssistedRoamingRssi),
 			Dfs:                    types.BoolValue(radio.Dfs),
 			HardNoiseFloorEnabled:  types.BoolValue(radio.HardNoiseFloorEnabled),
 			LoadbalanceEnabled:     types.BoolValue(radio.LoadbalanceEnabled),
-			Maxsta:                 int64OrNull(radio.Maxsta),
+			Maxsta:                 types.Int64PointerValue(radio.Maxsta),
 			Name:                   stringOrNull(radio.Name),
-			SensLevel:              int64OrNull(radio.SensLevel),
+			SensLevel:              types.Int64PointerValue(radio.SensLevel),
 			SensLevelEnabled:       types.BoolValue(radio.SensLevelEnabled),
 			VwireEnabled:           types.BoolValue(radio.VwireEnabled),
 		}
@@ -2322,7 +2245,7 @@ func (r *deviceResource) outletOverridesToFramework(
 	elements := make([]attr.Value, 0, len(outlets))
 	for _, outlet := range outlets {
 		model := outletOverrideModel{
-			Index:        types.Int64Value(outlet.Index),
+			Index:        types.Int64PointerValue(outlet.Index),
 			Name:         stringOrNull(outlet.Name),
 			RelayState:   types.BoolValue(outlet.RelayState),
 			CycleEnabled: types.BoolValue(outlet.CycleEnabled),
@@ -2405,21 +2328,21 @@ func (r *deviceResource) frameworkToRadioTable(
 		radio := unifi.DeviceRadioTable{
 			Radio:                  model.Radio.ValueString(),
 			Channel:                model.Channel.ValueString(),
-			Ht:                     model.Ht.ValueInt64(),
+			Ht:                     model.Ht.ValueInt64Pointer(),
 			TxPower:                model.TxPower.ValueString(),
 			TxPowerMode:            model.TxPowerMode.ValueString(),
 			MinRssiEnabled:         model.MinRssiEnabled.ValueBool(),
-			MinRssi:                model.MinRssi.ValueInt64(),
-			AntennaGain:            model.AntennaGain.ValueInt64(),
-			AntennaID:              model.AntennaID.ValueInt64(),
+			MinRssi:                model.MinRssi.ValueInt64Pointer(),
+			AntennaGain:            model.AntennaGain.ValueInt64Pointer(),
+			AntennaID:              model.AntennaID.ValueInt64Pointer(),
 			AssistedRoamingEnabled: model.AssistedRoamingEnabled.ValueBool(),
-			AssistedRoamingRssi:    model.AssistedRoamingRssi.ValueInt64(),
+			AssistedRoamingRssi:    model.AssistedRoamingRssi.ValueInt64Pointer(),
 			Dfs:                    model.Dfs.ValueBool(),
 			HardNoiseFloorEnabled:  model.HardNoiseFloorEnabled.ValueBool(),
 			LoadbalanceEnabled:     model.LoadbalanceEnabled.ValueBool(),
-			Maxsta:                 model.Maxsta.ValueInt64(),
+			Maxsta:                 model.Maxsta.ValueInt64Pointer(),
 			Name:                   model.Name.ValueString(),
-			SensLevel:              model.SensLevel.ValueInt64(),
+			SensLevel:              model.SensLevel.ValueInt64Pointer(),
 			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
 			VwireEnabled:           model.VwireEnabled.ValueBool(),
 		}
@@ -2457,7 +2380,7 @@ func (r *deviceResource) frameworkToOutletOverrides(
 		}
 
 		outlet := unifi.DeviceOutletOverrides{
-			Index:        model.Index.ValueInt64(),
+			Index:        model.Index.ValueInt64Pointer(),
 			Name:         model.Name.ValueString(),
 			RelayState:   model.RelayState.ValueBool(),
 			CycleEnabled: model.CycleEnabled.ValueBool(),

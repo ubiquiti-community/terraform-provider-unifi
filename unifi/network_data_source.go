@@ -51,7 +51,6 @@ type networkDataSourceModel struct {
 	DHCPV6Stop              types.String `tfsdk:"dhcp_v6_stop"`
 	DomainName              types.String `tfsdk:"domain_name"`
 	IGMPSnooping            types.Bool   `tfsdk:"igmp_snooping"`
-	IPSubnet                types.String `tfsdk:"ip_subnet"`
 	IPv6InterfaceType       types.String `tfsdk:"ipv6_interface_type"`
 	IPv6Subnet              types.String `tfsdk:"ipv6_static_subnet"`
 	IPv6PDInterface         types.String `tfsdk:"ipv6_pd_interface"`
@@ -353,7 +352,7 @@ func (d *networkDataSource) Read(
 		}
 
 		for _, n := range networks {
-			if n.Name == name {
+			if n.Name == &name {
 				network = &n
 				break
 			}
@@ -410,54 +409,21 @@ func (d *networkDataSource) setDataSourceData(
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 
-	if network.Name == "" {
-		model.Name = types.StringNull()
-	} else {
-		model.Name = types.StringValue(network.Name)
-	}
+	model.Name = types.StringPointerValue(network.Name)
+	model.Purpose = types.StringValue(network.Purpose)
 
-	if network.Purpose == "" {
-		model.Purpose = types.StringNull()
-	} else {
-		model.Purpose = types.StringValue(network.Purpose)
-	}
+	model.VlanID = types.Int64PointerValue(network.VLAN)
+	model.Subnet = types.StringPointerValue(network.IPSubnet)
+	model.NetworkGroup = types.StringPointerValue(network.NetworkGroup)
 
-	if network.VLAN == 0 {
-		model.VlanID = types.Int64Null()
-	} else {
-		model.VlanID = types.Int64Value(network.VLAN)
-	}
+	model.DHCPDStart = types.StringPointerValue(network.DHCPDStart)
 
-	if network.IPSubnet == "" {
-		model.Subnet = types.StringNull()
-		model.IPSubnet = types.StringNull()
-	} else {
-		model.Subnet = types.StringValue(network.IPSubnet)
-		model.IPSubnet = types.StringValue(network.IPSubnet)
-	}
-
-	if network.NetworkGroup == "" {
-		model.NetworkGroup = types.StringNull()
-	} else {
-		model.NetworkGroup = types.StringValue(network.NetworkGroup)
-	}
-
-	if network.DHCPDStart != "" {
-		model.DHCPDStart = types.StringValue(network.DHCPDStart)
-	} else {
-		model.DHCPDStart = types.StringNull()
-	}
-
-	if network.DHCPDStop != "" {
-		model.DHCPDStop = types.StringValue(network.DHCPDStop)
-	} else {
-		model.DHCPDStop = types.StringNull()
-	}
+	model.DHCPDStop = types.StringPointerValue(network.DHCPDStop)
 
 	model.DHCPDEnabled = types.BoolValue(network.DHCPDEnabled)
 
 	// Use a default DHCP lease time since the actual field name is not clear
-	model.DHCPDLease = types.Int64Value(network.DHCPDLeaseTime) // 24 hours default
+	model.DHCPDLease = types.Int64PointerValue(network.DHCPDLeaseTime) // 24 hours default
 
 	// Convert string slices to Framework lists - use empty list for now
 	model.DHCPDDNS = types.ListNull(types.StringType)
@@ -469,25 +435,13 @@ func (d *networkDataSource) setDataSourceData(
 	model.DHCPDBootFilename = types.StringNull()
 
 	// Handle other complex fields similarly...
-	if network.DomainName == "" {
-		model.DomainName = types.StringNull()
-	} else {
-		model.DomainName = types.StringValue(network.DomainName)
-	}
+	model.DomainName = types.StringPointerValue(network.DomainName)
 
 	model.IGMPSnooping = types.BoolValue(false)
 
-	if network.IPV6InterfaceType == "" {
-		model.IPv6InterfaceType = types.StringNull()
-	} else {
-		model.IPv6InterfaceType = types.StringValue(network.IPV6InterfaceType)
-	}
+	model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
 
-	if network.IPV6Subnet == "" {
-		model.IPv6Subnet = types.StringNull()
-	} else {
-		model.IPv6Subnet = types.StringValue(network.IPV6Subnet)
-	}
+	model.IPv6Subnet = types.StringPointerValue(network.IPV6Subnet)
 
 	// Set other fields to null for now - they can be implemented as needed
 	model.DHCPV6DNS = types.ListNull(types.StringType)

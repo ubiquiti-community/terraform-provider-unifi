@@ -134,7 +134,7 @@ func (a *portAction) Invoke(
 
 	// Update the device with port override for PoE configuration
 	portOverride := ui.DevicePortOverrides{
-		PortIDX: portNumber,
+		PortIDX: config.PortNumber.ValueInt64Pointer(),
 		PoeMode: poeMode,
 	}
 
@@ -147,7 +147,7 @@ func (a *portAction) Invoke(
 	// Find and update existing override or add new one
 	found := false
 	for i, override := range existingOverrides {
-		if override.PortIDX == portNumber {
+		if override.PortIDX == config.PortNumber.ValueInt64Pointer() {
 			// Update existing override
 			existingOverrides[i].PoeMode = poeMode
 			found = true

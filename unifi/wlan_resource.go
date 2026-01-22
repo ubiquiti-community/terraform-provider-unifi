@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -772,7 +773,7 @@ func (r *wlanFrameworkResource) planToWLAN(
 		Enabled:                  plan.Enabled.ValueBool(),
 		ApGroupMode:              plan.ApGroupMode.ValueString(),
 		VLANEnabled:              plan.VLANEnabled.ValueBool(),
-		VLAN:                     plan.VLAN.ValueInt64(),
+		VLAN:                     plan.VLAN.ValueInt64Pointer(),
 		MulticastEnhanceEnabled:  plan.MulticastEnhance.ValueBool(),
 		RADIUSProfileID:          plan.RadiusProfileID.ValueString(),
 		NasIDentifierType:        plan.NasIDentifierType.ValueString(),
@@ -783,13 +784,13 @@ func (r *wlanFrameworkResource) planToWLAN(
 		UapsdEnabled:             plan.Uapsd.ValueBool(),
 		FastRoamingEnabled:       plan.FastRoamingEnabled.ValueBool(),
 		MinrateSettingPreference: plan.MinrateSettingPreference.ValueString(),
-		MinrateNgEnabled:         plan.MinimumDataRate2GKbps.ValueInt64() != 0,
-		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64(),
-		MinrateNaEnabled:         plan.MinimumDataRate5GKbps.ValueInt64() != 0,
-		MinrateNaDataRateKbps:    plan.MinimumDataRate5GKbps.ValueInt64(),
+		MinrateNgEnabled:         !plan.MinimumDataRate2GKbps.IsNull(),
+		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64Pointer(),
+		MinrateNaEnabled:         !plan.MinimumDataRate5GKbps.IsNull(),
+		MinrateNaDataRateKbps:    plan.MinimumDataRate5GKbps.ValueInt64Pointer(),
 
 		// Set defaults that UniFi expects
-		GroupRekey:         3600,
+		GroupRekey:         util.Ptr[int64](3600),
 		DTIMMode:           "default",
 		WPAEnc:             "ccmp",
 		WPAMode:            "wpa2",
@@ -875,9 +876,9 @@ func (r *wlanFrameworkResource) planToWLAN(
 				wlan.ScheduleWithDuration,
 				unifi.WLANScheduleWithDuration{
 					StartDaysOfWeek: []string{sched.DayOfWeek.ValueString()},
-					StartHour:       sched.StartHour.ValueInt64(),
-					StartMinute:     sched.StartMinute.ValueInt64(),
-					DurationMinutes: sched.Duration.ValueInt64(),
+					StartHour:       sched.StartHour.ValueInt64Pointer(),
+					StartMinute:     sched.StartMinute.ValueInt64Pointer(),
+					DurationMinutes: sched.Duration.ValueInt64Pointer(),
 					Name:            sched.Name.ValueString(),
 				},
 			)
@@ -933,11 +934,7 @@ func (r *wlanFrameworkResource) wlanToModel(
 	}
 
 	model.VLANEnabled = types.BoolValue(wlan.VLANEnabled)
-	if wlan.VLAN > 0 {
-		model.VLAN = types.Int64Value(wlan.VLAN)
-	} else {
-		model.VLAN = types.Int64Null()
-	}
+	model.VLAN = types.Int64PointerValue(wlan.VLAN)
 
 	if wlan.WLANBand != "" {
 		model.WLANBand = types.StringValue(wlan.WLANBand)
@@ -1007,8 +1004,8 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.MinrateSettingPreference = types.StringValue("auto")
 	}
 
-	model.MinimumDataRate2GKbps = types.Int64Value(wlan.MinrateNgDataRateKbps)
-	model.MinimumDataRate5GKbps = types.Int64Value(wlan.MinrateNaDataRateKbps)
+	model.MinimumDataRate2GKbps = types.Int64PointerValue(wlan.MinrateNgDataRateKbps)
+	model.MinimumDataRate5GKbps = types.Int64PointerValue(wlan.MinrateNaDataRateKbps)
 
 	// Handle AP group IDs
 	if len(wlan.ApGroupIDs) > 0 {
@@ -1052,9 +1049,9 @@ func (r *wlanFrameworkResource) wlanToModel(
 					},
 					map[string]attr.Value{
 						"day_of_week":  types.StringValue(dow),
-						"start_hour":   types.Int64Value(sched.StartHour),
-						"start_minute": types.Int64Value(sched.StartMinute),
-						"duration":     types.Int64Value(sched.DurationMinutes),
+						"start_hour":   types.Int64PointerValue(sched.StartHour),
+						"start_minute": types.Int64PointerValue(sched.StartMinute),
+						"duration":     types.Int64PointerValue(sched.DurationMinutes),
 						"name":         types.StringValue(sched.Name),
 					},
 				)

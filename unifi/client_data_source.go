@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -36,7 +35,6 @@ type clientDataSourceModel struct {
 	Blocked        types.Bool   `tfsdk:"blocked"`
 	DevIDOverride  types.Int64  `tfsdk:"dev_id_override"`
 	Hostname       types.String `tfsdk:"hostname"`
-	IP             types.String `tfsdk:"ip"`
 	LastIP         types.String `tfsdk:"last_ip"`
 	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
 }
@@ -224,7 +222,7 @@ func (d *clientDataSource) Read(
 		state.NetworkID = types.StringNull()
 	}
 
-	state.Blocked = types.BoolValue(client.Blocked)
+	state.Blocked = types.BoolPointerValue(client.Blocked)
 
 	// DevIdOverride not available in Client type
 	state.DevIDOverride = types.Int64Null()
@@ -234,8 +232,6 @@ func (d *clientDataSource) Read(
 	} else {
 		state.Hostname = types.StringNull()
 	}
-
-	state.IP = util.StringValueOrNull(client.IP)
 
 	// Handle local DNS record
 	if client.LocalDNSRecord != "" {

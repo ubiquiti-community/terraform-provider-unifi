@@ -169,7 +169,7 @@ func (d *radiusProfileDataSource) Read(
 	data.Name = types.StringValue(radiusProfile.Name)
 	data.AccountingEnabled = types.BoolValue(radiusProfile.AccountingEnabled)
 	data.InterimUpdateEnabled = types.BoolValue(radiusProfile.InterimUpdateEnabled)
-	data.InterimUpdateInterval = types.Int64Value(radiusProfile.InterimUpdateInterval)
+	data.InterimUpdateInterval = types.Int64PointerValue(radiusProfile.InterimUpdateInterval)
 	data.UseUSGAcctServer = types.BoolValue(radiusProfile.UseUsgAcctServer)
 	data.UseUSGAuthServer = types.BoolValue(radiusProfile.UseUsgAuthServer)
 	data.VlanEnabled = types.BoolValue(radiusProfile.VLANEnabled)
