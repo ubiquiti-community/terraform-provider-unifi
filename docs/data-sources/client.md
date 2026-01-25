@@ -31,14 +31,14 @@ data "unifi_client" "default" {
 ### Read-Only
 
 - `blocked` (Boolean) Specifies whether this client should be blocked from the network.
-- `client_group_id` (String) The client group ID for the client.
-- `dev_id_override` (Number) Override the device fingerprint.
-- `fixed_ip` (String) Fixed IPv4 address set for this client.
+- `display_name` (String) The display name of the client.
+- `fixed_ap_mac` (String) The MAC address of the access point to which this client should be fixed.
+- `fixed_ip` (String) A fixed IPv4 address for this client.
+- `group_id` (String) The group ID to attach to the client (controls QoS and other group-based settings).
 - `hostname` (String) The hostname of the client.
 - `id` (String) The ID of the client.
-- `ip` (String) The IP address of the client.
-- `last_ip` (String) The last IP address of the client.
-- `local_dns_record` (String) The local DNS record for this client.
+- `local_dns_record` (String) Specifies the local DNS record for this client.
 - `name` (String) The name of the client.
 - `network_id` (String) The network ID for this client.
+- `network_members_group_ids` (List of String) List of network member group IDs for this client.
 - `note` (String) A note with additional information for the client.

@@ -92,7 +92,7 @@ resource "unifi_device" "us_24_poe" {
 - `port_override` (Block Set) Settings overrides for specific switch ports. (see [below for nested schema](#nestedblock--port_override))
 - `radio_table` (Attributes List) Radio configuration table. (see [below for nested schema](#nestedatt--radio_table))
 - `site` (String) The name of the site to associate the device with.
-- `stp_priority` (String) STP priority.
+- `stp_priority` (Number) STP priority.
 - `stp_version` (String) STP version; valid values are `stp`, `rstp`, and `disabled`.
 - `switch_vlan_enabled` (Boolean) Enable VLAN support on the switch.
 - `volume` (Number) Volume level (0-100).

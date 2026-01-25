@@ -72,9 +72,7 @@ Optional:
 - `tftp_server` (String) TFTP server address.
 - `time_offset_enabled` (Boolean) Specifies whether DHCP time offset is enabled.
 - `unifi_controller` (String) UniFi controller IP address.
-- `wins_1` (String) Primary WINS server address.
-- `wins_2` (String) Secondary WINS server address.
-- `wins_enabled` (Boolean) Specifies whether DHCP WINS is enabled.
+- `wins` (Attributes) WINS server configuration. (see [below for nested schema](#nestedatt--dhcp_server--wins))
 - `wpad_url` (String) WPAD URL for proxy auto-configuration.
 
 <a id="nestedatt--dhcp_server--boot"></a>
@@ -85,6 +83,15 @@ Optional:
 - `enabled` (Boolean) Toggles DHCP boot options.
 - `filename` (String) Boot filename.
 - `server` (String) TFTP server for boot options.
+
+
+<a id="nestedatt--dhcp_server--wins"></a>
+### Nested Schema for `dhcp_server.wins`
+
+Optional:
+
+- `addresses` (List of String) List of WINS server addresses (maximum 2).
+- `enabled` (Boolean) Specifies whether DHCP WINS is enabled.
 
 
 

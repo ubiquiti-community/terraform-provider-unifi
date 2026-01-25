@@ -62,8 +62,7 @@ resource "unifi_wan" "default" {
 - `dns1` (String) Primary DNS server
 - `dns2` (String) Secondary DNS server
 - `dns_preference` (String) DNS preference (auto, manual)
-- `egress_qos` (Number) Egress QoS priority
-- `egress_qos_enabled` (Boolean) Whether egress QoS is enabled
+- `egress_qos` (Attributes) Egress QoS configuration (see [below for nested schema](#nestedatt--egress_qos))
 - `enabled` (Boolean) Whether the WAN network is enabled
 - `failover_priority` (Number) Failover priority
 - `igmp_proxy_for` (String) IGMP proxy for (none, lan, guest)
@@ -78,17 +77,14 @@ resource "unifi_wan" "default" {
 - `provider_capabilities` (Attributes) WAN provider capabilities (see [below for nested schema](#nestedatt--provider_capabilities))
 - `report_wan_event` (Boolean) Whether to report WAN events
 - `site` (String) The name of the site to associate the WAN network with
-- `smartq_down_rate` (Number) Smart Queue download rate in kbps
-- `smartq_enabled` (Boolean) Whether Smart Queue is enabled
-- `smartq_up_rate` (Number) Smart Queue upload rate in kbps
+- `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
 - `type` (String) The WAN type (dhcp, static, pppoe)
 - `type_v6` (String) The IPv6 WAN type (dhcpv6, static, disabled)
 - `upnp_enabled` (Boolean) Whether UPnP is enabled
 - `upnp_nat_pmp_enabled` (Boolean) Whether UPnP NAT-PMP is enabled
 - `upnp_secure_mode` (Boolean) Whether UPnP secure mode is enabled
 - `upnp_wan_interface` (String) UPnP WAN interface
-- `vlan` (Number) The VLAN ID
-- `vlan_enabled` (Boolean) Whether VLAN is enabled
+- `vlan` (Attributes) VLAN configuration (see [below for nested schema](#nestedatt--vlan))
 
 ### Read-Only
 
@@ -112,6 +108,15 @@ Required:
 - `value` (String) DHCPv6 option value
 
 
+<a id="nestedatt--egress_qos"></a>
+### Nested Schema for `egress_qos`
+
+Optional:
+
+- `enabled` (Boolean) Whether egress QoS is enabled
+- `priority` (Number) Egress QoS priority
+
+
 <a id="nestedatt--provider_capabilities"></a>
 ### Nested Schema for `provider_capabilities`
 
@@ -119,6 +124,25 @@ Required:
 
 - `download_kilobits_per_second` (Number) Download speed in kilobits per second
 - `upload_kilobits_per_second` (Number) Upload speed in kilobits per second
+
+
+<a id="nestedatt--smartq"></a>
+### Nested Schema for `smartq`
+
+Optional:
+
+- `down_rate` (Number) Smart Queue download rate in kbps
+- `enabled` (Boolean) Whether Smart Queue is enabled
+- `up_rate` (Number) Smart Queue upload rate in kbps
+
+
+<a id="nestedatt--vlan"></a>
+### Nested Schema for `vlan`
+
+Optional:
+
+- `enabled` (Boolean) Whether VLAN is enabled
+- `id` (Number) The VLAN ID
 
 ## Import
 
