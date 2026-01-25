@@ -882,7 +882,7 @@ func (r *wanResource) modelToNetwork(
 		diags.Append(
 			model.ProviderCapabilities.As(ctx, &providerCaps, basetypes.ObjectAsOptions{})...)
 		if !diags.HasError() {
-			network.WANProviderCapabilities = unifi.NetworkWANProviderCapabilities{
+			network.WANProviderCapabilities = &unifi.NetworkWANProviderCapabilities{
 				DownloadKilobitsPerSecond: providerCaps.DownloadKbps.ValueInt64Pointer(),
 				UploadKilobitsPerSecond:   providerCaps.UploadKbps.ValueInt64Pointer(),
 			}

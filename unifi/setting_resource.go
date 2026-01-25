@@ -1021,7 +1021,7 @@ func (r *settingResource) usgModelToSetting(
 	if !model.DNSVerification.IsNull() && !model.DNSVerification.IsUnknown() {
 		var dnsVerif dnsVerificationModel
 		model.DNSVerification.As(ctx, &dnsVerif, basetypes.ObjectAsOptions{})
-		setting.DNSVerification = settings.SettingUsgDNSVerification{
+		setting.DNSVerification = &settings.SettingUsgDNSVerification{
 			Domain:             dnsVerif.Domain.ValueString(),
 			PrimaryDNSServer:   dnsVerif.PrimaryDNSServer.ValueString(),
 			SecondaryDNSServer: dnsVerif.SecondaryDNSServer.ValueString(),
