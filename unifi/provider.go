@@ -50,6 +50,12 @@ type Client struct {
 	Site string
 }
 
+// GetSiteName returns the site name for this client.
+// This method is required to implement the util.Client interface.
+func (c *Client) GetSiteName() string {
+	return c.Site
+}
+
 func New() provider.Provider {
 	return &unifiProvider{}
 }

@@ -427,7 +427,11 @@ func (r *dnsRecordFrameworkResource) dnsRecordToModel(
 
 	model.Enabled = types.BoolValue(dnsRecord.Enabled)
 
-	model.Port = types.Int64PointerValue(dnsRecord.Port)
+	if dnsRecord.Port != nil && *dnsRecord.Port != 0 {
+		model.Port = types.Int64PointerValue(dnsRecord.Port)
+	} else {
+		model.Port = types.Int64Null()
+	}
 
 	if dnsRecord.Priority != 0 {
 		model.Priority = types.Int64Value(dnsRecord.Priority)
