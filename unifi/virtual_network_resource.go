@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -59,6 +60,19 @@ func (m dhcpBootModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// winsModel describes the WINS configuration.
+type winsModel struct {
+	Enabled   types.Bool `tfsdk:"enabled"`
+	Addresses types.List `tfsdk:"addresses"`
+}
+
+func (m winsModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":   types.BoolType,
+		"addresses": types.ListType{ElemType: types.StringType},
+	}
+}
+
 // dhcpServerModel describes the DHCP server configuration.
 type dhcpServerModel struct {
 	Boot              types.Object `tfsdk:"boot"`
@@ -71,9 +85,7 @@ type dhcpServerModel struct {
 	TimeOffsetEnabled types.Bool   `tfsdk:"time_offset_enabled"`
 	DnsEnabled        types.Bool   `tfsdk:"dns_enabled"`
 	Leasetime         types.Int64  `tfsdk:"leasetime"`
-	WinsEnabled       types.Bool   `tfsdk:"wins_enabled"`
-	Wins1             types.String `tfsdk:"wins_1"`
-	Wins2             types.String `tfsdk:"wins_2"`
+	Wins              types.Object `tfsdk:"wins"`
 	WpadUrl           types.String `tfsdk:"wpad_url"`
 	TftpServer        types.String `tfsdk:"tftp_server"`
 	UnifiController   types.String `tfsdk:"unifi_controller"`
@@ -92,9 +104,7 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 		"time_offset_enabled": types.BoolType,
 		"dns_enabled":         types.BoolType,
 		"leasetime":           types.Int64Type,
-		"wins_enabled":        types.BoolType,
-		"wins_1":              types.StringType,
-		"wins_2":              types.StringType,
+		"wins":                types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
 		"wpad_url":            types.StringType,
 		"tftp_server":         types.StringType,
 		"unifi_controller":    types.StringType,
@@ -445,19 +455,35 @@ func (r *virtualNetworkResource) Schema(
 						Computed:            true,
 						Default:             int64default.StaticInt64(86400),
 					},
-					"wins_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether DHCP WINS is enabled.",
+					"wins": schema.SingleNestedAttribute{
+						MarkdownDescription: "WINS server configuration.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-					},
-					"wins_1": schema.StringAttribute{
-						MarkdownDescription: "Primary WINS server address.",
-						Optional:            true,
-					},
-					"wins_2": schema.StringAttribute{
-						MarkdownDescription: "Secondary WINS server address.",
-						Optional:            true,
+						Default: objectdefault.StaticValue(
+							types.ObjectValueMust(map[string]attr.Type{
+								"enabled":   types.BoolType,
+								"addresses": types.ListType{ElemType: types.StringType},
+							}, map[string]attr.Value{
+								"enabled":   types.BoolValue(false),
+								"addresses": types.ListNull(types.StringType),
+							}),
+						),
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Specifies whether DHCP WINS is enabled.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"addresses": schema.ListAttribute{
+								MarkdownDescription: "List of WINS server addresses (maximum 2).",
+								Optional:            true,
+								ElementType:         types.StringType,
+								Validators: []validator.List{
+									listvalidator.SizeAtMost(2),
+								},
+							},
+						},
 					},
 					"wpad_url": schema.StringAttribute{
 						MarkdownDescription: "WPAD URL for proxy auto-configuration.",
@@ -858,19 +884,49 @@ func (r *virtualNetworkResource) modelToNetwork(
 			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
 			network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
 			network.DHCPDLeaseTime = dhcpServer.Leasetime.ValueInt64Pointer()
-			network.DHCPDWinsEnabled = dhcpServer.WinsEnabled.ValueBool()
 
-			// Set empty string defaults for optional string fields
-			if dhcpServer.Wins1.IsNull() || dhcpServer.Wins1.IsUnknown() {
+			// Handle WINS configuration
+			if !dhcpServer.Wins.IsNull() && !dhcpServer.Wins.IsUnknown() {
+				var wins winsModel
+				d := dhcpServer.Wins.As(ctx, &wins, basetypes.ObjectAsOptions{})
+				diags.Append(d...)
+				if !diags.HasError() {
+					network.DHCPDWinsEnabled = wins.Enabled.ValueBool()
+					if !wins.Addresses.IsNull() && !wins.Addresses.IsUnknown() {
+						var addresses []string
+						d := wins.Addresses.ElementsAs(ctx, &addresses, false)
+						diags.Append(d...)
+						if !diags.HasError() {
+							for i, addr := range addresses {
+								if i >= 2 {
+									break
+								}
+								switch i {
+								case 0:
+									network.DHCPDWins1 = util.Ptr(addr)
+								case 1:
+									network.DHCPDWins2 = util.Ptr(addr)
+								}
+							}
+							// Set remaining WINS servers to empty string
+							for i := len(addresses); i < 2; i++ {
+								switch i {
+								case 0:
+									network.DHCPDWins1 = util.Ptr("")
+								case 1:
+									network.DHCPDWins2 = util.Ptr("")
+								}
+							}
+						}
+					} else {
+						network.DHCPDWins1 = util.Ptr("")
+						network.DHCPDWins2 = util.Ptr("")
+					}
+				}
+			} else {
+				network.DHCPDWinsEnabled = false
 				network.DHCPDWins1 = util.Ptr("")
-			} else {
-				network.DHCPDWins1 = dhcpServer.Wins1.ValueStringPointer()
-			}
-
-			if dhcpServer.Wins2.IsNull() || dhcpServer.Wins2.IsUnknown() {
 				network.DHCPDWins2 = util.Ptr("")
-			} else {
-				network.DHCPDWins2 = dhcpServer.Wins2.ValueStringPointer()
 			}
 
 			if dhcpServer.WpadUrl.IsNull() || dhcpServer.WpadUrl.IsUnknown() {
@@ -1084,6 +1140,31 @@ func (r *virtualNetworkResource) networkToModel(
 			dnsServersList = types.ListNull(types.StringType)
 		}
 
+		// Build WINS addresses list from DHCPDWins1-2
+		var winsAddresses []string
+		if network.DHCPDWins1 != nil && *network.DHCPDWins1 != "" {
+			winsAddresses = append(winsAddresses, *network.DHCPDWins1)
+		}
+		if network.DHCPDWins2 != nil && *network.DHCPDWins2 != "" {
+			winsAddresses = append(winsAddresses, *network.DHCPDWins2)
+		}
+
+		var winsAddressesList types.List
+		if len(winsAddresses) > 0 {
+			winsAddressesList, d = types.ListValueFrom(ctx, types.StringType, winsAddresses)
+			diags.Append(d...)
+		} else {
+			winsAddressesList = types.ListNull(types.StringType)
+		}
+
+		winsValue := winsModel{
+			Enabled:   types.BoolValue(network.DHCPDWinsEnabled),
+			Addresses: winsAddressesList,
+		}
+
+		winsObj, d := types.ObjectValueFrom(ctx, winsValue.AttributeTypes(), winsValue)
+		diags.Append(d...)
+
 		dhcpServerValue := dhcpServerModel{
 			Boot:              dhcpBootObj,
 			Enabled:           types.BoolValue(network.DHCPDEnabled),
@@ -1093,9 +1174,7 @@ func (r *virtualNetworkResource) networkToModel(
 			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
 			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
 			Leasetime:         types.Int64PointerValue(network.DHCPDLeaseTime),
-			WinsEnabled:       types.BoolValue(network.DHCPDWinsEnabled),
-			Wins1:             strPtrToType(network.DHCPDWins1),
-			Wins2:             strPtrToType(network.DHCPDWins2),
+			Wins:              winsObj,
 			WpadUrl:           strPtrToType(network.DHCPDWPAdUrl),
 			Start:             types.StringPointerValue(network.DHCPDStart),
 			Stop:              types.StringPointerValue(network.DHCPDStop),

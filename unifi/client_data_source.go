@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -24,19 +26,20 @@ type clientDataSource struct {
 
 // clientDataSourceModel describes the data source data model.
 type clientDataSourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	MAC            types.String `tfsdk:"mac"`
-	Name           types.String `tfsdk:"name"`
-	ClientGroupID  types.String `tfsdk:"client_group_id"`
-	Note           types.String `tfsdk:"note"`
-	FixedIP        types.String `tfsdk:"fixed_ip"`
-	NetworkID      types.String `tfsdk:"network_id"`
-	Blocked        types.Bool   `tfsdk:"blocked"`
-	DevIDOverride  types.Int64  `tfsdk:"dev_id_override"`
-	Hostname       types.String `tfsdk:"hostname"`
-	LastIP         types.String `tfsdk:"last_ip"`
-	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
+	ID                     types.String `tfsdk:"id"`
+	Site                   types.String `tfsdk:"site"`
+	MAC                    types.String `tfsdk:"mac"`
+	Name                   types.String `tfsdk:"name"`
+	DisplayName            types.String `tfsdk:"display_name"`
+	GroupID                types.String `tfsdk:"group_id"`
+	Note                   types.String `tfsdk:"note"`
+	FixedIP                types.String `tfsdk:"fixed_ip"`
+	FixedApMAC             types.String `tfsdk:"fixed_ap_mac"`
+	NetworkID              types.String `tfsdk:"network_id"`
+	NetworkMembersGroupIDs types.List   `tfsdk:"network_members_group_ids"`
+	Blocked                types.Bool   `tfsdk:"blocked"`
+	LocalDNSRecord         types.String `tfsdk:"local_dns_record"`
+	Hostname               types.String `tfsdk:"hostname"`
 }
 
 func (d *clientDataSource) Metadata(
@@ -73,8 +76,12 @@ func (d *clientDataSource) Schema(
 				MarkdownDescription: "The name of the client.",
 				Computed:            true,
 			},
-			"client_group_id": schema.StringAttribute{
-				MarkdownDescription: "The client group ID for the client.",
+			"display_name": schema.StringAttribute{
+				MarkdownDescription: "The display name of the client.",
+				Computed:            true,
+			},
+			"group_id": schema.StringAttribute{
+				MarkdownDescription: "The group ID to attach to the client (controls QoS and other group-based settings).",
 				Computed:            true,
 			},
 			"note": schema.StringAttribute{
@@ -82,35 +89,32 @@ func (d *clientDataSource) Schema(
 				Computed:            true,
 			},
 			"fixed_ip": schema.StringAttribute{
-				MarkdownDescription: "Fixed IPv4 address set for this client.",
+				MarkdownDescription: "A fixed IPv4 address for this client.",
+				Computed:            true,
+			},
+			"fixed_ap_mac": schema.StringAttribute{
+				MarkdownDescription: "The MAC address of the access point to which this client should be fixed.",
 				Computed:            true,
 			},
 			"network_id": schema.StringAttribute{
 				MarkdownDescription: "The network ID for this client.",
 				Computed:            true,
 			},
+			"network_members_group_ids": schema.ListAttribute{
+				MarkdownDescription: "List of network member group IDs for this client.",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
 			"blocked": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this client should be blocked from the network.",
 				Computed:            true,
 			},
-			"dev_id_override": schema.Int64Attribute{
-				MarkdownDescription: "Override the device fingerprint.",
+			"local_dns_record": schema.StringAttribute{
+				MarkdownDescription: "Specifies the local DNS record for this client.",
 				Computed:            true,
 			},
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "The hostname of the client.",
-				Computed:            true,
-			},
-			"ip": schema.StringAttribute{
-				MarkdownDescription: "The IP address of the client.",
-				Computed:            true,
-			},
-			"last_ip": schema.StringAttribute{
-				MarkdownDescription: "The last IP address of the client.",
-				Computed:            true,
-			},
-			"local_dns_record": schema.StringAttribute{
-				MarkdownDescription: "The local DNS record for this client.",
 				Computed:            true,
 			},
 		},
@@ -197,10 +201,16 @@ func (d *clientDataSource) Read(
 		state.Name = types.StringNull()
 	}
 
-	if client.UserGroupID != "" {
-		state.ClientGroupID = types.StringValue(client.UserGroupID)
+	if client.DisplayName != "" {
+		state.DisplayName = types.StringValue(client.DisplayName)
 	} else {
-		state.ClientGroupID = types.StringNull()
+		state.DisplayName = types.StringNull()
+	}
+
+	if client.UserGroupID != "" {
+		state.GroupID = types.StringValue(client.UserGroupID)
+	} else {
+		state.GroupID = types.StringNull()
 	}
 
 	if client.Note != "" {
@@ -209,35 +219,51 @@ func (d *clientDataSource) Read(
 		state.Note = types.StringNull()
 	}
 
-	// Handle fixed IP
 	if client.FixedIP != "" {
 		state.FixedIP = types.StringValue(client.FixedIP)
 	} else {
 		state.FixedIP = types.StringNull()
 	}
 
-	if client.NetworkID != "" {
+	if client.FixedApMAC != "" {
+		state.FixedApMAC = types.StringValue(client.FixedApMAC)
+	} else {
+		state.FixedApMAC = types.StringNull()
+	}
+
+	if client.VirtualNetworkOverrideID != "" {
+		state.NetworkID = types.StringValue(client.VirtualNetworkOverrideID)
+	} else if client.NetworkID != "" {
 		state.NetworkID = types.StringValue(client.NetworkID)
 	} else {
 		state.NetworkID = types.StringNull()
 	}
 
+	// Convert NetworkMembersGroupIDs from []string to List
+	if len(client.NetworkMembersGroupIDs) > 0 {
+		elements := make([]attr.Value, len(client.NetworkMembersGroupIDs))
+		for i, id := range client.NetworkMembersGroupIDs {
+			elements[i] = types.StringValue(id)
+		}
+		var listDiags diag.Diagnostics
+		state.NetworkMembersGroupIDs, listDiags = types.ListValue(types.StringType, elements)
+		resp.Diagnostics.Append(listDiags...)
+	} else {
+		state.NetworkMembersGroupIDs = types.ListNull(types.StringType)
+	}
+
 	state.Blocked = types.BoolPointerValue(client.Blocked)
 
-	// DevIdOverride not available in Client type
-	state.DevIDOverride = types.Int64Null()
+	if client.LocalDNSRecord != "" {
+		state.LocalDNSRecord = types.StringValue(client.LocalDNSRecord)
+	} else {
+		state.LocalDNSRecord = types.StringNull()
+	}
 
 	if client.Hostname != "" {
 		state.Hostname = types.StringValue(client.Hostname)
 	} else {
 		state.Hostname = types.StringNull()
-	}
-
-	// Handle local DNS record
-	if client.LocalDNSRecord != "" {
-		state.LocalDNSRecord = types.StringValue(client.LocalDNSRecord)
-	} else {
-		state.LocalDNSRecord = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, state)

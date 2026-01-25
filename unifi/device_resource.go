@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -365,15 +366,15 @@ func (r *deviceResource) Schema(
 					stringvalidator.OneOf("stp", "rstp", "disabled"),
 				},
 			},
-			"stp_priority": schema.StringAttribute{
+			"stp_priority": schema.Int64Attribute{
 				Description: "STP priority.",
 				Optional:    true,
 				Computed:    true,
-				Validators: []validator.String{
-					stringvalidator.OneOf(
-						"0", "4096", "8192", "12288", "16384", "20480",
-						"24576", "28672", "32768", "36864", "40960",
-						"45056", "49152", "53248", "57344", "61440",
+				Validators: []validator.Int64{
+					int64validator.OneOf(
+						0, 4096, 8192, 12288, 16384, 20480,
+						24576, 28672, 32768, 36864, 40960,
+						45056, 49152, 53248, 57344, 61440,
 					),
 				},
 			},
@@ -1478,7 +1479,7 @@ func (r *deviceResource) modelToAPIDevice(
 	if !model.LedOverrideColor.IsNull() {
 		device.LedOverrideColor = model.LedOverrideColor.ValueString()
 	}
-	if !model.LedOverrideColorBrightness.IsNull() {
+	if !model.LedOverrideColorBrightness.IsNull() && !model.LedOverrideColorBrightness.IsUnknown() {
 		device.LedOverrideColorBrightness = model.LedOverrideColorBrightness.ValueInt64Pointer()
 	}
 
@@ -1491,7 +1492,9 @@ func (r *deviceResource) modelToAPIDevice(
 	if !model.StpVersion.IsNull() {
 		device.StpVersion = model.StpVersion.ValueString()
 	}
-	device.StpPriority = model.StpPriority.ValueInt64Pointer()
+	if !model.StpPriority.IsNull() && !model.StpPriority.IsUnknown() {
+		device.StpPriority = model.StpPriority.ValueInt64Pointer()
+	}
 	device.Locked = model.Locked.ValueBool()
 
 	// PoE settings
@@ -1506,7 +1509,7 @@ func (r *deviceResource) modelToAPIDevice(
 	if !model.OutdoorModeOverride.IsNull() {
 		device.OutdoorModeOverride = model.OutdoorModeOverride.ValueString()
 	}
-	if !model.Volume.IsNull() {
+	if !model.Volume.IsNull() && !model.Volume.IsUnknown() {
 		device.Volume = model.Volume.ValueInt64Pointer()
 	}
 	if !model.XBaresipPassword.IsNull() {
@@ -1514,11 +1517,11 @@ func (r *deviceResource) modelToAPIDevice(
 	}
 
 	// LCD/LCM settings
-	if !model.LcmBrightness.IsNull() {
+	if !model.LcmBrightness.IsNull() && !model.LcmBrightness.IsUnknown() {
 		device.LcmBrightness = model.LcmBrightness.ValueInt64Pointer()
 	}
 	device.LcmBrightnessOverride = model.LcmBrightnessOverride.ValueBool()
-	if !model.LcmIDleTimeout.IsNull() {
+	if !model.LcmIDleTimeout.IsNull() && !model.LcmIDleTimeout.IsUnknown() {
 		device.LcmIDleTimeout = model.LcmIDleTimeout.ValueInt64Pointer()
 	}
 	device.LcmIDleTimeoutOverride = model.LcmIDleTimeoutOverride.ValueBool()

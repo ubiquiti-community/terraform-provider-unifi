@@ -52,14 +52,12 @@ type wanResourceModel struct {
 	TypeV6 types.String `tfsdk:"type_v6"`
 
 	// VLAN Settings
-	VlanEnabled types.Bool  `tfsdk:"vlan_enabled"`
-	Vlan        types.Int64 `tfsdk:"vlan"`
+	Vlan types.Object `tfsdk:"vlan"`
 
 	// QoS Settings
-	EgressQoS        types.Int64 `tfsdk:"egress_qos"`
-	EgressQoSEnabled types.Bool  `tfsdk:"egress_qos_enabled"`
-	DHCPCoS          types.Int64 `tfsdk:"dhcp_cos"`
-	DHCPV6CoS        types.Int64 `tfsdk:"dhcpv6_cos"`
+	EgressQoS types.Object `tfsdk:"egress_qos"`
+	DHCPCoS   types.Int64  `tfsdk:"dhcp_cos"`
+	DHCPV6CoS types.Int64  `tfsdk:"dhcpv6_cos"`
 
 	// DNS Settings
 	DNS1              types.String `tfsdk:"dns1"`
@@ -78,9 +76,7 @@ type wanResourceModel struct {
 	IPv6WANDelegationType types.String `tfsdk:"ipv6_wan_delegation_type"`
 
 	// Smart Queue Settings
-	SmartQEnabled  types.Bool  `tfsdk:"smartq_enabled"`
-	SmartQUpRate   types.Int64 `tfsdk:"smartq_up_rate"`
-	SmartQDownRate types.Int64 `tfsdk:"smartq_down_rate"`
+	SmartQ types.Object `tfsdk:"smartq"`
 
 	// UPnP Settings
 	UPnPEnabled       types.Bool   `tfsdk:"upnp_enabled"`
@@ -105,6 +101,47 @@ type wanResourceModel struct {
 
 	// Provider Capabilities
 	ProviderCapabilities types.Object `tfsdk:"provider_capabilities"`
+}
+
+// vlanModel describes the VLAN configuration.
+type vlanModel struct {
+	Enabled types.Bool  `tfsdk:"enabled"`
+	ID      types.Int64 `tfsdk:"id"`
+}
+
+func (m vlanModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled": types.BoolType,
+		"id":      types.Int64Type,
+	}
+}
+
+// egressQosModel describes the Egress QoS configuration.
+type egressQosModel struct {
+	Enabled  types.Bool  `tfsdk:"enabled"`
+	Priority types.Int64 `tfsdk:"priority"`
+}
+
+func (m egressQosModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":  types.BoolType,
+		"priority": types.Int64Type,
+	}
+}
+
+// smartqModel describes the Smart Queue configuration.
+type smartqModel struct {
+	Enabled  types.Bool  `tfsdk:"enabled"`
+	UpRate   types.Int64 `tfsdk:"up_rate"`
+	DownRate types.Int64 `tfsdk:"down_rate"`
+}
+
+func (m smartqModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":   types.BoolType,
+		"up_rate":   types.Int64Type,
+		"down_rate": types.Int64Type,
+	}
 }
 
 // providerCapabilitiesModel describes the provider capabilities nested object.
@@ -173,35 +210,47 @@ func (r *wanResource) Schema(
 					stringvalidator.OneOf("dhcpv6", "static", "disabled"),
 				},
 			},
-			"vlan_enabled": schema.BoolAttribute{
+			"vlan": schema.SingleNestedAttribute{
 				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-				MarkdownDescription: "Whether VLAN is enabled",
-			},
-			"vlan": schema.Int64Attribute{
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(0),
-				MarkdownDescription: "The VLAN ID",
-				Validators: []validator.Int64{
-					int64validator.Between(0, 4094),
+				MarkdownDescription: "VLAN configuration",
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+						MarkdownDescription: "Whether VLAN is enabled",
+					},
+					"id": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						Default:             int64default.StaticInt64(0),
+						MarkdownDescription: "The VLAN ID",
+						Validators: []validator.Int64{
+							int64validator.Between(0, 4094),
+						},
+					},
 				},
 			},
-			"egress_qos": schema.Int64Attribute{
+			"egress_qos": schema.SingleNestedAttribute{
 				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(0),
-				MarkdownDescription: "Egress QoS priority",
-				Validators: []validator.Int64{
-					int64validator.Between(0, 7),
+				MarkdownDescription: "Egress QoS configuration",
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+						MarkdownDescription: "Whether egress QoS is enabled",
+					},
+					"priority": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						Default:             int64default.StaticInt64(0),
+						MarkdownDescription: "Egress QoS priority",
+						Validators: []validator.Int64{
+							int64validator.Between(0, 7),
+						},
+					},
 				},
-			},
-			"egress_qos_enabled": schema.BoolAttribute{
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-				MarkdownDescription: "Whether egress QoS is enabled",
 			},
 			"dhcp_cos": schema.Int64Attribute{
 				Optional:            true,
@@ -304,19 +353,25 @@ func (r *wanResource) Schema(
 					stringvalidator.OneOf("pd", "static"),
 				},
 			},
-			"smartq_enabled": schema.BoolAttribute{
+			"smartq": schema.SingleNestedAttribute{
 				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-				MarkdownDescription: "Whether Smart Queue is enabled",
-			},
-			"smartq_up_rate": schema.Int64Attribute{
-				Optional:            true,
-				MarkdownDescription: "Smart Queue upload rate in kbps",
-			},
-			"smartq_down_rate": schema.Int64Attribute{
-				Optional:            true,
-				MarkdownDescription: "Smart Queue download rate in kbps",
+				MarkdownDescription: "Smart Queue configuration",
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+						MarkdownDescription: "Whether Smart Queue is enabled",
+					},
+					"up_rate": schema.Int64Attribute{
+						Optional:            true,
+						MarkdownDescription: "Smart Queue upload rate in kbps",
+					},
+					"down_rate": schema.Int64Attribute{
+						Optional:            true,
+						MarkdownDescription: "Smart Queue download rate in kbps",
+					},
+				},
 			},
 			"upnp_enabled": schema.BoolAttribute{
 				Optional:            true,
@@ -626,17 +681,11 @@ func (r *wanResource) applyPlanToState(
 	if !plan.TypeV6.IsNull() && !plan.TypeV6.IsUnknown() {
 		state.TypeV6 = plan.TypeV6
 	}
-	if !plan.VlanEnabled.IsNull() && !plan.VlanEnabled.IsUnknown() {
-		state.VlanEnabled = plan.VlanEnabled
-	}
 	if !plan.Vlan.IsNull() && !plan.Vlan.IsUnknown() {
 		state.Vlan = plan.Vlan
 	}
 	if !plan.EgressQoS.IsNull() && !plan.EgressQoS.IsUnknown() {
 		state.EgressQoS = plan.EgressQoS
-	}
-	if !plan.EgressQoSEnabled.IsNull() && !plan.EgressQoSEnabled.IsUnknown() {
-		state.EgressQoSEnabled = plan.EgressQoSEnabled
 	}
 	if !plan.DHCPCoS.IsNull() && !plan.DHCPCoS.IsUnknown() {
 		state.DHCPCoS = plan.DHCPCoS
@@ -674,14 +723,8 @@ func (r *wanResource) applyPlanToState(
 	if !plan.IPv6WANDelegationType.IsNull() && !plan.IPv6WANDelegationType.IsUnknown() {
 		state.IPv6WANDelegationType = plan.IPv6WANDelegationType
 	}
-	if !plan.SmartQEnabled.IsNull() && !plan.SmartQEnabled.IsUnknown() {
-		state.SmartQEnabled = plan.SmartQEnabled
-	}
-	if !plan.SmartQUpRate.IsNull() && !plan.SmartQUpRate.IsUnknown() {
-		state.SmartQUpRate = plan.SmartQUpRate
-	}
-	if !plan.SmartQDownRate.IsNull() && !plan.SmartQDownRate.IsUnknown() {
-		state.SmartQDownRate = plan.SmartQDownRate
+	if !plan.SmartQ.IsNull() && !plan.SmartQ.IsUnknown() {
+		state.SmartQ = plan.SmartQ
 	}
 	if !plan.UPnPEnabled.IsNull() && !plan.UPnPEnabled.IsUnknown() {
 		state.UPnPEnabled = plan.UPnPEnabled
@@ -787,18 +830,15 @@ func (r *wanResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Name:                model.Name.ValueStringPointer(),
-		Purpose:             unifi.PurposeWAN, // Statically set to "wan"
-		WANNetworkGroup:     util.Ptr("WAN"),  // Statically set to "WAN"
-		HiddenID:            "WAN",            // Statically set to "WAN"
-		WANType:             model.Type.ValueStringPointer(),
-		WANTypeV6:           model.TypeV6.ValueStringPointer(),
-		WANVLANEnabled:      model.VlanEnabled.ValueBool(),
-		WANVLAN:             model.Vlan.ValueInt64Pointer(),
-		WANEgressQOS:        model.EgressQoS.ValueInt64Pointer(),
-		WANEgressQOSEnabled: model.EgressQoSEnabled.ValueBoolPointer(),
-		WANDHCPCos:          model.DHCPCoS.ValueInt64Pointer(),
-		WANDHCPv6Cos:        model.DHCPV6CoS.ValueInt64Pointer(),
+		Name:            model.Name.ValueStringPointer(),
+		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
+		WANNetworkGroup: util.Ptr("WAN"),  // Statically set to "WAN"
+		HiddenID:        "WAN",            // Statically set to "WAN"
+		WANType:         model.Type.ValueStringPointer(),
+		WANTypeV6:       model.TypeV6.ValueStringPointer(),
+
+		WANDHCPCos:   model.DHCPCoS.ValueInt64Pointer(),
+		WANDHCPv6Cos: model.DHCPV6CoS.ValueInt64Pointer(),
 
 		// DNS Settings
 		WANDNS1:              model.DNS1.ValueStringPointer(),
@@ -807,6 +847,36 @@ func (r *wanResource) modelToNetwork(
 		WANIPV6DNS2:          model.IPv6DNS2.ValueStringPointer(),
 		WANDNSPreference:     model.DNSPreference.ValueStringPointer(),
 		WANIPV6DNSPreference: model.IPv6DNSPreference.ValueStringPointer(),
+	}
+
+	// Handle VLAN configuration
+	if !model.Vlan.IsNull() && !model.Vlan.IsUnknown() {
+		var vlan vlanModel
+		d := model.Vlan.As(ctx, &vlan, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			network.WANVLANEnabled = vlan.Enabled.ValueBool()
+			network.WANVLAN = vlan.ID.ValueInt64Pointer()
+		}
+	} else {
+		// Set defaults when VLAN is not configured
+		network.WANVLANEnabled = false
+		network.WANVLAN = util.Ptr(int64(0))
+	}
+
+	// Handle Egress QoS configuration
+	if !model.EgressQoS.IsNull() && !model.EgressQoS.IsUnknown() {
+		var egressQos egressQosModel
+		d := model.EgressQoS.As(ctx, &egressQos, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			network.WANEgressQOSEnabled = egressQos.Enabled.ValueBoolPointer()
+			network.WANEgressQOS = egressQos.Priority.ValueInt64Pointer()
+		}
+	} else {
+		// Set defaults when Egress QoS is not configured
+		network.WANEgressQOSEnabled = util.Ptr(false)
+		network.WANEgressQOS = util.Ptr(int64(0))
 	}
 
 	// DHCPv6 Settings
@@ -829,10 +899,22 @@ func (r *wanResource) modelToNetwork(
 		}
 	}
 
-	// Smart Queue Settings
-	network.WANSmartQEnabled = model.SmartQEnabled.ValueBool()
-	network.WANSmartQUpRate = model.SmartQUpRate.ValueInt64Pointer()
-	network.WANSmartQDownRate = model.SmartQDownRate.ValueInt64Pointer()
+	// Handle Smart Queue configuration
+	if !model.SmartQ.IsNull() && !model.SmartQ.IsUnknown() {
+		var smartq smartqModel
+		d := model.SmartQ.As(ctx, &smartq, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			network.WANSmartQEnabled = smartq.Enabled.ValueBool()
+			network.WANSmartQUpRate = smartq.UpRate.ValueInt64Pointer()
+			network.WANSmartQDownRate = smartq.DownRate.ValueInt64Pointer()
+		}
+	} else {
+		// Set defaults when Smart Queue is not configured
+		network.WANSmartQEnabled = false
+		network.WANSmartQUpRate = nil
+		network.WANSmartQDownRate = nil
+	}
 
 	// UPnP Settings
 	network.UPnPLanEnabled = model.UPnPEnabled.ValueBool()
@@ -894,7 +976,7 @@ func (r *wanResource) modelToNetwork(
 
 // networkToModel converts from unifi.Network to Terraform model.
 func (r *wanResource) networkToModel(
-	_ context.Context,
+	ctx context.Context,
 	network *unifi.Network,
 	model *wanResourceModel,
 	site string,
@@ -907,16 +989,27 @@ func (r *wanResource) networkToModel(
 
 	// WAN Type Settings
 	model.Type = types.StringPointerValue(network.WANType)
-
 	model.TypeV6 = types.StringPointerValue(network.WANTypeV6)
 
 	// VLAN Settings
-	model.VlanEnabled = types.BoolValue(network.WANVLANEnabled)
-	model.Vlan = types.Int64PointerValue(network.WANVLAN)
+	vlanValue := vlanModel{
+		Enabled: types.BoolValue(network.WANVLANEnabled),
+		ID:      types.Int64PointerValue(network.WANVLAN),
+	}
+	vlanObj, d := types.ObjectValueFrom(ctx, vlanValue.AttributeTypes(), vlanValue)
+	diags.Append(d...)
+	model.Vlan = vlanObj
+
+	// Egress QoS Settings
+	egressQosValue := egressQosModel{
+		Enabled:  types.BoolPointerValue(network.WANEgressQOSEnabled),
+		Priority: types.Int64PointerValue(network.WANEgressQOS),
+	}
+	egressQosObj, d := types.ObjectValueFrom(ctx, egressQosValue.AttributeTypes(), egressQosValue)
+	diags.Append(d...)
+	model.EgressQoS = egressQosObj
 
 	// QoS Settings
-	model.EgressQoS = types.Int64PointerValue(network.WANEgressQOS)
-	model.EgressQoSEnabled = types.BoolPointerValue(network.WANEgressQOSEnabled)
 	model.DHCPCoS = types.Int64PointerValue(network.WANDHCPCos)
 	model.DHCPV6CoS = types.Int64PointerValue(network.WANDHCPv6Cos)
 
@@ -965,9 +1058,14 @@ func (r *wanResource) networkToModel(
 	}
 
 	// Smart Queue Settings
-	model.SmartQEnabled = types.BoolValue(network.WANSmartQEnabled)
-	model.SmartQUpRate = types.Int64PointerValue(network.WANSmartQUpRate)
-	model.SmartQDownRate = types.Int64PointerValue(network.WANSmartQDownRate)
+	smartqValue := smartqModel{
+		Enabled:  types.BoolValue(network.WANSmartQEnabled),
+		UpRate:   types.Int64PointerValue(network.WANSmartQUpRate),
+		DownRate: types.Int64PointerValue(network.WANSmartQDownRate),
+	}
+	smartqObj, d := types.ObjectValueFrom(ctx, smartqValue.AttributeTypes(), smartqValue)
+	diags.Append(d...)
+	model.SmartQ = smartqObj
 
 	// UPnP Settings
 	model.UPnPEnabled = types.BoolPointerValue(network.UPnPEnabled)
@@ -1028,24 +1126,31 @@ func (r *wanResource) networkToModel(
 	}
 
 	// Provider Capabilities
-	if network.WANProviderCapabilities.DownloadKilobitsPerSecond != nil ||
-		network.WANProviderCapabilities.UploadKilobitsPerSecond != nil {
-		providerCapsAttrTypes := map[string]attr.Type{
-			"download_kilobits_per_second": types.Int64Type,
-			"upload_kilobits_per_second":   types.Int64Type,
+	if network.WANProviderCapabilities != nil {
+		if network.WANProviderCapabilities.DownloadKilobitsPerSecond != nil ||
+			network.WANProviderCapabilities.UploadKilobitsPerSecond != nil {
+			providerCapsAttrTypes := map[string]attr.Type{
+				"download_kilobits_per_second": types.Int64Type,
+				"upload_kilobits_per_second":   types.Int64Type,
+			}
+			providerCapsValues := map[string]attr.Value{
+				"download_kilobits_per_second": types.Int64PointerValue(
+					network.WANProviderCapabilities.DownloadKilobitsPerSecond,
+				),
+				"upload_kilobits_per_second": types.Int64PointerValue(
+					network.WANProviderCapabilities.UploadKilobitsPerSecond,
+				),
+			}
+			model.ProviderCapabilities, diags = types.ObjectValue(
+				providerCapsAttrTypes,
+				providerCapsValues,
+			)
+		} else {
+			model.ProviderCapabilities = types.ObjectNull(map[string]attr.Type{
+				"download_kilobits_per_second": types.Int64Type,
+				"upload_kilobits_per_second":   types.Int64Type,
+			})
 		}
-		providerCapsValues := map[string]attr.Value{
-			"download_kilobits_per_second": types.Int64PointerValue(
-				network.WANProviderCapabilities.DownloadKilobitsPerSecond,
-			),
-			"upload_kilobits_per_second": types.Int64PointerValue(
-				network.WANProviderCapabilities.UploadKilobitsPerSecond,
-			),
-		}
-		model.ProviderCapabilities, diags = types.ObjectValue(
-			providerCapsAttrTypes,
-			providerCapsValues,
-		)
 	} else {
 		model.ProviderCapabilities = types.ObjectNull(map[string]attr.Type{
 			"download_kilobits_per_second": types.Int64Type,
