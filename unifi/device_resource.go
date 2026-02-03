@@ -1158,6 +1158,11 @@ func (r *deviceResource) Update(
 		state.RadioTable = plan.RadioTable
 	}
 
+	// Preserve config-only fields that don't exist in the API.
+	// These must always come from the plan, not from API state.
+	state.AllowAdoption = plan.AllowAdoption
+	state.ForgetOnDestroy = plan.ForgetOnDestroy
+
 	// Update the resource
 	diags = r.updateDevice(ctx, &state)
 	resp.Diagnostics.Append(diags...)
