@@ -967,7 +967,78 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPRelayEnabled = model.DhcpRelayEnabled.ValueBool()
 	}
 
-	// TODO: Add more field mappings for DHCPv6, IPv6, WAN, WireGuard settings
+	// DHCPv6 Settings
+	if !model.DhcpV6DNS.IsNull() {
+		var dhcpV6DNS []string
+		d := model.DhcpV6DNS.ElementsAs(ctx, &dhcpV6DNS, false)
+		diags.Append(d...)
+		if !diags.HasError() {
+			for i, dns := range dhcpV6DNS {
+				switch i {
+				case 0:
+					network.DHCPDV6DNS1 = &dns
+				case 1:
+					network.DHCPDV6DNS2 = &dns
+				case 2:
+					network.DHCPDV6DNS3 = &dns
+				case 3:
+					network.DHCPDV6DNS4 = &dns
+				}
+			}
+		}
+	}
+
+	if !model.DhcpV6DNSAuto.IsNull() {
+		network.DHCPDV6DNSAuto = model.DhcpV6DNSAuto.ValueBool()
+	}
+	if !model.DhcpV6Enabled.IsNull() {
+		network.DHCPDV6Enabled = model.DhcpV6Enabled.ValueBool()
+	}
+	if !model.DhcpV6Lease.IsNull() {
+		network.DHCPDV6LeaseTime = model.DhcpV6Lease.ValueInt64Pointer()
+	}
+	if !model.DhcpV6Start.IsNull() {
+		network.DHCPDV6Start = model.DhcpV6Start.ValueStringPointer()
+	}
+	if !model.DhcpV6Stop.IsNull() {
+		network.DHCPDV6Stop = model.DhcpV6Stop.ValueStringPointer()
+	}
+
+	// IPv6 Settings
+	if !model.IPv6InterfaceType.IsNull() {
+		network.IPV6InterfaceType = model.IPv6InterfaceType.ValueStringPointer()
+	}
+	if !model.IPv6PDPrefixid.IsNull() {
+		network.IPV6PDPrefixid = model.IPv6PDPrefixid.ValueString()
+	}
+	if !model.IPv6PDStart.IsNull() {
+		network.IPV6PDStart = model.IPv6PDStart.ValueStringPointer()
+	}
+	if !model.IPv6PDStop.IsNull() {
+		network.IPV6PDStop = model.IPv6PDStop.ValueStringPointer()
+	}
+	if !model.IPv6RAPriority.IsNull() {
+		network.IPV6RaPriority = model.IPv6RAPriority.ValueStringPointer()
+	}
+	if !model.IPv6RAValidLifetime.IsNull() {
+		network.IPV6RaValidLifetime = model.IPv6RAValidLifetime.ValueInt64Pointer()
+	}
+	if !model.IPv6RAPreferredLifetime.IsNull() {
+		network.IPV6RaPreferredLifetime = model.IPv6RAPreferredLifetime.ValueInt64Pointer()
+	}
+	if !model.IPv6RAEnable.IsNull() {
+		network.IPV6RaEnabled = model.IPv6RAEnable.ValueBool()
+	}
+
+	// IPv6 Static - convert list to single subnet string (use first element)
+	if !model.IPv6Static.IsNull() {
+		var ipv6Static []string
+		d := model.IPv6Static.ElementsAs(ctx, &ipv6Static, false)
+		diags.Append(d...)
+		if !diags.HasError() && len(ipv6Static) > 0 {
+			network.IPV6Subnet = &ipv6Static[0]
+		}
+	}
 
 	return network, diags
 }
@@ -1032,27 +1103,56 @@ func (r *networkResource) networkToModel(
 
 	model.DhcpRelayEnabled = types.BoolValue(network.DHCPRelayEnabled)
 
-	// TODO: Add more field mappings for DHCPv6, IPv6, WAN, WireGuard settings
-	// For now, set remaining fields to null to prevent issues
-	model.DhcpV6DNS = types.ListNull(types.StringType)
-	model.DhcpV6DNSAuto = types.BoolValue(true) // Default value
-	model.DhcpV6Enabled = types.BoolNull()
-	model.DhcpV6Lease = types.Int64Value(86400) // Default value
+	// DHCPv6 Settings
+	// Convert DHCPv6 DNS from individual fields to list
+	dhcpV6DNSSlice := []string{}
+	for _, dns := range []*string{network.DHCPDV6DNS1, network.DHCPDV6DNS2, network.DHCPDV6DNS3, network.DHCPDV6DNS4} {
+		if dns != nil && *dns != "" {
+			dhcpV6DNSSlice = append(dhcpV6DNSSlice, *dns)
+		}
+	}
+
+	if len(dhcpV6DNSSlice) > 0 {
+		dhcpV6DNSValues := make([]attr.Value, len(dhcpV6DNSSlice))
+		for i, dns := range dhcpV6DNSSlice {
+			dhcpV6DNSValues[i] = types.StringValue(dns)
+		}
+		dhcpV6DNSList, d := types.ListValue(types.StringType, dhcpV6DNSValues)
+		diags.Append(d...)
+		model.DhcpV6DNS = dhcpV6DNSList
+	} else {
+		model.DhcpV6DNS = types.ListNull(types.StringType)
+	}
+
+	model.DhcpV6DNSAuto = types.BoolValue(network.DHCPDV6DNSAuto)
+	model.DhcpV6Enabled = types.BoolValue(network.DHCPDV6Enabled)
+	model.DhcpV6Lease = types.Int64PointerValue(network.DHCPDV6LeaseTime)
+	model.DhcpV6Start = types.StringPointerValue(network.DHCPDV6Start)
+	model.DhcpV6Stop = types.StringPointerValue(network.DHCPDV6Stop)
+
+	// DhcpV6PDStart and DhcpV6PDStop don't have direct API counterparts; set to null
 	model.DhcpV6PDStart = types.StringNull()
 	model.DhcpV6PDStop = types.StringNull()
-	model.DhcpV6Start = types.StringNull()
-	model.DhcpV6Stop = types.StringNull()
 
 	// IPv6 Settings
-	model.IPv6InterfaceType = types.StringNull()
-	model.IPv6PDPrefixid = types.StringNull()
-	model.IPv6PDStart = types.StringNull()
-	model.IPv6PDStop = types.StringNull()
-	model.IPv6RAPriority = types.StringNull()
-	model.IPv6RAValidLifetime = types.Int64Null()
-	model.IPv6RAPreferredLifetime = types.Int64Null()
-	model.IPv6RAEnable = types.BoolNull()
-	model.IPv6Static = types.ListNull(types.StringType)
+	model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+	model.IPv6PDPrefixid = types.StringValue(network.IPV6PDPrefixid)
+	model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
+	model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
+	model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
+	model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
+	model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
+	model.IPv6RAEnable = types.BoolValue(network.IPV6RaEnabled)
+
+	// IPv6 Static - convert single subnet string to list
+	if network.IPV6Subnet != nil && *network.IPV6Subnet != "" {
+		ipv6StaticValues := []attr.Value{types.StringValue(*network.IPV6Subnet)}
+		ipv6StaticList, d := types.ListValue(types.StringType, ipv6StaticValues)
+		diags.Append(d...)
+		model.IPv6Static = ipv6StaticList
+	} else {
+		model.IPv6Static = types.ListNull(types.StringType)
+	}
 
 	// WAN Settings
 	model.WANType = types.StringNull()
