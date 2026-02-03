@@ -468,6 +468,30 @@ func (r *wlanFrameworkResource) Create(
 		return
 	}
 
+	// UDM SE API requires ap_group_ids to be set even when ap_group_mode is "all".
+	// Look up and set the default AP group ID if ap_group_mode is "all" and no ap_group_ids specified.
+	if wlan.ApGroupMode == "all" && len(wlan.ApGroupIDs) == 0 {
+		apGroups, err := r.client.ListAPGroup(ctx, site)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Listing AP Groups",
+				"Could not list AP groups: "+err.Error(),
+			)
+			return
+		}
+		// Find the default AP group (attr_hidden_id == "default")
+		for _, group := range apGroups {
+			if group.HiddenId == "default" {
+				wlan.ApGroupIDs = []string{group.ID}
+				break
+			}
+		}
+		// If no default found, use the first group
+		if len(wlan.ApGroupIDs) == 0 && len(apGroups) > 0 {
+			wlan.ApGroupIDs = []string{apGroups[0].ID}
+		}
+	}
+
 	// Create the WLAN
 	createdWLAN, err := r.client.CreateWLAN(ctx, site, wlan)
 	if err != nil {
