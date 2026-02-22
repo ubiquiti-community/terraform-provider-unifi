@@ -2,15 +2,8 @@ package unifi
 
 import (
 	"context"
-	"crypto/tls"
-	"fmt"
-	"net"
-	"net/http"
-	"net/http/cookiejar"
 	"os"
-	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
@@ -248,98 +241,24 @@ func (p *unifiProvider) Configure(
 		return
 	}
 
-	// Create HTTP client
-	c := retryablehttp.NewClient()
-	c.HTTPClient.Timeout = 30 * time.Second
-	c.Logger = NewLogger(ctx)
-
-	// Configure TLS if needed
-	if allowInsecure {
-		transport := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			DialContext: (&net.Dialer{
-				Timeout:   10 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-		}
-		c.HTTPClient.Transport = transport
-	}
-
-	// Add cookie jar for session management
-	jar, _ := cookiejar.New(nil)
-	c.HTTPClient.Jar = jar
-
 	// Create UniFi client
-	client := &ui.ApiClient{}
-	if err := client.SetHTTPClient(c); err != nil {
+	client, err := ui.New(ctx, &ui.Config{
+		BaseURL:        apiUrl,
+		AllowInsecure:  allowInsecure,
+		Username:       username,
+		Password:       password,
+		APIKey:         apiKey,
+		CloudConnector: cloudConnector,
+		HardwareID:     hardwareID,
+		Logger:         NewLogger(ctx),
+	})
+	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create HTTP Client",
 			"An unexpected error occurred when creating the HTTP client. "+
 				err.Error(),
 		)
 		return
-	}
-
-	// Set authentication (must be done before cloud connector setup)
-	if apiKey != "" {
-		client.SetAPIKey(apiKey)
-	}
-
-	// Configure Cloud Connector or Direct Connection
-	if cloudConnector {
-		// Enable Cloud Connector mode
-		var consoleID string
-		var err error
-
-		if hardwareID != "" {
-			// Use specific hardware ID
-			consoleID, err = client.EnableCloudConnectorByHardwareID(ctx, hardwareID)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Error Enabling Cloud Connector",
-					fmt.Sprintf(
-						"Could not find console with hardware ID %s: %s",
-						hardwareID,
-						err.Error(),
-					),
-				)
-				return
-			}
-		} else {
-			// Use default selection (first owner host)
-			consoleID, err = client.EnableCloudConnector(ctx, -1)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Error Enabling Cloud Connector",
-					"Could not enable Cloud Connector mode: "+err.Error(),
-				)
-				return
-			}
-		}
-
-		// Log the selected console ID for debugging
-		_ = consoleID // Console ID is now set in the client
-	} else {
-		// Direct connection mode
-		if err := client.SetBaseURL(apiUrl); err != nil {
-			resp.Diagnostics.AddError(
-				"Invalid API URL",
-				"The provided API URL is invalid. "+
-					err.Error(),
-			)
-			return
-		}
-
-		if apiKey == "" && username != "" && password != "" {
-			if err := client.Login(ctx, username, password); err != nil {
-				resp.Diagnostics.AddError(
-					"Error Logging In",
-					"Could not log in with username and password. "+
-						err.Error(),
-				)
-				return
-			}
-		}
 	}
 
 	// Create wrapper client with site info

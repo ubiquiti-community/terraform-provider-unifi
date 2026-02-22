@@ -878,14 +878,14 @@ func (r *settingResource) mgmtModelToSetting(
 		setting.AutoUpgrade = model.AutoUpgrade.ValueBool()
 	}
 	if !model.SSHEnabled.IsNull() {
-		setting.XSshEnabled = model.SSHEnabled.ValueBool()
+		setting.SSHEnabled = model.SSHEnabled.ValueBool()
 	}
 
 	if !model.SSHKeys.IsNull() && !model.SSHKeys.IsUnknown() {
 		var sshKeys []sshKeyModel
 		model.SSHKeys.ElementsAs(ctx, &sshKeys, false)
 		for _, sshKey := range sshKeys {
-			setting.XSshKeys = append(setting.XSshKeys, settings.SettingMgmtXSshKeys{
+			setting.SSHKeys = append(setting.SSHKeys, settings.SettingMgmtSSHKeys{
 				Name:    sshKey.Name.ValueString(),
 				KeyType: sshKey.Type.ValueString(),
 				Key:     sshKey.Key.ValueString(),
@@ -912,15 +912,15 @@ func (r *settingResource) mgmtSettingToModel(
 	}
 
 	if !plan.SSHEnabled.IsNull() && !plan.SSHEnabled.IsUnknown() {
-		model.SSHEnabled = types.BoolValue(setting.XSshEnabled)
+		model.SSHEnabled = types.BoolValue(setting.SSHEnabled)
 	} else {
 		model.SSHEnabled = types.BoolNull()
 	}
 
 	if !plan.SSHKeys.IsNull() && !plan.SSHKeys.IsUnknown() {
-		if len(setting.XSshKeys) > 0 {
+		if len(setting.SSHKeys) > 0 {
 			var sshKeys []sshKeyModel
-			for _, sshKey := range setting.XSshKeys {
+			for _, sshKey := range setting.SSHKeys {
 				sshKeys = append(sshKeys, sshKeyModel{
 					Name:    types.StringValue(sshKey.Name),
 					Type:    types.StringValue(sshKey.KeyType),

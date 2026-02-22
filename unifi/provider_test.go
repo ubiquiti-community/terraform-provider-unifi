@@ -2,23 +2,19 @@ package unifi
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net"
-	"net/http"
-	"net/http/cookiejar"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/docker/compose/v2/pkg/api"
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var providerFactories = map[string]func() (tfprotov6.ProviderServer, error){
@@ -136,27 +132,7 @@ func runAcceptanceTests(m *testing.M) int {
 		}
 	}()
 
-	testClient = &unifi.ApiClient{}
-	httpClient := retryablehttp.NewClient()
-	httpClient.Logger = logger
-
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-	}
-	httpClient.HTTPClient.Transport = transport
-	jar, _ := cookiejar.New(nil)
-	httpClient.HTTPClient.Jar = jar
-	if err = testClient.SetHTTPClient(httpClient); err != nil {
-		panic(err)
-	}
-	if err = testClient.SetBaseURL(endpoint); err != nil {
-		panic(err)
-	}
-	if err = waitForUniFiAPI(ctx, logger, testClient, user, password); err != nil {
+	if _, err := waitForUniFiAPI(ctx, logger, endpoint, user, password); err != nil {
 		panic(err)
 	}
 
@@ -193,9 +169,8 @@ func contains(s, substr string) bool {
 func waitForUniFiAPI(
 	ctx context.Context,
 	logger *UnifiLogger,
-	client *unifi.ApiClient,
-	user, password string,
-) error {
+	endpoint, user, password string,
+) (client *unifi.ApiClient, err error) {
 	maxRetries := 60
 	retryDelay := 3 * time.Second
 
@@ -208,7 +183,14 @@ func waitForUniFiAPI(
 	var loginSuccessful bool
 	for i := range maxRetries {
 		// Step 1: Try to login
-		err := client.Login(ctx, user, password)
+		client, err = unifi.New(ctx, &unifi.Config{
+			BaseURL:        endpoint,
+			Username:       user,
+			Password:       password,
+			AllowInsecure:  true,
+			TimeoutSeconds: util.Ptr(30),
+			CloudConnector: false,
+		})
 		if err != nil {
 			errMsg := err.Error()
 			if i < maxRetries-1 {
@@ -224,7 +206,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"UniFi API login did not succeed after %d attempts (waited %v): %w",
 				maxRetries,
 				time.Duration(maxRetries)*retryDelay,
@@ -240,13 +222,6 @@ func waitForUniFiAPI(
 		// Step 2: Verify sites are initialized
 		sites, err := client.ListSites(ctx)
 		if err != nil {
-
-			if _, ok := err.(*unifi.LoginRequiredError); ok {
-				if err = client.Login(ctx, user, password); err != nil {
-					logger.Printf("Failed to login\n")
-				}
-				continue
-			}
 
 			// Not found errors are expected during initialization
 			errStr := err.Error()
@@ -278,7 +253,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return fmt.Errorf(
+				return nil, fmt.Errorf(
 					"UniFi API sites not ready after %d attempts: %w",
 					maxRetries,
 					err,
@@ -299,7 +274,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return fmt.Errorf("no sites available after %d attempts", maxRetries)
+			return nil, fmt.Errorf("no sites available after %d attempts", maxRetries)
 		}
 
 		// Step 3: Verify we can list devices (API fully operational)
@@ -322,7 +297,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return fmt.Errorf(
+				return nil, fmt.Errorf(
 					"device endpoint not operational after %d attempts: %w",
 					maxRetries,
 					err,
@@ -360,14 +335,6 @@ func waitForUniFiAPI(
 		// Step 4: Verify networks are initialized
 		networks, err := client.ListNetwork(ctx, "default")
 		if err != nil {
-
-			if _, ok := err.(*unifi.LoginRequiredError); ok {
-				if err = client.Login(ctx, user, password); err != nil {
-					logger.Printf("Failed to login\n")
-				}
-				continue
-			}
-
 			// Not found errors are expected during initialization
 			errStr := err.Error()
 			if contains(errStr, "not found") || contains(errStr, "NotFound") ||
@@ -398,7 +365,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return fmt.Errorf(
+				return nil, fmt.Errorf(
 					"UniFi API networks not ready after %d attempts: %w",
 					maxRetries,
 					err,
@@ -419,7 +386,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return fmt.Errorf("no networks available after %d attempts", maxRetries)
+			return nil, fmt.Errorf("no networks available after %d attempts", maxRetries)
 		}
 
 		logger.Printf(
@@ -427,8 +394,8 @@ func waitForUniFiAPI(
 			len(sites),
 			i+1,
 		)
-		return nil
+		return client, nil
 	}
 
-	return fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
+	return nil, fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
 }
