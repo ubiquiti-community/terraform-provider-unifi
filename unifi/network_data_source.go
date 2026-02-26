@@ -51,6 +51,7 @@ type networkDataSourceModel struct {
 	DHCPV6Stop              types.String `tfsdk:"dhcp_v6_stop"`
 	DomainName              types.String `tfsdk:"domain_name"`
 	IGMPSnooping            types.Bool   `tfsdk:"igmp_snooping"`
+	IpSubnet                types.String `tfsdk:"ip_subnet"`
 	IPv6InterfaceType       types.String `tfsdk:"ipv6_interface_type"`
 	IPv6Subnet              types.String `tfsdk:"ipv6_static_subnet"`
 	IPv6PDInterface         types.String `tfsdk:"ipv6_pd_interface"`
@@ -340,25 +341,24 @@ func (d *networkDataSource) Read(
 	if !config.ID.IsNull() && !config.ID.IsUnknown() {
 		id := config.ID.ValueString()
 		network, err = d.client.GetNetwork(ctx, site, id)
-	} else if !config.Name.IsNull() && !config.Name.IsUnknown() {
-		name := config.Name.ValueString()
-		networks, listErr := d.client.ListNetwork(ctx, site)
-		if listErr != nil {
+		if err != nil {
+			if _, ok := err.(*unifi.NotFoundError); ok {
+				resp.Diagnostics.AddError(
+					"Network Not Found",
+					fmt.Sprintf("Network with ID %s not found: %s", id, err),
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading Network",
-				fmt.Sprintf("Could not list networks: %s", listErr),
+				fmt.Sprintf("Could not read network with ID %s: %s", id, err),
 			)
 			return
 		}
-
-		for _, n := range networks {
-			if n.Name == &name {
-				network = &n
-				break
-			}
-		}
-
-		if network == nil {
+	} else if !config.Name.IsNull() && !config.Name.IsUnknown() {
+		name := config.Name.ValueString()
+		network, err = d.client.GetNetworkByName(ctx, site, name)
+		if err != nil {
 			resp.Diagnostics.AddError(
 				"Network Not Found",
 				fmt.Sprintf("Network with name %s not found", name),
@@ -414,6 +414,7 @@ func (d *networkDataSource) setDataSourceData(
 
 	model.VlanID = types.Int64PointerValue(network.VLAN)
 	model.Subnet = types.StringPointerValue(network.IPSubnet)
+	model.IpSubnet = types.StringPointerValue(network.IPSubnet)
 	model.NetworkGroup = types.StringPointerValue(network.NetworkGroup)
 
 	model.DHCPDStart = types.StringPointerValue(network.DHCPDStart)
