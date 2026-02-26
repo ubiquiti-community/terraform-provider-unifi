@@ -216,7 +216,6 @@ func (r *dynamicDNSResource) Read(
 	resp *resource.ReadResponse,
 ) {
 	var data dynamicDNSResourceModel
-	var identity dynamicDNSResourceIdentityModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -224,10 +223,16 @@ func (r *dynamicDNSResource) Read(
 		return
 	}
 
-	// Read identity
-	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Read identity, falling back to state for resources created before identity support
+	var identity dynamicDNSResourceIdentityModel
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = data.ID
+		identity.Site = data.Site
 	}
 
 	id := identity.ID.ValueString()
@@ -267,7 +272,6 @@ func (r *dynamicDNSResource) Update(
 ) {
 	var state dynamicDNSResourceModel
 	var plan dynamicDNSResourceModel
-	var identity dynamicDNSResourceIdentityModel
 
 	// Read the current state
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -281,10 +285,16 @@ func (r *dynamicDNSResource) Update(
 		return
 	}
 
-	// Read identity
-	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Read identity, falling back to state for resources created before identity support
+	var identity dynamicDNSResourceIdentityModel
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = state.ID
+		identity.Site = state.Site
 	}
 
 	// Apply the plan changes to the state object
@@ -327,7 +337,6 @@ func (r *dynamicDNSResource) Delete(
 	resp *resource.DeleteResponse,
 ) {
 	var data dynamicDNSResourceModel
-	var identity dynamicDNSResourceIdentityModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -335,10 +344,16 @@ func (r *dynamicDNSResource) Delete(
 		return
 	}
 
-	// Read identity
-	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Read identity, falling back to state for resources created before identity support
+	var identity dynamicDNSResourceIdentityModel
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = data.ID
+		identity.Site = data.Site
 	}
 
 	id := identity.ID.ValueString()
