@@ -99,7 +99,7 @@ jobs:
             function guessLabels(title, body) {
               const text = (title + ' ' + body).toLowerCase();
               const labels = [];
-              if (/\b(bug|error|fail|panic|crash|broken|not work|exception)\b/.test(text))
+              if (/\b(bug|error|fail|panic|crash|broken|doesn't work|does not work|exception)\b/.test(text))
                 labels.push('bug');
               if (!labels.includes('bug') &&
                   /\b(feature|request|enhancement|add support|please add|support for)\b/.test(text))
@@ -334,17 +334,23 @@ jobs:
             // ── Auto-label any remaining open issues with no labels ───────
 
             core.info('Checking for unlabelled open issues…');
-            const { data: openIssues } = await github.rest.issues.listForRepo({
-              owner, repo, state: 'open', per_page: 100
-            });
-            for (const issue of openIssues) {
-              if (issue.labels.length === 0) {
-                const suggested = guessLabels(issue.title, issue.body || '');
-                if (suggested.length) {
-                  core.info('  #' + issue.number + ' "' + issue.title + '": auto-labelling [' + suggested.join(', ') + ']');
-                  await addLabels(issue.number, suggested);
+            let page = 1;
+            while (true) {
+              const { data: openIssues } = await github.rest.issues.listForRepo({
+                owner, repo, state: 'open', per_page: 100, page
+              });
+              if (!openIssues.length) break;
+              for (const issue of openIssues) {
+                if (issue.labels.length === 0) {
+                  const suggested = guessLabels(issue.title, issue.body || '');
+                  if (suggested.length) {
+                    core.info('  #' + issue.number + ' "' + issue.title + '": auto-labelling [' + suggested.join(', ') + ']');
+                    await addLabels(issue.number, suggested);
+                  }
                 }
               }
+              if (openIssues.length < 100) break;
+              page++;
             }
 
             core.info('Issue triage sweep complete.');
