@@ -915,6 +915,10 @@ func (r *networkResource) modelToNetwork(
 
 	network.VLAN = model.VlanID.ValueInt64Pointer()
 
+	if !model.VlanID.IsNull() {
+		network.VLANEnabled = true
+	}
+
 	if !model.Subnet.IsNull() {
 		network.IPSubnet = model.Subnet.ValueStringPointer()
 	}
