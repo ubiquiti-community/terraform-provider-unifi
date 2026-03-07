@@ -32,7 +32,7 @@ This release introduces two new list-style data sources for querying UniFi netwo
 
 ##### `unifi_client_list` (List Data Source)
 
-A new list resource that provides a rich, queryable view of all UniFi network clients.
+A new list data source that provides a rich, queryable view of all UniFi network clients.
 
 - Query and filter clients by various attributes
 - Supports bulk operations and data-driven configurations
