@@ -4,8 +4,6 @@ go 1.25.0
 
 toolchain go1.25.5
 
-replace github.com/ubiquiti-community/go-unifi => ./go-unifi
-
 require (
 	github.com/docker/compose/v2 v2.40.3
 	github.com/hashicorp/terraform-plugin-framework v1.17.0
