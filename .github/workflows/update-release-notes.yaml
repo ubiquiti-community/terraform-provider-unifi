@@ -43,7 +43,8 @@ jobs:
             local escaped_tag
             escaped_tag=$(printf '%s\n' "$tag" | sed 's/[[\.*^$()+?{|]/\\&/g')
             awk "/^## \[${escaped_tag}\]/{found=1; next} found && /^---$/{exit} found{print}" CHANGELOG.md \
-              | sed -e 's/[[:space:]]*$//'  # strip trailing whitespace from each line
+              | sed -e 's/[[:space:]]*$//' \
+              | awk 'BEGIN{started=0} { if (!started && NF==0) next; started=1; print }'
           }
 
           # ---------------------------------------------------------------------------
