@@ -423,7 +423,12 @@ func (d *networkDataSource) setDataSourceData(
 	model.DHCPDLease = types.Int64PointerValue(network.DHCPDLeaseTime)
 
 	// Build DHCP DNS list from individual fields
-	dhcpdDNS := collectNonEmptyStrings(network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4)
+	dhcpdDNS := collectNonEmptyStrings(
+		network.DHCPDDNS1,
+		network.DHCPDDNS2,
+		network.DHCPDDNS3,
+		network.DHCPDDNS4,
+	)
 	if len(dhcpdDNS) > 0 {
 		dnsValues := make([]types.String, len(dhcpdDNS))
 		for i, s := range dhcpdDNS {
@@ -450,7 +455,12 @@ func (d *networkDataSource) setDataSourceData(
 	model.IPv6Subnet = types.StringPointerValue(network.IPV6Subnet)
 
 	// DHCPv6 fields
-	dhcpv6DNS := collectNonEmptyStringPointers(network.DHCPDV6DNS1, network.DHCPDV6DNS2, network.DHCPDV6DNS3, network.DHCPDV6DNS4)
+	dhcpv6DNS := collectNonEmptyStringPointers(
+		network.DHCPDV6DNS1,
+		network.DHCPDV6DNS2,
+		network.DHCPDV6DNS3,
+		network.DHCPDV6DNS4,
+	)
 	if len(dhcpv6DNS) > 0 {
 		dnsValues := make([]types.String, len(dhcpv6DNS))
 		for i, s := range dhcpv6DNS {
