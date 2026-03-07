@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+# update-release-notes.sh
+#
+# Updates GitHub release descriptions for releases that only contain
+# "Full Changelog" links in their descriptions.
+#
+# Usage:
+#   GITHUB_TOKEN=<token> ./scripts/update-release-notes.sh
+#
+# Requirements:
+#   - gh CLI installed and authenticated, OR GITHUB_TOKEN environment variable set
+#   - curl
+
+set -euo pipefail
+
+REPO="ubiquiti-community/terraform-provider-unifi"
+API_BASE="https://api.github.com"
+
+update_release() {
+  local tag="$1"
+  local body="$2"
+
+  echo "Updating release: $tag"
+
+  # Get release ID
+  local release_id
+  release_id=$(curl -s \
+    -H "Authorization: token ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    "${API_BASE}/repos/${REPO}/releases/tags/${tag}" \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['id'])")
+
+  if [ -z "$release_id" ]; then
+    echo "  ERROR: Could not find release ID for $tag"
+    return 1
+  fi
+
+  # Update the release
+  local response_code
+  response_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X PATCH \
+    -H "Authorization: token ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    "${API_BASE}/repos/${REPO}/releases/${release_id}" \
+    -d "$(python3 -c "import json; print(json.dumps({'body': '''${body}'''}))")")
+
+  if [ "$response_code" == "200" ]; then
+    echo "  ✓ Updated successfully"
+  else
+    echo "  ERROR: HTTP $response_code"
+    return 1
+  fi
+}
+
+# ============================================================================
+# v0.41.19 - Expand client resource list (additional improvements)
+# ============================================================================
+V0_41_19_BODY='## 🔧 Improvements
+
+### Client Resource Enhancements
+
+This release adds bulk import capability to the `unifi_client` resource.
+
+#### Changes
+
+* **New Example**: Added bulk import example (`examples/resources/unifi_client/bulk-import.tf`)
+  - Demonstrates how to import multiple clients from a tfquery data file
+* **New Example**: Added bulk import tfquery configuration (`examples/resources/unifi_client/bulk-import.tfquery.hcl`)
+* **Improved**: Enhanced `unifi_client` resource with additional attributes and fixes
+* **Docs**: Updated client list resource and port action documentation
+
+**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.18...v0.41.19'
+
+# ============================================================================
+# v0.41.18 - New client list and network members group data sources
+# ============================================================================
+V0_41_18_BODY='## 🚀 New Features
+
+### New Data Sources
+
+This release introduces two new list-style data sources for querying UniFi network clients and network member groups.
+
+#### `unifi_client_list` (List Data Source)
+A new list resource that provides a rich, queryable view of all UniFi network clients.
+- Query and filter clients by various attributes
+- Supports bulk operations and data-driven configurations
+- Includes comprehensive tests
+
+#### `unifi_network_members_group_list` (Data Source)
+A new data source for listing network member groups.
+
+#### Other Changes
+
+* **Improved**: Enhanced `unifi_client` resource with additional attributes (158 additions)
+* **Updated**: go-unifi dependency version bump
+* **Fixed**: Minor fixes to `unifi_virtual_network_resource` and `unifi_vpn_client_resource`
+* **Added**: New data source examples for `unifi_client_list` and `unifi_network_members_group_list`
+
+**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.17...v0.41.18'
+
+# ============================================================================
+# v0.41.13 - go-unifi dependency update and provider refactor
+# ============================================================================
+V0_41_13_BODY='## 🔧 Maintenance
+
+### go-unifi Dependency Update and Provider Refactor
+
+This release updates the go-unifi client library and significantly refactors the provider configuration code.
+
+#### Changes
+
+* **Updated**: go-unifi dependency version bump
+* **Refactored**: Significant cleanup of `provider.go` (removed 92 lines of legacy code, -81 net lines)
+* **Updated**: Provider tests updated to reflect new provider configuration
+* **Fixed**: Minor fixes to `setting_resource.go`
+
+---
+
+> ⚠️ **Warning**: This release introduced regressions that were fixed in v0.41.14–v0.41.17:
+> - **Network Data Source** had issues (fixed in v0.41.14)
+> - **UniFi Client** had issues (fixed in v0.41.15–v0.41.16)
+> - **Dynamic DNS** identity field was broken (fixed in v0.41.17)
+>
+> **Upgrade recommendation**: If upgrading from v0.41.12, skip directly to v0.41.17 or later.
+
+**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.12...v0.41.13'
+
+# ============================================================================
+# v0.41.5 - Bug fixes and GoReleaser improvements
+# ============================================================================
+V0_41_5_BODY='## 🐛 Bug Fixes & Build Improvements
+
+### Client Info Data Source Fix and GoReleaser Update
+
+This release fixes the `unifi_client_info` data source and updates the release pipeline.
+
+#### Changes
+
+* **Fixed**: `unifi_client_info` data source field mapping and model alignment
+* **Updated**: GoReleaser configuration with Terraform Registry support
+* **Added**: `terraform-registry-manifest.json` for proper Terraform Registry integration
+  - This enables correct discovery by the Terraform Registry
+
+**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4...v0.41.5'
+
+# ============================================================================
+# v0.41.4-rc3 - BREAKING: Renamed unifi_user to unifi_client
+# ============================================================================
+V0_41_4_RC3_BODY='## ⚠️ BREAKING CHANGES
+
+### Renamed `unifi_user` → `unifi_client` and `unifi_user_group` → `unifi_client_group`
+
+This release candidate introduces a **breaking rename** of the user-related resources and data sources to better reflect their purpose in UniFi.
+
+#### Breaking Changes
+
+| Old Name | New Name |
+|----------|----------|
+| `unifi_user` (resource) | `unifi_client` (resource) |
+| `unifi_user_group` (resource) | `unifi_client_group` (resource) |
+| `unifi_user` (data source) | `unifi_client` (data source) |
+| `unifi_user_group` (data source) | `unifi_client_group` (data source) |
+
+> **Migration**: Replace all references to `unifi_user` with `unifi_client` and `unifi_user_group` with `unifi_client_group` in your Terraform configurations.
+
+#### Other Changes
+
+* **Added**: WAN resource (`unifi_wan`) documentation and import examples
+* **Updated**: go-unifi dependency
+
+**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc2...v0.41.4-rc3'
+
+# ============================================================================
+# v0.41.4-rc2 - New WAN resource, WLAN improvements, acceptance tests
+# ============================================================================
+V0_41_4_RC2_BODY='## 🚀 New Features & Bug Fixes
+
+### New WAN Resource, WLAN Improvements, and Acceptance Test Fixes
+
+This release candidate adds the `unifi_wan` resource, significantly improves `unifi_wlan`, and fixes the acceptance test suite.
+
+#### New Features
+
+* **NEW**: `unifi_wan` resource (`unifi/wan_resource.go`, ~1129 lines)
+  - Full WAN interface configuration management
+  - Import support
+  - Comprehensive documentation
+* **Improved**: `unifi_wlan` resource with major enhancements (319 additions)
+* **Added**: Structured logging (`unifi/logger.go`)
+* **Improved**: `unifi_network` resource with bug fixes
+
+#### Bug Fixes
+
+* Fixed acceptance tests to work with the new plugin framework
+* Updated `unifi_site` resource
+* Updated Dependabot configuration
+
+**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc1...v0.41.4-rc2'
+
+# ============================================================================
+# v0.41.4-beta2 - Optional provider configuration
+# ============================================================================
+V0_41_4_BETA2_BODY='## 🔧 Improvements
+
+### Optional Provider Configuration
+
+This beta release makes provider configuration fields optional, allowing more flexible authentication configuration via environment variables.
+
+#### Changes
+
+* **Improved**: Provider configuration fields are now optional (previously required)
+  - All fields can now be configured via environment variables (`UNIFI_API_URL`, `UNIFI_USERNAME`, `UNIFI_PASSWORD`, `UNIFI_API_KEY`, etc.)
+  - This enables cleaner CI/CD configurations
+* **Added**: Expanded `unifi_device` resource documentation with full attribute reference
+
+> **Note**: This is a beta release for the Terraform Plugin Framework migration. See v0.41.4-beta1 for the full feature list.
+
+**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-beta1...v0.41.4-beta2'
+
+# Run updates
+update_release "v0.41.19" "$V0_41_19_BODY"
+update_release "v0.41.18" "$V0_41_18_BODY"
+update_release "v0.41.13" "$V0_41_13_BODY"
+update_release "v0.41.5" "$V0_41_5_BODY"
+update_release "v0.41.4-rc3" "$V0_41_4_RC3_BODY"
+update_release "v0.41.4-rc2" "$V0_41_4_RC2_BODY"
+update_release "v0.41.4-beta2" "$V0_41_4_BETA2_BODY"
+
+echo ""
+echo "✓ All releases updated!"
