@@ -1,6 +1,7 @@
 module github.com/ubiquiti-community/terraform-provider-unifi
 
-go 1.25
+go 1.25.0
+
 toolchain go1.25.5
 
 require (
