@@ -58,6 +58,10 @@ jobs:
                   core.info('Creating label: ' + name);
                   if (!dryRun)
                     await github.rest.issues.createLabel({ owner, repo, name, color, description });
+                } else {
+                  const message = (e && e.message) ? e.message : String(e);
+                  core.setFailed('Failed to ensure label "' + name + '": ' + message);
+                  throw e;
                 }
               }
             }
