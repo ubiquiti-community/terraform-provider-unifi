@@ -1,0 +1,6 @@
+{
+  "enabled": "true|false",
+  "frr_bgpd_config": "",
+  "uploaded_file_name": ".{0,256}",
+  "description": ".{0,128}"
+}

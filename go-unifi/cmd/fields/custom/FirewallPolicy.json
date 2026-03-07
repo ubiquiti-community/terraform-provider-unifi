@@ -1,0 +1,56 @@
+{
+  "action": "ALLOW|BLOCK|REJECT",
+  "connection_state_type": "ALL|RESPOND_ONLY",
+  "connection_states": [],
+  "create_allow_respond": "true|false",
+  "description": "",
+  "destination": {
+    "ips": [
+      ""
+    ],
+    "match_mac": "true|false",
+    "match_opposite_ips": "true|false",
+    "match_opposite_ports": "true|false",
+    "matching_target": "ANY|DEVICE|IP|NETWORK|MAC",
+    "matching_target_type": "ANY|SPECIFIC|LIST|OBJECT",
+    "port": "[1-9][0-9]{0,4}",
+    "port_group_id": "",
+    "port_matching_type": "ANY|SPECIFIC|LIST|OBJECT",
+    "zone_id": ""
+  },
+  "enabled": "true|false",
+  "icmp_typename": "ANY|SPECIFIC|LIST|OBJECT",
+  "icmp_v6_typename": "ANY|SPECIFIC|LIST|OBJECT",
+  "index": "[1-9][0-9]+",
+  "ip_version": "BOTH|IPV4|IPV6",
+  "logging": "true|false",
+  "match_ip_sec": "true|false",
+  "match_opposite_protocol": "true|false",
+  "name": "",
+  "predefined": "true|false",
+  "protocol": "all|tcp|udp|tcp_udp",
+  "schedule": {
+    "date": "",
+    "mode": "ALWAYS|EVERY_DAY|EVERY_WEEK|ONE_TIME_ONLY",
+    "repeat_on_days": [
+      "mon|tue|wed|thu|fri|sat|sun"
+    ],
+    "time_all_day": "true|false",
+    "time_range_end": "",
+    "time_range_start": ""
+  },
+  "source": {
+    "ips": [
+      ""
+    ],
+    "match_mac": "true|false",
+    "match_opposite_ips": "true|false",
+    "match_opposite_ports": "true|false",
+    "matching_target": "ANY|DEVICE|IP|NETWORK|MAC",
+    "matching_target_type": "ANY|SPECIFIC|LIST|OBJECT",
+    "port": "[1-9][0-9]{0,4}",
+    "port_group_id": "",
+    "port_matching_type": "ANY|SPECIFIC|LIST|OBJECT",
+    "zone_id": ""
+  }
+}

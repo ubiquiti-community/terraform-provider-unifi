@@ -1,0 +1,31 @@
+{
+    "description": ".{0,128}",
+    "domains": [],
+    "enabled": "true|false",
+    "ip_addresses": [
+        {
+            "ip_or_subnet": "",
+            "ip_version": "BOTH|IPV4|IPV6",
+            "port_ranges": [""],
+            "ports": ["[1-9][0-9]{0,4}"]
+        }
+    ],
+    "ip_ranges": [
+        {
+            "ip_start": "",
+            "ip_stop": "",
+            "ip_version": "BOTH|IPV4|IPV6"
+        }
+    ],
+    "kill_switch_enabled": "true|false",
+    "matching_target": "",
+    "network_id": "",
+    "next_hop": "",
+    "regions": [""],
+    "target_devices": [
+        {
+            "client_mac": "",
+            "type": ""
+        }
+    ]
+}

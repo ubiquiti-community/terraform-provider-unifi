@@ -1,0 +1,43 @@
+version: "2"
+issues:
+  max-same-issues: 0
+linters:
+  enable:
+    - durationcheck
+    - copyloopvar
+    - canonicalheader
+    - errorlint
+    - fatcontext
+    - godot
+    - ineffassign
+    - makezero
+    - misspell
+    - nilerr
+    - predeclared
+    - staticcheck
+    - unconvert
+    - unused
+    - govet
+  disable:
+    - errcheck
+  exclusions:
+    generated: lax
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gofmt:
+      simplify: true
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+        - pattern: "a[b:len(a)]"
+          replacement: "a[b:]"
+    golines:
+      max-len: 200
+  exclusions:
+    generated: lax

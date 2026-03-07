@@ -1,0 +1,30 @@
+{
+    "announce_default_route": "true|false",
+    "areas": [
+        {
+            "area_id": "",
+            "area_type": "",
+            "name": "",
+            "network_ids": [
+                ""
+            ]
+        }
+    ],
+    "enabled": "true|false",
+    "interfaces": [
+        {
+            "authentication_type": "",
+            "cost": "",
+            "dead_interval": "",
+            "hello_interval": "",
+            "network_id": "",
+            "passive_interface": "true|false",
+            "priority": ""
+        }
+    ],
+    "redistribute_connected_routes": "true|false",
+    "redistribute_connected_routes_metric_type": "",
+    "redistribute_static_routes": "true|false",
+    "redistribute_static_routes_metric_type": "",
+    "router_id": ""
+}

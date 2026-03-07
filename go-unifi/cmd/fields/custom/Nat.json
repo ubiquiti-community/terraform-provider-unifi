@@ -1,0 +1,39 @@
+{
+  "description": "",
+  "destination_filter": {
+    "address": "",
+    "filter_type": "NONE|ADDRESS_AND_PORT|FIREWALL_GROUPS|NETWORK_CONF",
+    "firewall_group_ids": [
+      ""
+    ],
+    "invert_address": "true|false",
+    "invert_port": "true|false",
+    "network_conf_id": "",
+    "port": "[1-9][0-9]{0,4}"
+  },
+  "enabled": "true|false",
+  "exclude": "true|false",
+  "in_interface": "",
+  "ip_address": "",
+  "ip_version": "IPV4|IPV6",
+  "is_predefined": "true|false",
+  "logging": "true|false",
+  "out_interface": "",
+  "port": "[1-9][0-9]{0,4}",
+  "pppoe_use_base_interface": "true|false",
+  "protocol": "all|tcp|udp|tcp_udp",
+  "rule_index": "[0-9]+",
+  "setting_preference": "auto|manual",
+  "source_filter": {
+    "address": "",
+    "filter_type": "NONE|ADDRESS_AND_PORT|FIREWALL_GROUPS|NETWORK_CONF",
+    "firewall_group_ids": [
+      ""
+    ],
+    "invert_address": "true|false",
+    "invert_port": "true|false",
+    "network_conf_id": "",
+    "port": "[1-9][0-9]{0,4}"
+  },
+  "type": "DNAT|SNAT|MASQUERADE"
+}

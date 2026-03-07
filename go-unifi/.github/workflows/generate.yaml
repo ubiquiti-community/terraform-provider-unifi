@@ -1,0 +1,28 @@
+---
+name: Schema Generation
+
+on:
+  schedule:
+    - cron: 0 0 * * *
+  workflow_dispatch: {}
+
+jobs:
+  fields:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      
+      - name: Setup Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Generate
+        run: go generate ./...
+
+      # TODO: Automatically merge the PR if tests pass.
+      - uses: peter-evans/create-pull-request@5e914681df9dc83aa4e4905692ca88beb2f9e91f # v7.0.5
+        with:
+          delete-branch: true
+          title: 'Update to latest controller version'
