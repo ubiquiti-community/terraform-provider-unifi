@@ -400,8 +400,8 @@ func (d *networkDataSource) Read(
 
 // Helper method to set data source data from API response.
 func (d *networkDataSource) setDataSourceData(
-	_ context.Context,
-	_ *diag.Diagnostics,
+	ctx context.Context,
+	diags *diag.Diagnostics,
 	network *unifi.Network,
 	model *networkDataSourceModel,
 	site string,
@@ -418,56 +418,126 @@ func (d *networkDataSource) setDataSourceData(
 	model.NetworkGroup = types.StringPointerValue(network.NetworkGroup)
 
 	model.DHCPDStart = types.StringPointerValue(network.DHCPDStart)
-
 	model.DHCPDStop = types.StringPointerValue(network.DHCPDStop)
-
 	model.DHCPDEnabled = types.BoolValue(network.DHCPDEnabled)
+	model.DHCPDLease = types.Int64PointerValue(network.DHCPDLeaseTime)
 
-	// Use a default DHCP lease time since the actual field name is not clear
-	model.DHCPDLease = types.Int64PointerValue(network.DHCPDLeaseTime) // 24 hours default
+	// Build DHCP DNS list from individual fields
+	dhcpdDNS := collectNonEmptyStrings(network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4)
+	if len(dhcpdDNS) > 0 {
+		dnsValues := make([]types.String, len(dhcpdDNS))
+		for i, s := range dhcpdDNS {
+			dnsValues[i] = types.StringValue(s)
+		}
+		listVal, d := types.ListValueFrom(ctx, types.StringType, dnsValues)
+		diags.Append(d...)
+		model.DHCPDDNS = listVal
+	} else {
+		model.DHCPDDNS = types.ListNull(types.StringType)
+	}
 
-	// Convert string slices to Framework lists - use empty list for now
-	model.DHCPDDNS = types.ListNull(types.StringType)
+	model.DHCPDBootEnabled = types.BoolValue(network.DHCPDBootEnabled)
+	if network.DHCPDBootServer == "" {
+		model.DHCPDBootServer = types.StringNull()
+	} else {
+		model.DHCPDBootServer = types.StringValue(network.DHCPDBootServer)
+	}
+	model.DHCPDBootFilename = types.StringPointerValue(network.DHCPDBootFilename)
 
-	model.DHCPDBootEnabled = types.BoolValue(false)
-
-	model.DHCPDBootServer = types.StringNull()
-
-	model.DHCPDBootFilename = types.StringNull()
-
-	// Handle other complex fields similarly...
 	model.DomainName = types.StringPointerValue(network.DomainName)
-
-	model.IGMPSnooping = types.BoolValue(false)
-
+	model.IGMPSnooping = types.BoolValue(network.IGMPSnooping)
 	model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-
 	model.IPv6Subnet = types.StringPointerValue(network.IPV6Subnet)
 
-	// Set other fields to null for now - they can be implemented as needed
-	model.DHCPV6DNS = types.ListNull(types.StringType)
-	model.DHCPV6DNSAuto = types.BoolValue(false)
-	model.DHCPV6Enabled = types.BoolValue(false)
-	model.DHCPV6Lease = types.Int64Null()
-	model.DHCPV6Start = types.StringNull()
-	model.DHCPV6Stop = types.StringNull()
-	model.IPv6PDInterface = types.StringNull()
-	model.IPv6PDPrefixID = types.StringNull()
-	model.IPv6PDStart = types.StringNull()
-	model.IPv6PDStop = types.StringNull()
-	model.IPv6RAEnable = types.BoolValue(false)
-	model.IPv6RAPreferredLifetime = types.Int64Null()
-	model.IPv6RAPriority = types.StringNull()
-	model.IPv6RAValidLifetime = types.Int64Null()
-	model.MulticastDNS = types.BoolValue(false)
-	model.WanDNS = types.ListNull(types.StringType)
-	model.WanEgressQOS = types.Int64Null()
-	model.WanGateway = types.StringNull()
-	model.WanGatewayV6 = types.StringNull()
-	model.WanIP = types.StringNull()
-	model.WanNetmask = types.StringNull()
-	model.WanNetworkGroup = types.StringNull()
-	model.WanType = types.StringNull()
-	model.WanTypeV6 = types.StringNull()
-	model.WanUsername = types.StringNull()
+	// DHCPv6 fields
+	dhcpv6DNS := collectNonEmptyStringPointers(network.DHCPDV6DNS1, network.DHCPDV6DNS2, network.DHCPDV6DNS3, network.DHCPDV6DNS4)
+	if len(dhcpv6DNS) > 0 {
+		dnsValues := make([]types.String, len(dhcpv6DNS))
+		for i, s := range dhcpv6DNS {
+			dnsValues[i] = types.StringValue(s)
+		}
+		listVal, d := types.ListValueFrom(ctx, types.StringType, dnsValues)
+		diags.Append(d...)
+		model.DHCPV6DNS = listVal
+	} else {
+		model.DHCPV6DNS = types.ListNull(types.StringType)
+	}
+	model.DHCPV6DNSAuto = types.BoolValue(network.DHCPDV6DNSAuto)
+	model.DHCPV6Enabled = types.BoolValue(network.DHCPDV6Enabled)
+	model.DHCPV6Lease = types.Int64PointerValue(network.DHCPDV6LeaseTime)
+	model.DHCPV6Start = types.StringPointerValue(network.DHCPDV6Start)
+	model.DHCPV6Stop = types.StringPointerValue(network.DHCPDV6Stop)
+
+	// IPv6 PD fields
+	model.IPv6PDInterface = types.StringPointerValue(network.IPV6PDInterface)
+	if network.IPV6PDPrefixid == "" {
+		model.IPv6PDPrefixID = types.StringNull()
+	} else {
+		model.IPv6PDPrefixID = types.StringValue(network.IPV6PDPrefixid)
+	}
+	model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
+	model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
+
+	// IPv6 RA fields
+	model.IPv6RAEnable = types.BoolValue(network.IPV6RaEnabled)
+	model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
+	model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
+	model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
+
+	model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
+
+	// WAN DNS list: WANDNS1/2 are pointers, WANDNS3/4 are plain strings
+	wanDNS := collectNonEmptyStringPointers(network.WANDNS1, network.WANDNS2)
+	wanDNS = append(wanDNS, collectNonEmptyStrings(network.WANDNS3, network.WANDNS4)...)
+	if len(wanDNS) > 0 {
+		dnsValues := make([]types.String, len(wanDNS))
+		for i, s := range wanDNS {
+			dnsValues[i] = types.StringValue(s)
+		}
+		listVal, d := types.ListValueFrom(ctx, types.StringType, dnsValues)
+		diags.Append(d...)
+		model.WanDNS = listVal
+	} else {
+		model.WanDNS = types.ListNull(types.StringType)
+	}
+
+	model.WanEgressQOS = types.Int64PointerValue(network.WANEgressQOS)
+	model.WanGateway = types.StringPointerValue(network.WANGateway)
+	if network.WANGatewayV6 == "" {
+		model.WanGatewayV6 = types.StringNull()
+	} else {
+		model.WanGatewayV6 = types.StringValue(network.WANGatewayV6)
+	}
+	model.WanIP = types.StringPointerValue(network.WANIP)
+	model.WanNetmask = types.StringPointerValue(network.WANNetmask)
+	model.WanNetworkGroup = types.StringPointerValue(network.WANNetworkGroup)
+	model.WanType = types.StringPointerValue(network.WANType)
+	model.WanTypeV6 = types.StringPointerValue(network.WANTypeV6)
+	if network.WANUsername == "" {
+		model.WanUsername = types.StringNull()
+	} else {
+		model.WanUsername = types.StringValue(network.WANUsername)
+	}
+}
+
+// collectNonEmptyStrings returns a slice of non-empty strings from the provided values.
+func collectNonEmptyStrings(vals ...string) []string {
+	var result []string
+	for _, v := range vals {
+		if v != "" {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// collectNonEmptyStringPointers returns a slice of non-nil, non-empty strings from the provided pointers.
+func collectNonEmptyStringPointers(ptrs ...*string) []string {
+	var result []string
+	for _, p := range ptrs {
+		if p != nil && *p != "" {
+			result = append(result, *p)
+		}
+	}
+	return result
 }
