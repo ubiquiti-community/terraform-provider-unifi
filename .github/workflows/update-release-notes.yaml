@@ -3,14 +3,15 @@ name: Update Release Notes
 # This workflow updates release descriptions for releases that only have
 # "Full Changelog" links in their descriptions.
 #
-# Trigger manually from the Actions tab to update all historical releases
-# with proper summaries of their changes, or it runs automatically when
-# the release notes files are updated on this branch.
+# Trigger manually from the Actions tab to apply the release notes files
+# to GitHub releases. Release note content is maintained in the
+# scripts/release-notes/ directory.
 
 on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - copilot/update-release-descriptions
     paths:
       - 'scripts/release-notes/**'
@@ -24,44 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update v0.41.19 release notes
-        continue-on-error: true
+      - name: Update release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit v0.41.19 --notes-file scripts/release-notes/v0.41.19.md
-
-      - name: Update v0.41.18 release notes
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit v0.41.18 --notes-file scripts/release-notes/v0.41.18.md
-
-      - name: Update v0.41.13 release notes
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit v0.41.13 --notes-file scripts/release-notes/v0.41.13.md
-
-      - name: Update v0.41.5 release notes
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit v0.41.5 --notes-file scripts/release-notes/v0.41.5.md
-
-      - name: Update v0.41.4-rc3 release notes
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit v0.41.4-rc3 --notes-file scripts/release-notes/v0.41.4-rc3.md
-
-      - name: Update v0.41.4-rc2 release notes
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit v0.41.4-rc2 --notes-file scripts/release-notes/v0.41.4-rc2.md
-
-      - name: Update v0.41.4-beta2 release notes
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit v0.41.4-beta2 --notes-file scripts/release-notes/v0.41.4-beta2.md
+        run: bash scripts/update-release-notes.sh

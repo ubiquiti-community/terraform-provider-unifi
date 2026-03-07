@@ -15,6 +15,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NOTES_DIR="${SCRIPT_DIR}/release-notes"
 
+# Allow GH_TOKEN to fall back to GITHUB_TOKEN (e.g., in GitHub Actions context)
+export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+
 RELEASES=(
   "v0.41.19"
   "v0.41.18"
@@ -36,7 +39,7 @@ for tag in "${RELEASES[@]}"; do
   fi
 
   echo "Updating $tag..."
-  if GH_TOKEN="${GITHUB_TOKEN:-}" gh release edit "$tag" \
+  if gh release edit "$tag" \
     --repo ubiquiti-community/terraform-provider-unifi \
     --notes-file "$notes_file"; then
     echo "  ✓ Updated successfully"
