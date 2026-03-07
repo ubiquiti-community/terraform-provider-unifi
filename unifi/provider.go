@@ -304,6 +304,7 @@ func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		NewClientDataSource,
 		NewClientInfoDataSource,
 		NewClientInfoListDataSource,
+		NewClientListDataSource,
 		NewNetworkDataSource,
 		NewAccountDataSource,
 		NewAPGroupDataSource,
@@ -311,6 +312,7 @@ func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		NewPortProfileDataSource,
 		NewRadiusProfileDataSource,
 		NewClientGroupDataSource,
+		NewNetworkMembersGroupListDataSource,
 	}
 }
 

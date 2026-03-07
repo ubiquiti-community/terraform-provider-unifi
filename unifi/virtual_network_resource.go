@@ -841,9 +841,9 @@ func (r *virtualNetworkResource) modelToNetwork(
 		var ipv6Aliases []string
 		d := model.IPv6Aliases.ElementsAs(ctx, &ipv6Aliases, false)
 		diags.Append(d...)
-		if !diags.HasError() {
-			// IPv6Aliases field not available in API
-		}
+		// if !diags.HasError() {
+		// 	// IPv6Aliases field not available in API
+		// }
 	}
 
 	// Handle DHCP server configuration
@@ -1025,9 +1025,9 @@ func (r *virtualNetworkResource) modelToNetwork(
 				var servers []string
 				d := dhcpRelay.Servers.ElementsAs(ctx, &servers, false)
 				diags.Append(d...)
-				if !diags.HasError() {
-					// DHCPRelayServers field not available in current API version
-				}
+				// if !diags.HasError() {
+				// 	// DHCPRelayServers field not available in current API version
+				// }
 			}
 		}
 	} else {

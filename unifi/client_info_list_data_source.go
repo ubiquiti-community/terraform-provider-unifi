@@ -68,8 +68,9 @@ func (d *clientInfoListDataSource) Configure(
 		return
 	}
 
-	client, ok := req.ProviderData.(*Client)
-	if !ok {
+	if client, ok := req.ProviderData.(*Client); ok {
+		d.client = client
+	} else {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
 			fmt.Sprintf(
@@ -77,10 +78,7 @@ func (d *clientInfoListDataSource) Configure(
 				req.ProviderData,
 			),
 		)
-		return
 	}
-
-	d.client = client
 }
 
 func (d *clientInfoListDataSource) Read(

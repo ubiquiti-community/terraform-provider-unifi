@@ -572,7 +572,7 @@ func (r *vpnClientResource) networkToModel(
 	network *unifi.Network,
 	model *vpnClientResourceModel,
 	site string,
-	previousModel *vpnClientResourceModel,
+	_ *vpnClientResourceModel, // priorState is not currently used but can be utilized for future enhancements
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 

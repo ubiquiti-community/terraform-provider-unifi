@@ -20,41 +20,41 @@ func NewLogger(ctx context.Context) *UnifiLogger {
 func (l *UnifiLogger) Error(msg string, keysAndValues ...any) {
 	additionalFields, err := l.convertToAdditionalFields(keysAndValues)
 	if err != nil {
-		tflog.Error(context.Background(), fmt.Sprintf("Error converting keys and values: %v", err))
+		tflog.Error(l.ctx, fmt.Sprintf("Error converting keys and values: %v", err))
 		return
 	}
-	tflog.Error(context.Background(), msg, additionalFields)
+	tflog.Error(l.ctx, msg, additionalFields)
 }
 
 func (l *UnifiLogger) Printf(format string, v ...any) {
-	tflog.Info(context.Background(), fmt.Sprintf(format, v...))
+	tflog.Info(l.ctx, fmt.Sprintf(format, v...))
 }
 
 func (l *UnifiLogger) Info(msg string, keysAndValues ...any) {
 	additionalFields, err := l.convertToAdditionalFields(keysAndValues)
 	if err != nil {
-		tflog.Error(context.Background(), fmt.Sprintf("Error converting keys and values: %v", err))
+		tflog.Error(l.ctx, fmt.Sprintf("Error converting keys and values: %v", err))
 		return
 	}
-	tflog.Info(context.Background(), msg, additionalFields)
+	tflog.Info(l.ctx, msg, additionalFields)
 }
 
 func (l *UnifiLogger) Debug(msg string, keysAndValues ...any) {
 	additionalFields, err := l.convertToAdditionalFields(keysAndValues)
 	if err != nil {
-		tflog.Error(context.Background(), fmt.Sprintf("Error converting keys and values: %v", err))
+		tflog.Error(l.ctx, fmt.Sprintf("Error converting keys and values: %v", err))
 		return
 	}
-	tflog.Debug(context.Background(), msg, additionalFields)
+	tflog.Debug(l.ctx, msg, additionalFields)
 }
 
 func (l *UnifiLogger) Warn(msg string, keysAndValues ...any) {
 	additionalFields, err := l.convertToAdditionalFields(keysAndValues)
 	if err != nil {
-		tflog.Error(context.Background(), fmt.Sprintf("Error converting keys and values: %v", err))
+		tflog.Error(l.ctx, fmt.Sprintf("Error converting keys and values: %v", err))
 		return
 	}
-	tflog.Warn(context.Background(), msg, additionalFields)
+	tflog.Warn(l.ctx, msg, additionalFields)
 }
 
 func (l *UnifiLogger) convertToAdditionalFields(keysAndValues []any) (map[string]any, error) {

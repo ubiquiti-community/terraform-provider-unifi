@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -54,6 +55,10 @@ func NewClientListResource() list.ListResource {
 // clientResource defines the resource implementation.
 type clientResource struct {
 	client *Client
+
+	// Cache group name → ID lookups per site to avoid repeated API calls during List.
+	groupCacheMu sync.Mutex
+	groupCache   map[string]map[string]string // site → (name → id)
 }
 
 // clientResourceModel describes the resource data model.
@@ -87,6 +92,10 @@ type clientListConfigModel struct {
 	Site        types.String `tfsdk:"site"`
 	NetworkID   types.String `tfsdk:"network_id"`
 	NetworkName types.String `tfsdk:"network_name"`
+	Group       types.String `tfsdk:"group"`
+	Wired       types.Bool   `tfsdk:"wired"`
+	Blocked     types.Bool   `tfsdk:"blocked"`
+	OUI         types.String `tfsdk:"oui"`
 }
 
 func (r *clientResource) Metadata(
@@ -632,7 +641,7 @@ func (r *clientResource) Update(
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *clientResource) applyPlanToState(
+func (r *clientResource) applyPlanToState( //nolint:unused
 	_ context.Context,
 	plan *clientResourceModel,
 	state *clientResourceModel,
@@ -913,22 +922,76 @@ func (r *clientResource) ListResourceConfigSchema(
 	resp *list.ListResourceSchemaResponse,
 ) {
 	resp.Schema = listschema.Schema{
-		MarkdownDescription: "List clients in a site, optionally filtered by network.",
+		MarkdownDescription: "List clients in a site, optionally filtered by network, group, connection type, or vendor.",
 		Attributes: map[string]listschema.Attribute{
 			"site": listschema.StringAttribute{
 				MarkdownDescription: "The name of the site to list clients from.",
 				Optional:            true,
 			},
 			"network_id": listschema.StringAttribute{
-				MarkdownDescription: "Filter clients by network ID.",
+				MarkdownDescription: "Filter clients by network ID (matches the configured network or virtual network override).",
 				Optional:            true,
 			},
 			"network_name": listschema.StringAttribute{
-				MarkdownDescription: "Filter clients by network name.",
+				MarkdownDescription: "Filter clients by active network name (derived from connection data; only matches currently-connected clients).",
+				Optional:            true,
+			},
+			"group": listschema.StringAttribute{
+				MarkdownDescription: "Filter clients by network members group name.",
+				Optional:            true,
+			},
+			"wired": listschema.BoolAttribute{
+				MarkdownDescription: "Filter clients by wired connection status.",
+				Optional:            true,
+			},
+			"blocked": listschema.BoolAttribute{
+				MarkdownDescription: "Filter clients by blocked status.",
+				Optional:            true,
+			},
+			"oui": listschema.StringAttribute{
+				MarkdownDescription: "Filter clients by OUI (vendor prefix).",
 				Optional:            true,
 			},
 		},
 	}
+}
+
+// resolveGroupID looks up a network members group by name and returns its ID.
+// Results are cached per site to avoid repeated API calls.
+func (r *clientResource) resolveGroupID(
+	ctx context.Context,
+	site, groupName string,
+) (string, error) {
+	r.groupCacheMu.Lock()
+	defer r.groupCacheMu.Unlock()
+
+	if r.groupCache == nil {
+		r.groupCache = make(map[string]map[string]string)
+	}
+
+	if siteCache, ok := r.groupCache[site]; ok {
+		if id, ok := siteCache[groupName]; ok {
+			return id, nil
+		}
+	}
+
+	// Fetch all groups for this site and populate the cache.
+	groups, err := r.client.ListNetworkMembersGroups(ctx, site)
+	if err != nil {
+		return "", fmt.Errorf("listing network members groups: %w", err)
+	}
+
+	siteCache := make(map[string]string, len(groups))
+	for _, g := range groups {
+		siteCache[g.Name] = g.ID
+	}
+	r.groupCache[site] = siteCache
+
+	id, ok := siteCache[groupName]
+	if !ok {
+		return "", fmt.Errorf("network members group %q not found", groupName)
+	}
+	return id, nil
 }
 
 func (r *clientResource) List(
@@ -950,35 +1013,109 @@ func (r *clientResource) List(
 		site = r.client.Site
 	}
 
-	// List all clients
-	clients, err := r.client.ListClient(ctx, site)
+	// Build query filters from config.
+	filters := make(map[string]string)
+
+	if !config.Group.IsNull() && !config.Group.IsUnknown() {
+		groupID, err := r.resolveGroupID(ctx, site, config.Group.ValueString())
+		if err != nil {
+			var d diag.Diagnostics
+			d.AddError("Error Resolving Group", err.Error())
+			stream.Results = list.ListResultsStreamDiagnostics(d)
+			return
+		}
+		filters["network_members_group_ids"] = groupID
+	}
+
+	if !config.Wired.IsNull() && !config.Wired.IsUnknown() {
+		if config.Wired.ValueBool() {
+			filters["is_wired"] = "true"
+		} else {
+			filters["is_wired"] = "false"
+		}
+	}
+
+	if !config.Blocked.IsNull() && !config.Blocked.IsUnknown() {
+		if config.Blocked.ValueBool() {
+			filters["blocked"] = "true"
+		} else {
+			filters["blocked"] = "false"
+		}
+	}
+
+	if !config.OUI.IsNull() && !config.OUI.IsUnknown() {
+		filters["oui"] = config.OUI.ValueString()
+	}
+
+	// Fetch clients — use filtered endpoint only when filters are present.
+	var clients []unifi.Client
+	var err error
+	if len(filters) > 0 {
+		clients, err = r.client.ListClientFiltered(ctx, site, filters)
+	} else {
+		clients, err = r.client.ListClient(ctx, site)
+	}
 	if err != nil {
-		result := req.NewListResult(ctx)
-		result.Diagnostics.AddError(
-			"Error Listing Clients",
-			"Could not list clients: "+err.Error(),
-		)
-		stream.Results = list.ListResultsStreamDiagnostics(result.Diagnostics)
+		var d diag.Diagnostics
+		d.AddError("Error Listing Clients", "Could not list clients: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
 		return
 	}
 
-	// Define the function that will push results into the stream
+	// Fetch active client info for display-name enrichment and network_name filtering.
+	// Failures are non-fatal — we simply skip enrichment.
+	infoByUserID := make(map[string]*unifi.ClientInfo)
+	if activeClients, infoErr := r.client.ListClientInfo(ctx, site); infoErr == nil {
+		for i := range activeClients {
+			ci := &activeClients[i]
+			if ci.UserId != "" {
+				infoByUserID[ci.UserId] = ci
+			}
+		}
+	}
+
+	networkID := config.NetworkID.ValueString()
+	networkName := config.NetworkName.ValueString()
+
+	// Define the function that will push results into the stream.
 	stream.Results = func(push func(list.ListResult) bool) {
 		for _, client := range clients {
+			// Post-filter by network_id: match configured network or virtual network override.
+			if networkID != "" {
+				clientNetworkID := client.VirtualNetworkOverrideID
+				if clientNetworkID == "" {
+					clientNetworkID = client.NetworkID
+				}
+				if clientNetworkID != networkID {
+					continue
+				}
+			}
 
-			// Initialize a new result object for each client
+			// Post-filter by network_name: uses active connection data from ClientInfo.
+			info := infoByUserID[client.ID]
+			if networkName != "" {
+				if info == nil || info.NetworkName != networkName {
+					continue
+				}
+			}
+
+			// Initialize a new result object for each client.
 			result := req.NewListResult(ctx)
 
-			// Set the user-friendly name of this client
-			if client.Name != "" {
+			// Set display name: prefer user-assigned name, then ClientInfo hostname,
+			// then the stored hostname, falling back to MAC address.
+			switch {
+			case client.Name != "":
 				result.DisplayName = client.Name
-			} else if client.Hostname != "" {
+			case info != nil && info.Hostname != "":
+				result.DisplayName = info.Hostname
+			case client.Hostname != "":
 				result.DisplayName = client.Hostname
-			} else {
+			default:
 				result.DisplayName = client.MAC
 			}
 
-			// Set resource identity data (MAC address)
+			// Set resource identity (MAC address).
 			result.Diagnostics.Append(
 				result.Identity.SetAttribute(
 					ctx,
@@ -986,12 +1123,9 @@ func (r *clientResource) List(
 					types.StringValue(client.MAC),
 				)...)
 
-			// Convert the client to the resource model
+			// Convert client to resource model and set the resource data.
 			var model clientResourceModel
-			modelDiags := r.clientToModel(ctx, &client, &model, site)
-			result.Diagnostics.Append(modelDiags...)
-
-			// Set the resource information on the result
+			result.Diagnostics.Append(r.clientToModel(ctx, &client, &model, site)...)
 			if !result.Diagnostics.HasError() {
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}

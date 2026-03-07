@@ -23,7 +23,7 @@ var providerFactories = map[string]func() (tfprotov6.ProviderServer, error){
 
 var testAccProtoV6ProviderFactories = providerFactories
 
-var testClient *unifi.ApiClient
+var _ *unifi.ApiClient
 
 func TestMain(m *testing.M) {
 	if os.Getenv("TF_ACC") == "" {

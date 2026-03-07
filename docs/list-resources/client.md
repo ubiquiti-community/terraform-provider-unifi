@@ -3,12 +3,12 @@
 page_title: "unifi_client List Resource - unifi"
 subcategory: ""
 description: |-
-  List clients in a site, optionally filtered by network.
+  List clients in a site, optionally filtered by network, group, connection type, or vendor.
 ---
 
 # unifi_client (List Resource)
 
-List clients in a site, optionally filtered by network.
+List clients in a site, optionally filtered by network, group, connection type, or vendor.
 
 
 
@@ -17,6 +17,10 @@ List clients in a site, optionally filtered by network.
 
 ### Optional
 
-- `network_id` (String) Filter clients by network ID.
-- `network_name` (String) Filter clients by network name.
+- `blocked` (Boolean) Filter clients by blocked status.
+- `group` (String) Filter clients by network members group name.
+- `network_id` (String) Filter clients by network ID (matches the configured network or virtual network override).
+- `network_name` (String) Filter clients by active network name (derived from connection data; only matches currently-connected clients).
+- `oui` (String) Filter clients by OUI (vendor prefix).
 - `site` (String) The name of the site to list clients from.
+- `wired` (Boolean) Filter clients by wired connection status.

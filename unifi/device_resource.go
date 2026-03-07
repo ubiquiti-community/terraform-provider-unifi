@@ -2144,7 +2144,7 @@ func stringOrNull(s string) types.String {
 }
 
 // int64OrNull returns a types.Int64 with the value or null if zero.
-func int64OrNull(i int64) types.Int64 {
+func int64OrNull(i int64) types.Int64 { //nolint:unused
 	if i == 0 {
 		return types.Int64Null()
 	}
