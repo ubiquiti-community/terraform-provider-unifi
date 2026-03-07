@@ -38,175 +38,70 @@ jobs:
               --notes-file "$notes_file"; then
               echo "  ✓ $tag updated"
             else
-              echo "  ✗ $tag failed"
+              echo "  ✗ $tag failed (may not exist as a release)"
             fi
           }
 
-          cat > /tmp/v0.41.19.md << 'EOF'
-          ## 🔧 Improvements
+          # ---------------------------------------------------------------------------
+          # Extract each release's section from CHANGELOG.md and apply it.
+          # Each section runs from its "## [vX.Y.Z]" header to the next "---" separator.
+          # ---------------------------------------------------------------------------
 
-          ### Client Resource Enhancements
+          extract_section() {
+            local tag="$1"
+            local outfile="$2"
+            # Escape special characters in the tag for use in sed
+            local escaped_tag
+            escaped_tag=$(printf '%s\n' "$tag" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            awk "/^## \[${escaped_tag}\]/{found=1; next} found && /^---$/{exit} found{print}" CHANGELOG.md > "$outfile"
+          }
 
-          This release adds bulk import capability to the `unifi_client` resource, building on the expanded client list support introduced in v0.41.18.
+          extract_section "v0.41.19"     /tmp/v0.41.19.md
+          extract_section "v0.41.18"     /tmp/v0.41.18.md
+          extract_section "v0.41.17"     /tmp/v0.41.17.md
+          extract_section "v0.41.16"     /tmp/v0.41.16.md
+          extract_section "v0.41.15"     /tmp/v0.41.15.md
+          extract_section "v0.41.14"     /tmp/v0.41.14.md
+          extract_section "v0.41.13"     /tmp/v0.41.13.md
+          extract_section "v0.41.12"     /tmp/v0.41.12.md
+          extract_section "v0.41.11"     /tmp/v0.41.11.md
+          extract_section "v0.41.10"     /tmp/v0.41.10.md
+          extract_section "v0.41.9"      /tmp/v0.41.9.md
+          extract_section "v0.41.8"      /tmp/v0.41.8.md
+          extract_section "v0.41.7"      /tmp/v0.41.7.md
+          extract_section "v0.41.6"      /tmp/v0.41.6.md
+          extract_section "v0.41.5"      /tmp/v0.41.5.md
+          extract_section "v0.41.4"      /tmp/v0.41.4.md
+          extract_section "v0.41.4-rc3"  /tmp/v0.41.4-rc3.md
+          extract_section "v0.41.4-rc2"  /tmp/v0.41.4-rc2.md
+          extract_section "v0.41.4-rc1"  /tmp/v0.41.4-rc1.md
+          extract_section "v0.41.4-beta2" /tmp/v0.41.4-beta2.md
+          extract_section "v0.41.4-beta1" /tmp/v0.41.4-beta1.md
+          extract_section "v0.41.3"      /tmp/v0.41.3.md
+          extract_section "v0.41.2"      /tmp/v0.41.2.md
+          extract_section "v0.41.1"      /tmp/v0.41.1.md
 
-          #### Changes
-
-          * **New Example**: Added bulk import example (`examples/resources/unifi_client/bulk-import.tf`)
-            - Demonstrates how to manage multiple client devices using a tfquery data file
-          * **New Example**: Added bulk import tfquery configuration (`examples/resources/unifi_client/bulk-import.tfquery.hcl`)
-          * **Improved**: Enhanced `unifi_client` resource with additional attributes and fixes
-          * **Docs**: Updated client list resource and port action documentation
-
-          **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.18...v0.41.19
-          EOF
-
-          cat > /tmp/v0.41.18.md << 'EOF'
-          ## 🚀 New Features
-
-          ### New Data Sources
-
-          This release introduces two new list-style data sources for querying UniFi network clients and network member groups.
-
-          #### `unifi_client_list` (List Data Source)
-
-          A new list resource that provides a rich, queryable view of all UniFi network clients.
-
-          - Query and filter clients by various attributes
-          - Supports bulk operations and data-driven configurations
-          - Includes comprehensive tests
-
-          #### `unifi_network_members_group_list` (Data Source)
-
-          A new data source for listing network member groups.
-
-          #### Other Changes
-
-          * **Improved**: Enhanced `unifi_client` resource with additional attributes (158 additions)
-          * **Updated**: go-unifi dependency version bump
-          * **Fixed**: Minor fixes to `unifi_virtual_network_resource` and `unifi_vpn_client_resource`
-          * **Added**: New data source examples for `unifi_client_list` and `unifi_network_members_group_list`
-
-          **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.17...v0.41.18
-          EOF
-
-          cat > /tmp/v0.41.13.md << 'EOF'
-          ## 🔧 Maintenance
-
-          ### go-unifi Dependency Update and Provider Refactor
-
-          This release updates the go-unifi client library and significantly refactors the provider configuration code.
-
-          #### Changes
-
-          * **Updated**: go-unifi dependency version bump
-          * **Refactored**: Significant cleanup of `provider.go` (removed 92 lines of legacy code, -81 net lines)
-          * **Updated**: Provider tests updated to reflect new provider configuration
-          * **Fixed**: Minor fixes to `setting_resource.go`
-
-          ---
-
-          > ⚠️ **Warning**: This release introduced regressions that were fixed in v0.41.14–v0.41.17:
-          > - **Network Data Source** had issues (fixed in v0.41.14)
-          > - **UniFi Client** had issues (fixed in v0.41.15–v0.41.16)
-          > - **Dynamic DNS** identity field was broken (fixed in v0.41.17)
-          >
-          > **Upgrade recommendation**: If upgrading from v0.41.12, skip directly to v0.41.17 or later.
-
-          **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.12...v0.41.13
-          EOF
-
-          cat > /tmp/v0.41.5.md << 'EOF'
-          ## 🐛 Bug Fixes & Build Improvements
-
-          ### Client Info Data Source Fix and GoReleaser Update
-
-          This release fixes the `unifi_client_info` data source and updates the release pipeline for proper Terraform Registry integration.
-
-          #### Changes
-
-          * **Fixed**: `unifi_client_info` data source field mapping and model alignment
-          * **Updated**: GoReleaser configuration with Terraform Registry support
-          * **Added**: `terraform-registry-manifest.json` for proper Terraform Registry integration
-            - This enables correct discovery by the Terraform Registry
-
-          **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4...v0.41.5
-          EOF
-
-          cat > /tmp/v0.41.4-rc3.md << 'EOF'
-          ## ⚠️ BREAKING CHANGES
-
-          ### Renamed `unifi_user` → `unifi_client` and `unifi_user_group` → `unifi_client_group`
-
-          This release candidate introduces a **breaking rename** of the user-related resources and data sources to better reflect their purpose in UniFi terminology.
-
-          #### Breaking Changes
-
-          | Old Name | New Name |
-          |----------|----------|
-          | `unifi_user` (resource) | `unifi_client` (resource) |
-          | `unifi_user_group` (resource) | `unifi_client_group` (resource) |
-          | `unifi_user` (data source) | `unifi_client` (data source) |
-          | `unifi_user_group` (data source) | `unifi_client_group` (data source) |
-
-          > **Migration**: Replace all references to `unifi_user` with `unifi_client` and `unifi_user_group` with `unifi_client_group` in your Terraform configurations.
-
-          #### Other Changes
-
-          * **Added**: WAN resource (`unifi_wan`) documentation and import examples
-          * **Updated**: go-unifi dependency
-
-          **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc2...v0.41.4-rc3
-          EOF
-
-          cat > /tmp/v0.41.4-rc2.md << 'EOF'
-          ## 🚀 New Features & Bug Fixes
-
-          ### New WAN Resource, WLAN Improvements, and Acceptance Test Fixes
-
-          This release candidate adds the `unifi_wan` resource, significantly improves `unifi_wlan`, and fixes the acceptance test suite for the new plugin framework.
-
-          #### New Features
-
-          * **NEW**: `unifi_wan` resource (`unifi/wan_resource.go`, ~1129 lines)
-            - Full WAN interface configuration management
-            - Import support
-            - Comprehensive documentation
-          * **Improved**: `unifi_wlan` resource with major enhancements (319 additions)
-          * **Added**: Structured logging (`unifi/logger.go`)
-          * **Improved**: `unifi_network` resource with bug fixes and schema improvements
-
-          #### Bug Fixes
-
-          * Fixed acceptance tests to work with the new plugin framework
-          * Updated `unifi_site` resource with framework compatibility fixes
-          * Updated Dependabot configuration for automated dependency management
-
-          **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc1...v0.41.4-rc2
-          EOF
-
-          cat > /tmp/v0.41.4-beta2.md << 'EOF'
-          ## 🔧 Improvements
-
-          ### Optional Provider Configuration
-
-          This beta release makes provider configuration fields optional, allowing more flexible authentication configuration via environment variables.
-
-          #### Changes
-
-          * **Improved**: Provider configuration fields are now optional (previously required)
-            - All fields can now be configured via environment variables (`UNIFI_API_URL`, `UNIFI_USERNAME`, `UNIFI_PASSWORD`, `UNIFI_API_KEY`, etc.)
-            - This enables cleaner CI/CD configurations without hardcoded provider blocks
-          * **Added**: Expanded `unifi_device` resource documentation with full attribute reference
-
-          > **Note**: This is a beta release for the Terraform Plugin Framework migration. See v0.41.4-beta1 for the full feature list.
-
-          **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-beta1...v0.41.4-beta2
-          EOF
-
-          update_release "v0.41.19"    /tmp/v0.41.19.md
-          update_release "v0.41.18"    /tmp/v0.41.18.md
-          update_release "v0.41.13"    /tmp/v0.41.13.md
-          update_release "v0.41.5"     /tmp/v0.41.5.md
-          update_release "v0.41.4-rc3" /tmp/v0.41.4-rc3.md
-          update_release "v0.41.4-rc2" /tmp/v0.41.4-rc2.md
+          update_release "v0.41.19"     /tmp/v0.41.19.md
+          update_release "v0.41.18"     /tmp/v0.41.18.md
+          update_release "v0.41.17"     /tmp/v0.41.17.md
+          update_release "v0.41.16"     /tmp/v0.41.16.md
+          update_release "v0.41.15"     /tmp/v0.41.15.md
+          update_release "v0.41.14"     /tmp/v0.41.14.md
+          update_release "v0.41.13"     /tmp/v0.41.13.md
+          update_release "v0.41.12"     /tmp/v0.41.12.md
+          update_release "v0.41.11"     /tmp/v0.41.11.md
+          update_release "v0.41.10"     /tmp/v0.41.10.md
+          update_release "v0.41.9"      /tmp/v0.41.9.md
+          update_release "v0.41.8"      /tmp/v0.41.8.md
+          update_release "v0.41.7"      /tmp/v0.41.7.md
+          update_release "v0.41.6"      /tmp/v0.41.6.md
+          update_release "v0.41.5"      /tmp/v0.41.5.md
+          update_release "v0.41.4"      /tmp/v0.41.4.md
+          update_release "v0.41.4-rc3"  /tmp/v0.41.4-rc3.md
+          update_release "v0.41.4-rc2"  /tmp/v0.41.4-rc2.md
+          update_release "v0.41.4-rc1"  /tmp/v0.41.4-rc1.md
           update_release "v0.41.4-beta2" /tmp/v0.41.4-beta2.md
+          update_release "v0.41.4-beta1" /tmp/v0.41.4-beta1.md
+          update_release "v0.41.3"      /tmp/v0.41.3.md
+          update_release "v0.41.2"      /tmp/v0.41.2.md
+          update_release "v0.41.1"      /tmp/v0.41.1.md
