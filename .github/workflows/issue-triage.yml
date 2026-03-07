@@ -1,16 +1,29 @@
 name: Issue Triage
 
-# This workflow runs once to triage open issues:
-# - Creates labels (fixed, stale)
-# - Comments on each issue with analysis
-# - Labels issues appropriately
-# - Closes issues confirmed fixed in a release
+# Automated issue triage for terraform-provider-unifi.
+#
+# Triggers:
+#   workflow_dispatch - manual run (supports dry_run mode for testing)
+#   schedule          - weekly sweep every Monday at 09:00 UTC
+#   issues[opened]    - auto-label + welcome comment on every new issue
+
 on:
-  push:
-    branches:
-      - copilot/identify-relevant-issues
-    paths:
-      - .github/workflows/issue-triage.yml
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run - print actions without making changes"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+  schedule:
+    - cron: "0 9 * * 1"
+
+  issues:
+    types: [opened]
 
 permissions:
   issues: write
@@ -22,361 +35,316 @@ jobs:
     steps:
       - name: Triage Issues
         uses: actions/github-script@v7
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const owner = 'ubiquiti-community';
-            const repo = 'terraform-provider-unifi';
+            const owner  = context.repo.owner;
+            const repo   = context.repo.repo;
+            const dryRun = process.env.DRY_RUN === 'true';
+            if (dryRun) core.info('🔍 DRY RUN - no changes will be made');
 
-            // ─── Helper: ensure a label exists ────────────────────────────
+            // ── Helpers ──────────────────────────────────────────────────
+
             async function ensureLabel(name, color, description) {
               try {
                 await github.rest.issues.getLabel({ owner, repo, name });
               } catch (e) {
                 if (e.status === 404) {
-                  await github.rest.issues.createLabel({ owner, repo, name, color, description });
-                  console.log(`Created label: ${name}`);
+                  core.info('Creating label: ' + name);
+                  if (!dryRun)
+                    await github.rest.issues.createLabel({ owner, repo, name, color, description });
                 }
               }
             }
 
-            // ─── Helper: add labels to an issue (skip already-present ones) ─
             async function addLabels(issue_number, labels) {
               const { data: existing } = await github.rest.issues.listLabelsOnIssue({
                 owner, repo, issue_number
               });
               const existingNames = existing.map(l => l.name);
               const toAdd = labels.filter(l => !existingNames.includes(l));
-              if (toAdd.length) {
+              if (!toAdd.length) return;
+              core.info('  #' + issue_number + ': adding labels [' + toAdd.join(', ') + ']');
+              if (!dryRun)
                 await github.rest.issues.addLabels({ owner, repo, issue_number, labels: toAdd });
-              }
             }
 
-            // ─── Helper: post a comment only if not already posted ─────────
             async function postComment(issue_number, marker, body) {
               const { data: comments } = await github.rest.issues.listComments({
                 owner, repo, issue_number, per_page: 100
               });
-              const alreadyPosted = comments.some(c =>
-                c.user.type === 'Bot' && c.body.includes(marker)
-              );
-              if (!alreadyPosted) {
+              const already = comments.some(c => c.body && c.body.includes(marker));
+              if (already) {
+                core.info('  #' + issue_number + ': triage comment already present, skipping');
+                return;
+              }
+              core.info('  #' + issue_number + ': posting comment');
+              if (!dryRun)
                 await github.rest.issues.createComment({ owner, repo, issue_number, body });
-                console.log(`Commented on #${issue_number}`);
-              } else {
-                console.log(`#${issue_number} already has triage comment, skipping`);
+            }
+
+            async function closeIssue(issue_number) {
+              core.info('  #' + issue_number + ': closing as completed');
+              if (!dryRun)
+                await github.rest.issues.update({
+                  owner, repo, issue_number,
+                  state: 'closed', state_reason: 'completed'
+                });
+            }
+
+            // ── Keyword-based auto-labeler (used for new issues) ─────────
+
+            function guessLabels(title, body) {
+              const text = (title + ' ' + body).toLowerCase();
+              const labels = [];
+              if (/\b(bug|error|fail|panic|crash|broken|not work|exception)\b/.test(text))
+                labels.push('bug');
+              if (!labels.includes('bug') &&
+                  /\b(feature|request|enhancement|add support|please add|support for)\b/.test(text))
+                labels.push('enhancement');
+              if (/\b(doc|docs|documentation|readme|typo|misleading|confusing)\b/.test(text))
+                labels.push('documentation');
+              if (!labels.length &&
+                  /\b(question|how (do|to)|does .* work|can i|is (it|there) (possible|a way))\b/.test(text))
+                labels.push('question');
+              return labels;
+            }
+
+            // ── Ensure required labels exist ─────────────────────────────
+
+            await ensureLabel('fixed', '0e8a16', 'Fixed in a released version');
+            await ensureLabel('stale', 'ededed', 'Issue is no longer relevant or outdated');
+
+            // ══════════════════════════════════════════════════════════════
+            // PATH A: new issue opened - auto-label + welcome comment
+            // ══════════════════════════════════════════════════════════════
+
+            if (context.eventName === 'issues') {
+              const issue   = context.payload.issue;
+              const num     = issue.number;
+              const title   = issue.title  || '';
+              const body    = issue.body   || '';
+
+              core.info('New issue #' + num + ': ' + title);
+
+              const suggested = guessLabels(title, body);
+              if (suggested.length) await addLabels(num, suggested);
+
+              const typeHint = suggested.includes('bug')
+                ? 'bug report'
+                : suggested.includes('enhancement')
+                  ? 'feature request'
+                  : suggested.includes('documentation')
+                    ? 'documentation issue'
+                    : 'issue';
+
+              const marker = '<!-- triage-welcome -->';
+              await postComment(num, marker,
+                marker + '\n' +
+                'Thanks for filing this ' + typeHint + '! 🙏\n\n' +
+                'A maintainer will review it shortly. In the meantime, please make sure your report includes:\n' +
+                '- **Provider version** (`terraform providers` or `tofu providers`)\n' +
+                '- **UniFi Network Application / OS version**\n' +
+                '- **Controller type** (UDM Pro, UCG Ultra, USG, …)\n' +
+                '- A **minimal reproducible configuration** and the full error output\n');
+
+              return;
+            }
+
+            // ══════════════════════════════════════════════════════════════
+            // PATH B: full triage sweep (workflow_dispatch / schedule)
+            // ══════════════════════════════════════════════════════════════
+
+            core.info('Starting full issue triage sweep…');
+
+            const TRIAGE_MARKER = '<!-- triage-bot -->';
+
+            // ── Issues confirmed fixed in a release ─────────────────────
+
+            const fixed = [
+              {
+                n: 99,
+                release: 'v0.41.19',
+                summary: 'The `unifi_client_info_list` data source has been fully reimplemented.' +
+                  ' It now correctly calls `ListClientInfo` and maps results via `models.ClientInfoAttrValues()`.' +
+                  ' Acceptance tests are passing. A `unifi_client` list resource was also added for bulk import workflows.'
+              },
+              {
+                n: 66,
+                release: 'v0.41.10',
+                summary: 'WireGuard VPN client support has been extracted into a dedicated' +
+                  ' **`unifi_vpn_client`** resource (file mode + manual peer mode).' +
+                  ' See `docs/resources/vpn_client.md` for full usage.'
+              },
+              {
+                n: 80,
+                release: 'v0.41.18',
+                summary: 'The `dynamicDNSResourceIdentityModel` now null-checks the identity before reading it,' +
+                  ' falling back to state values for resources created before identity support was added.'
+              },
+              {
+                n: 64,
+                release: 'v0.41.4',
+                summary: 'The `unifi_client` resource (renamed from `unifi_user`) now automatically sets' +
+                  ' `UseFixedIP: true` whenever `fixed_ip` is provided.' +
+                  ' Import via MAC address: `terraform import unifi_client.example aa:bb:cc:dd:ee:ff`.'
+              },
+              {
+                n: 63,
+                release: 'v0.41.4',
+                summary: 'This error was specific to the **beta2** pre-release.' +
+                  ' The stable v0.41.4 ships with the full `port_override` schema (30+ fields).' +
+                  ' If upgrading from the beta, run `terraform state rm unifi_device.<name>` and re-import.'
+              },
+            ];
+
+            for (const { n, release, summary } of fixed) {
+              const releaseUrl =
+                'https://github.com/ubiquiti-community/terraform-provider-unifi/releases/tag/' + release;
+              const body =
+                TRIAGE_MARKER + '\n' +
+                '## ✅ Fixed in [' + release + '](' + releaseUrl + ')\n\n' +
+                summary + '\n\n' +
+                'Closing this issue. Please reopen if the problem persists with the latest provider version.';
+              await postComment(n, TRIAGE_MARKER, body);
+              await addLabels(n, ['fixed']);
+              await closeIssue(n);
+            }
+
+            // ── Active bugs ──────────────────────────────────────────────
+
+            const bugs = [
+              {
+                n: 90,
+                body: '## 🐛 Still relevant – confirmed bug\n\n' +
+                  '**Root cause in current codebase (v0.41.19):** `go-unifi` `MarshalJSON` for `Network` ' +
+                  'has no case for `"vlan-only"` or `"guest"` purposes (only corporate/wan/site-vpn/vpn-client/remote-user-vpn). ' +
+                  '**Fix needed:** add `marshalVLANOnly()` / `marshalGuest()` in go-unifi, or map them to the corporate marshaller.'
+              },
+              {
+                n: 88,
+                body: '## 🐛 Partially fixed – new issue discovered\n\n' +
+                  '**Original `ip_subnet` mismatch error:** ✅ Fixed in v0.41.17 (field added to `networkDataSourceModel`).\n\n' +
+                  '**New issue (v0.41.17+):** `"Network with name Default not found"` – ' +
+                  '`go-unifi` `GetNetworkByName` skips networks with a `nil` `Name` field, ' +
+                  'which may affect built-in WAN networks on some firmware versions.'
+              },
+              {
+                n: 85,
+                body: '## 🐛 Still relevant – confirmed bug\n\n' +
+                  '**Root cause in v0.41.19:** `modelToNetwork` never sets `network.VLANEnabled = true`, ' +
+                  'so the payload always contains `"vlan_enabled": false` even when `vlan_id` is set. ' +
+                  'UniFi rejects this with `api.err.VlanUsed (400)`. ' +
+                  '**Fix:** in `modelToNetwork`, add `network.VLANEnabled = !model.VlanID.IsNull()`. Related: #76.'
+              },
+              {
+                n: 76,
+                body: '## 🐛 Still relevant – same root cause as #85\n\n' +
+                  'The payload sends `"vlan_enabled": false` even when `vlan_id` is specified ' +
+                  '(confirmed by the raw payload in this thread). Fix: set `VLANEnabled = true` in `modelToNetwork`.'
+              },
+              {
+                n: 75,
+                body: '## 🐛 Still relevant – migration guidance\n\n' +
+                  '`unifi_user` was renamed to `unifi_client` in v0.41.4. Upgrade steps:\n' +
+                  '1. `terraform state rm unifi_user.<name>`\n' +
+                  '2. Rename `resource "unifi_user"` → `resource "unifi_client"` in `.tf` files\n' +
+                  '3. Re-import: `terraform import unifi_client.<name> aa:bb:cc:dd:ee:ff`\n' +
+                  '   (or use an `import {}` block in Terraform ≥ 1.5)'
+              },
+              {
+                n: 79,
+                body: '## 🐛 Still relevant\n\n' +
+                  'Both `unifi_firewall_group` and `unifi_firewall_rule` exist in v0.41.19 and have been migrated ' +
+                  'to the Plugin Framework. To diagnose please share provider version, exact error, ' +
+                  'controller type (UDM/UCG vs USG), and which resource fails.'
+              },
+              {
+                n: 65,
+                body: '## 🐛 Needs verification\n\n' +
+                  'In go-unifi v1.33.41, `DHCPDEnabled` is a `bool` with no string-to-bool coercion. ' +
+                  'If the controller sends `"dhcpd_enabled": "true"` (string), unmarshalling fails. ' +
+                  'Please confirm your **UniFi Network Application version** and whether the error ' +
+                  'still occurs with v0.41.19.'
+              },
+            ];
+
+            for (const { n, body } of bugs) {
+              await postComment(n, TRIAGE_MARKER, TRIAGE_MARKER + '\n' + body);
+              await addLabels(n, ['bug']);
+            }
+            await addLabels(79, ['question']);
+            await addLabels(65, ['question']);
+
+            // ── Feature requests ─────────────────────────────────────────
+
+            const enhancements = [
+              {
+                n: 78,
+                extraLabels: ['duplicate'],
+                body: '## 💡 Feature request – partially addressed\n\n' +
+                  'go-unifi v1.33.41 has `marshalSiteVPN()` but the provider schema does not expose `"site-vpn"` ' +
+                  'as a valid network purpose yet. WireGuard VPN *client* tunnels are already available via ' +
+                  '`unifi_vpn_client` (v0.41.10). Duplicate of paultyng/terraform-provider-unifi#198.'
+              },
+              {
+                n: 77,
+                extraLabels: [],
+                body: '## 💡 Feature request – not yet implemented\n\n' +
+                  'Zone-Based Firewall (UniFi OS ≥ 4.x) uses a different API and data model than the ' +
+                  'legacy firewall resources. Tracked as a future enhancement; go-unifi support needed first.'
+              },
+              {
+                n: 47,
+                extraLabels: [],
+                body: '## 💡 Feature request – not yet implemented\n\n' +
+                  '`private_preshared_keys` (per-client PPKs) are not yet in `unifi_wlan`. ' +
+                  'go-unifi `WLAN` struct needs this field added first. Contributions welcome.'
+              },
+            ];
+
+            for (const { n, extraLabels, body } of enhancements) {
+              await postComment(n, TRIAGE_MARKER, TRIAGE_MARKER + '\n' + body);
+              await addLabels(n, ['enhancement', ...extraLabels]);
+            }
+
+            // ── Documentation ─────────────────────────────────────────────
+
+            await postComment(72, TRIAGE_MARKER,
+              TRIAGE_MARKER + '\n' +
+              '## 📖 Documentation issue\n\n' +
+              '`dst_port` is the **external/WAN** destination port (incoming traffic arrives here), ' +
+              'not the internal forwarding port. A docs PR clarifying the field description would be ' +
+              'a great contribution.');
+            await addLabels(72, ['documentation']);
+
+            // ── Needs investigation ───────────────────────────────────────
+
+            await postComment(67, TRIAGE_MARKER,
+              TRIAGE_MARKER + '\n' +
+              '## ❓ Needs investigation\n\n' +
+              'The `unifi_account` resource (v0.41.19) correctly maps `network_id` ↔ `networkconf_id`. ' +
+              'The UI VLAN not being set may be a UniFi controller behaviour issue ' +
+              '(may require additional RADIUS tunnel fields: `tunnel_type`, `tunnel_medium_type`). ' +
+              'Please share your Network Application version and raw `/rest/account/<id>` API response.');
+            await addLabels(67, ['question']);
+
+            // ── Auto-label any remaining open issues with no labels ───────
+
+            core.info('Checking for unlabelled open issues…');
+            const { data: openIssues } = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', per_page: 100
+            });
+            for (const issue of openIssues) {
+              if (issue.labels.length === 0) {
+                const suggested = guessLabels(issue.title, issue.body || '');
+                if (suggested.length) {
+                  core.info('  #' + issue.number + ' "' + issue.title + '": auto-labelling [' + suggested.join(', ') + ']');
+                  await addLabels(issue.number, suggested);
+                }
               }
             }
 
-            // ─── Helper: close an issue ────────────────────────────────────
-            async function closeIssue(issue_number) {
-              await github.rest.issues.update({
-                owner, repo, issue_number, state: 'closed', state_reason: 'completed'
-              });
-              console.log(`Closed #${issue_number}`);
-            }
-
-            // ──────────────────────────────────────────────────────────────
-            // 1. Ensure labels exist
-            // ──────────────────────────────────────────────────────────────
-            await ensureLabel('fixed',   '0e8a16', 'Fixed in a released version');
-            await ensureLabel('stale',   'ededed', 'Issue is no longer relevant or outdated');
-
-            // ──────────────────────────────────────────────────────────────
-            // 2. Fixed issues – comment, label, close
-            // ──────────────────────────────────────────────────────────────
-
-            // #99 – Error Reading Clients
-            await postComment(99, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## ✅ Fixed in [v0.41.19](https://github.com/ubiquiti-community/terraform-provider-unifi/releases/tag/v0.41.19)
-
-            The \`unifi_client_info_list\` data source has been fully reimplemented. The data source now correctly calls \`ListClientInfo\` and maps results using \`models.ClientInfoAttrValues()\` and \`types.ListValueFrom()\`. Acceptance tests for \`data "unifi_client_info_list" "test" {}\` are passing in the current release. A new \`unifi_client\` list resource was also added for bulk import workflows.
-
-            Closing this issue. Please reopen if the problem persists with the latest provider version.`);
-            await addLabels(99, ['fixed']);
-            await closeIssue(99);
-
-            // #66 – Does unifi_network wireguard even work?
-            await postComment(66, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## ✅ Fixed in [v0.41.10](https://github.com/ubiquiti-community/terraform-provider-unifi/releases/tag/v0.41.10)
-
-            WireGuard VPN client support has been extracted into a dedicated **\`unifi_vpn_client\`** resource, as discussed in this issue. It supports:
-
-            - **File mode**: upload a complete WireGuard config file (\`wireguard.configuration\` block with \`content\` and \`filename\`).
-            - **Manual mode**: configure peer settings directly (\`wireguard.peer\` block with \`public_key\`, \`endpoint_ip\`, \`endpoint_port\`, \`allowed_ips\`, optional \`preshared_key\`).
-            - DNS servers, default route, pull-DNS options, and import support (\`id\`, \`name=<name>\`, \`site:id\`, \`site:name=<name>\`).
-
-            See the generated docs at \`docs/resources/vpn_client.md\` for full usage.
-
-            Closing this issue. Please reopen if you encounter problems with the new resource.`);
-            await addLabels(66, ['fixed']);
-            await closeIssue(66);
-
-            // #80 – unifi_dynamic_dns fails after creation with cloudflare
-            await postComment(80, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## ✅ Fixed in [v0.41.18](https://github.com/ubiquiti-community/terraform-provider-unifi/releases/tag/v0.41.18)
-
-            The root cause was that the resource's **identity model** (\`dynamicDNSResourceIdentityModel\`) was not handling null identity gracefully on the second plan/apply. The fix adds a null-check before reading the identity:
-
-            \`\`\`go
-            if !req.Identity.Raw.IsNull() {
-                resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
-            } else {
-                identity.ID   = data.ID
-                identity.Site = data.Site
-            }
-            \`\`\`
-
-            This fallback to state values ensures resources created before identity support was added continue to work correctly.
-
-            Closing this issue. Please reopen if you still encounter this with the latest provider version.`);
-            await addLabels(80, ['fixed']);
-            await closeIssue(80);
-
-            // #64 – unifi_user requires sending use_fixedip
-            await postComment(64, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## ✅ Fixed in [v0.41.4](https://github.com/ubiquiti-community/terraform-provider-unifi/releases/tag/v0.41.4)
-
-            Two things to note:
-
-            1. **\`use_fixedip\` is now set automatically.** The \`unifi_client\` resource (the successor to \`unifi_user\`) automatically sets \`UseFixedIP: true\` whenever a non-empty \`fixed_ip\` is provided, so you no longer need to touch the UI.
-
-            2. **Resource renamed.** \`unifi_user\` was renamed to \`unifi_client\` as part of the v0.41.4 migration to the Terraform Plugin Framework. Please update your configurations accordingly. Import is supported via MAC address: \`terraform import unifi_client.example aa:bb:cc:dd:ee:ff\`.
-
-            Closing this issue. Please reopen if the fixed IP is still not applied correctly.`);
-            await addLabels(64, ['fixed']);
-            await closeIssue(64);
-
-            // #63 – Error with unifi_device resource in 0.41.4-beta2
-            await postComment(63, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## ✅ Fixed in [v0.41.4](https://github.com/ubiquiti-community/terraform-provider-unifi/releases/tag/v0.41.4) (stable)
-
-            This error occurred in the **beta2** pre-release because the saved Terraform state contained the old 6-field \`port_override\` schema while the new provider expected the expanded 30+ field schema.
-
-            The stable v0.41.4 release ships with the full \`port_override\` schema (all fields including \`autoneg\`, \`dot1x_ctrl\`, \`egress_rate_limit_kbps\`, \`stormctrl_*\`, etc.) and the device resource has been completely rewritten under the Plugin Framework. Fresh deployments starting from v0.41.4 stable or later will not encounter this issue.
-
-            If you are upgrading from the beta, you may need to run \`terraform state rm unifi_device.<name>\` and re-import the device.
-
-            Closing this issue. Please reopen if the error persists on a stable release.`);
-            await addLabels(63, ['fixed', 'stale']);
-            await closeIssue(63);
-
-            // ──────────────────────────────────────────────────────────────
-            // 3. Active bugs – comment and label
-            // ──────────────────────────────────────────────────────────────
-
-            // #90 – vlan-only network not working
-            await postComment(90, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 🐛 Still relevant – confirmed bug
-
-            **Root cause confirmed in current codebase (v0.41.19).**
-
-            The \`go-unifi\` library's \`MarshalJSON\` for \`Network\` does not have a case for the \`"vlan-only"\` purpose:
-
-            \`\`\`go
-            // network_encode.go (go-unifi v1.33.41)
-            switch n.Purpose {
-            case "corporate": return n.marshalCorporate()
-            case "wan":       return n.marshalWAN()
-            case "site-vpn":  return n.marshalSiteVPN()
-            case "vpn-client":return n.marshalVPNClient()
-            case "remote-user-vpn": return n.marshalUserVPN()
-            default:
-                return nil, fmt.Errorf("unknown network purpose: %s", n.Purpose)
-            }
-            \`\`\`
-
-            The provider schema accepts \`"vlan-only"\` and \`"guest"\` (line 159 of \`network_resource.go\`) but neither is handled by the marshaller, causing the \`"unknown network purpose: vlan-only"\` error on every Create/Update.
-
-            **Fix needed:** add \`marshalVLANOnly()\` and \`marshalGuest()\` cases to \`go-unifi\`, or map these purposes to an appropriate existing marshaller if the API payload is identical.`);
-            await addLabels(90, ['bug']);
-
-            // #88 – mismatch between struct and object
-            await postComment(88, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 🐛 Partially fixed – new issue discovered
-
-            **Original error (\`ip_subnet\` field missing):** ✅ Fixed in [v0.41.17](https://github.com/ubiquiti-community/terraform-provider-unifi/releases/tag/v0.41.17). The \`IpSubnet types.String \`tfsdk:"ip_subnet"\`\` field was added to \`networkDataSourceModel\`.
-
-            **New issue (reported 2026-03-02 with v0.41.17):** The data source now returns \`"Network with name Default not found"\` even when the network exists. Investigation points to \`go-unifi\`'s \`GetNetworkByName\` skipping any \`Network\` whose \`Name\` field is \`nil\` – which may happen for the built-in \`Default\` WAN network on some firmware versions.
-
-            \`\`\`go
-            // go-unifi network.go
-            i := slices.IndexFunc(networks, func(n Network) bool {
-                if n.Name == nil { return false }  // skips networks with nil Name
-                return *n.Name == name
-            })
-            \`\`\`
-
-            Keeping this issue open to track the \`"not found"\` regression.`);
-            await addLabels(88, ['bug']);
-
-            // #85 – Can't update network (api.err.VlanUsed)
-            await postComment(85, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 🐛 Still relevant – confirmed bug
-
-            **Root cause confirmed in current codebase (v0.41.19).**
-
-            When a network has a VLAN ID set, the provider must send \`"vlan_enabled": true\` in the API payload. However, \`networkResourceModel\` has no \`VLANEnabled\` field and the \`modelToNetwork\` conversion never sets \`network.VLANEnabled = true\`, so the \`marshalCorporate\` function always sends:
-
-            \`\`\`json
-            { "vlan": 2, "vlan_enabled": false, ... }
-            \`\`\`
-
-            The UniFi controller rejects this with \`api.err.VlanUsed (400)\` when the VLAN ID is already in use (which it is – you just set it).
-
-            **Fix needed in \`network_resource.go\`:** In \`modelToNetwork\`, set \`network.VLANEnabled = !model.VlanID.IsNull()\` (or expose \`vlan_enabled\` as an explicit boolean attribute defaulting to \`true\` when \`vlan_id\` is set).
-
-            This issue is closely related to #76.`);
-            await addLabels(85, ['bug']);
-
-            // #76 – Cannot create networks with v0.41.8
-            await postComment(76, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 🐛 Still relevant – confirmed bug (same root cause as #85)
-
-            **Root cause confirmed in current codebase (v0.41.19).**
-
-            The API payload sent by the provider includes \`"vlan_enabled": false\` even when \`vlan_id\` is specified (as confirmed by the payload shared in this thread). The UniFi controller rejects this with \`api.err.VlanUsed\`.
-
-            This is the same bug as #85. The fix is to set \`VLANEnabled = true\` in \`modelToNetwork\` whenever a non-null VLAN ID is provided.
-
-            Also noted: the earlier \`"not found: type=*struct { Meta unifi.meta ... }"` error (v0.41.12) was a separate go-unifi API response parsing issue that has since been resolved.`);
-            await addLabels(76, ['bug']);
-
-            // #75 – Upgrading from 0.41.3 to 0.41.8, unifi_user → unifi_client import fails
-            await postComment(75, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 🐛 Still relevant – migration guidance needed
-
-            The \`unifi_user\` resource was renamed to \`unifi_client\` in v0.41.4 as part of the Plugin Framework migration. The import workflow for upgrading existing state is:
-
-            1. \`terraform state rm unifi_user.<name>\` for each resource
-            2. Update your \`.tf\` files: rename \`resource "unifi_user"\` → \`resource "unifi_client"\`
-            3. Re-import via MAC address: \`terraform import unifi_client.<name> aa:bb:cc:dd:ee:ff\`
-               (or use an \`import {}\` block in Terraform ≥ 1.5)
-
-            The current client import code requires a MAC address containing \`:\` and uses identity-based import. If you are encountering a **null pointer** error during a plain \`terraform plan\` (without import), this may be a separate bug in how the identity model handles existing state entries – please share the full error and provider version.
-
-            Keeping this open until a smooth upgrade path is documented or automated.`);
-            await addLabels(75, ['bug']);
-
-            // #79 – FW rules and groups problem
-            await postComment(79, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 🐛 Still relevant
-
-            The \`unifi_firewall_group\` and \`unifi_firewall_rule\` resources exist in the current codebase (v0.41.19) and have been migrated to the Plugin Framework. However, we have not been able to reproduce the exact errors described without a live controller.
-
-            **To help diagnose:** please share:
-            - Provider version
-            - The exact error message
-            - Whether you are using a UDM/UCG or a classic USG
-            - Whether \`unifi_firewall_group\` creation succeeds and only \`unifi_firewall_rule\` fails, or vice versa
-
-            The \`rule_index\` field is now an \`Int64\` attribute without enforced range limits, so large values like \`2656\` should be accepted.`);
-            await addLabels(79, ['bug', 'question']);
-
-            // #65 – Network import fails: cannot unmarshal string into dhcpd_enabled (bool)
-            await postComment(65, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 🐛 Needs verification
-
-            In \`go-unifi\` v1.33.41 (current), \`DHCPDEnabled\` is declared as \`bool\` in the generated \`Network\` struct. If the UniFi controller API sends \`"dhcpd_enabled": "true"\` (a JSON string) instead of \`"dhcpd_enabled": true\` (a JSON boolean), standard Go JSON unmarshalling will fail with exactly the error described.
-
-            The \`Network.UnmarshalJSON\` in the current go-unifi does **not** include special string-to-bool coercion for this field.
-
-            **To help diagnose:** please confirm:
-            - Your UniFi Network Application version (the string-vs-bool behaviour can vary between firmware versions)
-            - Whether the error still occurs with v0.41.19
-
-            If it does, the fix would be to add a \`FlexBool\` / \`UnmarshalJSON\` override for \`DHCPDEnabled\` in go-unifi similar to the existing \`InternetAccessEnabled\` handling.`);
-            await addLabels(65, ['bug', 'question']);
-
-            // ──────────────────────────────────────────────────────────────
-            // 4. Feature requests – comment and label
-            // ──────────────────────────────────────────────────────────────
-
-            // #78 – Site-to-site VPN networking support
-            await postComment(78, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 💡 Feature request – partially addressed
-
-            The \`go-unifi\` library (v1.33.41) already includes a \`marshalSiteVPN()\` path for networks with \`purpose = "site-vpn"\`. However, the provider's \`unifi_network\` resource schema **does not** currently expose \`"site-vpn"\` as a valid purpose value, so site-to-site VPN networks cannot be created through Terraform.
-
-            **What is available today:**
-            - WireGuard VPN *client* tunnels via the new \`unifi_vpn_client\` resource (see #66 / v0.41.10).
-
-            **What is still needed:**
-            - Expose \`"site-vpn"\` in the \`unifi_network\` \`purpose\` validator and provide the relevant VPN fields (pre-shared key, remote subnet, etc.).
-
-            This is a duplicate of [paultyng/terraform-provider-unifi#198](https://github.com/paultyng/terraform-provider-unifi/issues/198).`);
-            await addLabels(78, ['enhancement', 'duplicate']);
-
-            // #77 – Zone-Based Firewall support
-            await postComment(77, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 💡 Feature request – not yet implemented
-
-            Zone-Based Firewall (ZBF) is available on UniFi OS ≥ 4.x (UDM/UCG devices) and uses a different API endpoint and data model than the legacy \`unifi_firewall_rule\` / \`unifi_firewall_group\` resources.
-
-            This is tracked as a future enhancement. Contributions are welcome – the \`go-unifi\` library would need ZBF API support first.`);
-            await addLabels(77, ['enhancement']);
-
-            // #47 – WLAN private_preshared_keys
-            await postComment(47, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 💡 Feature request – not yet implemented
-
-            The \`private_preshared_keys\` (also known as per-client PPKs) field is not currently exposed in the \`unifi_wlan\` resource. The \`go-unifi\` \`WLAN\` struct would need this field added first, after which the provider schema and conversion logic can be extended.
-
-            Contributions are welcome – the acceptance test infrastructure runs against a local Docker-based UniFi controller.`);
-            await addLabels(47, ['enhancement']);
-
-            // ──────────────────────────────────────────────────────────────
-            // 5. Documentation issues
-            // ──────────────────────────────────────────────────────────────
-
-            // #72 – unifi_port_forward is confusing
-            await postComment(72, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## 📖 Documentation / UX issue
-
-            The naming is indeed confusing. In the context of port forwarding:
-
-            | Field | Meaning |
-            |-------|---------|
-            | \`src_ip\` | Source/originating IP to match (WAN side) |
-            | \`dst_port\` | Destination port on the WAN interface (the port external clients connect to) |
-            | \`fwd_ip\` | Internal IP to forward traffic to |
-            | \`fwd_port\` | Internal port to forward traffic to |
-
-            So \`dst_port\` is the **external** (WAN-side) port, not the internal forwarding port. The current description \`"The destination port for the forwarding"\` is ambiguous.
-
-            A documentation PR to clarify this (e.g. \`"The external/WAN port that incoming traffic must arrive on"\`) would be a great contribution.`);
-            await addLabels(72, ['documentation']);
-
-            // ──────────────────────────────────────────────────────────────
-            // 6. Needs investigation
-            // ──────────────────────────────────────────────────────────────
-
-            // #67 – network_id not applied on unifi_account
-            await postComment(67, '<!-- triage-bot -->', `<!-- triage-bot -->
-            ## ❓ Needs investigation
-
-            The current \`unifi_account\` resource (v0.41.19) correctly maps \`network_id\` ↔ \`networkconf_id\` in both directions:
-
-            \`\`\`go
-            // modelToAccount
-            if !model.NetworkID.IsNull() {
-                account.NetworkID = model.NetworkID.ValueString()
-            }
-
-            // accountToModel
-            if account.NetworkID != "" {
-                model.NetworkID = types.StringValue(account.NetworkID)
-            }
-            \`\`\`
-
-            The fact that the API shows \`networkconf_id\` set but the UI VLAN field is empty suggests this may be a **UniFi controller behaviour** issue: setting \`networkconf_id\` on a RADIUS account may not be sufficient to populate the VLAN field without additional fields (e.g. \`tunnel_type\`, \`tunnel_medium_type\`).
-
-            **To help investigate:** please share:
-            - UniFi Network Application version
-            - Full Terraform resource configuration
-            - The raw API response from \`/rest/account/<id>\` showing what fields are present
-
-            If the problem reproduces with v0.41.19, please share the details and we can dig further.`);
-            await addLabels(67, ['question']);
-
-            console.log('Issue triage complete!');
+            core.info('Issue triage sweep complete.');
