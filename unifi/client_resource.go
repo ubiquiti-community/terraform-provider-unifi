@@ -89,13 +89,15 @@ type clientIdentityModel struct {
 
 // clientListConfigModel describes the list configuration model.
 type clientListConfigModel struct {
-	Site        types.String `tfsdk:"site"`
-	NetworkID   types.String `tfsdk:"network_id"`
-	NetworkName types.String `tfsdk:"network_name"`
-	Group       types.String `tfsdk:"group"`
-	Wired       types.Bool   `tfsdk:"wired"`
-	Blocked     types.Bool   `tfsdk:"blocked"`
-	OUI         types.String `tfsdk:"oui"`
+	Site   types.String `tfsdk:"site"`
+	Group  types.String `tfsdk:"group"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// clientListFilterModel represents a single name/values filter entry.
+type clientListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 func (r *clientResource) Metadata(
@@ -928,29 +930,25 @@ func (r *clientResource) ListResourceConfigSchema(
 				MarkdownDescription: "The name of the site to list clients from.",
 				Optional:            true,
 			},
-			"network_id": listschema.StringAttribute{
-				MarkdownDescription: "Filter clients by network ID (matches the configured network or virtual network override).",
-				Optional:            true,
-			},
-			"network_name": listschema.StringAttribute{
-				MarkdownDescription: "Filter clients by active network name (derived from connection data; only matches currently-connected clients).",
-				Optional:            true,
-			},
 			"group": listschema.StringAttribute{
 				MarkdownDescription: "Filter clients by network members group name.",
 				Optional:            true,
 			},
-			"wired": listschema.BoolAttribute{
-				MarkdownDescription: "Filter clients by wired connection status.",
-				Optional:            true,
-			},
-			"blocked": listschema.BoolAttribute{
-				MarkdownDescription: "Filter clients by blocked status.",
-				Optional:            true,
-			},
-			"oui": listschema.StringAttribute{
-				MarkdownDescription: "Filter clients by OUI (vendor prefix).",
-				Optional:            true,
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `site`, `network_id`, `network_name`, `group`, `wired`, `blocked`, `oui`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -1001,7 +999,7 @@ func (r *clientResource) List(
 ) {
 	var config clientListConfigModel
 
-	// Read list config data into the model
+	// Read list config data into the model.
 	diags := req.Config.Get(ctx, &config)
 	if diags.HasError() {
 		stream.Results = list.ListResultsStreamDiagnostics(diags)
@@ -1013,9 +1011,13 @@ func (r *clientResource) List(
 		site = r.client.Site
 	}
 
-	// Build query filters from config.
-	filters := make(map[string]string)
+	// apiFilters are passed directly to ListClientFiltered.
+	// postFilters require in-memory evaluation after the API responds.
+	// Each postFilter entry maps a field name to an OR-set of accepted values.
+	apiFilters := make(map[string]string)
+	postFilters := make(map[string]map[string]struct{})
 
+	// Resolve the group attribute to an ID first (special case — needs an API call).
 	if !config.Group.IsNull() && !config.Group.IsUnknown() {
 		groupID, err := r.resolveGroupID(ctx, site, config.Group.ValueString())
 		if err != nil {
@@ -1024,34 +1026,36 @@ func (r *clientResource) List(
 			stream.Results = list.ListResultsStreamDiagnostics(d)
 			return
 		}
-		filters["network_members_group_ids"] = groupID
+		apiFilters["network_members_group_ids"] = groupID
 	}
 
-	if !config.Wired.IsNull() && !config.Wired.IsUnknown() {
-		if config.Wired.ValueBool() {
-			filters["is_wired"] = "true"
-		} else {
-			filters["is_wired"] = "false"
+	// Process generic filter blocks.
+	// API-passthrough names: oui, blocked, is_wired (first value used).
+	// Post-filter names: network_id, network_name (OR across values).
+
+	filters := []clientListFilterModel{}
+	config.Filter.ElementsAs(ctx, &filters, false)
+
+	for _, f := range filters {
+		name := f.Name.ValueString()
+		value := f.Value.ValueString()
+
+		switch name {
+		case "network_id", "network_name":
+			set := make(map[string]struct{}, 1)
+			set[value] = struct{}{}
+			postFilters[name] = set
+		default:
+			// Pass first value to the API; the API does not support OR within a field.
+			apiFilters[name] = value
 		}
 	}
 
-	if !config.Blocked.IsNull() && !config.Blocked.IsUnknown() {
-		if config.Blocked.ValueBool() {
-			filters["blocked"] = "true"
-		} else {
-			filters["blocked"] = "false"
-		}
-	}
-
-	if !config.OUI.IsNull() && !config.OUI.IsUnknown() {
-		filters["oui"] = config.OUI.ValueString()
-	}
-
-	// Fetch clients — use filtered endpoint only when filters are present.
+	// Fetch clients — use filtered endpoint only when API filters are present.
 	var clients []unifi.Client
 	var err error
-	if len(filters) > 0 {
-		clients, err = r.client.ListClientFiltered(ctx, site, filters)
+	if len(apiFilters) > 0 {
+		clients, err = r.client.ListClientFiltered(ctx, site, apiFilters)
 	} else {
 		clients, err = r.client.ListClient(ctx, site)
 	}
@@ -1062,8 +1066,8 @@ func (r *clientResource) List(
 		return
 	}
 
-	// Fetch active client info for display-name enrichment and network_name filtering.
-	// Failures are non-fatal — we simply skip enrichment.
+	// Fetch active client info for display-name enrichment and network_name post-filtering.
+	// Failures are non-fatal — enrichment is skipped if unavailable.
 	infoByUserID := make(map[string]*unifi.ClientInfo)
 	if activeClients, infoErr := r.client.ListClientInfo(ctx, site); infoErr == nil {
 		for i := range activeClients {
@@ -1074,27 +1078,32 @@ func (r *clientResource) List(
 		}
 	}
 
-	networkID := config.NetworkID.ValueString()
-	networkName := config.NetworkName.ValueString()
+	networkIDFilter := postFilters["network_id"]
+	networkNameFilter := postFilters["network_name"]
 
 	// Define the function that will push results into the stream.
 	stream.Results = func(push func(list.ListResult) bool) {
 		for _, client := range clients {
-			// Post-filter by network_id: match configured network or virtual network override.
-			if networkID != "" {
+			info := infoByUserID[client.ID]
+
+			// Post-filter by network_id (OR across values): match VirtualNetworkOverrideID or NetworkID.
+			if len(networkIDFilter) > 0 {
 				clientNetworkID := client.VirtualNetworkOverrideID
 				if clientNetworkID == "" {
 					clientNetworkID = client.NetworkID
 				}
-				if clientNetworkID != networkID {
+				if _, ok := networkIDFilter[clientNetworkID]; !ok {
 					continue
 				}
 			}
 
-			// Post-filter by network_name: uses active connection data from ClientInfo.
-			info := infoByUserID[client.ID]
-			if networkName != "" {
-				if info == nil || info.NetworkName != networkName {
+			// Post-filter by network_name (OR across values): uses active ClientInfo data.
+			if len(networkNameFilter) > 0 {
+				netName := ""
+				if info != nil {
+					netName = info.NetworkName
+				}
+				if _, ok := networkNameFilter[netName]; !ok {
 					continue
 				}
 			}
