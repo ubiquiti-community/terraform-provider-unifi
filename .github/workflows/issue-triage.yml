@@ -175,7 +175,10 @@ jobs:
                 '## ✅ Fixed in [' + release + '](' + releaseUrl + ')\n\n' +
                 summary + '\n\n' +
                 'Closing this issue. Please reopen if the problem persists with the latest provider version.';
-              await postComment(n, TRIAGE_MARKER, body);
+              const didPost = await postComment(n, TRIAGE_MARKER, body);
+              if (!didPost) {
+                continue;
+              }
               await addLabels(n, ['fixed']);
               await closeIssue(n);
             }
