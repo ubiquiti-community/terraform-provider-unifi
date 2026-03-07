@@ -47,6 +47,7 @@ resource "unifi_network" "wan" {
 ### Optional
 
 - `dhcp_dns` (List of String) Specifies the IPv4 addresses for the DNS server to be returned from the DHCP server. Leave blank to disable this feature.
+- `dhcp_dns_enabled` (Boolean) Specifies whether to use the custom DNS servers specified in `dhcp_dns`. When `true`, clients receive the custom DNS servers. When `false`, clients receive auto-assigned DNS.
 - `dhcp_enabled` (Boolean) Specifies whether DHCP is enabled or not on this network.
 - `dhcp_lease` (Number) Specifies the lease time for DHCP addresses in seconds.
 - `dhcp_relay_enabled` (Boolean) Specifies whether DHCP relay is enabled or not on this network.
