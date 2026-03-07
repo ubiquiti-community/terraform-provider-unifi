@@ -78,8 +78,10 @@ jobs:
 
             # -----------------------------------------------------------------------
             # 2. Fetch the current release body from GitHub.
-            #    Normalise line-endings and strip trailing whitespace so that minor
-            #    formatting differences (CRLF vs LF, trailing spaces) don't trigger
+            #    Normalise line-endings, strip leading blank lines, and strip
+            #    trailing whitespace — the same transformations applied to
+            #    changelog_body — so that minor formatting differences (CRLF vs LF,
+            #    leading/trailing blank lines, trailing spaces) don't trigger
             #    spurious updates.
             # -----------------------------------------------------------------------
             current_body=$(gh release view "$tag" \
@@ -87,10 +89,13 @@ jobs:
               --json body \
               --jq '.body' \
               | tr -d '\r' \
-              | sed -e 's/[[:space:]]*$//')
+              | sed -e 's/[[:space:]]*$//' \
+              | awk 'NF{p=1}p')
 
             # -----------------------------------------------------------------------
-            # 3. Compare.  Use checksums so the comparison is whitespace-tolerant.
+            # 3. Compare checksums (normalization above makes both strings
+            #    comparable: same CRLF handling, same leading/trailing blank-line
+            #    treatment, same trailing-whitespace stripping).
             # -----------------------------------------------------------------------
             changelog_sum=$(printf '%s' "$changelog_body" | md5sum | awk '{print $1}')
             current_sum=$(printf '%s' "$current_body"   | md5sum | awk '{print $1}')
