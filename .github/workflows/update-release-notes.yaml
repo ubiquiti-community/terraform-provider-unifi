@@ -8,6 +8,9 @@ name: Update Release Notes
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - copilot/update-release-descriptions
 
 permissions:
   contents: write
@@ -21,6 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Update v0.41.19 release notes
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -41,6 +45,7 @@ This release adds bulk import capability to the `unifi_client` resource.
 **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.18...v0.41.19'
 
       - name: Update v0.41.18 release notes
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -69,6 +74,7 @@ A new data source for listing network member groups.
 **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.17...v0.41.18'
 
       - name: Update v0.41.13 release notes
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -97,6 +103,7 @@ This release updates the go-unifi client library and significantly refactors the
 **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.12...v0.41.13'
 
       - name: Update v0.41.5 release notes
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -116,6 +123,7 @@ This release fixes the `unifi_client_info` data source and updates the release p
 **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4...v0.41.5'
 
       - name: Update v0.41.4-rc3 release notes
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -144,6 +152,7 @@ This release candidate introduces a **breaking rename** of the user-related reso
 **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc2...v0.41.4-rc3'
 
       - name: Update v0.41.4-rc2 release notes
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -172,6 +181,7 @@ This release candidate adds the `unifi_wan` resource, significantly improves `un
 **Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc1...v0.41.4-rc2'
 
       - name: Update v0.41.4-beta2 release notes
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
