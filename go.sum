@@ -670,6 +670,8 @@ github.com/tonistiigi/vt100 v0.0.0-20240514184818-90bafcd6abab h1:H6aJ0yKQ0gF49Q
 github.com/tonistiigi/vt100 v0.0.0-20240514184818-90bafcd6abab/go.mod h1:ulncasL3N9uLrVann0m+CDlJKWsIAP34MPcOJF6VRvc=
 github.com/ubiquiti-community/go-unifi v1.33.41 h1:GKzCAJFqq/FyUkjky2zhySiKZ0kO+qfU9C2q9UwG9oE=
 github.com/ubiquiti-community/go-unifi v1.33.41/go.mod h1:oRmQLN4SG1UEqa19QJNqpoXzFCb1SZp0ELPlD7ktCJQ=
+github.com/ubiquiti-community/go-unifi v1.33.42 h1:m8/4xpaz3RLoC7c60diMGL3bEbbvIRZZXJE0xIjWk84=
+github.com/ubiquiti-community/go-unifi v1.33.42/go.mod h1:lOld3iJD/7eXE5+phOVWz3Y45qTlb73g24tPipLIkac=
 github.com/vbatts/tar-split v0.12.2 h1:w/Y6tjxpeiFMR47yzZPlPj/FcPLpXbTUi/9H7d3CPa4=
 github.com/vbatts/tar-split v0.12.2/go.mod h1:eF6B6i6ftWQcDqEn3/iGFRFRo8cBIMSJVOpnNdfTMFA=
 github.com/vmihailenco/msgpack v3.3.3+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=

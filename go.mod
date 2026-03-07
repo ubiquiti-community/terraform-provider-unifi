@@ -1,6 +1,7 @@
 module github.com/ubiquiti-community/terraform-provider-unifi
 
-go 1.25
+go 1.25.0
+
 toolchain go1.25.5
 
 require (
@@ -13,7 +14,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.14.0
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
-	github.com/ubiquiti-community/go-unifi v1.33.41
+	github.com/ubiquiti-community/go-unifi v1.33.42
 )
 
 require (
