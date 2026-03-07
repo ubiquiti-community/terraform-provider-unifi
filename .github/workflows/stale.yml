@@ -1,0 +1,76 @@
+name: Stale Issues
+
+# Marks issues as stale after 90 days of inactivity, then closes them
+# after a further 14 days.  Pull requests are never auto-closed.
+#
+# Best-practice configuration:
+#   - Exempt confirmed-bug and enhancement issues from going stale (they
+#     remain open until fixed, regardless of activity).
+#   - Exempt the 'fixed', 'pinned', and 'security' labels.
+#   - Remove the stale label automatically if the issue receives new activity.
+#   - Never auto-close PRs (contributors need time to address reviews).
+
+on:
+  schedule:
+    # Runs daily at 01:30 UTC
+    - cron: "30 1 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          # ── Issues ───────────────────────────────────────────────────────
+          days-before-issue-stale: 90
+          days-before-issue-close: 14
+          stale-issue-label: "stale"
+
+          # Confirmed bugs and feature requests should not go stale; they
+          # stay open until a maintainer explicitly resolves them.
+          exempt-issue-labels: >-
+            bug,enhancement,fixed,pinned,security,good first issue
+
+          stale-issue-message: >
+            This issue has been automatically marked as **stale** because it
+            has not had any activity in the past 90 days.
+
+
+            It will be **closed in 14 days** unless it receives new activity.
+            If this is still relevant, please leave a comment — any activity
+            (comment, label change, etc.) will remove the stale mark and reset
+            the timer.
+
+
+            Thank you for your contribution! 🙏
+
+          close-issue-message: >
+            This issue has been automatically closed due to 14 days of
+            inactivity after being marked stale.
+
+
+            If this is still relevant with the current provider version,
+            please **reopen** it and include:
+            - Current provider version (`terraform providers`)
+            - UniFi Network Application / OS version
+            - A minimal reproducible configuration
+
+
+          close-issue-reason: not_planned
+
+          # ── Pull Requests ─────────────────────────────────────────────────
+          # Never auto-close PRs; contributors deserve time to address reviews.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+
+          # ── General ───────────────────────────────────────────────────────
+          # Remove stale label automatically when the issue is updated.
+          remove-stale-when-updated: true
+
+          # Increase operations per run from the default 30 to handle backlogs.
+          operations-per-run: 100

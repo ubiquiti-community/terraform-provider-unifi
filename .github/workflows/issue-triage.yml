@@ -3,11 +3,17 @@ name: Issue Triage
 # Automated issue triage for terraform-provider-unifi.
 #
 # Triggers:
-#   workflow_dispatch - manual run (supports dry_run mode for testing)
-#   schedule          - weekly sweep every Monday at 09:00 UTC
-#   issues[opened]    - auto-label + welcome comment on every new issue
+#   push[main]        - runs the full backfill sweep automatically on every merge to main
+#   workflow_dispatch - manual run with optional dry_run mode for testing
+#   schedule          - weekly sweep every Monday at 09:00 UTC to catch newly-stale fixes
+#
+# New-issue auto-labeling is handled by the separate issue-labeler.yml workflow.
+# Stale issue management is handled by the separate stale.yml workflow.
 
 on:
+  push:
+    branches: [main]
+
   workflow_dispatch:
     inputs:
       dry_run:
@@ -21,9 +27,6 @@ on:
 
   schedule:
     - cron: "0 9 * * 1"
-
-  issues:
-    types: [opened]
 
 permissions:
   issues: write
@@ -94,68 +97,12 @@ jobs:
                 });
             }
 
-            // ── Keyword-based auto-labeler (used for new issues) ─────────
-
-            function guessLabels(title, body) {
-              const text = (title + ' ' + body).toLowerCase();
-              const labels = [];
-              if (/\b(bug|error|fail|panic|crash|broken|doesn't work|does not work|exception)\b/.test(text))
-                labels.push('bug');
-              if (!labels.includes('bug') &&
-                  /\b(feature|request|enhancement|add support|please add|support for)\b/.test(text))
-                labels.push('enhancement');
-              if (/\b(doc|docs|documentation|readme|typo|misleading|confusing)\b/.test(text))
-                labels.push('documentation');
-              if (!labels.length &&
-                  /\b(question|how (do|to)|does .* work|can i|is (it|there) (possible|a way))\b/.test(text))
-                labels.push('question');
-              return labels;
-            }
-
             // ── Ensure required labels exist ─────────────────────────────
 
             await ensureLabel('fixed', '0e8a16', 'Fixed in a released version');
             await ensureLabel('stale', 'ededed', 'Issue is no longer relevant or outdated');
 
-            // ══════════════════════════════════════════════════════════════
-            // PATH A: new issue opened - auto-label + welcome comment
-            // ══════════════════════════════════════════════════════════════
-
-            if (context.eventName === 'issues') {
-              const issue   = context.payload.issue;
-              const num     = issue.number;
-              const title   = issue.title  || '';
-              const body    = issue.body   || '';
-
-              core.info('New issue #' + num + ': ' + title);
-
-              const suggested = guessLabels(title, body);
-              if (suggested.length) await addLabels(num, suggested);
-
-              const typeHint = suggested.includes('bug')
-                ? 'bug report'
-                : suggested.includes('enhancement')
-                  ? 'feature request'
-                  : suggested.includes('documentation')
-                    ? 'documentation issue'
-                    : 'issue';
-
-              const marker = '<!-- triage-welcome -->';
-              await postComment(num, marker,
-                marker + '\n' +
-                'Thanks for filing this ' + typeHint + '! 🙏\n\n' +
-                'A maintainer will review it shortly. In the meantime, please make sure your report includes:\n' +
-                '- **Provider version** (`terraform providers` or `tofu providers`)\n' +
-                '- **UniFi Network Application / OS version**\n' +
-                '- **Controller type** (UDM Pro, UCG Ultra, USG, …)\n' +
-                '- A **minimal reproducible configuration** and the full error output\n');
-
-              return;
-            }
-
-            // ══════════════════════════════════════════════════════════════
-            // PATH B: full triage sweep (workflow_dispatch / schedule)
-            // ══════════════════════════════════════════════════════════════
+            // ── Full triage sweep ─────────────────────────────────────────
 
             core.info('Starting full issue triage sweep…');
 
@@ -332,6 +279,22 @@ jobs:
             await addLabels(67, ['question']);
 
             // ── Auto-label any remaining open issues with no labels ───────
+
+            function guessLabels(title, body) {
+              const text = (title + ' ' + body).toLowerCase();
+              const labels = [];
+              if (/\b(bug|error|fail|panic|crash|broken|doesn't work|does not work|exception)\b/.test(text))
+                labels.push('bug');
+              if (!labels.includes('bug') &&
+                  /\b(feature|request|enhancement|add support|please add|support for)\b/.test(text))
+                labels.push('enhancement');
+              if (/\b(doc|docs|documentation|readme|typo|misleading|confusing)\b/.test(text))
+                labels.push('documentation');
+              if (!labels.length &&
+                  /\b(question|how (do|to)|does .* work|can i|is (it|there) (possible|a way))\b/.test(text))
+                labels.push('question');
+              return labels;
+            }
 
             core.info('Checking for unlabelled open issues…');
             let page = 1;
