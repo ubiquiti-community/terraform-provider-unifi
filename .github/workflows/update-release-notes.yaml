@@ -61,6 +61,7 @@ jobs:
           updated=0
           skipped_no_entry=0
           skipped_up_to_date=0
+          failed=0
 
           for tag in $tags; do
             # -----------------------------------------------------------------------
@@ -114,8 +115,26 @@ jobs:
               updated=$((updated + 1))
             else
               echo "     ✗ $tag update failed"
+              failed=$((failed + 1))
             fi
           done
 
           echo ""
-          echo "Done. Updated: $updated | Already up to date: $skipped_up_to_date | No CHANGELOG entry: $skipped_no_entry"
+          summary="Updated: $updated | Already up to date: $skipped_up_to_date | No CHANGELOG entry: $skipped_no_entry | Failed: $failed"
+          echo "Done. $summary"
+
+          {
+            echo "## Release Notes Sync"
+            echo ""
+            echo "| Result | Count |"
+            echo "| ------ | ----- |"
+            echo "| ✅ Updated | $updated |"
+            echo "| ✓ Already up to date | $skipped_up_to_date |"
+            echo "| – No CHANGELOG entry | $skipped_no_entry |"
+            echo "| ✗ Failed | $failed |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$failed" -gt 0 ]; then
+            echo "::error::$failed release(s) failed to update"
+            exit 1
+          fi
