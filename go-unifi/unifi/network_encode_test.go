@@ -254,6 +254,159 @@ func TestMarshalNetworkUnknownPurpose(t *testing.T) {
 	}
 }
 
+func TestMarshalNetworkVLANOnly(t *testing.T) {
+	vlan := int64(92)
+
+	network := &Network{
+		ID:      "507f1f77bcf86cd799439017",
+		SiteID:  "default",
+		Name:    strPtr("VLAN_92"),
+		Purpose: PurposeVLANOnly,
+		VLAN:    &vlan,
+	}
+
+	data, err := json.Marshal(network)
+	if err != nil {
+		t.Fatalf("Failed to marshal vlan-only network: %v", err)
+	}
+
+	expectedFields := []string{
+		"_id",
+		"site_id",
+		"name",
+		"purpose",
+		"enabled",
+		"networkgroup",
+		"vlan",
+		"vlan_enabled",
+	}
+
+	unexpectedFields := []string{
+		"ip_subnet",
+		"dhcpd_enabled",
+		"wan_type",
+		"wireguard_interface",
+		"igmp_snooping",
+	}
+
+	checkJSONFields(t, data, expectedFields, unexpectedFields)
+
+	var result map[string]any
+	json.Unmarshal(data, &result)
+
+	if result["purpose"] != "vlan-only" {
+		t.Errorf("Expected purpose 'vlan-only', got %q", result["purpose"])
+	}
+	if result["enabled"] != true {
+		t.Errorf("Expected enabled true (default), got %v", result["enabled"])
+	}
+	if result["vlan_enabled"] != true {
+		t.Errorf("Expected vlan_enabled true (auto-set from VLAN ID), got %v", result["vlan_enabled"])
+	}
+	if result["networkgroup"] != "LAN" {
+		t.Errorf("Expected networkgroup 'LAN', got %v", result["networkgroup"])
+	}
+}
+
+func TestMarshalNetworkVLANOnlyMinimal(t *testing.T) {
+	// VLAN-only with no VLAN ID set — enabled should still default to true
+	network := &Network{
+		ID:      "507f1f77bcf86cd799439018",
+		Purpose: PurposeVLANOnly,
+	}
+
+	data, err := json.Marshal(network)
+	if err != nil {
+		t.Fatalf("Failed to marshal minimal vlan-only network: %v", err)
+	}
+
+	var result map[string]any
+	json.Unmarshal(data, &result)
+
+	if result["purpose"] != "vlan-only" {
+		t.Errorf("Expected purpose 'vlan-only', got %q", result["purpose"])
+	}
+	if result["enabled"] != true {
+		t.Errorf("Expected enabled true (default), got %v", result["enabled"])
+	}
+	if result["vlan_enabled"] != false {
+		t.Errorf("Expected vlan_enabled false (no VLAN ID), got %v", result["vlan_enabled"])
+	}
+}
+
+func TestMarshalNetworkGuest(t *testing.T) {
+	vlan := int64(100)
+	leasetime := int64(86400)
+	dhcpStart := "192.168.100.100"
+	dhcpStop := "192.168.100.200"
+
+	network := &Network{
+		ID:                    "507f1f77bcf86cd799439019",
+		SiteID:                "default",
+		Name:                  strPtr("Guest Network"),
+		Purpose:               PurposeGuest,
+		Enabled:               true,
+		NetworkGroup:          strPtr("LAN"),
+		IPSubnet:              strPtr("192.168.100.0/24"),
+		VLAN:                  &vlan,
+		VLANEnabled:           true,
+		InternetAccessEnabled: true,
+		DHCPDEnabled:          true,
+		DHCPDStart:            &dhcpStart,
+		DHCPDStop:             &dhcpStop,
+		DHCPDLeaseTime:        &leasetime,
+		DHCPDDNSEnabled:       true,
+		DHCPDDNS1:             "8.8.8.8",
+	}
+
+	data, err := json.Marshal(network)
+	if err != nil {
+		t.Fatalf("Failed to marshal guest network: %v", err)
+	}
+
+	expectedFields := []string{
+		"_id",
+		"site_id",
+		"name",
+		"purpose",
+		"enabled",
+		"networkgroup",
+		"ip_subnet",
+		"vlan",
+		"vlan_enabled",
+		"internet_access_enabled",
+		"dhcpd_enabled",
+		"dhcpd_start",
+		"dhcpd_stop",
+		"dhcpd_leasetime",
+		"dhcpd_dns_enabled",
+		"dhcpd_dns_1",
+		"ip_aliases",
+		"setting_preference",
+	}
+
+	unexpectedFields := []string{
+		"wan_type",
+		"wan_networkgroup",
+		"wireguard_interface",
+	}
+
+	checkJSONFields(t, data, expectedFields, unexpectedFields)
+
+	var result map[string]any
+	json.Unmarshal(data, &result)
+
+	if result["purpose"] != "guest" {
+		t.Errorf("Expected purpose 'guest', got %q", result["purpose"])
+	}
+	if result["networkgroup"] != "LAN" {
+		t.Errorf("Expected networkgroup 'LAN', got %v", result["networkgroup"])
+	}
+	if result["setting_preference"] != "auto" {
+		t.Errorf("Expected setting_preference 'auto', got %v", result["setting_preference"])
+	}
+}
+
 // Helper function to create string pointers.
 func strPtr(s string) *string {
 	return &s

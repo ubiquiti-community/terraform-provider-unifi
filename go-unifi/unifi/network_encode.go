@@ -9,6 +9,8 @@ import (
 
 const (
 	PurposeCorporate = "corporate"
+	PurposeGuest     = "guest"
+	PurposeVLANOnly  = "vlan-only"
 	PurposeWAN       = "wan"
 	PurposeSiteVPN   = "site-vpn"
 	PurposeVPNClient = "vpn-client"
@@ -22,6 +24,10 @@ func (n *Network) MarshalJSON() ([]byte, error) {
 		return n.marshalWAN()
 	case PurposeCorporate:
 		return n.marshalCorporate()
+	case PurposeGuest:
+		return n.marshalGuest()
+	case PurposeVLANOnly:
+		return n.marshalVLANOnly()
 	case PurposeSiteVPN:
 		return n.marshalSiteVPN()
 	case PurposeVPNClient:
@@ -46,6 +52,205 @@ func (n *Network) marshalCorporate() ([]byte, error) {
 	}
 
 	// Use anonymous struct with explicit field selection
+	return json.Marshal(&struct {
+		ID       string `json:"_id,omitempty"`
+		SiteID   string `json:"site_id,omitempty"`
+		Hidden   bool   `json:"attr_hidden,omitempty"`
+		HiddenID string `json:"attr_hidden_id,omitempty"`
+		NoDelete bool   `json:"attr_no_delete,omitempty"`
+		NoEdit   bool   `json:"attr_no_edit,omitempty"`
+
+		Name                    *string                         `json:"name,omitempty"`
+		Purpose                 string                          `json:"purpose"`
+		Enabled                 bool                            `json:"enabled"`
+		NetworkGroup            *string                         `json:"networkgroup,omitempty"`
+		IPSubnet                *string                         `json:"ip_subnet,omitempty"`
+		VLAN                    *int64                          `json:"vlan,omitempty"`
+		VLANEnabled             bool                            `json:"vlan_enabled"`
+		DomainName              *string                         `json:"domain_name,omitempty"`
+		AutoScaleEnabled        bool                            `json:"auto_scale_enabled"`
+		GatewayType             *string                         `json:"gateway_type,omitempty"`
+		InternetAccessEnabled   bool                            `json:"internet_access_enabled"`
+		NetworkIsolationEnabled bool                            `json:"network_isolation_enabled"`
+		SettingPreference       *string                         `json:"setting_preference,omitempty"`
+		IGMPSnooping            bool                            `json:"igmp_snooping"`
+		DHCPguardEnabled        bool                            `json:"dhcpguard_enabled"`
+		MdnsEnabled             bool                            `json:"mdns_enabled"`
+		LteLanEnabled           bool                            `json:"lte_lan_enabled"`
+		IPAliases               []string                        `json:"ip_aliases"`
+		NATOutboundIPAddresses  []NetworkNATOutboundIPAddresses `json:"nat_outbound_ip_addresses"`
+		MACOverride             string                          `json:"mac_override,omitempty"`
+
+		// DHCP Server
+		DHCPDEnabled           bool    `json:"dhcpd_enabled"`
+		DHCPDStart             *string `json:"dhcpd_start,omitempty"`
+		DHCPDStop              *string `json:"dhcpd_stop,omitempty"`
+		DHCPDLeaseTime         *int64  `json:"dhcpd_leasetime,omitempty"`
+		DHCPDDNSEnabled        bool    `json:"dhcpd_dns_enabled"`
+		DHCPDDNS1              string  `json:"dhcpd_dns_1,omitempty"`
+		DHCPDDNS2              string  `json:"dhcpd_dns_2,omitempty"`
+		DHCPDDNS3              string  `json:"dhcpd_dns_3,omitempty"`
+		DHCPDDNS4              string  `json:"dhcpd_dns_4,omitempty"`
+		DHCPDGatewayEnabled    bool    `json:"dhcpd_gateway_enabled"`
+		DHCPDGateway           *string `json:"dhcpd_gateway,omitempty"`
+		DHCPDNtpEnabled        bool    `json:"dhcpd_ntp_enabled"`
+		DHCPDNtp1              *string `json:"dhcpd_ntp_1,omitempty"`
+		DHCPDNtp2              *string `json:"dhcpd_ntp_2,omitempty"`
+		DHCPDWinsEnabled       bool    `json:"dhcpd_wins_enabled"`
+		DHCPDWins1             *string `json:"dhcpd_wins_1,omitempty"`
+		DHCPDWins2             *string `json:"dhcpd_wins_2,omitempty"`
+		DHCPDTimeOffsetEnabled bool    `json:"dhcpd_time_offset_enabled"`
+		DHCPDConflictChecking  bool    `json:"dhcpd_conflict_checking"`
+		DHCPDBootEnabled       bool    `json:"dhcpd_boot_enabled"`
+		DHCPDBootServer        string  `json:"dhcpd_boot_server,omitempty"`
+		DHCPDBootFilename      string  `json:"dhcpd_boot_filename,omitempty"`
+		DHCPDTFTPServer        *string `json:"dhcpd_tftp_server,omitempty"`
+		DHCPDWPAdUrl           *string `json:"dhcpd_wpad_url,omitempty"`
+		DHCPDUnifiController   *string `json:"dhcpd_unifi_controller,omitempty"`
+
+		// DHCP Relay
+		DHCPRelayEnabled bool     `json:"dhcp_relay_enabled"`
+		DHCPRelayServers []string `json:"dhcp_relay_servers"`
+
+		// IPv6
+		IPV6InterfaceType     *string `json:"ipv6_interface_type,omitempty"`
+		IPV6SettingPreference *string `json:"ipv6_setting_preference,omitempty"`
+		IPV6RaPriority        *string `json:"ipv6_ra_priority,omitempty"`
+
+		// DHCPv6
+		DHCPDV6DNSAuto    bool    `json:"dhcpdv6_dns_auto,omitempty"`
+		DHCPDV6AllowSlaac bool    `json:"dhcpdv6_allow_slaac,omitempty"`
+		DHCPDV6Start      *string `json:"dhcpdv6_start,omitempty"`
+		DHCPDV6Stop       *string `json:"dhcpdv6_stop,omitempty"`
+		DHCPDV6LeaseTime  *int64  `json:"dhcpdv6_leasetime,omitempty"`
+	}{
+		ID:       n.ID,
+		SiteID:   n.SiteID,
+		Hidden:   n.Hidden,
+		HiddenID: n.HiddenID,
+		NoDelete: n.NoDelete,
+		NoEdit:   n.NoEdit,
+
+		Name:                    n.Name,
+		Purpose:                 n.Purpose,
+		Enabled:                 n.Enabled,
+		NetworkGroup:            valueOrDefault(n.NetworkGroup, "LAN"),
+		IPSubnet:                valueOrDefault(n.IPSubnet, ""),
+		VLAN:                    n.VLAN,
+		VLANEnabled:             n.VLANEnabled,
+		DomainName:              valueOrDefault(n.DomainName, ""),
+		AutoScaleEnabled:        n.AutoScaleEnabled,
+		GatewayType:             valueOrDefault(n.GatewayType, "default"),
+		InternetAccessEnabled:   n.InternetAccessEnabled,
+		NetworkIsolationEnabled: n.NetworkIsolationEnabled,
+		SettingPreference:       valueOrDefault(n.SettingPreference, "auto"),
+		IGMPSnooping:            n.IGMPSnooping,
+		DHCPguardEnabled:        n.DHCPguardEnabled,
+		MdnsEnabled:             n.MdnsEnabled,
+		LteLanEnabled:           n.LteLanEnabled,
+		IPAliases:               orEmptySlice(n.IPAliases),
+		NATOutboundIPAddresses:  orEmptyNATSlice(n.NATOutboundIPAddresses),
+		MACOverride:             n.MACOverride,
+
+		// DHCP Server with defaults
+		DHCPDEnabled:           n.DHCPDEnabled,
+		DHCPDStart:             valueOrDefault(n.DHCPDStart, defaultStart),
+		DHCPDStop:              valueOrDefault(n.DHCPDStop, defaultEnd),
+		DHCPDLeaseTime:         valueOrDefault(n.DHCPDLeaseTime, 86400),
+		DHCPDDNSEnabled:        n.DHCPDDNSEnabled,
+		DHCPDDNS1:              n.DHCPDDNS1,
+		DHCPDDNS2:              n.DHCPDDNS2,
+		DHCPDDNS3:              n.DHCPDDNS3,
+		DHCPDDNS4:              n.DHCPDDNS4,
+		DHCPDGatewayEnabled:    n.DHCPDGatewayEnabled,
+		DHCPDGateway:           n.DHCPDGateway,
+		DHCPDNtpEnabled:        n.DHCPDNtpEnabled,
+		DHCPDNtp1:              nilIfEmpty(n.DHCPDNtp1),
+		DHCPDNtp2:              nilIfEmpty(n.DHCPDNtp2),
+		DHCPDWinsEnabled:       n.DHCPDWinsEnabled,
+		DHCPDWins1:             valueOrDefault(n.DHCPDWins1, ""),
+		DHCPDWins2:             valueOrDefault(n.DHCPDWins2, ""),
+		DHCPDTimeOffsetEnabled: n.DHCPDTimeOffsetEnabled,
+		DHCPDConflictChecking:  n.DHCPDConflictChecking,
+		DHCPDBootEnabled:       n.DHCPDBootEnabled,
+		DHCPDBootServer:        n.DHCPDBootServer,
+		DHCPDBootFilename:      derefOrEmpty(n.DHCPDBootFilename),
+		DHCPDTFTPServer:        n.DHCPDTFTPServer,
+		DHCPDWPAdUrl:           n.DHCPDWPAdUrl,
+		DHCPDUnifiController:   valueOrDefault(n.DHCPDUnifiController, ""),
+
+		// DHCP Relay
+		DHCPRelayEnabled: n.DHCPRelayEnabled,
+		DHCPRelayServers: orEmptySlice(n.RemoteVPNSubnets),
+
+		// IPv6
+		IPV6InterfaceType:     valueOrDefault(n.IPV6InterfaceType, "none"),
+		IPV6SettingPreference: n.IPV6SettingPreference,
+		IPV6RaPriority:        n.IPV6RaPriority,
+
+		// DHCPv6
+		DHCPDV6DNSAuto:    n.DHCPDV6DNSAuto,
+		DHCPDV6AllowSlaac: n.DHCPDV6AllowSlaac,
+		DHCPDV6Start:      n.DHCPDV6Start,
+		DHCPDV6Stop:       n.DHCPDV6Stop,
+		DHCPDV6LeaseTime:  n.DHCPDV6LeaseTime,
+	})
+}
+
+// marshalVLANOnly marshals a VLAN-only network (Layer 2 only, no routing).
+func (n *Network) marshalVLANOnly() ([]byte, error) {
+	enabled := n.Enabled
+	if !enabled {
+		enabled = true
+	}
+
+	vlanEnabled := n.VLANEnabled
+	if !vlanEnabled && n.VLAN != nil && *n.VLAN > 0 {
+		vlanEnabled = true
+	}
+
+	return json.Marshal(&struct {
+		ID       string `json:"_id,omitempty"`
+		SiteID   string `json:"site_id,omitempty"`
+		Hidden   bool   `json:"attr_hidden,omitempty"`
+		HiddenID string `json:"attr_hidden_id,omitempty"`
+		NoDelete bool   `json:"attr_no_delete,omitempty"`
+		NoEdit   bool   `json:"attr_no_edit,omitempty"`
+
+		Name         *string `json:"name,omitempty"`
+		Purpose      string  `json:"purpose"`
+		Enabled      bool    `json:"enabled"`
+		NetworkGroup *string `json:"networkgroup,omitempty"`
+		VLAN         *int64  `json:"vlan,omitempty"`
+		VLANEnabled  bool    `json:"vlan_enabled"`
+	}{
+		ID:       n.ID,
+		SiteID:   n.SiteID,
+		Hidden:   n.Hidden,
+		HiddenID: n.HiddenID,
+		NoDelete: n.NoDelete,
+		NoEdit:   n.NoEdit,
+
+		Name:         n.Name,
+		Purpose:      n.Purpose,
+		Enabled:      enabled,
+		NetworkGroup: valueOrDefault(n.NetworkGroup, "LAN"),
+		VLAN:         n.VLAN,
+		VLANEnabled:  vlanEnabled,
+	})
+}
+
+// marshalGuest marshals a Guest network.
+func (n *Network) marshalGuest() ([]byte, error) {
+	var defaultStart, defaultEnd string
+	if n.IPSubnet != nil {
+		var err error
+		defaultStart, defaultEnd, err = dhcpRange(*n.IPSubnet)
+		if err != nil {
+			log.Default().Printf("error calculating DHCP range: %s", err)
+		}
+	}
+
 	return json.Marshal(&struct {
 		ID       string `json:"_id,omitempty"`
 		SiteID   string `json:"site_id,omitempty"`
