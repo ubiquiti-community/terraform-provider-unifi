@@ -56,3 +56,30 @@ resource "unifi_network" "test" {
 }
 `
 }
+
+func TestAccNetworkFramework_vlanOnly(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkConfig_vlanOnly(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_network.vlan_only", "name", "VLAN_92"),
+					resource.TestCheckResourceAttr("unifi_network.vlan_only", "purpose", "vlan-only"),
+					resource.TestCheckResourceAttr("unifi_network.vlan_only", "vlan_id", "92"),
+				),
+			},
+		},
+	})
+}
+
+func testAccNetworkFrameworkConfig_vlanOnly() string {
+	return `
+resource "unifi_network" "vlan_only" {
+	name    = "VLAN_92"
+	purpose = "vlan-only"
+	vlan_id = 92
+}
+`
+}
