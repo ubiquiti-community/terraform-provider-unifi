@@ -12,7 +12,6 @@ on:
 
 permissions:
   issues: write
-  contents: read
 
 concurrency:
   group: issue-labeler-${{ github.event.issue.number }}
