@@ -1,7 +1,9 @@
 name: Update Release Notes
 
-# This workflow updates release descriptions for releases that only have
-# "Full Changelog" links in their descriptions.
+# This workflow syncs GitHub release descriptions with CHANGELOG.md.
+# It fetches all releases dynamically, checks whether each release's
+# current description already matches the CHANGELOG entry, and only
+# calls `gh release edit` when an update is actually needed.
 #
 # Trigger manually from the Actions tab, or it runs automatically when
 # CHANGELOG.md is updated on the main branch.
@@ -23,85 +25,96 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update release notes
+      - name: Sync release notes from CHANGELOG.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          update_release() {
+          # ---------------------------------------------------------------------------
+          # extract_changelog_section <tag>
+          #   Prints the body of the CHANGELOG.md section for <tag>, or nothing if
+          #   the tag has no entry.  Each section begins with "## [<tag>]" and ends
+          #   at the next "---" separator (or EOF).
+          # ---------------------------------------------------------------------------
+          extract_changelog_section() {
             local tag="$1"
-            local notes_file="$2"
-            echo "Updating $tag..."
+            # Escape characters that are special in awk regex (e.g. "." in version tags)
+            local escaped_tag
+            escaped_tag=$(printf '%s\n' "$tag" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            awk "/^## \[${escaped_tag}\]/{found=1; next} found && /^---$/{exit} found{print}" CHANGELOG.md \
+              | sed -e 's/[[:space:]]*$//'  # strip trailing whitespace from each line
+          }
+
+          # ---------------------------------------------------------------------------
+          # Fetch every release tag from GitHub (up to 200).
+          # gh returns them newest-first by default.
+          # ---------------------------------------------------------------------------
+          echo "Fetching release list..."
+          tags=$(gh release list \
+            --repo ubiquiti-community/terraform-provider-unifi \
+            --limit 200 \
+            --json tagName \
+            --jq '.[].tagName')
+
+          updated=0
+          skipped_no_entry=0
+          skipped_up_to_date=0
+
+          for tag in $tags; do
+            # -----------------------------------------------------------------------
+            # 1. Extract the CHANGELOG section for this tag.
+            #    If there's no entry, leave the release untouched.
+            # -----------------------------------------------------------------------
+            changelog_body=$(extract_changelog_section "$tag")
+
+            if [ -z "$changelog_body" ]; then
+              echo "  –  $tag: no CHANGELOG entry, skipping"
+              skipped_no_entry=$((skipped_no_entry + 1))
+              continue
+            fi
+
+            # -----------------------------------------------------------------------
+            # 2. Fetch the current release body from GitHub.
+            #    Normalise line-endings and strip trailing whitespace so that minor
+            #    formatting differences (CRLF vs LF, trailing spaces) don't trigger
+            #    spurious updates.
+            # -----------------------------------------------------------------------
+            current_body=$(gh release view "$tag" \
+              --repo ubiquiti-community/terraform-provider-unifi \
+              --json body \
+              --jq '.body' \
+              | tr -d '\r' \
+              | sed -e 's/[[:space:]]*$//')
+
+            # -----------------------------------------------------------------------
+            # 3. Compare.  Use checksums so the comparison is whitespace-tolerant.
+            # -----------------------------------------------------------------------
+            changelog_sum=$(printf '%s' "$changelog_body" | md5sum | awk '{print $1}')
+            current_sum=$(printf '%s' "$current_body"   | md5sum | awk '{print $1}')
+
+            if [ "$changelog_sum" = "$current_sum" ]; then
+              echo "  ✓  $tag: already up to date, skipping"
+              skipped_up_to_date=$((skipped_up_to_date + 1))
+              continue
+            fi
+
+            # -----------------------------------------------------------------------
+            # 4. Descriptions differ — apply the CHANGELOG content.
+            # -----------------------------------------------------------------------
+            notes_file="/tmp/${tag//\//_}.md"
+            printf '%s\n' "$changelog_body" > "$notes_file"
+
+            echo "  ↑  $tag: updating..."
             if gh release edit "$tag" \
               --repo ubiquiti-community/terraform-provider-unifi \
               --notes-file "$notes_file"; then
-              echo "  ✓ $tag updated"
+              echo "     ✓ $tag updated"
+              updated=$((updated + 1))
             else
-              echo "  ✗ $tag failed (may not exist as a release)"
+              echo "     ✗ $tag update failed"
             fi
-          }
+          done
 
-          # ---------------------------------------------------------------------------
-          # Extract each release's section from CHANGELOG.md and apply it.
-          # Each section runs from its "## [vX.Y.Z]" header to the next "---" separator.
-          # ---------------------------------------------------------------------------
-
-          extract_section() {
-            local tag="$1"
-            local outfile="$2"
-            # Escape special characters in the tag for use in sed
-            local escaped_tag
-            escaped_tag=$(printf '%s\n' "$tag" | sed 's/[[\.*^$()+?{|]/\\&/g')
-            awk "/^## \[${escaped_tag}\]/{found=1; next} found && /^---$/{exit} found{print}" CHANGELOG.md > "$outfile"
-          }
-
-          extract_section "v0.41.19"     /tmp/v0.41.19.md
-          extract_section "v0.41.18"     /tmp/v0.41.18.md
-          extract_section "v0.41.17"     /tmp/v0.41.17.md
-          extract_section "v0.41.16"     /tmp/v0.41.16.md
-          extract_section "v0.41.15"     /tmp/v0.41.15.md
-          extract_section "v0.41.14"     /tmp/v0.41.14.md
-          extract_section "v0.41.13"     /tmp/v0.41.13.md
-          extract_section "v0.41.12"     /tmp/v0.41.12.md
-          extract_section "v0.41.11"     /tmp/v0.41.11.md
-          extract_section "v0.41.10"     /tmp/v0.41.10.md
-          extract_section "v0.41.9"      /tmp/v0.41.9.md
-          extract_section "v0.41.8"      /tmp/v0.41.8.md
-          extract_section "v0.41.7"      /tmp/v0.41.7.md
-          extract_section "v0.41.6"      /tmp/v0.41.6.md
-          extract_section "v0.41.5"      /tmp/v0.41.5.md
-          extract_section "v0.41.4"      /tmp/v0.41.4.md
-          extract_section "v0.41.4-rc3"  /tmp/v0.41.4-rc3.md
-          extract_section "v0.41.4-rc2"  /tmp/v0.41.4-rc2.md
-          extract_section "v0.41.4-rc1"  /tmp/v0.41.4-rc1.md
-          extract_section "v0.41.4-beta2" /tmp/v0.41.4-beta2.md
-          extract_section "v0.41.4-beta1" /tmp/v0.41.4-beta1.md
-          extract_section "v0.41.3"      /tmp/v0.41.3.md
-          extract_section "v0.41.2"      /tmp/v0.41.2.md
-          extract_section "v0.41.1"      /tmp/v0.41.1.md
-
-          update_release "v0.41.19"     /tmp/v0.41.19.md
-          update_release "v0.41.18"     /tmp/v0.41.18.md
-          update_release "v0.41.17"     /tmp/v0.41.17.md
-          update_release "v0.41.16"     /tmp/v0.41.16.md
-          update_release "v0.41.15"     /tmp/v0.41.15.md
-          update_release "v0.41.14"     /tmp/v0.41.14.md
-          update_release "v0.41.13"     /tmp/v0.41.13.md
-          update_release "v0.41.12"     /tmp/v0.41.12.md
-          update_release "v0.41.11"     /tmp/v0.41.11.md
-          update_release "v0.41.10"     /tmp/v0.41.10.md
-          update_release "v0.41.9"      /tmp/v0.41.9.md
-          update_release "v0.41.8"      /tmp/v0.41.8.md
-          update_release "v0.41.7"      /tmp/v0.41.7.md
-          update_release "v0.41.6"      /tmp/v0.41.6.md
-          update_release "v0.41.5"      /tmp/v0.41.5.md
-          update_release "v0.41.4"      /tmp/v0.41.4.md
-          update_release "v0.41.4-rc3"  /tmp/v0.41.4-rc3.md
-          update_release "v0.41.4-rc2"  /tmp/v0.41.4-rc2.md
-          update_release "v0.41.4-rc1"  /tmp/v0.41.4-rc1.md
-          update_release "v0.41.4-beta2" /tmp/v0.41.4-beta2.md
-          update_release "v0.41.4-beta1" /tmp/v0.41.4-beta1.md
-          update_release "v0.41.3"      /tmp/v0.41.3.md
-          update_release "v0.41.2"      /tmp/v0.41.2.md
-          update_release "v0.41.1"      /tmp/v0.41.1.md
+          echo ""
+          echo "Done. Updated: $updated | Already up to date: $skipped_up_to_date | No CHANGELOG entry: $skipped_no_entry"
