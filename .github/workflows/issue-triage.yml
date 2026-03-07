@@ -30,7 +30,7 @@ on:
 
 permissions:
   issues: write
-  contents: read
+
 
 concurrency:
   group: issue-triage

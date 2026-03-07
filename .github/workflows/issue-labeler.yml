@@ -3,8 +3,8 @@ name: Issue Labeler
 # Automatically labels new and reopened issues based on keyword matching,
 # then posts a welcome comment asking for the information needed to triage.
 #
-# For maintainability, label rules live in .github/issue-labeler.yml.
-# Add or adjust regex patterns there without touching this workflow.
+# For maintainability, label rules are defined in the rules array below.
+# Add or adjust regex patterns there as needed.
 
 on:
   issues:
@@ -68,9 +68,10 @@ jobs:
             // Only post once – idempotency marker prevents duplicates on
             // re-opened events.
             const WELCOME_MARKER = '<!-- triage-welcome -->';
-            const { data: comments } = await github.rest.issues.listComments({
-              owner, repo, issue_number: num, per_page: 100
-            });
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: num, per_page: 100 },
+            );
             if (comments.some(c => c.body && c.body.includes(WELCOME_MARKER))) {
               core.info('  Welcome comment already present, skipping');
               return;
