@@ -28,21 +28,16 @@ func TestAccVPNClient_file_mode(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_vpn_client.test", "pull_dns", "false"),
 					resource.TestCheckResourceAttr(
 						"unifi_vpn_client.test",
-						"wireguard_config.mode",
-						"file",
-					),
-					resource.TestCheckResourceAttr(
-						"unifi_vpn_client.test",
-						"wireguard_config.interface",
+						"wireguard.interface",
 						"wan",
 					),
 					resource.TestCheckResourceAttrSet(
 						"unifi_vpn_client.test",
-						"wireguard_config.configuration_file",
+						"wireguard.configuration.content",
 					),
 					resource.TestCheckResourceAttrSet(
 						"unifi_vpn_client.test",
-						"wireguard_config.configuration_filename",
+						"wireguard.configuration.filename",
 					),
 				),
 			},
@@ -52,8 +47,15 @@ func TestAccVPNClient_file_mode(t *testing.T) {
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"wireguard.private_key",
+					"wireguard.configuration",
 					"wireguard.configuration.content",
+					"wireguard.configuration.filename",
 					"wireguard.preshared_key",
+					"wireguard.peer",
+					"wireguard.peer.ip",
+					"wireguard.peer.port",
+					"wireguard.peer.public_key",
+					"wireguard.dns_servers",
 				},
 			},
 		},
@@ -152,7 +154,7 @@ resource "unifi_vpn_client" "test" {
     interface   = "wan"
     
     configuration = {
-      content  = "W0ludGVyZmFjZV0KUHJpdmF0ZUtleSA9IFdQaUJhL0FrMVcrOFNwOEw1eXZieWhIZVJPMm81a0p2aWhxMlZ0SitrRmc9CkFkZHJlc3MgPSAxMC4wLjAuMi8yNAoKW1BlZXJdClB1YmxpY0tleSA9IDdCKzJaM29kUGJETnNmVnIrRjhpbnZqNi9tQktMVmFvbE9IWFpvQ2FCQTA9CkVuZHBvaW50ID0gMTkyLjAuMi4xOjUxODIwCg=="
+      content  = "W0ludGVyZmFjZV0KUHJpdmF0ZUtleSA9IFdQaUJhL0FrMVcrOFNwOEw1eXZieWhIZVJPMm81a0p2aWhxMlZ0SitrRmc9CkFkZHJlc3MgPSAxMC4wLjAuMi8yNApETlMgPSA4LjguOC44LCA4LjguNC40CgpbUGVlcl0KUHVibGljS2V5ID0gN0IrMlozb2RQYkROc2ZWcitGOGludmo2L21CS0xWYW9sT0hYWm9DYUJBMD0KRW5kcG9pbnQgPSAxOTIuMC4yLjE6NTE4MjAKQWxsb3dlZElQcyA9IDAuMC4wLjAvMAo="
       filename = "wireguard.conf"
     }
   }

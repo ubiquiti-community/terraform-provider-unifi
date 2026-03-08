@@ -534,14 +534,49 @@ func (r *vpnClientResource) modelToNetwork(
 			}
 
 			// Check if configuration (file mode) is set
+			// The UniFi API's file mode is not consistently supported across controller
+			// versions and environments. Instead, we parse the WireGuard config file and
+			// extract the peer parameters to use manual mode, which works universally.
 			if !wireguard.Configuration.IsNull() && !wireguard.Configuration.IsUnknown() {
 				var config wireguardConfigurationModel
 				d := wireguard.Configuration.As(ctx, &config, basetypes.ObjectAsOptions{})
 				diags.Append(d...)
 				if !diags.HasError() {
-					network.WireguardClientMode = util.Ptr("file")
-					network.WireguardClientConfigurationFile = config.Content.ValueStringPointer()
-					network.WireguardClientConfigurationFilename = config.Filename.ValueStringPointer()
+					parsed, err := parseWireGuardBase64Config(config.Content.ValueString())
+					if err != nil {
+						diags.AddError(
+							"Invalid WireGuard Configuration File",
+							fmt.Sprintf("Failed to parse WireGuard configuration: %s", err),
+						)
+						return nil, diags
+					}
+
+					network.WireguardClientMode = util.Ptr("manual")
+					network.WireguardClientPeerPublicKey = util.Ptr(parsed.PublicKey)
+					network.WireguardClientPeerIP = util.Ptr(parsed.EndpointIP)
+					network.WireguardClientPeerPort = util.Ptr(parsed.EndpointPort)
+
+					// Use private key from config file if not set explicitly
+					if parsed.PrivateKey != "" &&
+						(wireguard.PrivateKey.IsNull() || wireguard.PrivateKey.IsUnknown()) {
+						network.WireguardPrivateKey = util.Ptr(parsed.PrivateKey)
+					}
+
+					// Use preshared key from config file if present
+					if parsed.PresharedKey != "" {
+						network.WireguardClientPresharedKeyEnabled = true
+						network.WireguardClientPresharedKey = util.Ptr(parsed.PresharedKey)
+					}
+
+					// Use DNS servers from config file if not set explicitly
+					if len(parsed.DNS) > 0 && wireguard.DnsServers.IsNull() {
+						if len(parsed.DNS) > 0 {
+							network.DHCPDDNS1 = parsed.DNS[0]
+						}
+						if len(parsed.DNS) > 1 {
+							network.DHCPDDNS2 = parsed.DNS[1]
+						}
+					}
 				}
 			} else if !wireguard.Peer.IsNull() && !wireguard.Peer.IsUnknown() {
 				// Check if peer (manual mode) is set
@@ -572,7 +607,7 @@ func (r *vpnClientResource) networkToModel(
 	network *unifi.Network,
 	model *vpnClientResourceModel,
 	site string,
-	_ *vpnClientResourceModel, // priorState is not currently used but can be utilized for future enhancements
+	priorState *vpnClientResourceModel,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 
@@ -596,23 +631,35 @@ func (r *vpnClientResource) networkToModel(
 		return types.StringValue(*ptr)
 	}
 
+	// Check if priorState had a configuration block (file mode was used).
+	// Since we convert file mode to manual mode for the API, the API always
+	// returns "manual" mode. We need to preserve the configuration from the
+	// prior state so Terraform doesn't see a diff.
+	priorUsedFileMode := false
+	if priorState != nil && !priorState.Wireguard.IsNull() && !priorState.Wireguard.IsUnknown() {
+		var priorWG wireguardModel
+		d := priorState.Wireguard.As(ctx, &priorWG, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() && !priorWG.Configuration.IsNull() &&
+			!priorWG.Configuration.IsUnknown() {
+			priorUsedFileMode = true
+		}
+	}
+
 	// Build WireGuard configuration
 	var configurationObj types.Object
 	var peerObj types.Object
 
-	// Determine mode from API response and build appropriate nested objects
-	if network.WireguardClientMode != nil && *network.WireguardClientMode == "file" {
-		// File mode: populate configuration
-		configValue := wireguardConfigurationModel{
-			Content:  strPtrToType(network.WireguardClientConfigurationFile),
-			Filename: strPtrToType(network.WireguardClientConfigurationFilename),
-		}
-		var d diag.Diagnostics
-		configurationObj, d = types.ObjectValueFrom(ctx, configValue.AttributeTypes(), configValue)
+	if priorUsedFileMode {
+		// Prior state used file mode: preserve the configuration block from
+		// prior state and set peer to null (the API data came from parsing the file)
+		var priorWG wireguardModel
+		d := priorState.Wireguard.As(ctx, &priorWG, basetypes.ObjectAsOptions{})
 		diags.Append(d...)
+		configurationObj = priorWG.Configuration
 		peerObj = types.ObjectNull(wireguardPeerModel{}.AttributeTypes())
 	} else if network.WireguardClientMode != nil && *network.WireguardClientMode == "manual" {
-		// Manual mode: populate peer
+		// Manual mode: populate peer from API response
 		peerValue := wireguardPeerModel{
 			IP:        strPtrToType(network.WireguardClientPeerIP),
 			Port:      types.Int64PointerValue(network.WireguardClientPeerPort),
@@ -623,34 +670,60 @@ func (r *vpnClientResource) networkToModel(
 		diags.Append(d...)
 		configurationObj = types.ObjectNull(wireguardConfigurationModel{}.AttributeTypes())
 	} else {
-		// No mode set - both null
+		// No mode set or file mode returned by API - both null
 		configurationObj = types.ObjectNull(wireguardConfigurationModel{}.AttributeTypes())
 		peerObj = types.ObjectNull(wireguardPeerModel{}.AttributeTypes())
 	}
 
 	// Build DNS servers list
 	var dnsServersList types.List
-	var dnsServers []string
-	if network.DHCPDDNS1 != "" {
-		dnsServers = append(dnsServers, network.DHCPDDNS1)
-	}
-	if network.DHCPDDNS2 != "" {
-		dnsServers = append(dnsServers, network.DHCPDDNS2)
-	}
-	if len(dnsServers) > 0 {
-		var d diag.Diagnostics
-		dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)
+	if priorUsedFileMode {
+		// When file mode is used, DNS servers came from the config file and were
+		// passed to the API. Preserve the dns_servers from prior state to avoid diffs.
+		var priorWG wireguardModel
+		d := priorState.Wireguard.As(ctx, &priorWG, basetypes.ObjectAsOptions{})
 		diags.Append(d...)
+		dnsServersList = priorWG.DnsServers
 	} else {
-		dnsServersList = types.ListNull(types.StringType)
+		var dnsServers []string
+		if network.DHCPDDNS1 != "" {
+			dnsServers = append(dnsServers, network.DHCPDDNS1)
+		}
+		if network.DHCPDDNS2 != "" {
+			dnsServers = append(dnsServers, network.DHCPDDNS2)
+		}
+		if len(dnsServers) > 0 {
+			var d diag.Diagnostics
+			dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)
+			diags.Append(d...)
+		} else {
+			dnsServersList = types.ListNull(types.StringType)
+		}
+	}
+
+	// For private key and preshared key: when file mode was used, preserve the
+	// values from prior state since the API may return different representations.
+	privateKeyVal := strPtrToType(network.WireguardPrivateKey)
+	presharedKeyVal := strPtrToType(network.WireguardClientPresharedKey)
+	presharedKeyEnabled := types.BoolValue(network.WireguardClientPresharedKeyEnabled)
+
+	if priorUsedFileMode {
+		var priorWG wireguardModel
+		d := priorState.Wireguard.As(ctx, &priorWG, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			privateKeyVal = priorWG.PrivateKey
+			presharedKeyVal = priorWG.PresharedKey
+			presharedKeyEnabled = priorWG.PresharedKeyEnabled
+		}
 	}
 
 	wireguardValue := wireguardModel{
-		PrivateKey:          strPtrToType(network.WireguardPrivateKey),
+		PrivateKey:          privateKeyVal,
 		Configuration:       configurationObj,
 		Peer:                peerObj,
-		PresharedKeyEnabled: types.BoolValue(network.WireguardClientPresharedKeyEnabled),
-		PresharedKey:        strPtrToType(network.WireguardClientPresharedKey),
+		PresharedKeyEnabled: presharedKeyEnabled,
+		PresharedKey:        presharedKeyVal,
 		Interface:           types.StringPointerValue(network.WireguardInterface),
 		DnsServers:          dnsServersList,
 	}

@@ -71,7 +71,7 @@ resource "unifi_wan" "default" {
 - `ipv6_dns1` (String) Primary IPv6 DNS server
 - `ipv6_dns2` (String) Secondary IPv6 DNS server
 - `ipv6_dns_preference` (String) IPv6 DNS preference (auto, manual)
-- `ipv6_wan_delegation_type` (String) IPv6 WAN delegation type (pd, static)
+- `ipv6_wan_delegation_type` (String) IPv6 WAN delegation type (pd, single_network, none)
 - `load_balance_type` (String) Load balance type (failover-only, weighted)
 - `load_balance_weight` (Number) Load balance weight
 - `provider_capabilities` (Attributes) WAN provider capabilities (see [below for nested schema](#nestedatt--provider_capabilities))

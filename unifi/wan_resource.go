@@ -14,7 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -150,10 +152,24 @@ type providerCapabilitiesModel struct {
 	UploadKbps   types.Int64 `tfsdk:"upload_kilobits_per_second"`
 }
 
+func (m providerCapabilitiesModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"download_kilobits_per_second": types.Int64Type,
+		"upload_kilobits_per_second":   types.Int64Type,
+	}
+}
+
 // dhcpOptionModel describes a DHCPv6 option.
 type dhcpOptionModel struct {
 	OptionNumber types.Int64  `tfsdk:"option_number"`
 	Value        types.String `tfsdk:"value"`
+}
+
+func (m dhcpOptionModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"option_number": types.Int64Type,
+		"value":         types.StringType,
+	}
 }
 
 func (r *wanResource) Metadata(
@@ -204,8 +220,10 @@ func (r *wanResource) Schema(
 			"type_v6": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("dhcpv6"),
 				MarkdownDescription: "The IPv6 WAN type (dhcpv6, static, disabled)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("dhcpv6", "static", "disabled"),
 				},
@@ -255,8 +273,10 @@ func (r *wanResource) Schema(
 			"dhcp_cos": schema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(0),
 				MarkdownDescription: "DHCP Class of Service",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.Between(0, 7),
 				},
@@ -264,8 +284,10 @@ func (r *wanResource) Schema(
 			"dhcpv6_cos": schema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(0),
 				MarkdownDescription: "DHCPv6 Class of Service",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.Between(0, 7),
 				},
@@ -295,8 +317,10 @@ func (r *wanResource) Schema(
 			"dns_preference": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("auto"),
 				MarkdownDescription: "DNS preference (auto, manual)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "manual"),
 				},
@@ -304,8 +328,10 @@ func (r *wanResource) Schema(
 			"ipv6_dns_preference": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("auto"),
 				MarkdownDescription: "IPv6 DNS preference (auto, manual)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "manual"),
 				},
@@ -313,8 +339,10 @@ func (r *wanResource) Schema(
 			"dhcpv6_pd_size": schema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(56),
 				MarkdownDescription: "DHCPv6 prefix delegation size",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.Between(48, 64),
 				},
@@ -322,8 +350,10 @@ func (r *wanResource) Schema(
 			"dhcpv6_pd_size_auto": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(true),
 				MarkdownDescription: "Whether DHCPv6 PD size is automatic",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dhcpv6_options": schema.ListNestedAttribute{
 				Optional:            true,
@@ -347,10 +377,12 @@ func (r *wanResource) Schema(
 			"ipv6_wan_delegation_type": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("pd"),
-				MarkdownDescription: "IPv6 WAN delegation type (pd, static)",
+				MarkdownDescription: "IPv6 WAN delegation type (pd, single_network, none)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
-					stringvalidator.OneOf("pd", "static"),
+					stringvalidator.OneOf("pd", "single_network", "none"),
 				},
 			},
 			"smartq": schema.SingleNestedAttribute{
@@ -376,8 +408,10 @@ func (r *wanResource) Schema(
 			"upnp_enabled": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
 				MarkdownDescription: "Whether UPnP is enabled",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"upnp_wan_interface": schema.StringAttribute{
 				Optional:            true,
@@ -386,20 +420,26 @@ func (r *wanResource) Schema(
 			"upnp_nat_pmp_enabled": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
 				MarkdownDescription: "Whether UPnP NAT-PMP is enabled",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"upnp_secure_mode": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
 				MarkdownDescription: "Whether UPnP secure mode is enabled",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"load_balance_type": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("failover-only"),
 				MarkdownDescription: "Load balance type (failover-only, weighted)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("failover-only", "weighted"),
 				},
@@ -407,8 +447,10 @@ func (r *wanResource) Schema(
 			"load_balance_weight": schema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(50),
 				MarkdownDescription: "Load balance weight",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.Between(1, 100),
 				},
@@ -416,8 +458,10 @@ func (r *wanResource) Schema(
 			"failover_priority": schema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(1),
 				MarkdownDescription: "Failover priority",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.Between(1, 10),
 				},
@@ -425,8 +469,10 @@ func (r *wanResource) Schema(
 			"igmp_proxy_for": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("none"),
 				MarkdownDescription: "IGMP proxy for (none, lan, guest)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("none", "lan", "guest"),
 				},
@@ -434,14 +480,18 @@ func (r *wanResource) Schema(
 			"igmp_proxy_upstream": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
 				MarkdownDescription: "Whether IGMP proxy upstream is enabled",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"report_wan_event": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
 				MarkdownDescription: "Whether to report WAN events",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:            true,
@@ -537,6 +587,43 @@ func (r *wanResource) Create(
 
 	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
+		// If a WAN configuration already exists for this network group,
+		// adopt the existing one and update it with the planned configuration.
+		if strings.Contains(err.Error(), "WanConfigurationForNetworkGroupAlreadyExists") {
+			createdNetwork, err = r.adoptExistingWAN(ctx, site, network)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Client Error",
+					fmt.Sprintf("Unable to adopt existing WAN network, got error: %s", err),
+				)
+				return
+			}
+
+			// For adoption: read the existing WAN's state, then overlay with
+			// only the values the user explicitly configured (from req.Config,
+			// which has null for fields not set in HCL, unlike req.Plan which
+			// has defaults applied).
+			var config wanResourceModel
+			resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			// Start with the adopted WAN's actual state
+			var state wanResourceModel
+			diags = r.networkToModel(ctx, createdNetwork, &state, site)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			// Overlay explicit config values onto the API state
+			r.overlayConfig(&state, &config, &plan)
+
+			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Client Error",
 			fmt.Sprintf("Unable to create WAN network, got error: %s", err),
@@ -544,15 +631,160 @@ func (r *wanResource) Create(
 		return
 	}
 
-	// Convert back to model
-	diags = r.networkToModel(ctx, createdNetwork, &plan, site)
+	// For normal creation, read the API response into a fresh model
+	// (not the plan, which may have unknown values for Computed fields).
+	var config wanResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var state wanResourceModel
+	diags = r.networkToModel(ctx, createdNetwork, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
+	// Overlay explicit config values onto the API state
+	r.overlayConfig(&state, &config, &plan)
+
 	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// adoptExistingWAN finds the existing WAN network in the given network group and updates it.
+func (r *wanResource) adoptExistingWAN(
+	ctx context.Context,
+	site string,
+	network *unifi.Network,
+) (*unifi.Network, error) {
+	networks, err := r.client.ListNetwork(ctx, site)
+	if err != nil {
+		return nil, fmt.Errorf("listing networks: %w", err)
+	}
+
+	var existing *unifi.Network
+	for _, n := range networks {
+		if n.Purpose == unifi.PurposeWAN && n.WANNetworkGroup != nil &&
+			*n.WANNetworkGroup == "WAN" {
+			existing = &n
+			break
+		}
+	}
+	if existing == nil {
+		return nil, fmt.Errorf("existing WAN network not found despite creation conflict")
+	}
+
+	network.ID = existing.ID
+	return r.client.UpdateNetwork(ctx, site, network)
+}
+
+// overlayConfig applies only explicitly-configured values from config onto state.
+// The config has null for fields not set in HCL; plan has defaults applied.
+// For non-null config fields, we use the plan value (which includes any validation/transform).
+// For null config fields, we keep the state value (from the API).
+func (r *wanResource) overlayConfig(
+	state *wanResourceModel,
+	config *wanResourceModel,
+	plan *wanResourceModel,
+) {
+	if !config.Name.IsNull() {
+		state.Name = plan.Name
+	}
+	if !config.Type.IsNull() {
+		state.Type = plan.Type
+	}
+	if !config.TypeV6.IsNull() {
+		state.TypeV6 = plan.TypeV6
+	}
+	if !config.Vlan.IsNull() {
+		state.Vlan = plan.Vlan
+	}
+	if !config.EgressQoS.IsNull() {
+		state.EgressQoS = plan.EgressQoS
+	}
+	if !config.DHCPCoS.IsNull() {
+		state.DHCPCoS = plan.DHCPCoS
+	}
+	if !config.DHCPV6CoS.IsNull() {
+		state.DHCPV6CoS = plan.DHCPV6CoS
+	}
+	if !config.DNS1.IsNull() {
+		state.DNS1 = plan.DNS1
+	}
+	if !config.DNS2.IsNull() {
+		state.DNS2 = plan.DNS2
+	}
+	if !config.IPv6DNS1.IsNull() {
+		state.IPv6DNS1 = plan.IPv6DNS1
+	}
+	if !config.IPv6DNS2.IsNull() {
+		state.IPv6DNS2 = plan.IPv6DNS2
+	}
+	if !config.DNSPreference.IsNull() {
+		state.DNSPreference = plan.DNSPreference
+	}
+	if !config.IPv6DNSPreference.IsNull() {
+		state.IPv6DNSPreference = plan.IPv6DNSPreference
+	}
+	if !config.DHCPV6PDSize.IsNull() {
+		state.DHCPV6PDSize = plan.DHCPV6PDSize
+	}
+	if !config.DHCPV6PDSizeAuto.IsNull() {
+		state.DHCPV6PDSizeAuto = plan.DHCPV6PDSizeAuto
+	}
+	if !config.IPv6WANDelegationType.IsNull() {
+		state.IPv6WANDelegationType = plan.IPv6WANDelegationType
+	}
+	if !config.SmartQ.IsNull() {
+		state.SmartQ = plan.SmartQ
+	}
+	if !config.UPnPEnabled.IsNull() {
+		state.UPnPEnabled = plan.UPnPEnabled
+	}
+	if !config.UPnPWANInterface.IsNull() {
+		state.UPnPWANInterface = plan.UPnPWANInterface
+	}
+	if !config.UPnPNatPMPEnabled.IsNull() {
+		state.UPnPNatPMPEnabled = plan.UPnPNatPMPEnabled
+	}
+	if !config.UPnPSecureMode.IsNull() {
+		state.UPnPSecureMode = plan.UPnPSecureMode
+	}
+	if !config.LoadBalanceType.IsNull() {
+		state.LoadBalanceType = plan.LoadBalanceType
+	}
+	if !config.LoadBalanceWeight.IsNull() {
+		state.LoadBalanceWeight = plan.LoadBalanceWeight
+	}
+	if !config.FailoverPriority.IsNull() {
+		state.FailoverPriority = plan.FailoverPriority
+	}
+	if !config.IGMPProxyFor.IsNull() {
+		state.IGMPProxyFor = plan.IGMPProxyFor
+	}
+	if !config.IGMPProxyUpstream.IsNull() {
+		state.IGMPProxyUpstream = plan.IGMPProxyUpstream
+	}
+	if !config.ReportWANEvent.IsNull() {
+		state.ReportWANEvent = plan.ReportWANEvent
+	}
+	if !config.Enabled.IsNull() {
+		state.Enabled = plan.Enabled
+	}
+	if !config.DHCPOptions.IsNull() {
+		state.DHCPOptions = plan.DHCPOptions
+	}
+	if !config.DHCPV6Options.IsNull() {
+		state.DHCPV6Options = plan.DHCPV6Options
+	}
+	if !config.IPAliases.IsNull() {
+		state.IPAliases = plan.IPAliases
+	}
+	if !config.ProviderCapabilities.IsNull() {
+		state.ProviderCapabilities = plan.ProviderCapabilities
+	}
 }
 
 func (r *wanResource) Read(
@@ -793,6 +1025,10 @@ func (r *wanResource) Delete(
 	networkID := state.ID.ValueString()
 	err := r.client.DeleteNetwork(ctx, site, networkID, networkName)
 	if err != nil {
+		// WAN networks cannot be deleted from the controller; removing from state only.
+		if strings.Contains(err.Error(), "NoDelete") {
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Client Error",
 			fmt.Sprintf("Unable to delete WAN network, got error: %s", err),
@@ -823,6 +1059,8 @@ func (r *wanResource) ImportState(
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
+// Only fields with known values are set on the Network struct; null/unknown
+// fields are left as nil so marshalWAN omits them via omitempty.
 func (r *wanResource) modelToNetwork(
 	ctx context.Context,
 	model *wanResourceModel,
@@ -834,19 +1072,44 @@ func (r *wanResource) modelToNetwork(
 		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
 		WANNetworkGroup: util.Ptr("WAN"),  // Statically set to "WAN"
 		HiddenID:        "WAN",            // Statically set to "WAN"
-		WANType:         model.Type.ValueStringPointer(),
-		WANTypeV6:       model.TypeV6.ValueStringPointer(),
+		Enabled:         model.Enabled.ValueBool(),
+	}
 
-		WANDHCPCos:   model.DHCPCoS.ValueInt64Pointer(),
-		WANDHCPv6Cos: model.DHCPV6CoS.ValueInt64Pointer(),
+	// WAN Type — type has a Default so it's always known;
+	// type_v6 may be unknown on Create.
+	if !model.Type.IsNull() && !model.Type.IsUnknown() {
+		network.WANType = model.Type.ValueStringPointer()
+	}
+	if !model.TypeV6.IsNull() && !model.TypeV6.IsUnknown() {
+		network.WANTypeV6 = model.TypeV6.ValueStringPointer()
+	}
 
-		// DNS Settings
-		WANDNS1:              model.DNS1.ValueStringPointer(),
-		WANDNS2:              model.DNS2.ValueStringPointer(),
-		WANIPV6DNS1:          model.IPv6DNS1.ValueStringPointer(),
-		WANIPV6DNS2:          model.IPv6DNS2.ValueStringPointer(),
-		WANDNSPreference:     model.DNSPreference.ValueStringPointer(),
-		WANIPV6DNSPreference: model.IPv6DNSPreference.ValueStringPointer(),
+	// DHCP CoS
+	if !model.DHCPCoS.IsNull() && !model.DHCPCoS.IsUnknown() {
+		network.WANDHCPCos = model.DHCPCoS.ValueInt64Pointer()
+	}
+	if !model.DHCPV6CoS.IsNull() && !model.DHCPV6CoS.IsUnknown() {
+		network.WANDHCPv6Cos = model.DHCPV6CoS.ValueInt64Pointer()
+	}
+
+	// DNS Settings
+	if !model.DNS1.IsNull() && !model.DNS1.IsUnknown() {
+		network.WANDNS1 = model.DNS1.ValueStringPointer()
+	}
+	if !model.DNS2.IsNull() && !model.DNS2.IsUnknown() {
+		network.WANDNS2 = model.DNS2.ValueStringPointer()
+	}
+	if !model.IPv6DNS1.IsNull() && !model.IPv6DNS1.IsUnknown() {
+		network.WANIPV6DNS1 = model.IPv6DNS1.ValueStringPointer()
+	}
+	if !model.IPv6DNS2.IsNull() && !model.IPv6DNS2.IsUnknown() {
+		network.WANIPV6DNS2 = model.IPv6DNS2.ValueStringPointer()
+	}
+	if !model.DNSPreference.IsNull() && !model.DNSPreference.IsUnknown() {
+		network.WANDNSPreference = model.DNSPreference.ValueStringPointer()
+	}
+	if !model.IPv6DNSPreference.IsNull() && !model.IPv6DNSPreference.IsUnknown() {
+		network.WANIPV6DNSPreference = model.IPv6DNSPreference.ValueStringPointer()
 	}
 
 	// Handle VLAN configuration
@@ -858,10 +1121,6 @@ func (r *wanResource) modelToNetwork(
 			network.WANVLANEnabled = vlan.Enabled.ValueBool()
 			network.WANVLAN = vlan.ID.ValueInt64Pointer()
 		}
-	} else {
-		// Set defaults when VLAN is not configured
-		network.WANVLANEnabled = false
-		network.WANVLAN = util.Ptr(int64(0))
 	}
 
 	// Handle Egress QoS configuration
@@ -873,16 +1132,18 @@ func (r *wanResource) modelToNetwork(
 			network.WANEgressQOSEnabled = egressQos.Enabled.ValueBoolPointer()
 			network.WANEgressQOS = egressQos.Priority.ValueInt64Pointer()
 		}
-	} else {
-		// Set defaults when Egress QoS is not configured
-		network.WANEgressQOSEnabled = util.Ptr(false)
-		network.WANEgressQOS = util.Ptr(int64(0))
 	}
 
 	// DHCPv6 Settings
-	network.WANDHCPv6PDSize = model.DHCPV6PDSize.ValueInt64Pointer()
-	network.WANDHCPv6PDSizeAuto = model.DHCPV6PDSizeAuto.ValueBool()
-	network.IPV6WANDelegationType = model.IPv6WANDelegationType.ValueStringPointer()
+	if !model.DHCPV6PDSize.IsNull() && !model.DHCPV6PDSize.IsUnknown() {
+		network.WANDHCPv6PDSize = model.DHCPV6PDSize.ValueInt64Pointer()
+	}
+	if !model.DHCPV6PDSizeAuto.IsNull() && !model.DHCPV6PDSizeAuto.IsUnknown() {
+		network.WANDHCPv6PDSizeAuto = model.DHCPV6PDSizeAuto.ValueBool()
+	}
+	if !model.IPv6WANDelegationType.IsNull() && !model.IPv6WANDelegationType.IsUnknown() {
+		network.IPV6WANDelegationType = model.IPv6WANDelegationType.ValueStringPointer()
+	}
 
 	// Convert DHCPv6 options list
 	if !model.DHCPV6Options.IsNull() && !model.DHCPV6Options.IsUnknown() {
@@ -909,31 +1170,45 @@ func (r *wanResource) modelToNetwork(
 			network.WANSmartQUpRate = smartq.UpRate.ValueInt64Pointer()
 			network.WANSmartQDownRate = smartq.DownRate.ValueInt64Pointer()
 		}
-	} else {
-		// Set defaults when Smart Queue is not configured
-		network.WANSmartQEnabled = false
-		network.WANSmartQUpRate = nil
-		network.WANSmartQDownRate = nil
 	}
 
 	// UPnP Settings
-	network.UPnPLanEnabled = model.UPnPEnabled.ValueBool()
-	network.UPnPWANInterface = model.UPnPWANInterface.ValueStringPointer()
-	network.UPnPNatPMPEnabled = model.UPnPEnabled.ValueBoolPointer()
-	network.UPnPSecureMode = model.UPnPSecureMode.ValueBoolPointer()
+	if !model.UPnPEnabled.IsNull() && !model.UPnPEnabled.IsUnknown() {
+		network.UPnPEnabled = model.UPnPEnabled.ValueBoolPointer()
+	}
+	if !model.UPnPWANInterface.IsNull() && !model.UPnPWANInterface.IsUnknown() {
+		network.UPnPWANInterface = model.UPnPWANInterface.ValueStringPointer()
+	}
+	if !model.UPnPNatPMPEnabled.IsNull() && !model.UPnPNatPMPEnabled.IsUnknown() {
+		network.UPnPNatPMPEnabled = model.UPnPNatPMPEnabled.ValueBoolPointer()
+	}
+	if !model.UPnPSecureMode.IsNull() && !model.UPnPSecureMode.IsUnknown() {
+		network.UPnPSecureMode = model.UPnPSecureMode.ValueBoolPointer()
+	}
 
 	// Load Balance Settings
-	network.WANLoadBalanceType = model.LoadBalanceType.ValueStringPointer()
-	network.WANLoadBalanceWeight = model.LoadBalanceWeight.ValueInt64Pointer()
-	network.WANFailoverPriority = model.FailoverPriority.ValueInt64Pointer()
+	if !model.LoadBalanceType.IsNull() && !model.LoadBalanceType.IsUnknown() {
+		network.WANLoadBalanceType = model.LoadBalanceType.ValueStringPointer()
+	}
+	if !model.LoadBalanceWeight.IsNull() && !model.LoadBalanceWeight.IsUnknown() {
+		network.WANLoadBalanceWeight = model.LoadBalanceWeight.ValueInt64Pointer()
+	}
+	if !model.FailoverPriority.IsNull() && !model.FailoverPriority.IsUnknown() {
+		network.WANFailoverPriority = model.FailoverPriority.ValueInt64Pointer()
+	}
 
 	// IGMP Settings
-	network.IGMPProxyFor = model.IGMPProxyFor.ValueStringPointer()
-	network.IGMPProxyUpstream = model.IGMPProxyUpstream.ValueBool()
+	if !model.IGMPProxyFor.IsNull() && !model.IGMPProxyFor.IsUnknown() {
+		network.IGMPProxyFor = model.IGMPProxyFor.ValueStringPointer()
+	}
+	if !model.IGMPProxyUpstream.IsNull() && !model.IGMPProxyUpstream.IsUnknown() {
+		network.IGMPProxyUpstream = model.IGMPProxyUpstream.ValueBool()
+	}
 
 	// Additional Settings
-	network.ReportWANEvent = model.ReportWANEvent.ValueBool()
-	network.Enabled = model.Enabled.ValueBool()
+	if !model.ReportWANEvent.IsNull() && !model.ReportWANEvent.IsUnknown() {
+		network.ReportWANEvent = model.ReportWANEvent.ValueBool()
+	}
 
 	// Convert DHCP options list
 	if !model.DHCPOptions.IsNull() && !model.DHCPOptions.IsUnknown() {
@@ -987,9 +1262,13 @@ func (r *wanResource) networkToModel(
 	model.Site = types.StringValue(site)
 	model.Name = types.StringPointerValue(network.Name)
 
-	// WAN Type Settings
-	model.Type = types.StringPointerValue(network.WANType)
-	model.TypeV6 = types.StringPointerValue(network.WANTypeV6)
+	// WAN Type Settings — only overwrite when API returns a value
+	if network.WANType != nil {
+		model.Type = types.StringValue(*network.WANType)
+	}
+	if network.WANTypeV6 != nil {
+		model.TypeV6 = types.StringValue(*network.WANTypeV6)
+	}
 
 	// VLAN Settings
 	vlanValue := vlanModel{
@@ -1000,34 +1279,68 @@ func (r *wanResource) networkToModel(
 	diags.Append(d...)
 	model.Vlan = vlanObj
 
-	// Egress QoS Settings
-	egressQosValue := egressQosModel{
-		Enabled:  types.BoolPointerValue(network.WANEgressQOSEnabled),
-		Priority: types.Int64PointerValue(network.WANEgressQOS),
+	// Egress QoS Settings — only create/update the object if model already has it or API has data
+	hasEgressQosData := network.WANEgressQOSEnabled != nil || network.WANEgressQOS != nil
+	if !model.EgressQoS.IsNull() || hasEgressQosData {
+		var currentEgressQos egressQosModel
+		if !model.EgressQoS.IsNull() && !model.EgressQoS.IsUnknown() {
+			d := model.EgressQoS.As(ctx, &currentEgressQos, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+		}
+		if network.WANEgressQOSEnabled != nil {
+			currentEgressQos.Enabled = types.BoolValue(*network.WANEgressQOSEnabled)
+		}
+		if network.WANEgressQOS != nil {
+			currentEgressQos.Priority = types.Int64Value(*network.WANEgressQOS)
+		}
+		egressQosObj, d := types.ObjectValueFrom(
+			ctx,
+			currentEgressQos.AttributeTypes(),
+			currentEgressQos,
+		)
+		diags.Append(d...)
+		model.EgressQoS = egressQosObj
 	}
-	egressQosObj, d := types.ObjectValueFrom(ctx, egressQosValue.AttributeTypes(), egressQosValue)
-	diags.Append(d...)
-	model.EgressQoS = egressQosObj
 
-	// QoS Settings
-	model.DHCPCoS = types.Int64PointerValue(network.WANDHCPCos)
-	model.DHCPV6CoS = types.Int64PointerValue(network.WANDHCPv6Cos)
+	// QoS Settings — only overwrite when API returns a value
+	if network.WANDHCPCos != nil {
+		model.DHCPCoS = types.Int64Value(*network.WANDHCPCos)
+	}
+	if network.WANDHCPv6Cos != nil {
+		model.DHCPV6CoS = types.Int64Value(*network.WANDHCPv6Cos)
+	}
 
-	// DNS Settings
-	model.DNS1 = types.StringPointerValue(network.WANDNS1)
-	model.DNS2 = types.StringPointerValue(network.WANDNS2)
-	model.IPv6DNS1 = types.StringPointerValue(network.WANIPV6DNS1)
-	model.IPv6DNS2 = types.StringPointerValue(network.WANIPV6DNS2)
+	// DNS Settings — only overwrite when API returns a value
+	if network.WANDNS1 != nil {
+		model.DNS1 = types.StringValue(*network.WANDNS1)
+	}
+	if network.WANDNS2 != nil {
+		model.DNS2 = types.StringValue(*network.WANDNS2)
+	}
+	if network.WANIPV6DNS1 != nil {
+		model.IPv6DNS1 = types.StringValue(*network.WANIPV6DNS1)
+	}
+	if network.WANIPV6DNS2 != nil {
+		model.IPv6DNS2 = types.StringValue(*network.WANIPV6DNS2)
+	}
 
-	model.DNSPreference = types.StringPointerValue(network.WANDNSPreference)
+	// DNS Preference — only overwrite when API returns a value
+	if network.WANDNSPreference != nil {
+		model.DNSPreference = types.StringValue(*network.WANDNSPreference)
+	}
+	if network.WANIPV6DNSPreference != nil {
+		model.IPv6DNSPreference = types.StringValue(*network.WANIPV6DNSPreference)
+	}
 
-	model.IPv6DNSPreference = types.StringPointerValue(network.WANIPV6DNSPreference)
-
-	// DHCPv6 Settings
-	model.DHCPV6PDSize = types.Int64PointerValue(network.WANDHCPv6PDSize)
+	// DHCPv6 Settings — only overwrite when API returns a value
+	if network.WANDHCPv6PDSize != nil {
+		model.DHCPV6PDSize = types.Int64Value(*network.WANDHCPv6PDSize)
+	}
 	model.DHCPV6PDSizeAuto = types.BoolValue(network.WANDHCPv6PDSizeAuto)
 
-	model.IPv6WANDelegationType = types.StringPointerValue(network.IPV6WANDelegationType)
+	if network.IPV6WANDelegationType != nil {
+		model.IPv6WANDelegationType = types.StringValue(*network.IPV6WANDelegationType)
+	}
 
 	// Convert DHCPv6 options to list
 	if len(network.WANDHCPv6Options) > 0 {
@@ -1057,29 +1370,58 @@ func (r *wanResource) networkToModel(
 		model.DHCPV6Options = types.ListNull(types.ObjectType{AttrTypes: dhcpV6OptionAttrTypes})
 	}
 
-	// Smart Queue Settings
-	smartqValue := smartqModel{
-		Enabled:  types.BoolValue(network.WANSmartQEnabled),
-		UpRate:   types.Int64PointerValue(network.WANSmartQUpRate),
-		DownRate: types.Int64PointerValue(network.WANSmartQDownRate),
+	// Smart Queue Settings — only create/update the object if model already has it or API has data
+	hasSmartqData := network.WANSmartQEnabled || network.WANSmartQUpRate != nil ||
+		network.WANSmartQDownRate != nil
+	if !model.SmartQ.IsNull() || hasSmartqData {
+		var currentSmartq smartqModel
+		if !model.SmartQ.IsNull() && !model.SmartQ.IsUnknown() {
+			d := model.SmartQ.As(ctx, &currentSmartq, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+		}
+		if hasSmartqData {
+			currentSmartq.Enabled = types.BoolValue(network.WANSmartQEnabled)
+			if network.WANSmartQUpRate != nil {
+				currentSmartq.UpRate = types.Int64Value(*network.WANSmartQUpRate)
+			}
+			if network.WANSmartQDownRate != nil {
+				currentSmartq.DownRate = types.Int64Value(*network.WANSmartQDownRate)
+			}
+		}
+		smartqObj, d := types.ObjectValueFrom(ctx, currentSmartq.AttributeTypes(), currentSmartq)
+		diags.Append(d...)
+		model.SmartQ = smartqObj
 	}
-	smartqObj, d := types.ObjectValueFrom(ctx, smartqValue.AttributeTypes(), smartqValue)
-	diags.Append(d...)
-	model.SmartQ = smartqObj
 
-	// UPnP Settings
-	model.UPnPEnabled = types.BoolPointerValue(network.UPnPEnabled)
-	model.UPnPWANInterface = types.StringPointerValue(network.UPnPWANInterface)
-	model.UPnPNatPMPEnabled = types.BoolPointerValue(network.UPnPNatPMPEnabled)
-	model.UPnPSecureMode = types.BoolPointerValue(network.UPnPSecureMode)
+	// UPnP Settings — only overwrite when API returns a value
+	if network.UPnPEnabled != nil {
+		model.UPnPEnabled = types.BoolValue(*network.UPnPEnabled)
+	}
+	if network.UPnPWANInterface != nil {
+		model.UPnPWANInterface = types.StringValue(*network.UPnPWANInterface)
+	}
+	if network.UPnPNatPMPEnabled != nil {
+		model.UPnPNatPMPEnabled = types.BoolValue(*network.UPnPNatPMPEnabled)
+	}
+	if network.UPnPSecureMode != nil {
+		model.UPnPSecureMode = types.BoolValue(*network.UPnPSecureMode)
+	}
 
-	// Load Balance Settings
-	model.LoadBalanceType = types.StringPointerValue(network.WANLoadBalanceType)
-	model.LoadBalanceWeight = types.Int64PointerValue(network.WANLoadBalanceWeight)
-	model.FailoverPriority = types.Int64PointerValue(network.WANFailoverPriority)
+	// Load Balance Settings — only overwrite when API returns a value
+	if network.WANLoadBalanceType != nil {
+		model.LoadBalanceType = types.StringValue(*network.WANLoadBalanceType)
+	}
+	if network.WANLoadBalanceWeight != nil {
+		model.LoadBalanceWeight = types.Int64Value(*network.WANLoadBalanceWeight)
+	}
+	if network.WANFailoverPriority != nil {
+		model.FailoverPriority = types.Int64Value(*network.WANFailoverPriority)
+	}
 
-	// IGMP Settings
-	model.IGMPProxyFor = types.StringPointerValue(network.IGMPProxyFor)
+	// IGMP Settings — only overwrite when API returns a value
+	if network.IGMPProxyFor != nil {
+		model.IGMPProxyFor = types.StringValue(*network.IGMPProxyFor)
+	}
 	model.IGMPProxyUpstream = types.BoolValue(network.IGMPProxyUpstream)
 
 	// Additional Settings
@@ -1125,38 +1467,127 @@ func (r *wanResource) networkToModel(
 		model.IPAliases = types.ListNull(types.StringType)
 	}
 
-	// Provider Capabilities
-	if network.WANProviderCapabilities != nil {
-		if network.WANProviderCapabilities.DownloadKilobitsPerSecond != nil ||
-			network.WANProviderCapabilities.UploadKilobitsPerSecond != nil {
-			providerCapsAttrTypes := map[string]attr.Type{
-				"download_kilobits_per_second": types.Int64Type,
-				"upload_kilobits_per_second":   types.Int64Type,
-			}
-			providerCapsValues := map[string]attr.Value{
-				"download_kilobits_per_second": types.Int64PointerValue(
-					network.WANProviderCapabilities.DownloadKilobitsPerSecond,
-				),
-				"upload_kilobits_per_second": types.Int64PointerValue(
-					network.WANProviderCapabilities.UploadKilobitsPerSecond,
-				),
-			}
-			model.ProviderCapabilities, diags = types.ObjectValue(
-				providerCapsAttrTypes,
-				providerCapsValues,
-			)
-		} else {
-			model.ProviderCapabilities = types.ObjectNull(map[string]attr.Type{
-				"download_kilobits_per_second": types.Int64Type,
-				"upload_kilobits_per_second":   types.Int64Type,
-			})
-		}
-	} else {
-		model.ProviderCapabilities = types.ObjectNull(map[string]attr.Type{
+	// Provider Capabilities — only overwrite when API returns data
+	if network.WANProviderCapabilities != nil &&
+		(network.WANProviderCapabilities.DownloadKilobitsPerSecond != nil ||
+			network.WANProviderCapabilities.UploadKilobitsPerSecond != nil) {
+		providerCapsAttrTypes := map[string]attr.Type{
 			"download_kilobits_per_second": types.Int64Type,
 			"upload_kilobits_per_second":   types.Int64Type,
-		})
+		}
+		providerCapsValues := map[string]attr.Value{
+			"download_kilobits_per_second": types.Int64PointerValue(
+				network.WANProviderCapabilities.DownloadKilobitsPerSecond,
+			),
+			"upload_kilobits_per_second": types.Int64PointerValue(
+				network.WANProviderCapabilities.UploadKilobitsPerSecond,
+			),
+		}
+		var d diag.Diagnostics
+		model.ProviderCapabilities, d = types.ObjectValue(
+			providerCapsAttrTypes,
+			providerCapsValues,
+		)
+		diags.Append(d...)
 	}
+	// If API returns nil, preserve existing model.ProviderCapabilities
+
+	// Apply schema defaults for fields that are still null/unknown (handles import case
+	// where there's no previous state to preserve).
+	applyWANDefaults(model)
 
 	return diags
+}
+
+// applyWANDefaults ensures fields that are still null or unknown have properly-typed values.
+// For complex types (objects, lists), this sets typed null values so the framework can
+// distinguish between "not configured" and "configured as empty" correctly.
+// For scalar fields, unknown values are converted to null (which is valid for Computed
+// fields). This prevents "unknown value after apply" errors.
+func applyWANDefaults(model *wanResourceModel) {
+	// Convert any remaining unknown scalars to null — unknown is not valid after apply.
+	if model.Type.IsUnknown() {
+		model.Type = types.StringNull()
+	}
+	if model.TypeV6.IsUnknown() {
+		model.TypeV6 = types.StringNull()
+	}
+	if model.DHCPCoS.IsUnknown() {
+		model.DHCPCoS = types.Int64Null()
+	}
+	if model.DHCPV6CoS.IsUnknown() {
+		model.DHCPV6CoS = types.Int64Null()
+	}
+	if model.DNSPreference.IsUnknown() {
+		model.DNSPreference = types.StringNull()
+	}
+	if model.IPv6DNSPreference.IsUnknown() {
+		model.IPv6DNSPreference = types.StringNull()
+	}
+	if model.DHCPV6PDSize.IsUnknown() {
+		model.DHCPV6PDSize = types.Int64Null()
+	}
+	if model.DHCPV6PDSizeAuto.IsUnknown() {
+		model.DHCPV6PDSizeAuto = types.BoolNull()
+	}
+	if model.IPv6WANDelegationType.IsUnknown() {
+		model.IPv6WANDelegationType = types.StringNull()
+	}
+	if model.UPnPEnabled.IsUnknown() {
+		model.UPnPEnabled = types.BoolNull()
+	}
+	if model.UPnPNatPMPEnabled.IsUnknown() {
+		model.UPnPNatPMPEnabled = types.BoolNull()
+	}
+	if model.UPnPSecureMode.IsUnknown() {
+		model.UPnPSecureMode = types.BoolNull()
+	}
+	if model.LoadBalanceType.IsUnknown() {
+		model.LoadBalanceType = types.StringNull()
+	}
+	if model.LoadBalanceWeight.IsUnknown() {
+		model.LoadBalanceWeight = types.Int64Null()
+	}
+	if model.FailoverPriority.IsUnknown() {
+		model.FailoverPriority = types.Int64Null()
+	}
+	if model.IGMPProxyFor.IsUnknown() {
+		model.IGMPProxyFor = types.StringNull()
+	}
+	if model.IGMPProxyUpstream.IsUnknown() {
+		model.IGMPProxyUpstream = types.BoolNull()
+	}
+	if model.ReportWANEvent.IsUnknown() {
+		model.ReportWANEvent = types.BoolNull()
+	}
+	if model.Enabled.IsUnknown() {
+		model.Enabled = types.BoolNull()
+	}
+	// Nested objects need properly-typed null values
+	if model.EgressQoS.IsNull() || model.EgressQoS.IsUnknown() {
+		model.EgressQoS = types.ObjectNull(egressQosModel{}.AttributeTypes())
+	}
+	if model.SmartQ.IsNull() || model.SmartQ.IsUnknown() {
+		model.SmartQ = types.ObjectNull(smartqModel{}.AttributeTypes())
+	}
+	if model.Vlan.IsNull() || model.Vlan.IsUnknown() {
+		model.Vlan = types.ObjectNull(vlanModel{}.AttributeTypes())
+	}
+	if model.ProviderCapabilities.IsNull() || model.ProviderCapabilities.IsUnknown() {
+		model.ProviderCapabilities = types.ObjectNull(providerCapabilitiesModel{}.AttributeTypes())
+	}
+	// List types need properly-typed null values
+	if model.DHCPOptions.IsNull() || model.DHCPOptions.IsUnknown() {
+		model.DHCPOptions = types.ListNull(
+			types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()},
+		)
+	}
+	if model.DHCPV6Options.IsNull() || model.DHCPV6Options.IsUnknown() {
+		model.DHCPV6Options = types.ListNull(
+			types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()},
+		)
+	}
+	if model.IPAliases.IsNull() || model.IPAliases.IsUnknown() {
+		model.IPAliases = types.ListNull(types.StringType)
+	}
 }
