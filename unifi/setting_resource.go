@@ -2,8 +2,12 @@ package unifi
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
@@ -201,22 +206,38 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "RADIUS accounting port.",
 						Optional:            true,
 						Computed:            true,
+						Validators: []validator.Int64{
+							int64validator.Between(1, 65535),
+						},
 					},
 					"auth_port": schema.Int64Attribute{
 						MarkdownDescription: "RADIUS authentication port.",
 						Optional:            true,
 						Computed:            true,
+						Validators: []validator.Int64{
+							int64validator.Between(1, 65535),
+						},
 					},
 					"interim_update_interval": schema.Int64Attribute{
 						MarkdownDescription: "Interim update interval in seconds.",
 						Optional:            true,
 						Computed:            true,
+						Validators: []validator.Int64{
+							int64validator.Between(60, 86400),
+						},
 					},
 					"secret": schema.StringAttribute{
 						MarkdownDescription: "RADIUS shared secret.",
 						Optional:            true,
 						Computed:            true,
 						Sensitive:           true,
+						Validators: []validator.String{
+							stringvalidator.LengthBetween(1, 48),
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^[^\\\ "']+$`),
+								"must not contain backslashes, spaces, single quotes, or double quotes",
+							),
+						},
 					},
 				},
 			},
@@ -501,7 +522,18 @@ func (r *settingResource) Create(
 			return
 		}
 
-		setting := r.radiusModelToSetting(ctx, &radius)
+		// Read current remote settings as the base so unset fields keep their remote values
+		_, currentRadius, err := ui.GetSetting[*settings.Radius](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading Radius Setting", err.Error())
+				return
+			}
+			currentRadius = &settings.Radius{}
+		}
+
+		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Radius Setting", err.Error())
 			return
@@ -597,7 +629,18 @@ func (r *settingResource) Update(
 			return
 		}
 
-		setting := r.radiusModelToSetting(ctx, &radius)
+		// Read current remote settings as the base so unset fields keep their remote values
+		_, currentRadius, err := ui.GetSetting[*settings.Radius](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading Radius Setting", err.Error())
+				return
+			}
+			currentRadius = &settings.Radius{}
+		}
+
+		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Radius Setting", err.Error())
 			return
@@ -965,14 +1008,23 @@ func (r *settingResource) mgmtSettingToModel(
 func (r *settingResource) radiusModelToSetting(
 	_ context.Context,
 	model *settingRadiusModel,
+	base *settings.Radius,
 ) *settings.Radius {
-	setting := &settings.Radius{}
+	setting := base
 
-	setting.AccountingEnabled = model.AccountingEnabled.ValueBool()
-	setting.AcctPort = model.AcctPort.ValueInt64Pointer()
-	setting.AuthPort = model.AuthPort.ValueInt64Pointer()
-	setting.InterimUpdateInterval = model.InterimUpdateInterval.ValueInt64Pointer()
-	if !model.Secret.IsNull() {
+	if !model.AccountingEnabled.IsNull() && !model.AccountingEnabled.IsUnknown() {
+		setting.AccountingEnabled = model.AccountingEnabled.ValueBool()
+	}
+	if !model.AcctPort.IsNull() && !model.AcctPort.IsUnknown() {
+		setting.AcctPort = model.AcctPort.ValueInt64Pointer()
+	}
+	if !model.AuthPort.IsNull() && !model.AuthPort.IsUnknown() {
+		setting.AuthPort = model.AuthPort.ValueInt64Pointer()
+	}
+	if !model.InterimUpdateInterval.IsNull() && !model.InterimUpdateInterval.IsUnknown() {
+		setting.InterimUpdateInterval = model.InterimUpdateInterval.ValueInt64Pointer()
+	}
+	if !model.Secret.IsNull() && !model.Secret.IsUnknown() {
 		setting.XSecret = model.Secret.ValueString()
 	}
 
