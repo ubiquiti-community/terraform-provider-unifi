@@ -177,12 +177,12 @@ type networkResourceModel struct {
 	GatewayType             types.String         `tfsdk:"gateway_type"`
 	IPv6InterfaceType       types.String         `tfsdk:"ipv6_interface_type"`
 	LteLanEnabled           types.Bool           `tfsdk:"lte_lan_enabled"`
-	IPAliases          types.List           `tfsdk:"ip_aliases"`
-	IPv6Aliases        types.List           `tfsdk:"ipv6_aliases"`
-	ThirdPartyGateway  types.Bool           `tfsdk:"third_party_gateway"`
-	DhcpGuarding       types.Object         `tfsdk:"dhcp_guarding"`
-	DhcpServer         types.Object         `tfsdk:"dhcp_server"`
-	DhcpRelay          types.Object         `tfsdk:"dhcp_relay"`
+	IPAliases               types.List           `tfsdk:"ip_aliases"`
+	IPv6Aliases             types.List           `tfsdk:"ipv6_aliases"`
+	ThirdPartyGateway       types.Bool           `tfsdk:"third_party_gateway"`
+	DhcpGuarding            types.Object         `tfsdk:"dhcp_guarding"`
+	DhcpServer              types.Object         `tfsdk:"dhcp_server"`
+	DhcpRelay               types.Object         `tfsdk:"dhcp_relay"`
 }
 
 func (r *networkResource) Metadata(
@@ -836,7 +836,8 @@ func (r *networkResource) modelToNetwork(
 			network.DHCPguardEnabled = dhcpGuarding.Enabled.ValueBool()
 
 			// Map servers to dhcpd_ip_1..3 when third_party_gateway is enabled
-			if model.ThirdPartyGateway.ValueBool() && !dhcpGuarding.Servers.IsNull() && !dhcpGuarding.Servers.IsUnknown() {
+			if model.ThirdPartyGateway.ValueBool() && !dhcpGuarding.Servers.IsNull() &&
+				!dhcpGuarding.Servers.IsUnknown() {
 				var servers []string
 				d := dhcpGuarding.Servers.ElementsAs(ctx, &servers, false)
 				diags.Append(d...)
@@ -1187,7 +1188,11 @@ func (r *networkResource) networkToModel(
 			Enabled: types.BoolValue(network.DHCPguardEnabled),
 			Servers: serversList,
 		}
-		dhcpGuardingObj, d := types.ObjectValueFrom(ctx, dhcpGuardingValue.AttributeTypes(), dhcpGuardingValue)
+		dhcpGuardingObj, d := types.ObjectValueFrom(
+			ctx,
+			dhcpGuardingValue.AttributeTypes(),
+			dhcpGuardingValue,
+		)
 		diags.Append(d...)
 		model.DhcpGuarding = dhcpGuardingObj
 	} else {
