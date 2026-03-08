@@ -9,14 +9,15 @@ data "unifi_client_group" "default" {
 }
 
 resource "unifi_network" "vlan" {
-  name    = "wifi-vlan"
-  purpose = "corporate"
+  name   = "wifi-vlan"
+  subnet = "10.0.0.1/24"
+  vlan   = var.vlan_id
 
-  subnet       = "10.0.0.1/24"
-  vlan_id      = var.vlan_id
-  dhcp_start   = "10.0.0.6"
-  dhcp_stop    = "10.0.0.254"
-  dhcp_enabled = true
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.0.6"
+    stop    = "10.0.0.254"
+  }
 }
 
 resource "unifi_wlan" "wifi" {

@@ -230,7 +230,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
         NewClientGroupFrameworkResource,
         NewWANResource,
         NewWLANFrameworkResource,
-        NewVirtualNetworkResource,
+        NewNetworkResource,
     }
 }
 
@@ -431,7 +431,7 @@ The Plugin Framework provides nested attribute types that are preferred over obj
 
 ### Example: Virtual Network with Nested DHCP Configuration
 
-See [virtual_network_resource.go](../unifi/virtual_network_resource.go) for a comprehensive example of nested objects.
+See [network_resource.go](../unifi/network_resource.go) for a comprehensive example of nested objects.
 
 #### Schema Definition
 
@@ -472,7 +472,7 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
     }
 }
 
-type virtualNetworkResourceModel struct {
+type networkResourceModel struct {
     ID         types.String `tfsdk:"id"`
     Site       types.String `tfsdk:"site"`
     Name       types.String `tfsdk:"name"`
@@ -528,7 +528,7 @@ Nested Terraform objects provide a better user experience:
 
 **Terraform Configuration:**
 ```hcl
-resource "unifi_virtual_network" "example" {
+resource "unifi_network" "example" {
   name   = "example"
   subnet = "10.0.0.0/24"
   
@@ -553,7 +553,7 @@ resource "unifi_virtual_network" "example" {
 ```go
 func modelToNetwork(
     ctx context.Context,
-    model *virtualNetworkResourceModel,
+    model *networkResourceModel,
 ) (*unifi.Network, diag.Diagnostics) {
     var diags diag.Diagnostics
     
@@ -624,9 +624,9 @@ func modelToNetwork(
 func networkToModel(
     ctx context.Context,
     network *unifi.Network,
-    model *virtualNetworkResourceModel,
+    model *networkResourceModel,
     site string,
-    previousModel *virtualNetworkResourceModel,
+    previousModel *networkResourceModel,
 ) diag.Diagnostics {
     var diags diag.Diagnostics
     

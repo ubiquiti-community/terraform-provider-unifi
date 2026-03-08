@@ -2,6 +2,67 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.41.20] - 2026-03-08
+
+### 💥 Breaking Changes
+
+#### `unifi_network` Resource Replaced
+
+The `unifi_network` resource has been replaced with the modernized `unifi_virtual_network` implementation, which is now renamed to `unifi_network`.
+
+**What changed:**
+
+* The old `unifi_network` resource (flat attribute schema with `purpose`, `vlan_id`, `dhcp_start`, `dhcp_stop`, etc.) has been removed
+* The `unifi_virtual_network` resource has been renamed to `unifi_network`
+* The new `unifi_network` resource uses nested attributes (`dhcp_server`, `dhcp_relay`, `dhcp_guarding`) instead of flat prefixed fields
+* The `unifi_network` data source is unchanged
+
+**Migration guide:**
+
+* Replace `purpose = "corporate"` — the new resource defaults to corporate purpose
+* Replace `vlan_id` with `vlan`
+* Replace `subnet` value format — now uses `cidrtypes.IPv4Prefix` (e.g., `"192.168.1.1/24"`)
+* Replace flat DHCP fields (`dhcp_start`, `dhcp_stop`, `dhcp_enabled`) with nested `dhcp_server` block
+* Replace `purpose = "vlan-only"` with `third_party_gateway = true`
+* Remove `purpose`, `network_group`, and `vlan_enabled` attributes (no longer needed)
+* WAN-specific attributes are no longer part of this resource — use `unifi_wan` instead
+
+**Example migration:**
+
+```hcl
+# Before (old unifi_network)
+resource "unifi_network" "vlan" {
+  name         = "my-vlan"
+  purpose      = "corporate"
+  subnet       = "10.0.0.1/24"
+  vlan_id      = 10
+  dhcp_start   = "10.0.0.6"
+  dhcp_stop    = "10.0.0.254"
+  dhcp_enabled = true
+}
+
+# After (new unifi_network)
+resource "unifi_network" "vlan" {
+  name   = "my-vlan"
+  subnet = "10.0.0.1/24"
+  vlan   = 10
+
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.0.6"
+    stop    = "10.0.0.254"
+  }
+}
+```
+
+**Other changes:**
+
+* **Removed**: Old `unifi_network` resource and tests
+* **Updated**: Examples for `unifi_client`, `unifi_port_profile`, and `unifi_wlan` to use new schema
+* **Updated**: Documentation regenerated with new schema and examples
+
+---
+
 ## [v0.41.19] - 2026-03-07
 
 ### 🔧 Improvements
@@ -13,12 +74,12 @@ This release adds bulk import capability to the `unifi_client` resource, buildin
 **Changes**
 
 * **New Example**: Added bulk import example (`examples/resources/unifi_client/bulk-import.tf`)
-  - Demonstrates how to manage multiple client devices using a tfquery data file
+  * Demonstrates how to manage multiple client devices using a tfquery data file
 * **New Example**: Added bulk import tfquery configuration (`examples/resources/unifi_client/bulk-import.tfquery.hcl`)
 * **Improved**: Enhanced `unifi_client` resource with additional attributes and fixes
 * **Docs**: Updated client list resource and port action documentation
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.18...v0.41.19
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.18...v0.41.19>
 
 ---
 
@@ -34,9 +95,9 @@ This release introduces two new list-style data sources for querying UniFi netwo
 
 A new list data source that provides a rich, queryable view of all UniFi network clients.
 
-- Query and filter clients by various attributes
-- Supports bulk operations and data-driven configurations
-- Includes comprehensive tests
+* Query and filter clients by various attributes
+* Supports bulk operations and data-driven configurations
+* Includes comprehensive tests
 
 ##### `unifi_network_members_group_list` (Data Source)
 
@@ -49,7 +110,7 @@ A new data source for listing network member groups.
 * **Fixed**: Minor fixes to `unifi_virtual_network_resource` and `unifi_vpn_client_resource`
 * **Added**: New data source examples for `unifi_client_list` and `unifi_network_members_group_list`
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.17...v0.41.18
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.17...v0.41.18>
 
 ---
 
@@ -61,7 +122,7 @@ A new data source for listing network member groups.
 
 * **Fixed**: `bug: Fix identity in dynamic dns` — corrected the identity field in the Dynamic DNS resource that was broken since v0.41.13
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.16...v0.41.17
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.16...v0.41.17>
 
 ---
 
@@ -73,7 +134,7 @@ A new data source for listing network member groups.
 
 * **Fixed**: Additional fixes to the `unifi_client` resource following the v0.41.15 update
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.15...v0.41.16
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.15...v0.41.16>
 
 ---
 
@@ -85,7 +146,7 @@ A new data source for listing network member groups.
 
 * **Fixed**: Updated `unifi_client` resource to resolve issues introduced in v0.41.13
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.14...v0.41.15
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.14...v0.41.15>
 
 ---
 
@@ -97,7 +158,7 @@ A new data source for listing network member groups.
 
 * **Fixed**: `bug: Fix Network Data Source` — resolved a regression in the `unifi_network` data source introduced in v0.41.13
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.13...v0.41.14
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.13...v0.41.14>
 
 ---
 
@@ -117,13 +178,14 @@ This release updates the go-unifi client library and significantly refactors the
 * **Fixed**: Minor fixes to `setting_resource.go`
 
 > ⚠️ **Warning**: This release introduced regressions that were fixed in v0.41.14–v0.41.17:
-> - **Network Data Source** had issues (fixed in v0.41.14)
-> - **UniFi Client** had issues (fixed in v0.41.15–v0.41.16)
-> - **Dynamic DNS** identity field was broken (fixed in v0.41.17)
+>
+> * **Network Data Source** had issues (fixed in v0.41.14)
+> * **UniFi Client** had issues (fixed in v0.41.15–v0.41.16)
+> * **Dynamic DNS** identity field was broken (fixed in v0.41.17)
 >
 > **Upgrade recommendation**: If upgrading from v0.41.12, skip directly to v0.41.17 or later.
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.12...v0.41.13
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.12...v0.41.13>
 
 ---
 
@@ -137,7 +199,7 @@ This release updates the go-unifi client library and significantly refactors the
 * **Fixed**: `Fix pointer` — corrected a nil pointer issue
 * **Docs**: Updated generated documentation
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.11...v0.41.12
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.11...v0.41.12>
 
 ---
 
@@ -149,7 +211,7 @@ This release updates the go-unifi client library and significantly refactors the
 
 * **Fixed**: `bug: Fix DNS port` — corrected the port used for DNS queries in the provider
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.10...v0.41.11
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.10...v0.41.11>
 
 ---
 
@@ -161,7 +223,7 @@ This release updates the go-unifi client library and significantly refactors the
 
 * **Fixed**: `bug: Fix go-unifi version` — pinned the correct go-unifi dependency version to resolve compatibility issues introduced in v0.41.9
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.9...v0.41.10
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.9...v0.41.10>
 
 ---
 
@@ -176,16 +238,16 @@ This release adds the `unifi_vpn_client` resource for WireGuard VPN configuratio
 **New Features**
 
 * **NEW**: `unifi_vpn_client` resource (`unifi/vpn_client_resource.go`, 667 lines)
-  - WireGuard VPN client configuration support
-  - Dual configuration modes:
+  * WireGuard VPN client configuration support
+  * Dual configuration modes:
     * **File mode**: Upload a complete WireGuard configuration file
     * **Manual mode**: Configure peer settings directly (public key, endpoint, allowed IPs)
-  - DNS servers support (1–2 entries required in manual mode)
-  - Auto-mode detection based on nested configuration structure
-  - Preshared key support for enhanced security
-  - Sensitive field handling for private keys and configuration content
-  - Flexible import formats: `id`, `name=<name>`, `site:id`, `site:name=<name>`
-  - Complete CRUD operations with comprehensive error handling
+  * DNS servers support (1–2 entries required in manual mode)
+  * Auto-mode detection based on nested configuration structure
+  * Preshared key support for enhanced security
+  * Sensitive field handling for private keys and configuration content
+  * Flexible import formats: `id`, `name=<name>`, `site:id`, `site:name=<name>`
+  * Complete CRUD operations with comprehensive error handling
 
 **Improvements**
 
@@ -199,13 +261,13 @@ This release adds the `unifi_vpn_client` resource for WireGuard VPN configuratio
 
 **Files Changed**
 
-- `unifi/vpn_client_resource.go` (NEW, 667 lines)
-- `unifi/vpn_client_resource_test.go` (NEW, 211 lines)
-- `unifi/virtual_network_resource_test.go` (NEW, 185 lines)
-- `unifi/wan_resource.go` (+242/-264)
-- `unifi/wlan_resource.go` (+11/-27)
+* `unifi/vpn_client_resource.go` (NEW, 667 lines)
+* `unifi/vpn_client_resource_test.go` (NEW, 211 lines)
+* `unifi/virtual_network_resource_test.go` (NEW, 185 lines)
+* `unifi/wan_resource.go` (+242/-264)
+* `unifi/wlan_resource.go` (+11/-27)
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.8...v0.41.9
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.8...v0.41.9>
 
 ---
 
@@ -218,7 +280,7 @@ This release adds the `unifi_vpn_client` resource for WireGuard VPN configuratio
 * **Updated**: `github/codeql-action` from 3.29.0 to 4.31.10 (major version bump via Dependabot)
 * **Updated**: `github.com/containerd/containerd/v2` from 2.1.4 to 2.1.5 (security patch, indirect dependency)
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.7...v0.41.8
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.7...v0.41.8>
 
 ---
 
@@ -232,7 +294,7 @@ This release adds the `unifi_vpn_client` resource for WireGuard VPN configuratio
 * **Fixed**: `feat: Fix query and actions` — resolved issues with list resource queries and action handling
 * **Fixed**: `chore: Fix formatting and generation` — corrected code formatting and regenerated provider documentation
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.6...v0.41.7
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.6...v0.41.7>
 
 ---
 
@@ -244,7 +306,7 @@ This release adds the `unifi_vpn_client` resource for WireGuard VPN configuratio
 
 * **Added**: `feat: Added Client Info` — new `unifi_client_info` data source for retrieving detailed information about a specific network client by MAC address or hostname
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.5...v0.41.6
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.5...v0.41.6>
 
 ---
 
@@ -261,9 +323,9 @@ This release fixes the `unifi_client_info` data source and updates the release p
 * **Fixed**: `unifi_client_info` data source field mapping and model alignment
 * **Updated**: GoReleaser configuration with Terraform Registry support
 * **Added**: `terraform-registry-manifest.json` for proper Terraform Registry integration
-  - This enables correct discovery by the Terraform Registry
+  * This enables correct discovery by the Terraform Registry
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4...v0.41.5
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4...v0.41.5>
 
 ---
 
@@ -287,10 +349,11 @@ This is the stable release of the Terraform Plugin Framework migration, incorpor
 * **Fixed**: GoReleaser configuration and Terraform Registry manifest
 
 ## What's Changed
-* Pivot to Plugin Framework via the MUX Framework by @appkins in https://github.com/ubiquiti-community/terraform-provider-unifi/pull/17
-* feat: Migrate to Terraform plugin framework by @appkins in https://github.com/ubiquiti-community/terraform-provider-unifi/pull/50
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.3...v0.41.4
+* Pivot to Plugin Framework via the MUX Framework by @appkins in <https://github.com/ubiquiti-community/terraform-provider-unifi/pull/17>
+* feat: Migrate to Terraform plugin framework by @appkins in <https://github.com/ubiquiti-community/terraform-provider-unifi/pull/50>
+
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.3...v0.41.4>
 
 ---
 
@@ -318,7 +381,7 @@ This release candidate introduces a **breaking rename** of the user-related reso
 * **Added**: WAN resource (`unifi_wan`) documentation and import examples
 * **Updated**: go-unifi dependency
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc2...v0.41.4-rc3
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc2...v0.41.4-rc3>
 
 ---
 
@@ -333,9 +396,9 @@ This release candidate adds the `unifi_wan` resource, significantly improves `un
 **New Features**
 
 * **NEW**: `unifi_wan` resource (`unifi/wan_resource.go`, ~1129 lines)
-  - Full WAN interface configuration management
-  - Import support
-  - Comprehensive documentation
+  * Full WAN interface configuration management
+  * Import support
+  * Comprehensive documentation
 * **Improved**: `unifi_wlan` resource with major enhancements (319 additions)
 * **Added**: Structured logging (`unifi/logger.go`)
 * **Improved**: `unifi_network` resource with bug fixes and schema improvements
@@ -346,7 +409,7 @@ This release candidate adds the `unifi_wan` resource, significantly improves `un
 * Updated `unifi_site` resource with framework compatibility fixes
 * Updated Dependabot configuration for automated dependency management
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc1...v0.41.4-rc2
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-rc1...v0.41.4-rc2>
 
 ---
 
@@ -362,10 +425,11 @@ This release candidate marks the first RC of the full migration from Terraform P
 * **Maintained**: Full backward compatibility with all existing resources during the migration period
 
 ## What's Changed
-* Pivot to Plugin Framework via the MUX Framework by @appkins in https://github.com/ubiquiti-community/terraform-provider-unifi/pull/17
-* feat: Migrate to Terraform plugin framework by @appkins in https://github.com/ubiquiti-community/terraform-provider-unifi/pull/50
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.3...v0.41.4-rc1
+* Pivot to Plugin Framework via the MUX Framework by @appkins in <https://github.com/ubiquiti-community/terraform-provider-unifi/pull/17>
+* feat: Migrate to Terraform plugin framework by @appkins in <https://github.com/ubiquiti-community/terraform-provider-unifi/pull/50>
+
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.3...v0.41.4-rc1>
 
 ---
 
@@ -380,13 +444,13 @@ This beta release makes provider configuration fields optional, allowing more fl
 **Changes**
 
 * **Improved**: Provider configuration fields are now optional (previously required)
-  - All fields can now be configured via environment variables (`UNIFI_API_URL`, `UNIFI_USERNAME`, `UNIFI_PASSWORD`, `UNIFI_API_KEY`, etc.)
-  - This enables cleaner CI/CD configurations without hardcoded provider blocks
+  * All fields can now be configured via environment variables (`UNIFI_API_URL`, `UNIFI_USERNAME`, `UNIFI_PASSWORD`, `UNIFI_API_KEY`, etc.)
+  * This enables cleaner CI/CD configurations without hardcoded provider blocks
 * **Added**: Expanded `unifi_device` resource documentation with full attribute reference
 
 > **Note**: This is a beta release for the Terraform Plugin Framework migration. See v0.41.4-beta1 for the full feature list.
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-beta1...v0.41.4-beta2
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.4-beta1...v0.41.4-beta2>
 
 ---
 
@@ -402,10 +466,11 @@ Initial beta release of the Terraform Plugin Framework migration. This beta intr
 * **Refactored**: Multiple resources updated to use the new plugin framework patterns
 
 ## What's Changed
-* Pivot to Plugin Framework via the MUX Framework by @appkins in https://github.com/ubiquiti-community/terraform-provider-unifi/pull/17
-* Plugin-framework-migration by @appkins in https://github.com/ubiquiti-community/terraform-provider-unifi/pull/19
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.3...v0.41.4-beta1
+* Pivot to Plugin Framework via the MUX Framework by @appkins in <https://github.com/ubiquiti-community/terraform-provider-unifi/pull/17>
+* Plugin-framework-migration by @appkins in <https://github.com/ubiquiti-community/terraform-provider-unifi/pull/19>
+
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.3...v0.41.4-beta1>
 
 ---
 
@@ -443,7 +508,7 @@ provider "unifi" {
 
 Existing configurations using username/password will continue to work unchanged. This release is **fully backward compatible**.
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.2...v0.41.3
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.2...v0.41.3>
 
 ---
 
@@ -457,7 +522,7 @@ Existing configurations using username/password will continue to work unchanged.
 * **Updated**: Release workflow permissions and configuration
 * **Fixed**: Version bump and cleanup of release tooling
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.1...v0.41.2
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/compare/v0.41.1...v0.41.2>
 
 ---
 
@@ -483,4 +548,4 @@ This is the initial release of the `ubiquiti-community/terraform-provider-unifi`
 * **Updated**: Release workflow permissions
 * **Added**: Provider documentation
 
-**Full Changelog**: https://github.com/ubiquiti-community/terraform-provider-unifi/commits/v0.41.1
+**Full Changelog**: <https://github.com/ubiquiti-community/terraform-provider-unifi/commits/v0.41.1>

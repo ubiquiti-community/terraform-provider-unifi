@@ -99,7 +99,7 @@ func TestAccClientFramework_fixedIP(t *testing.T) {
 
 func testAccClientFrameworkConfig_fixedIP() string {
 	return `
-resource "unifi_virtual_network" "test" {
+resource "unifi_network" "test" {
 	name    = "Test"
 	subnet  = "192.168.2.1/24"
 	vlan    = 2
@@ -115,7 +115,7 @@ resource "unifi_client" "test" {
 	name       = "tfacc-fixed-ip-client"
 	mac        = "01:23:45:67:89:ad"
 	fixed_ip   = "192.168.2.100"
-	network_id = unifi_virtual_network.test.id
+	network_id = unifi_network.test.id
 }
 `
 }

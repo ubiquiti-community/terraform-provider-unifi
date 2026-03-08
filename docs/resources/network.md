@@ -2,37 +2,39 @@
 page_title: Network (Resource)
 subcategory: ""
 description: |-
-  unifi_network manages WAN/LAN/VLAN networks.
+  unifi_network manages networks (VLANs) in the UniFi controller.
 ---
 
 # Network (Resource)
 
-`unifi_network` manages WAN/LAN/VLAN networks.
+`unifi_network` manages networks (VLANs) in the UniFi controller.
 
 ## Example Usage
 
 ```terraform
 resource "unifi_network" "vlan" {
-  name    = "wifi-vlan"
-  purpose = "corporate"
+  name   = "wifi-vlan"
+  subnet = "10.0.0.1/24"
+  vlan   = 10
 
-  subnet       = "10.0.0.1/24"
-  vlan_id      = 10
-  dhcp_start   = "10.0.0.6"
-  dhcp_stop    = "10.0.0.254"
-  dhcp_enabled = true
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.0.6"
+    stop    = "10.0.0.254"
+  }
 }
 
-resource "unifi_network" "wan" {
-  name    = "wan"
-  purpose = "wan"
+# Third-party gateway (VLAN-only) network
+resource "unifi_network" "third_party" {
+  name                = "third-party-vlan"
+  subnet              = "192.168.20.1/24"
+  vlan                = 20
+  third_party_gateway = true
 
-  wan_networkgroup = "WAN"
-  wan_type         = "pppoe"
-  wan_ip           = "192.168.1.1"
-  wan_egress_qos   = 1
-  wan_username     = "username"
-  x_wan_password   = "password"
+  dhcp_guarding = {
+    enabled = true
+    servers = ["192.168.20.1"]
+  }
 }
 ```
 
@@ -42,74 +44,110 @@ resource "unifi_network" "wan" {
 ### Required
 
 - `name` (String) The name of the network.
-- `purpose` (String) The purpose of the network. Must be one of `corporate`, `guest`, `wan`, `vlan-only`, or `vpn-client`.
+- `subnet` (String) The IP subnet of the network in CIDR notation.
 
 ### Optional
 
-- `dhcp_dns` (List of String) Specifies the IPv4 addresses for the DNS server to be returned from the DHCP server. Leave blank to disable this feature.
-- `dhcp_dns_enabled` (Boolean) Specifies whether to use the custom DNS servers specified in `dhcp_dns`. When `true`, clients receive the custom DNS servers. When `false`, clients receive auto-assigned DNS.
-- `dhcp_enabled` (Boolean) Specifies whether DHCP is enabled or not on this network.
-- `dhcp_lease` (Number) Specifies the lease time for DHCP addresses in seconds.
-- `dhcp_relay_enabled` (Boolean) Specifies whether DHCP relay is enabled or not on this network.
-- `dhcp_start` (String) The IPv4 address where the DHCP range of addresses starts.
-- `dhcp_stop` (String) The IPv4 address where the DHCP range of addresses stops.
-- `dhcp_v6_dns` (List of String) Specifies the IPv6 addresses for the DNS server to be returned from the DHCP server. Used if `dhcp_v6_dns_auto` is set to `false`.
-- `dhcp_v6_dns_auto` (Boolean) Specifies DNS source to propagate. If set `false` the entries in `dhcp_v6_dns` are used, the upstream entries otherwise
-- `dhcp_v6_enabled` (Boolean) Enable stateful DHCPv6 for static configuration.
-- `dhcp_v6_lease` (Number) Specifies the lease time for DHCPv6 addresses in seconds.
-- `dhcp_v6_pd_start` (String) Start address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.
-- `dhcp_v6_pd_stop` (String) End address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.
-- `dhcp_v6_start` (String) Start address of the DHCPv6 pool. Used if `dhcp_v6_enabled` is set to `true`.
-- `dhcp_v6_stop` (String) End address of the DHCPv6 pool. Used if `dhcp_v6_enabled` is set to `true`.
-- `dhcpd_boot_enabled` (Boolean) Toggles on the DHCP boot options. Should be set to true when you want to have dhcpd_boot_filename, and dhcpd_boot_server to take effect.
-- `dhcpd_boot_filename` (String) Specifies the file to PXE boot from on the dhcpd_boot_server.
-- `dhcpd_boot_server` (String) Specifies the IPv4 address of a TFTP server to network boot from.
-- `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of either `none`, `pd`, or `static`.
-- `ipv6_pd_prefixid` (String) Specifies the IPv6 Prefix ID.
-- `ipv6_pd_start` (String) Start address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.
-- `ipv6_pd_stop` (String) End address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.
-- `ipv6_ra_enable` (Boolean) Specifies whether to enable router advertisements or not.
-- `ipv6_ra_preferred_lifetime` (Number) Lifetime in which addresses generated from the prefix remain preferred. Value is in seconds.
-- `ipv6_ra_priority` (String) IPv6 router advertisement priority. Must be one of either `high`, `medium`, or `low`
-- `ipv6_ra_valid_lifetime` (Number) Lifetime in which the prefix is valid for the purpose of on-link determination. Value is in seconds.
-- `ipv6_static` (List of String) Specifies the static IPv6 addresses for the network.
-- `network_group` (String) The group of the network.
+- `auto_scale_enabled` (Boolean) Specifies whether auto-scaling is enabled.
+- `dhcp_guarding` (Attributes) DHCP guarding configuration. When `third_party_gateway` is enabled, the `servers` list specifies the allowed DHCP server IPs. (see [below for nested schema](#nestedatt--dhcp_guarding))
+- `dhcp_relay` (Attributes) DHCP relay configuration. (see [below for nested schema](#nestedatt--dhcp_relay))
+- `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
+- `domain_name` (String) The domain name for the network.
+- `enabled` (Boolean) Specifies whether the network is enabled.
+- `gateway_type` (String) The gateway type. Must be one of `default` or `switch`.
+- `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled.
+- `internet_access_enabled` (Boolean) Specifies whether internet access is enabled.
+- `ip_aliases` (List of String) List of IP aliases for the network.
+- `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
+- `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.
+- `lte_lan_enabled` (Boolean) Specifies whether LTE LAN is enabled.
+- `mdns_enabled` (Boolean) Specifies whether mDNS is enabled.
+- `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
+- `network_isolation_enabled` (Boolean) Specifies whether network isolation is enabled.
+- `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the network with.
-- `subnet` (String) The subnet of the network. Must be a valid CIDR address.
-- `vlan_id` (Number) The VLAN ID of the network.
-- `wan_dhcp_v6` (Boolean) Enable stateful DHCPv6 for the WAN.
-- `wan_dns` (List of String) DNS servers IPs of the WAN.
-- `wan_gateway` (String) The IPv4 gateway of the WAN.
-- `wan_gateway_v6` (String) The IPv6 gateway of the WAN.
-- `wan_ip` (String) The IPv4 address of the WAN.
-- `wan_ipv6` (String) The IPv6 address of the WAN.
-- `wan_netmask` (String) The IPv4 netmask of the WAN.
-- `wan_network_group` (String) Specifies the WAN network group. Must be one of either `WAN`, `WAN2` or `WAN_LTE_FAILOVER`.
-- `wan_password` (String, Sensitive) Specifies the IPV4 WAN password.
-- `wan_prefixlen` (Number) The IPv6 prefix length of the WAN. Must be between 1 and 128.
-- `wan_type` (String) Specifies the IPV4 WAN connection type. Must be one of either `disabled`, `dhcp`, `static`, or `pppoe`.
-- `wan_type_v6` (String) Specifies the IPV6 WAN connection type. Must be one of either `disabled`, `dhcpv6`, or `static`.
-- `wan_username` (String) Specifies the IPV4 WAN username.
-- `wireguard_client_mode` (String) Specifies the Wireguard client mode. Must be one of either `file` or `manual`.
-- `wireguard_client_peer_ip` (String) Specifies the Wireguard client peer IP.
-- `wireguard_client_peer_port` (Number) Specifies the Wireguard client peer port.
-- `wireguard_client_peer_public_key` (String) Specifies the Wireguard client peer public key.
-- `wireguard_client_preshared_key` (String) Specifies the Wireguard client preshared key.
-- `wireguard_client_preshared_key_enabled` (Boolean) Specifies whether the Wireguard client preshared key is enabled or not.
-- `wireguard_id` (Number) Specifies the Wireguard ID.
-- `wireguard_private_key` (String) Specifies the Wireguard private key.
-- `wireguard_public_key` (String) Specifies the Wireguard public key.
+- `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.
+- `vlan` (Number) The VLAN ID for the network.
 
 ### Read-Only
 
 - `id` (String) The ID of the network.
+
+<a id="nestedatt--dhcp_guarding"></a>
+### Nested Schema for `dhcp_guarding`
+
+Optional:
+
+- `enabled` (Boolean) Specifies whether DHCP guarding is enabled.
+- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3). Only applies when `third_party_gateway` is enabled.
+
+
+<a id="nestedatt--dhcp_relay"></a>
+### Nested Schema for `dhcp_relay`
+
+Optional:
+
+- `enabled` (Boolean) Specifies whether DHCP relay is enabled.
+- `servers` (List of String) List of DHCP relay server addresses.
+
+
+<a id="nestedatt--dhcp_server"></a>
+### Nested Schema for `dhcp_server`
+
+Optional:
+
+- `boot` (Attributes) DHCP boot settings. (see [below for nested schema](#nestedatt--dhcp_server--boot))
+- `conflict_checking` (Boolean) Specifies whether DHCP conflict checking is enabled.
+- `dns_enabled` (Boolean) Specifies whether DHCP DNS is enabled.
+- `dns_servers` (List of String) List of DNS server addresses for DHCP clients.
+- `enabled` (Boolean) Specifies whether DHCP server is enabled.
+- `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
+- `leasetime` (Number) Specifies the lease time for DHCP addresses in seconds.
+- `ntp_enabled` (Boolean) Specifies whether DHCP NTP is enabled.
+- `start` (String) The IPv4 address where the DHCP range starts.
+- `stop` (String) The IPv4 address where the DHCP range stops.
+- `tftp_server` (String) TFTP server address.
+- `time_offset_enabled` (Boolean) Specifies whether DHCP time offset is enabled.
+- `unifi_controller` (String) UniFi controller IP address.
+- `wins` (Attributes) WINS server configuration. (see [below for nested schema](#nestedatt--dhcp_server--wins))
+- `wpad_url` (String) WPAD URL for proxy auto-configuration.
+
+<a id="nestedatt--dhcp_server--boot"></a>
+### Nested Schema for `dhcp_server.boot`
+
+Optional:
+
+- `enabled` (Boolean) Toggles DHCP boot options.
+- `filename` (String) Boot filename.
+- `server` (String) TFTP server for boot options.
+
+
+<a id="nestedatt--dhcp_server--wins"></a>
+### Nested Schema for `dhcp_server.wins`
+
+Optional:
+
+- `addresses` (List of String) List of WINS server addresses (maximum 2).
+- `enabled` (Boolean) Specifies whether DHCP WINS is enabled.
+
+
+
+<a id="nestedatt--nat_outbound_ip_addresses"></a>
+### Nested Schema for `nat_outbound_ip_addresses`
+
+Optional:
+
+- `ip_address` (String) The IP address.
+- `ip_address_pool` (List of String) The IP address pool.
+- `mode` (String) The mode.
+- `wan_network_group` (String) The WAN network group.
 
 ## Import
 
 Import is supported using the following syntax:
 
 ```shell
-# import from provider configured site
+# import by ID from provider configured site
 terraform import unifi_network.mynetwork 5dc28e5e9106d105bdc87217
 
 # import from another site

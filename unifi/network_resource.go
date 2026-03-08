@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -16,12 +17,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
@@ -40,76 +45,144 @@ type networkResource struct {
 	client *Client
 }
 
+// dhcpBootModel describes the DHCP boot configuration.
+type dhcpBootModel struct {
+	Enabled  types.Bool   `tfsdk:"enabled"`
+	Server   types.String `tfsdk:"server"`
+	Filename types.String `tfsdk:"filename"`
+}
+
+func (m dhcpBootModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":  types.BoolType,
+		"server":   types.StringType,
+		"filename": types.StringType,
+	}
+}
+
+// winsModel describes the WINS configuration.
+type winsModel struct {
+	Enabled   types.Bool `tfsdk:"enabled"`
+	Addresses types.List `tfsdk:"addresses"`
+}
+
+func (m winsModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":   types.BoolType,
+		"addresses": types.ListType{ElemType: types.StringType},
+	}
+}
+
+// dhcpServerModel describes the DHCP server configuration.
+type dhcpServerModel struct {
+	Boot              types.Object `tfsdk:"boot"`
+	Enabled           types.Bool   `tfsdk:"enabled"`
+	Start             types.String `tfsdk:"start"`
+	Stop              types.String `tfsdk:"stop"`
+	GatewayEnabled    types.Bool   `tfsdk:"gateway_enabled"`
+	ConflictChecking  types.Bool   `tfsdk:"conflict_checking"`
+	NtpEnabled        types.Bool   `tfsdk:"ntp_enabled"`
+	TimeOffsetEnabled types.Bool   `tfsdk:"time_offset_enabled"`
+	DnsEnabled        types.Bool   `tfsdk:"dns_enabled"`
+	Leasetime         types.Int64  `tfsdk:"leasetime"`
+	Wins              types.Object `tfsdk:"wins"`
+	WpadUrl           types.String `tfsdk:"wpad_url"`
+	TftpServer        types.String `tfsdk:"tftp_server"`
+	UnifiController   types.String `tfsdk:"unifi_controller"`
+	DnsServers        types.List   `tfsdk:"dns_servers"`
+}
+
+func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"boot":                types.ObjectType{AttrTypes: dhcpBootModel{}.AttributeTypes()},
+		"enabled":             types.BoolType,
+		"start":               types.StringType,
+		"stop":                types.StringType,
+		"gateway_enabled":     types.BoolType,
+		"conflict_checking":   types.BoolType,
+		"ntp_enabled":         types.BoolType,
+		"time_offset_enabled": types.BoolType,
+		"dns_enabled":         types.BoolType,
+		"leasetime":           types.Int64Type,
+		"wins":                types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
+		"wpad_url":            types.StringType,
+		"tftp_server":         types.StringType,
+		"unifi_controller":    types.StringType,
+		"dns_servers":         types.ListType{ElemType: types.StringType},
+	}
+}
+
+type natOutboundIPAddressesModel struct {
+	IPAddress       types.String `tfsdk:"ip_address"`                  // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
+	IPAddressPool   types.List   `tfsdk:"ip_address_pool,omitempty"`   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+	Mode            types.String `tfsdk:"mode,omitempty"`              // all|ip_address|ip_address_pool
+	WANNetworkGroup types.String `tfsdk:"wan_network_group,omitempty"` // WAN[2-9]?
+}
+
+func (d natOutboundIPAddressesModel) AttributeTypes() map[string]attr.Type {
+	return natOutboundIPAddresses()
+}
+
+func natOutboundIPAddresses() map[string]attr.Type {
+	return map[string]attr.Type{
+		"ip_address":        types.StringType,
+		"ip_address_pool":   types.ListType{ElemType: types.StringType},
+		"mode":              types.StringType,
+		"wan_network_group": types.StringType,
+	}
+}
+
+// dhcpGuardingModel describes the DHCP guarding configuration.
+type dhcpGuardingModel struct {
+	Enabled types.Bool `tfsdk:"enabled"`
+	Servers types.List `tfsdk:"servers"`
+}
+
+func (m dhcpGuardingModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled": types.BoolType,
+		"servers": types.ListType{ElemType: types.StringType},
+	}
+}
+
+// dhcpRelayModel describes the DHCP relay configuration.
+type dhcpRelayModel struct {
+	Enabled types.Bool `tfsdk:"enabled"`
+	Servers types.List `tfsdk:"servers"`
+}
+
+func (d dhcpRelayModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled": types.BoolType,
+		"servers": types.ListType{ElemType: types.StringType},
+	}
+}
+
 // networkResourceModel describes the resource data model.
 type networkResourceModel struct {
-	ID           types.String `tfsdk:"id"`
-	Site         types.String `tfsdk:"site"`
-	Name         types.String `tfsdk:"name"`
-	Purpose      types.String `tfsdk:"purpose"`
-	VlanID       types.Int64  `tfsdk:"vlan_id"`
-	Subnet       types.String `tfsdk:"subnet"`
-	NetworkGroup types.String `tfsdk:"network_group"`
-
-	// DHCP Settings
-	DhcpStart        types.String `tfsdk:"dhcp_start"`
-	DhcpStop         types.String `tfsdk:"dhcp_stop"`
-	DhcpEnabled      types.Bool   `tfsdk:"dhcp_enabled"`
-	DhcpLease        types.Int64  `tfsdk:"dhcp_lease"`
-	DhcpDNS          types.List   `tfsdk:"dhcp_dns"`
-	DhcpDNSEnabled   types.Bool   `tfsdk:"dhcp_dns_enabled"`
-	DhcpRelayEnabled types.Bool   `tfsdk:"dhcp_relay_enabled"`
-
-	// DHCPD Boot Settings
-	DhcpdBootEnabled  types.Bool   `tfsdk:"dhcpd_boot_enabled"`
-	DhcpdBootServer   types.String `tfsdk:"dhcpd_boot_server"`
-	DhcpdBootFilename types.String `tfsdk:"dhcpd_boot_filename"`
-
-	// DHCPv6 Settings
-	DhcpV6DNS     types.List   `tfsdk:"dhcp_v6_dns"`
-	DhcpV6DNSAuto types.Bool   `tfsdk:"dhcp_v6_dns_auto"`
-	DhcpV6Enabled types.Bool   `tfsdk:"dhcp_v6_enabled"`
-	DhcpV6Lease   types.Int64  `tfsdk:"dhcp_v6_lease"`
-	DhcpV6PDStart types.String `tfsdk:"dhcp_v6_pd_start"`
-	DhcpV6PDStop  types.String `tfsdk:"dhcp_v6_pd_stop"`
-	DhcpV6Start   types.String `tfsdk:"dhcp_v6_start"`
-	DhcpV6Stop    types.String `tfsdk:"dhcp_v6_stop"`
-
-	// IPv6 Settings
-	IPv6InterfaceType       types.String `tfsdk:"ipv6_interface_type"`
-	IPv6PDPrefixid          types.String `tfsdk:"ipv6_pd_prefixid"`
-	IPv6PDStart             types.String `tfsdk:"ipv6_pd_start"`
-	IPv6PDStop              types.String `tfsdk:"ipv6_pd_stop"`
-	IPv6RAPriority          types.String `tfsdk:"ipv6_ra_priority"`
-	IPv6RAValidLifetime     types.Int64  `tfsdk:"ipv6_ra_valid_lifetime"`
-	IPv6RAPreferredLifetime types.Int64  `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAEnable            types.Bool   `tfsdk:"ipv6_ra_enable"`
-	IPv6Static              types.List   `tfsdk:"ipv6_static"`
-
-	// WAN Settings
-	WANType         types.String `tfsdk:"wan_type"`
-	WANUsername     types.String `tfsdk:"wan_username"`
-	WANPassword     types.String `tfsdk:"wan_password"`
-	WANIp           types.String `tfsdk:"wan_ip"`
-	WANGateway      types.String `tfsdk:"wan_gateway"`
-	WANNetmask      types.String `tfsdk:"wan_netmask"`
-	WANDNS          types.List   `tfsdk:"wan_dns"`
-	WANNetworkGroup types.String `tfsdk:"wan_network_group"`
-	WANDHCPV6       types.Bool   `tfsdk:"wan_dhcp_v6"`
-	WANGatewayV6    types.String `tfsdk:"wan_gateway_v6"`
-	WANIPv6         types.String `tfsdk:"wan_ipv6"`
-	WANPrefixlen    types.Int64  `tfsdk:"wan_prefixlen"`
-	WANTypeV6       types.String `tfsdk:"wan_type_v6"`
-
-	// WireGuard Settings
-	WireguardClientMode                types.String `tfsdk:"wireguard_client_mode"`
-	WireguardClientPeerIP              types.String `tfsdk:"wireguard_client_peer_ip"`
-	WireguardClientPeerPort            types.Int64  `tfsdk:"wireguard_client_peer_port"`
-	WireguardClientPeerPublicKey       types.String `tfsdk:"wireguard_client_peer_public_key"`
-	WireguardClientPresharedKey        types.String `tfsdk:"wireguard_client_preshared_key"`
-	WireguardClientPresharedKeyEnabled types.Bool   `tfsdk:"wireguard_client_preshared_key_enabled"`
-	WireguardID                        types.Int64  `tfsdk:"wireguard_id"`
-	WireguardPublicKey                 types.String `tfsdk:"wireguard_public_key"`
-	WireguardPrivateKey                types.String `tfsdk:"wireguard_private_key"`
+	ID                      types.String         `tfsdk:"id"`
+	Site                    types.String         `tfsdk:"site"`
+	Enabled                 types.Bool           `tfsdk:"enabled"`
+	Name                    types.String         `tfsdk:"name"`
+	NatOutboundIPAddresses  types.List           `tfsdk:"nat_outbound_ip_addresses"`
+	AutoScaleEnabled        types.Bool           `tfsdk:"auto_scale_enabled"`
+	Subnet                  cidrtypes.IPv4Prefix `tfsdk:"subnet"`
+	DomainName              types.String         `tfsdk:"domain_name"`
+	Vlan                    types.Int64          `tfsdk:"vlan"`
+	NetworkIsolationEnabled types.Bool           `tfsdk:"network_isolation_enabled"`
+	SettingPreference       types.String         `tfsdk:"setting_preference"`
+	InternetAccessEnabled   types.Bool           `tfsdk:"internet_access_enabled"`
+	IgmpSnooping            types.Bool           `tfsdk:"igmp_snooping"`
+	MdnsEnabled             types.Bool           `tfsdk:"mdns_enabled"`
+	GatewayType             types.String         `tfsdk:"gateway_type"`
+	IPv6InterfaceType       types.String         `tfsdk:"ipv6_interface_type"`
+	LteLanEnabled           types.Bool           `tfsdk:"lte_lan_enabled"`
+	IPAliases          types.List           `tfsdk:"ip_aliases"`
+	IPv6Aliases        types.List           `tfsdk:"ipv6_aliases"`
+	ThirdPartyGateway  types.Bool           `tfsdk:"third_party_gateway"`
+	DhcpGuarding       types.Object         `tfsdk:"dhcp_guarding"`
+	DhcpServer         types.Object         `tfsdk:"dhcp_server"`
+	DhcpRelay          types.Object         `tfsdk:"dhcp_relay"`
 }
 
 func (r *networkResource) Metadata(
@@ -126,7 +199,7 @@ func (r *networkResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "`unifi_network` manages WAN/LAN/VLAN networks.",
+		MarkdownDescription: "`unifi_network` manages networks (VLANs) in the UniFi controller.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -145,341 +218,337 @@ func (r *networkResource) Schema(
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"name": schema.StringAttribute{
-				MarkdownDescription: "The name of the network.",
-				Required:            true,
-			},
-			"purpose": schema.StringAttribute{
-				MarkdownDescription: "The purpose of the network. Must be one of `corporate`, `guest`, `wan`, `vlan-only`, or `vpn-client`.",
-				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-				Validators: []validator.String{
-					stringvalidator.OneOf("corporate", "guest", "wan", "vlan-only", "vpn-client"),
-				},
-			},
-			"vlan_id": schema.Int64Attribute{
-				MarkdownDescription: "The VLAN ID of the network.",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.Between(0, 4096),
-				},
-			},
-			"subnet": schema.StringAttribute{
-				MarkdownDescription: "The subnet of the network. Must be a valid CIDR address.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.CIDRValidator(),
-				},
-			},
-			"network_group": schema.StringAttribute{
-				MarkdownDescription: "The group of the network.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("LAN"),
-			},
-
-			// DHCP Settings
-			"dhcp_start": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 address where the DHCP range of addresses starts.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"dhcp_stop": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 address where the DHCP range of addresses stops.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"dhcp_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether DHCP is enabled or not on this network.",
-				Optional:            true,
-			},
-			"dhcp_lease": schema.Int64Attribute{
-				MarkdownDescription: "Specifies the lease time for DHCP addresses in seconds.",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(86400),
-			},
-			"dhcp_dns": schema.ListAttribute{
-				MarkdownDescription: "Specifies the IPv4 addresses for the DNS server to be returned from the DHCP server. Leave blank to disable this feature.",
-				Optional:            true,
-				ElementType:         types.StringType,
-				Validators: []validator.List{
-					listvalidator.SizeAtMost(4),
-				},
-			},
-			"dhcp_dns_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to use the custom DNS servers specified in `dhcp_dns`. When `true`, clients receive the custom DNS servers. When `false`, clients receive auto-assigned DNS.",
-				Optional:            true,
-				Computed:            true,
-			},
-			"dhcpd_boot_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Toggles on the DHCP boot options. Should be set to true when you want to have dhcpd_boot_filename, and dhcpd_boot_server to take effect.",
-				Optional:            true,
-			},
-			"dhcpd_boot_server": schema.StringAttribute{
-				MarkdownDescription: "Specifies the IPv4 address of a TFTP server to network boot from.",
-				Optional:            true,
-			},
-			"dhcpd_boot_filename": schema.StringAttribute{
-				MarkdownDescription: "Specifies the file to PXE boot from on the dhcpd_boot_server.",
-				Optional:            true,
-			},
-			"dhcp_relay_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether DHCP relay is enabled or not on this network.",
-				Optional:            true,
-			},
-
-			// DHCPv6 Settings
-			"dhcp_v6_dns": schema.ListAttribute{
-				MarkdownDescription: "Specifies the IPv6 addresses for the DNS server to be returned from the DHCP server. Used if `dhcp_v6_dns_auto` is set to `false`.",
-				Optional:            true,
-				ElementType:         types.StringType,
-				Validators: []validator.List{
-					listvalidator.SizeAtMost(4),
-				},
-			},
-			"dhcp_v6_dns_auto": schema.BoolAttribute{
-				MarkdownDescription: "Specifies DNS source to propagate. If set `false` the entries in `dhcp_v6_dns` are used, the upstream entries otherwise",
+			"enabled": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether the network is enabled.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 			},
-			"dhcp_v6_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable stateful DHCPv6 for static configuration.",
-				Optional:            true,
+			"name": schema.StringAttribute{
+				MarkdownDescription: "The name of the network.",
+				Required:            true,
 			},
-			"dhcp_v6_lease": schema.Int64Attribute{
-				MarkdownDescription: "Specifies the lease time for DHCPv6 addresses in seconds.",
+			"nat_outbound_ip_addresses": schema.ListNestedAttribute{
+				MarkdownDescription: "List of NAT outbound IP addresses.",
+				Optional:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"ip_address": schema.StringAttribute{
+							MarkdownDescription: "The IP address.",
+							Optional:            true,
+						},
+						"ip_address_pool": schema.ListAttribute{
+							MarkdownDescription: "The IP address pool.",
+							Optional:            true,
+							ElementType:         types.StringType,
+						},
+						"mode": schema.StringAttribute{
+							MarkdownDescription: "The mode.",
+							Optional:            true,
+						},
+						"wan_network_group": schema.StringAttribute{
+							MarkdownDescription: "The WAN network group.",
+							Optional:            true,
+						},
+					},
+				},
+			},
+			"auto_scale_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether auto-scaling is enabled.",
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(86400),
+				Default:             booldefault.StaticBool(true),
 			},
-			"dhcp_v6_pd_start": schema.StringAttribute{
-				MarkdownDescription: "Start address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.",
+			"subnet": schema.StringAttribute{
+				MarkdownDescription: "The IP subnet of the network in CIDR notation.",
+				Required:            true,
+				CustomType:          cidrtypes.IPv4PrefixType{},
+			},
+			"domain_name": schema.StringAttribute{
+				MarkdownDescription: "The domain name for the network.",
 				Optional:            true,
+				Computed:            true,
+				Validators: []validator.String{
+					validators.DomainNameValidator(),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"dhcp_v6_pd_stop": schema.StringAttribute{
-				MarkdownDescription: "End address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.",
+			"vlan": schema.Int64Attribute{
+				MarkdownDescription: "The VLAN ID for the network.",
 				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.Between(1, 4094),
+				},
 			},
-			"dhcp_v6_start": schema.StringAttribute{
-				MarkdownDescription: "Start address of the DHCPv6 pool. Used if `dhcp_v6_enabled` is set to `true`.",
+			"network_isolation_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether network isolation is enabled.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
-			"dhcp_v6_stop": schema.StringAttribute{
-				MarkdownDescription: "End address of the DHCPv6 pool. Used if `dhcp_v6_enabled` is set to `true`.",
+			"setting_preference": schema.StringAttribute{
+				MarkdownDescription: "Setting preference. Must be one of `auto` or `manual`.",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("auto"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "manual"),
+				},
 			},
-
-			// IPv6 Settings
+			"internet_access_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether internet access is enabled.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(true),
+			},
+			"igmp_snooping": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether IGMP snooping is enabled.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"mdns_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether mDNS is enabled.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(true),
+			},
+			"gateway_type": schema.StringAttribute{
+				MarkdownDescription: "The gateway type. Must be one of `default` or `switch`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("default"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("default", "switch"),
+				},
+			},
 			"ipv6_interface_type": schema.StringAttribute{
-				MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of either `none`, `pd`, or `static`.",
+				MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("none"),
 				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile("^(none|pd|static)$"),
-						"invalid IPv6 interface type",
-					),
+					stringvalidator.OneOf("none", "pd", "static"),
 				},
 			},
-			"ipv6_pd_prefixid": schema.StringAttribute{
-				MarkdownDescription: "Specifies the IPv6 Prefix ID.",
+			"lte_lan_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether LTE LAN is enabled.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(true),
 			},
-			"ipv6_pd_start": schema.StringAttribute{
-				MarkdownDescription: "Start address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.",
-				Optional:            true,
-			},
-			"ipv6_pd_stop": schema.StringAttribute{
-				MarkdownDescription: "End address of the DHCPv6 Prefix Delegation pool. Used if `ipv6_interface_type` is set to `pd`.",
-				Optional:            true,
-			},
-			"ipv6_ra_priority": schema.StringAttribute{
-				MarkdownDescription: "IPv6 router advertisement priority. Must be one of either `high`, `medium`, or `low`",
-				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile("^(high|medium|low)$"),
-						"invalid IPv6 RA priority",
-					),
-				},
-			},
-			"ipv6_ra_valid_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "Lifetime in which the prefix is valid for the purpose of on-link determination. Value is in seconds.",
-				Optional:            true,
-			},
-			"ipv6_ra_preferred_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "Lifetime in which addresses generated from the prefix remain preferred. Value is in seconds.",
-				Optional:            true,
-			},
-			"ipv6_ra_enable": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to enable router advertisements or not.",
-				Optional:            true,
-			},
-			"ipv6_static": schema.ListAttribute{
-				MarkdownDescription: "Specifies the static IPv6 addresses for the network.",
+			"ip_aliases": schema.ListAttribute{
+				MarkdownDescription: "List of IP aliases for the network.",
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
-
-			// WAN Settings
-			"wan_type": schema.StringAttribute{
-				MarkdownDescription: "Specifies the IPV4 WAN connection type. Must be one of either `disabled`, `dhcp`, `static`, or `pppoe`.",
-				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile("^(disabled|dhcp|static|pppoe)$"),
-						"invalid WAN connection type",
-					),
-				},
-			},
-			"wan_username": schema.StringAttribute{
-				MarkdownDescription: "Specifies the IPV4 WAN username.",
-				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile(`[^"' ]+`),
-						"invalid WAN username",
-					),
-				},
-			},
-			"wan_password": schema.StringAttribute{
-				MarkdownDescription: "Specifies the IPV4 WAN password.",
-				Optional:            true,
-				Sensitive:           true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile(`[^"' ]+`),
-						"invalid WAN password",
-					),
-				},
-			},
-			"wan_ip": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 address of the WAN.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"wan_gateway": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 gateway of the WAN.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"wan_netmask": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 netmask of the WAN.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"wan_dns": schema.ListAttribute{
-				MarkdownDescription: "DNS servers IPs of the WAN.",
+			"ipv6_aliases": schema.ListAttribute{
+				MarkdownDescription: "List of IPv6 aliases for the network.",
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
-			"wan_network_group": schema.StringAttribute{
-				MarkdownDescription: "Specifies the WAN network group. Must be one of either `WAN`, `WAN2` or `WAN_LTE_FAILOVER`.",
+			"third_party_gateway": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.",
 				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile("^(WAN[2]?|WAN_LTE_FAILOVER)$"),
-						"invalid WAN network group",
-					),
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"dhcp_guarding": schema.SingleNestedAttribute{
+				MarkdownDescription: "DHCP guarding configuration. When `third_party_gateway` is enabled, the `servers` list specifies the allowed DHCP server IPs.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP guarding is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"servers": schema.ListAttribute{
+						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3). Only applies when `third_party_gateway` is enabled.",
+						Optional:            true,
+						ElementType:         types.StringType,
+						Validators: []validator.List{
+							listvalidator.SizeAtMost(3),
+						},
+					},
 				},
 			},
-			"wan_dhcp_v6": schema.BoolAttribute{
-				MarkdownDescription: "Enable stateful DHCPv6 for the WAN.",
+			"dhcp_server": schema.SingleNestedAttribute{
+				MarkdownDescription: "DHCP server configuration.",
 				Optional:            true,
-			},
-			"wan_gateway_v6": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 gateway of the WAN.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv6Validator(),
+				Attributes: map[string]schema.Attribute{
+					"boot": schema.SingleNestedAttribute{
+						MarkdownDescription: "DHCP boot settings.",
+						Optional:            true,
+						Computed:            true,
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Toggles DHCP boot options.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"server": schema.StringAttribute{
+								MarkdownDescription: "TFTP server for boot options.",
+								Optional:            true,
+								Computed:            true,
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"filename": schema.StringAttribute{
+								MarkdownDescription: "Boot filename.",
+								Optional:            true,
+								Computed:            true,
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+						},
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP server is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(true),
+					},
+					"start": schema.StringAttribute{
+						MarkdownDescription: "The IPv4 address where the DHCP range starts.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							validators.IPv4Validator(),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"stop": schema.StringAttribute{
+						MarkdownDescription: "The IPv4 address where the DHCP range stops.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							validators.IPv4Validator(),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"gateway_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP gateway is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"conflict_checking": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP conflict checking is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(true),
+					},
+					"ntp_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP NTP is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"time_offset_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP time offset is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"dns_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP DNS is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"leasetime": schema.Int64Attribute{
+						MarkdownDescription: "Specifies the lease time for DHCP addresses in seconds.",
+						Optional:            true,
+						Computed:            true,
+						Default:             int64default.StaticInt64(86400),
+					},
+					"wins": schema.SingleNestedAttribute{
+						MarkdownDescription: "WINS server configuration.",
+						Optional:            true,
+						Computed:            true,
+						Default: objectdefault.StaticValue(
+							types.ObjectValueMust(map[string]attr.Type{
+								"enabled":   types.BoolType,
+								"addresses": types.ListType{ElemType: types.StringType},
+							}, map[string]attr.Value{
+								"enabled":   types.BoolValue(false),
+								"addresses": types.ListNull(types.StringType),
+							}),
+						),
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Specifies whether DHCP WINS is enabled.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"addresses": schema.ListAttribute{
+								MarkdownDescription: "List of WINS server addresses (maximum 2).",
+								Optional:            true,
+								ElementType:         types.StringType,
+								Validators: []validator.List{
+									listvalidator.SizeAtMost(2),
+								},
+							},
+						},
+					},
+					"wpad_url": schema.StringAttribute{
+						MarkdownDescription: "WPAD URL for proxy auto-configuration.",
+						Optional:            true,
+					},
+					"tftp_server": schema.StringAttribute{
+						MarkdownDescription: "TFTP server address.",
+						Optional:            true,
+					},
+					"unifi_controller": schema.StringAttribute{
+						MarkdownDescription: "UniFi controller IP address.",
+						Optional:            true,
+						Validators: []validator.String{
+							validators.IPv4Validator(),
+						},
+					},
+					"dns_servers": schema.ListAttribute{
+						MarkdownDescription: "List of DNS server addresses for DHCP clients.",
+						Optional:            true,
+						ElementType:         types.StringType,
+						Validators: []validator.List{
+							listvalidator.SizeAtMost(4),
+						},
+					},
 				},
 			},
-			"wan_ipv6": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 address of the WAN.",
+			"dhcp_relay": schema.SingleNestedAttribute{
+				MarkdownDescription: "DHCP relay configuration.",
 				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv6Validator(),
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP relay is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"servers": schema.ListAttribute{
+						MarkdownDescription: "List of DHCP relay server addresses.",
+						Optional:            true,
+						ElementType:         types.StringType,
+						Validators: []validator.List{
+							listvalidator.SizeAtMost(4),
+						},
+					},
 				},
-			},
-			"wan_prefixlen": schema.Int64Attribute{
-				MarkdownDescription: "The IPv6 prefix length of the WAN. Must be between 1 and 128.",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.Between(1, 128),
-				},
-			},
-			"wan_type_v6": schema.StringAttribute{
-				MarkdownDescription: "Specifies the IPV6 WAN connection type. Must be one of either `disabled`, `dhcpv6`, or `static`.",
-				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile("^(disabled|dhcpv6|static)$"),
-						"invalid WANv6 connection type",
-					),
-				},
-			},
-
-			// WireGuard Settings
-			"wireguard_client_mode": schema.StringAttribute{
-				MarkdownDescription: "Specifies the Wireguard client mode. Must be one of either `file` or `manual`.",
-				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.RegexMatches(
-						regexp.MustCompile("^(file|manual)$"),
-						"invalid Wireguard client mode",
-					),
-				},
-			},
-			"wireguard_client_peer_ip": schema.StringAttribute{
-				MarkdownDescription: "Specifies the Wireguard client peer IP.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"wireguard_client_peer_port": schema.Int64Attribute{
-				MarkdownDescription: "Specifies the Wireguard client peer port.",
-				Optional:            true,
-				Validators: []validator.Int64{
-					validators.PortNumberValidator(),
-				},
-			},
-			"wireguard_client_peer_public_key": schema.StringAttribute{
-				MarkdownDescription: "Specifies the Wireguard client peer public key.",
-				Optional:            true,
-			},
-			"wireguard_client_preshared_key": schema.StringAttribute{
-				MarkdownDescription: "Specifies the Wireguard client preshared key.",
-				Optional:            true,
-			},
-			"wireguard_client_preshared_key_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether the Wireguard client preshared key is enabled or not.",
-				Optional:            true,
-			},
-			"wireguard_id": schema.Int64Attribute{
-				MarkdownDescription: "Specifies the Wireguard ID.",
-				Optional:            true,
-			},
-			"wireguard_public_key": schema.StringAttribute{
-				MarkdownDescription: "Specifies the Wireguard public key.",
-				Optional:            true,
-			},
-			"wireguard_private_key": schema.StringAttribute{
-				MarkdownDescription: "Specifies the Wireguard private key.",
-				Optional:            true,
 			},
 		},
 	}
@@ -539,14 +608,20 @@ func (r *networkResource) Create(
 	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Creating Network",
+			"Error Creating network",
 			err.Error(),
 		)
 		return
 	}
 
-	// Convert back to model
-	diags = r.networkToModel(ctx, createdNetwork, &data, site)
+	// Convert back to model, passing the plan data to preserve null values
+	var planData networkResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = r.networkToModel(ctx, createdNetwork, &data, site, &planData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -578,30 +653,35 @@ func (r *networkResource) Read(
 	var network *unifi.Network
 
 	if !data.ID.IsNull() && !data.ID.IsUnknown() {
-
-		// Get the network
+		// Get the network by ID
 		network, err = r.client.GetNetwork(ctx, site, data.ID.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error Reading Network",
+				"Error Reading network",
 				"Could not read network ID "+data.ID.ValueString()+": "+err.Error(),
 			)
 			return
 		}
-
 	} else {
+		// Get the network by name
 		network, err = r.client.GetNetworkByName(ctx, site, data.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error Reading Network",
+				"Error Reading network",
 				"Could not read network name "+data.Name.ValueString()+": "+err.Error(),
 			)
 			return
 		}
 	}
 
-	// Convert to model
-	diags := r.networkToModel(ctx, network, &data, site)
+	// Convert to model, passing the current state to preserve null values
+	var priorState networkResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &priorState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags := r.networkToModel(ctx, network, &data, site, &priorState)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -616,237 +696,53 @@ func (r *networkResource) Update(
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state networkResourceModel
-	var plan networkResourceModel
+	var data networkResourceModel
 
-	// Step 1: Read the current state (which already contains API values from previous reads)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	// Read Terraform plan data into the model
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Read the plan data
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Step 2: Apply the plan changes to the state object
-	// Check if the plan's value is null or unknown. If so, leave the state value as is
-	r.applyPlanToState(ctx, &plan, &state)
-
-	// Step 3: Convert the updated state to API format
-	network, diags := r.modelToNetwork(ctx, &state)
+	// Convert to unifi.Network
+	network, diags := r.modelToNetwork(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	site := state.Site.ValueString()
+	site := data.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
-	// Step 4: Send to API
-	network.ID = state.ID.ValueString()
+	network.ID = data.ID.ValueString()
+
+	// Update the network
 	updatedNetwork, err := r.client.UpdateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Updating Network",
+			"Error Updating network",
 			err.Error(),
 		)
 		return
 	}
 
-	// Step 5: Update state with API response
-	diags = r.networkToModel(ctx, updatedNetwork, &state, site)
+	// Convert back to model, passing the plan data to preserve null values
+	var planData networkResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	diags = r.networkToModel(ctx, updatedNetwork, &data, site, &planData)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-}
-
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *networkResource) applyPlanToState(
-	_ context.Context,
-	plan *networkResourceModel,
-	state *networkResourceModel,
-) {
-	// Apply plan values to state, but only if plan value is not null/unknown
-	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
-		state.Name = plan.Name
-	}
-	if !plan.Purpose.IsNull() && !plan.Purpose.IsUnknown() {
-		state.Purpose = plan.Purpose
-	}
-	if !plan.VlanID.IsNull() && !plan.VlanID.IsUnknown() {
-		state.VlanID = plan.VlanID
-	}
-	if !plan.Subnet.IsNull() && !plan.Subnet.IsUnknown() {
-		state.Subnet = plan.Subnet
-	}
-	if !plan.NetworkGroup.IsNull() && !plan.NetworkGroup.IsUnknown() {
-		state.NetworkGroup = plan.NetworkGroup
-	}
-
-	// DHCP Settings
-	if !plan.DhcpStart.IsNull() && !plan.DhcpStart.IsUnknown() {
-		state.DhcpStart = plan.DhcpStart
-	}
-	if !plan.DhcpStop.IsNull() && !plan.DhcpStop.IsUnknown() {
-		state.DhcpStop = plan.DhcpStop
-	}
-	if !plan.DhcpEnabled.IsNull() && !plan.DhcpEnabled.IsUnknown() {
-		state.DhcpEnabled = plan.DhcpEnabled
-	}
-	if !plan.DhcpLease.IsNull() && !plan.DhcpLease.IsUnknown() {
-		state.DhcpLease = plan.DhcpLease
-	}
-	if !plan.DhcpDNS.IsNull() && !plan.DhcpDNS.IsUnknown() {
-		state.DhcpDNS = plan.DhcpDNS
-	}
-	if !plan.DhcpdBootEnabled.IsNull() && !plan.DhcpdBootEnabled.IsUnknown() {
-		state.DhcpdBootEnabled = plan.DhcpdBootEnabled
-	}
-	if !plan.DhcpdBootServer.IsNull() && !plan.DhcpdBootServer.IsUnknown() {
-		state.DhcpdBootServer = plan.DhcpdBootServer
-	}
-	if !plan.DhcpdBootFilename.IsNull() && !plan.DhcpdBootFilename.IsUnknown() {
-		state.DhcpdBootFilename = plan.DhcpdBootFilename
-	}
-	if !plan.DhcpRelayEnabled.IsNull() && !plan.DhcpRelayEnabled.IsUnknown() {
-		state.DhcpRelayEnabled = plan.DhcpRelayEnabled
-	}
-
-	// DHCPv6 Settings
-	if !plan.DhcpV6DNS.IsNull() && !plan.DhcpV6DNS.IsUnknown() {
-		state.DhcpV6DNS = plan.DhcpV6DNS
-	}
-	if !plan.DhcpV6DNSAuto.IsNull() && !plan.DhcpV6DNSAuto.IsUnknown() {
-		state.DhcpV6DNSAuto = plan.DhcpV6DNSAuto
-	}
-	if !plan.DhcpV6Enabled.IsNull() && !plan.DhcpV6Enabled.IsUnknown() {
-		state.DhcpV6Enabled = plan.DhcpV6Enabled
-	}
-	if !plan.DhcpV6Lease.IsNull() && !plan.DhcpV6Lease.IsUnknown() {
-		state.DhcpV6Lease = plan.DhcpV6Lease
-	}
-	if !plan.DhcpV6PDStart.IsNull() && !plan.DhcpV6PDStart.IsUnknown() {
-		state.DhcpV6PDStart = plan.DhcpV6PDStart
-	}
-	if !plan.DhcpV6PDStop.IsNull() && !plan.DhcpV6PDStop.IsUnknown() {
-		state.DhcpV6PDStop = plan.DhcpV6PDStop
-	}
-	if !plan.DhcpV6Start.IsNull() && !plan.DhcpV6Start.IsUnknown() {
-		state.DhcpV6Start = plan.DhcpV6Start
-	}
-	if !plan.DhcpV6Stop.IsNull() && !plan.DhcpV6Stop.IsUnknown() {
-		state.DhcpV6Stop = plan.DhcpV6Stop
-	}
-
-	// IPv6 Settings
-	if !plan.IPv6InterfaceType.IsNull() && !plan.IPv6InterfaceType.IsUnknown() {
-		state.IPv6InterfaceType = plan.IPv6InterfaceType
-	}
-	if !plan.IPv6PDPrefixid.IsNull() && !plan.IPv6PDPrefixid.IsUnknown() {
-		state.IPv6PDPrefixid = plan.IPv6PDPrefixid
-	}
-	if !plan.IPv6PDStart.IsNull() && !plan.IPv6PDStart.IsUnknown() {
-		state.IPv6PDStart = plan.IPv6PDStart
-	}
-	if !plan.IPv6PDStop.IsNull() && !plan.IPv6PDStop.IsUnknown() {
-		state.IPv6PDStop = plan.IPv6PDStop
-	}
-	if !plan.IPv6RAPriority.IsNull() && !plan.IPv6RAPriority.IsUnknown() {
-		state.IPv6RAPriority = plan.IPv6RAPriority
-	}
-	if !plan.IPv6RAValidLifetime.IsNull() && !plan.IPv6RAValidLifetime.IsUnknown() {
-		state.IPv6RAValidLifetime = plan.IPv6RAValidLifetime
-	}
-	if !plan.IPv6RAPreferredLifetime.IsNull() && !plan.IPv6RAPreferredLifetime.IsUnknown() {
-		state.IPv6RAPreferredLifetime = plan.IPv6RAPreferredLifetime
-	}
-	if !plan.IPv6RAEnable.IsNull() && !plan.IPv6RAEnable.IsUnknown() {
-		state.IPv6RAEnable = plan.IPv6RAEnable
-	}
-	if !plan.IPv6Static.IsNull() && !plan.IPv6Static.IsUnknown() {
-		state.IPv6Static = plan.IPv6Static
-	}
-
-	// WAN Settings
-	if !plan.WANType.IsNull() && !plan.WANType.IsUnknown() {
-		state.WANType = plan.WANType
-	}
-	if !plan.WANUsername.IsNull() && !plan.WANUsername.IsUnknown() {
-		state.WANUsername = plan.WANUsername
-	}
-	if !plan.WANPassword.IsNull() && !plan.WANPassword.IsUnknown() {
-		state.WANPassword = plan.WANPassword
-	}
-	if !plan.WANIp.IsNull() && !plan.WANIp.IsUnknown() {
-		state.WANIp = plan.WANIp
-	}
-	if !plan.WANNetmask.IsNull() && !plan.WANNetmask.IsUnknown() {
-		state.WANNetmask = plan.WANNetmask
-	}
-	if !plan.WANGateway.IsNull() && !plan.WANGateway.IsUnknown() {
-		state.WANGateway = plan.WANGateway
-	}
-	if !plan.WANDNS.IsNull() && !plan.WANDNS.IsUnknown() {
-		state.WANDNS = plan.WANDNS
-	}
-	if !plan.WANNetworkGroup.IsNull() && !plan.WANNetworkGroup.IsUnknown() {
-		state.WANNetworkGroup = plan.WANNetworkGroup
-	}
-	if !plan.WANDHCPV6.IsNull() && !plan.WANDHCPV6.IsUnknown() {
-		state.WANDHCPV6 = plan.WANDHCPV6
-	}
-	if !plan.WANGatewayV6.IsNull() && !plan.WANGatewayV6.IsUnknown() {
-		state.WANGatewayV6 = plan.WANGatewayV6
-	}
-	if !plan.WANIPv6.IsNull() && !plan.WANIPv6.IsUnknown() {
-		state.WANIPv6 = plan.WANIPv6
-	}
-	if !plan.WANPrefixlen.IsNull() && !plan.WANPrefixlen.IsUnknown() {
-		state.WANPrefixlen = plan.WANPrefixlen
-	}
-	if !plan.WANTypeV6.IsNull() && !plan.WANTypeV6.IsUnknown() {
-		state.WANTypeV6 = plan.WANTypeV6
-	}
-
-	// WireGuard Settings
-	if !plan.WireguardClientMode.IsNull() && !plan.WireguardClientMode.IsUnknown() {
-		state.WireguardClientMode = plan.WireguardClientMode
-	}
-	if !plan.WireguardClientPeerIP.IsNull() && !plan.WireguardClientPeerIP.IsUnknown() {
-		state.WireguardClientPeerIP = plan.WireguardClientPeerIP
-	}
-	if !plan.WireguardClientPeerPort.IsNull() && !plan.WireguardClientPeerPort.IsUnknown() {
-		state.WireguardClientPeerPort = plan.WireguardClientPeerPort
-	}
-	if !plan.WireguardClientPeerPublicKey.IsNull() &&
-		!plan.WireguardClientPeerPublicKey.IsUnknown() {
-		state.WireguardClientPeerPublicKey = plan.WireguardClientPeerPublicKey
-	}
-	if !plan.WireguardClientPresharedKey.IsNull() && !plan.WireguardClientPresharedKey.IsUnknown() {
-		state.WireguardClientPresharedKey = plan.WireguardClientPresharedKey
-	}
-	if !plan.WireguardClientPresharedKeyEnabled.IsNull() &&
-		!plan.WireguardClientPresharedKeyEnabled.IsUnknown() {
-		state.WireguardClientPresharedKeyEnabled = plan.WireguardClientPresharedKeyEnabled
-	}
-	if !plan.WireguardID.IsNull() && !plan.WireguardID.IsUnknown() {
-		state.WireguardID = plan.WireguardID
-	}
-	if !plan.WireguardPublicKey.IsNull() && !plan.WireguardPublicKey.IsUnknown() {
-		state.WireguardPublicKey = plan.WireguardPublicKey
-	}
-	if !plan.WireguardPrivateKey.IsNull() && !plan.WireguardPrivateKey.IsUnknown() {
-		state.WireguardPrivateKey = plan.WireguardPrivateKey
-	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *networkResource) Delete(
@@ -868,11 +764,11 @@ func (r *networkResource) Delete(
 	}
 
 	// Delete the network
-	name := data.Name.ValueString() // Get name for deletion
+	name := data.Name.ValueString()
 	err := r.client.DeleteNetwork(ctx, site, data.ID.ValueString(), name)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Deleting Network",
+			"Error Deleting network",
 			err.Error(),
 		)
 		return
@@ -900,7 +796,6 @@ func (r *networkResource) ImportState(
 	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
 }
 
-// Helper function to find network ID by name
 // modelToNetwork converts from Terraform model to unifi.Network.
 func (r *networkResource) modelToNetwork(
 	ctx context.Context,
@@ -909,326 +804,540 @@ func (r *networkResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Name:    model.Name.ValueStringPointer(),
-		Purpose: model.Purpose.ValueString(),
+		Name:                    model.Name.ValueStringPointer(),
+		Purpose:                 unifi.PurposeCorporate,
+		NetworkGroup:            util.Ptr("LAN"),
+		AutoScaleEnabled:        model.AutoScaleEnabled.ValueBool(),
+		IPSubnet:                model.Subnet.ValueStringPointer(),
+		NetworkIsolationEnabled: model.NetworkIsolationEnabled.ValueBool(),
+		SettingPreference:       model.SettingPreference.ValueStringPointer(),
+		InternetAccessEnabled:   model.InternetAccessEnabled.ValueBool(),
+		MdnsEnabled:             model.MdnsEnabled.ValueBool(),
+		GatewayType:             model.GatewayType.ValueStringPointer(),
+		IPV6InterfaceType:       model.IPv6InterfaceType.ValueStringPointer(),
+		LteLanEnabled:           model.LteLanEnabled.ValueBool(),
+		VLANEnabled:             true,
+		Enabled:                 model.Enabled.ValueBool(),
+		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
+		IPAliases:               []string{},
 	}
 
-	network.VLAN = model.VlanID.ValueInt64Pointer()
-
-	if !model.VlanID.IsNull() {
-		network.VLANEnabled = true
+	// Handle third-party gateway mode
+	if model.ThirdPartyGateway.ValueBool() {
+		network.Purpose = unifi.PurposeVLANOnly
 	}
 
-	if !model.Subnet.IsNull() {
-		network.IPSubnet = model.Subnet.ValueStringPointer()
-	}
-
-	if !model.NetworkGroup.IsNull() {
-		network.NetworkGroup = model.NetworkGroup.ValueStringPointer()
-	}
-
-	// DHCP Settings
-	if !model.DhcpStart.IsNull() {
-		network.DHCPDStart = model.DhcpStart.ValueStringPointer()
-	}
-	if !model.DhcpStop.IsNull() {
-		network.DHCPDStop = model.DhcpStop.ValueStringPointer()
-	}
-	if !model.DhcpEnabled.IsNull() {
-		network.DHCPDEnabled = model.DhcpEnabled.ValueBool()
-	}
-	if !model.DhcpDNSEnabled.IsNull() {
-		network.DHCPDDNSEnabled = model.DhcpDNSEnabled.ValueBool()
-	}
-	network.DHCPDLeaseTime = model.DhcpLease.ValueInt64Pointer()
-
-	// Convert DHCP DNS list
-	if !model.DhcpDNS.IsNull() {
-		var dhcpDNS []string
-		d := model.DhcpDNS.ElementsAs(ctx, &dhcpDNS, false)
+	// Handle DHCP guarding configuration
+	if !model.DhcpGuarding.IsNull() && !model.DhcpGuarding.IsUnknown() {
+		var dhcpGuarding dhcpGuardingModel
+		d := model.DhcpGuarding.As(ctx, &dhcpGuarding, basetypes.ObjectAsOptions{})
 		diags.Append(d...)
 		if !diags.HasError() {
-			network.DHCPDDNS1 = ""
-			network.DHCPDDNS2 = ""
-			network.DHCPDDNS3 = ""
-			network.DHCPDDNS4 = ""
-			for i, dns := range dhcpDNS {
-				switch i {
-				case 0:
-					network.DHCPDDNS1 = dns
-				case 1:
-					network.DHCPDDNS2 = dns
-				case 2:
-					network.DHCPDDNS3 = dns
-				case 3:
-					network.DHCPDDNS4 = dns
+			network.DHCPguardEnabled = dhcpGuarding.Enabled.ValueBool()
+
+			// Map servers to dhcpd_ip_1..3 when third_party_gateway is enabled
+			if model.ThirdPartyGateway.ValueBool() && !dhcpGuarding.Servers.IsNull() && !dhcpGuarding.Servers.IsUnknown() {
+				var servers []string
+				d := dhcpGuarding.Servers.ElementsAs(ctx, &servers, false)
+				diags.Append(d...)
+				if !diags.HasError() {
+					if len(servers) > 0 {
+						network.DHCPDIP1 = servers[0]
+					}
+					if len(servers) > 1 {
+						network.DHCPDIP2 = servers[1]
+					}
+					if len(servers) > 2 {
+						network.DHCPDIP3 = servers[2]
+					}
 				}
 			}
 		}
 	}
 
-	if !model.DhcpdBootEnabled.IsNull() {
-		network.DHCPDBootEnabled = model.DhcpdBootEnabled.ValueBool()
-	}
-	if !model.DhcpdBootServer.IsNull() {
-		network.DHCPDBootServer = model.DhcpdBootServer.ValueString()
-	}
-	if !model.DhcpdBootFilename.IsNull() {
-		network.DHCPDBootFilename = model.DhcpdBootFilename.ValueStringPointer()
-	}
-	if !model.DhcpRelayEnabled.IsNull() {
-		network.DHCPRelayEnabled = model.DhcpRelayEnabled.ValueBool()
-	}
+	// Handle domain name - set to empty string if null
+	network.DomainName = model.DomainName.ValueStringPointer()
 
-	// DHCPv6 Settings
-	if !model.DhcpV6DNS.IsNull() {
-		var dhcpV6DNS []string
-		d := model.DhcpV6DNS.ElementsAs(ctx, &dhcpV6DNS, false)
+	// Handle optional int64 pointer fields
+	network.VLAN = model.Vlan.ValueInt64Pointer()
+
+	// Handle NAT outbound IP addresses
+	if !model.NatOutboundIPAddresses.IsNull() && !model.NatOutboundIPAddresses.IsUnknown() {
+		var natIPs []natOutboundIPAddressesModel
+		d := model.NatOutboundIPAddresses.ElementsAs(ctx, &natIPs, true)
 		diags.Append(d...)
 		if !diags.HasError() {
-			for i, dns := range dhcpV6DNS {
-				switch i {
-				case 0:
-					network.DHCPDV6DNS1 = &dns
-				case 1:
-					network.DHCPDV6DNS2 = &dns
-				case 2:
-					network.DHCPDV6DNS3 = &dns
-				case 3:
-					network.DHCPDV6DNS4 = &dns
+			for _, natIP := range natIPs {
+				v := unifi.NetworkNATOutboundIPAddresses{
+					IPAddress:       natIP.IPAddress.ValueString(),
+					Mode:            natIP.Mode.ValueStringPointer(),
+					WANNetworkGroup: natIP.WANNetworkGroup.ValueStringPointer(),
 				}
+				network.NATOutboundIPAddresses = append(network.NATOutboundIPAddresses, v)
 			}
 		}
 	}
 
-	if !model.DhcpV6DNSAuto.IsNull() {
-		network.DHCPDV6DNSAuto = model.DhcpV6DNSAuto.ValueBool()
-	}
-	if !model.DhcpV6Enabled.IsNull() {
-		network.DHCPDV6Enabled = model.DhcpV6Enabled.ValueBool()
-	}
-	if !model.DhcpV6Lease.IsNull() {
-		network.DHCPDV6LeaseTime = model.DhcpV6Lease.ValueInt64Pointer()
-	}
-	if !model.DhcpV6Start.IsNull() {
-		network.DHCPDV6Start = model.DhcpV6Start.ValueStringPointer()
-	}
-	if !model.DhcpV6Stop.IsNull() {
-		network.DHCPDV6Stop = model.DhcpV6Stop.ValueStringPointer()
-	}
-
-	// IPv6 Settings
-	if !model.IPv6InterfaceType.IsNull() {
-		network.IPV6InterfaceType = model.IPv6InterfaceType.ValueStringPointer()
-	}
-	if !model.IPv6PDPrefixid.IsNull() {
-		network.IPV6PDPrefixid = model.IPv6PDPrefixid.ValueString()
-	}
-	if !model.IPv6PDStart.IsNull() {
-		network.IPV6PDStart = model.IPv6PDStart.ValueStringPointer()
-	}
-	if !model.IPv6PDStop.IsNull() {
-		network.IPV6PDStop = model.IPv6PDStop.ValueStringPointer()
-	}
-	if !model.IPv6RAPriority.IsNull() {
-		network.IPV6RaPriority = model.IPv6RAPriority.ValueStringPointer()
-	}
-	if !model.IPv6RAValidLifetime.IsNull() {
-		network.IPV6RaValidLifetime = model.IPv6RAValidLifetime.ValueInt64Pointer()
-	}
-	if !model.IPv6RAPreferredLifetime.IsNull() {
-		network.IPV6RaPreferredLifetime = model.IPv6RAPreferredLifetime.ValueInt64Pointer()
-	}
-	if !model.IPv6RAEnable.IsNull() {
-		network.IPV6RaEnabled = model.IPv6RAEnable.ValueBool()
-	}
-
-	// IPv6 Static - convert list to single subnet string (use first element)
-	if !model.IPv6Static.IsNull() {
-		var ipv6Static []string
-		d := model.IPv6Static.ElementsAs(ctx, &ipv6Static, false)
+	// Handle IP aliases
+	if !model.IPAliases.IsNull() && !model.IPAliases.IsUnknown() {
+		var ipAliases []string
+		d := model.IPAliases.ElementsAs(ctx, &ipAliases, false)
 		diags.Append(d...)
-		if !diags.HasError() && len(ipv6Static) > 0 {
-			network.IPV6Subnet = &ipv6Static[0]
+		if !diags.HasError() {
+			network.IPAliases = ipAliases
 		}
+	}
+
+	// Handle IPv6 aliases
+	if !model.IPv6Aliases.IsNull() && !model.IPv6Aliases.IsUnknown() {
+		var ipv6Aliases []string
+		d := model.IPv6Aliases.ElementsAs(ctx, &ipv6Aliases, false)
+		diags.Append(d...)
+		// if !diags.HasError() {
+		// 	// IPv6Aliases field not available in API
+		// }
+	}
+
+	// Handle DHCP server configuration
+	if !model.DhcpServer.IsNull() && !model.DhcpServer.IsUnknown() {
+		var dhcpServer dhcpServerModel
+		d := model.DhcpServer.As(ctx, &dhcpServer, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			// Handle DHCP boot configuration
+			if !dhcpServer.Boot.IsNull() && !dhcpServer.Boot.IsUnknown() {
+				var dhcpBoot dhcpBootModel
+				d := dhcpServer.Boot.As(ctx, &dhcpBoot, basetypes.ObjectAsOptions{})
+				diags.Append(d...)
+				if !diags.HasError() {
+					network.DHCPDBootEnabled = dhcpBoot.Enabled.ValueBool()
+					if dhcpBoot.Server.IsNull() || dhcpBoot.Server.IsUnknown() {
+						network.DHCPDBootServer = ""
+					} else {
+						network.DHCPDBootServer = dhcpBoot.Server.ValueString()
+					}
+					if dhcpBoot.Filename.IsNull() || dhcpBoot.Filename.IsUnknown() {
+						network.DHCPDBootFilename = util.Ptr("")
+					} else {
+						network.DHCPDBootFilename = dhcpBoot.Filename.ValueStringPointer()
+					}
+				}
+			} else {
+				network.DHCPDBootEnabled = false
+				network.DHCPDBootServer = ""
+				network.DHCPDBootFilename = util.Ptr("")
+			}
+			network.DHCPDEnabled = dhcpServer.Enabled.ValueBool()
+			network.DHCPDStart = dhcpServer.Start.ValueStringPointer()
+			network.DHCPDStop = dhcpServer.Stop.ValueStringPointer()
+			network.DHCPDGatewayEnabled = dhcpServer.GatewayEnabled.ValueBool()
+			network.DHCPDConflictChecking = dhcpServer.ConflictChecking.ValueBool()
+			network.DHCPDNtpEnabled = dhcpServer.NtpEnabled.ValueBool()
+			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
+			network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
+			network.DHCPDLeaseTime = dhcpServer.Leasetime.ValueInt64Pointer()
+
+			// Handle WINS configuration
+			if !dhcpServer.Wins.IsNull() && !dhcpServer.Wins.IsUnknown() {
+				var wins winsModel
+				d := dhcpServer.Wins.As(ctx, &wins, basetypes.ObjectAsOptions{})
+				diags.Append(d...)
+				if !diags.HasError() {
+					network.DHCPDWinsEnabled = wins.Enabled.ValueBool()
+					if !wins.Addresses.IsNull() && !wins.Addresses.IsUnknown() {
+						var addresses []string
+						d := wins.Addresses.ElementsAs(ctx, &addresses, false)
+						diags.Append(d...)
+						if !diags.HasError() {
+							for i, addr := range addresses {
+								if i >= 2 {
+									break
+								}
+								switch i {
+								case 0:
+									network.DHCPDWins1 = util.Ptr(addr)
+								case 1:
+									network.DHCPDWins2 = util.Ptr(addr)
+								}
+							}
+							// Set remaining WINS servers to empty string
+							for i := len(addresses); i < 2; i++ {
+								switch i {
+								case 0:
+									network.DHCPDWins1 = util.Ptr("")
+								case 1:
+									network.DHCPDWins2 = util.Ptr("")
+								}
+							}
+						}
+					} else {
+						network.DHCPDWins1 = util.Ptr("")
+						network.DHCPDWins2 = util.Ptr("")
+					}
+				}
+			} else {
+				network.DHCPDWinsEnabled = false
+				network.DHCPDWins1 = util.Ptr("")
+				network.DHCPDWins2 = util.Ptr("")
+			}
+
+			if dhcpServer.WpadUrl.IsNull() || dhcpServer.WpadUrl.IsUnknown() {
+				network.DHCPDWPAdUrl = util.Ptr("")
+			} else {
+				network.DHCPDWPAdUrl = dhcpServer.WpadUrl.ValueStringPointer()
+			}
+
+			if dhcpServer.TftpServer.IsNull() || dhcpServer.TftpServer.IsUnknown() {
+				network.DHCPDTFTPServer = util.Ptr("")
+			} else {
+				network.DHCPDTFTPServer = dhcpServer.TftpServer.ValueStringPointer()
+			}
+
+			if dhcpServer.UnifiController.IsNull() || dhcpServer.UnifiController.IsUnknown() {
+				network.DHCPDUnifiController = util.Ptr("")
+			} else {
+				network.DHCPDUnifiController = dhcpServer.UnifiController.ValueStringPointer()
+			}
+
+			// Handle DNS servers
+			if !dhcpServer.DnsServers.IsNull() && !dhcpServer.DnsServers.IsUnknown() {
+				var dnsServers []string
+				d := dhcpServer.DnsServers.ElementsAs(ctx, &dnsServers, false)
+				diags.Append(d...)
+				if !diags.HasError() {
+					for i, dns := range dnsServers {
+						if i >= 4 {
+							break
+						}
+						switch i {
+						case 0:
+							network.DHCPDDNS1 = dns
+						case 1:
+							network.DHCPDDNS2 = dns
+						case 2:
+							network.DHCPDDNS3 = dns
+						case 3:
+							network.DHCPDDNS4 = dns
+						}
+					}
+					// Set remaining DNS servers to empty string
+					for i := len(dnsServers); i < 4; i++ {
+						switch i {
+						case 0:
+							network.DHCPDDNS1 = ""
+						case 1:
+							network.DHCPDDNS2 = ""
+						case 2:
+							network.DHCPDDNS3 = ""
+						case 3:
+							network.DHCPDDNS4 = ""
+						}
+					}
+				}
+			} else {
+				// Set all DNS servers to empty string when not configured
+				network.DHCPDDNS1 = ""
+				network.DHCPDDNS2 = ""
+				network.DHCPDDNS3 = ""
+				network.DHCPDDNS4 = ""
+			}
+		}
+	} else {
+		// Set defaults when DHCP server is not configured
+		network.DHCPDBootEnabled = false
+		network.DHCPDBootServer = ""
+		network.DHCPDBootFilename = util.Ptr("")
+		network.DHCPDEnabled = true
+		network.DHCPDGatewayEnabled = false
+		network.DHCPDConflictChecking = true
+		network.DHCPDNtpEnabled = false
+		network.DHCPDTimeOffsetEnabled = false
+		network.DHCPDDNSEnabled = false
+		network.DHCPDLeaseTime = util.Ptr(int64(86400))
+		network.DHCPDWinsEnabled = false
+		network.DHCPDWins1 = util.Ptr("")
+		network.DHCPDWins2 = util.Ptr("")
+		network.DHCPDWPAdUrl = util.Ptr("")
+		network.DHCPDTFTPServer = util.Ptr("")
+		network.DHCPDUnifiController = util.Ptr("")
+		network.DHCPDDNS1 = ""
+		network.DHCPDDNS2 = ""
+		network.DHCPDDNS3 = ""
+		network.DHCPDDNS4 = ""
+	}
+
+	// Handle DHCP relay configuration
+	if !model.DhcpRelay.IsNull() && !model.DhcpRelay.IsUnknown() {
+		var dhcpRelay dhcpRelayModel
+		d := model.DhcpRelay.As(ctx, &dhcpRelay, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			network.DHCPRelayEnabled = dhcpRelay.Enabled.ValueBool()
+			if !dhcpRelay.Servers.IsNull() && !dhcpRelay.Servers.IsUnknown() {
+				var servers []string
+				d := dhcpRelay.Servers.ElementsAs(ctx, &servers, false)
+				diags.Append(d...)
+				// if !diags.HasError() {
+				// 	// DHCPRelayServers field not available in current API version
+				// }
+			}
+		}
+	} else {
+		// Set defaults when DHCP relay is not configured
+		network.DHCPRelayEnabled = false
 	}
 
 	return network, diags
 }
 
 // networkToModel converts from unifi.Network to Terraform model.
+// previousModel is the model from the plan or previous state, used to preserve null values.
 func (r *networkResource) networkToModel(
-	_ context.Context,
+	ctx context.Context,
 	network *unifi.Network,
 	model *networkResourceModel,
 	site string,
+	previousModel *networkResourceModel,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringPointerValue(network.Name)
-	model.Purpose = types.StringValue(network.Purpose)
+	model.Enabled = types.BoolValue(network.Enabled)
+	model.IgmpSnooping = types.BoolValue(network.IGMPSnooping)
+	model.NetworkIsolationEnabled = types.BoolValue(network.NetworkIsolationEnabled)
 
-	model.VlanID = types.Int64PointerValue(network.VLAN)
+	// Set third_party_gateway based on API purpose
+	isVLANOnly := network.Purpose == unifi.PurposeVLANOnly
+	model.ThirdPartyGateway = types.BoolValue(isVLANOnly)
 
-	model.Subnet = types.StringPointerValue(network.IPSubnet)
-	model.NetworkGroup = types.StringPointerValue(network.NetworkGroup)
-
-	// DHCP Settings
-	model.DhcpStart = types.StringPointerValue(network.DHCPDStart)
-
-	model.DhcpStop = types.StringPointerValue(network.DHCPDStop)
-
-	model.DhcpEnabled = types.BoolValue(network.DHCPDEnabled)
-	model.DhcpDNSEnabled = types.BoolValue(network.DHCPDDNSEnabled)
-
-	model.DhcpLease = types.Int64PointerValue(network.DHCPDLeaseTime)
-
-	// Convert DHCP DNS from individual fields to list
-	dhcpDNSSlice := []string{}
-	for _, dns := range []string{network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4} {
-		if dns != "" {
-			dhcpDNSSlice = append(dhcpDNSSlice, dns)
+	// For vlan-only networks, the API does not return fields like subnet, gateway_type,
+	// setting_preference, etc. Preserve the plan/state values for these irrelevant fields
+	// to avoid "inconsistent result after apply" errors.
+	if isVLANOnly && previousModel != nil {
+		model.Subnet = previousModel.Subnet
+		model.AutoScaleEnabled = previousModel.AutoScaleEnabled
+		model.SettingPreference = previousModel.SettingPreference
+		model.InternetAccessEnabled = previousModel.InternetAccessEnabled
+		model.MdnsEnabled = previousModel.MdnsEnabled
+		model.GatewayType = previousModel.GatewayType
+		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
+		model.LteLanEnabled = previousModel.LteLanEnabled
+		// domain_name uses UseStateForUnknown, so it may be unknown during Create.
+		// Resolve unknown to null since the API doesn't return it for vlan-only.
+		if previousModel.DomainName.IsUnknown() {
+			model.DomainName = types.StringNull()
+		} else {
+			model.DomainName = previousModel.DomainName
 		}
-	}
-
-	if len(dhcpDNSSlice) > 0 {
-		dhcpDNSValues := make([]attr.Value, len(dhcpDNSSlice))
-		for i, dns := range dhcpDNSSlice {
-			dhcpDNSValues[i] = types.StringValue(dns)
+	} else {
+		model.AutoScaleEnabled = types.BoolValue(network.AutoScaleEnabled)
+		if network.IPSubnet != nil {
+			model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
+		} else {
+			model.Subnet = cidrtypes.NewIPv4PrefixNull()
 		}
-		dhcpDNSList, d := types.ListValue(types.StringType, dhcpDNSValues)
-		diags.Append(d...)
-		model.DhcpDNS = dhcpDNSList
-	} else {
-		model.DhcpDNS = types.ListNull(types.StringType)
-	}
-
-	model.DhcpdBootEnabled = types.BoolNull()
-	if network.DHCPDBootEnabled {
-		model.DhcpdBootEnabled = types.BoolValue(true)
-	} else if !model.DhcpdBootEnabled.IsNull() {
-		model.DhcpdBootEnabled = types.BoolValue(false)
-	}
-
-	if network.DHCPDBootServer != "" {
-		model.DhcpdBootServer = types.StringValue(network.DHCPDBootServer)
-	} else {
-		model.DhcpdBootServer = types.StringNull()
-	}
-
-	model.DhcpdBootFilename = types.StringPointerValue(network.DHCPDBootFilename)
-
-	if network.DHCPRelayEnabled {
-		model.DhcpRelayEnabled = types.BoolValue(true)
-	} else if !model.DhcpRelayEnabled.IsNull() {
-		model.DhcpRelayEnabled = types.BoolValue(false)
-	} else {
-		model.DhcpRelayEnabled = types.BoolNull()
-	}
-
-	// DHCPv6 Settings
-	// Convert DHCPv6 DNS from individual fields to list
-	dhcpV6DNSSlice := []string{}
-	for _, dns := range []*string{network.DHCPDV6DNS1, network.DHCPDV6DNS2, network.DHCPDV6DNS3, network.DHCPDV6DNS4} {
-		if dns != nil && *dns != "" {
-			dhcpV6DNSSlice = append(dhcpV6DNSSlice, *dns)
-		}
-	}
-
-	if len(dhcpV6DNSSlice) > 0 {
-		dhcpV6DNSValues := make([]attr.Value, len(dhcpV6DNSSlice))
-		for i, dns := range dhcpV6DNSSlice {
-			dhcpV6DNSValues[i] = types.StringValue(dns)
-		}
-		dhcpV6DNSList, d := types.ListValue(types.StringType, dhcpV6DNSValues)
-		diags.Append(d...)
-		model.DhcpV6DNS = dhcpV6DNSList
-	} else {
-		model.DhcpV6DNS = types.ListNull(types.StringType)
-	}
-
-	model.DhcpV6DNSAuto = types.BoolValue(network.DHCPDV6DNSAuto)
-	if network.DHCPDV6Enabled {
-		model.DhcpV6Enabled = types.BoolValue(true)
-	} else if !model.DhcpV6Enabled.IsNull() {
-		model.DhcpV6Enabled = types.BoolValue(false)
-	} else {
-		model.DhcpV6Enabled = types.BoolNull()
-	}
-	model.DhcpV6Lease = types.Int64PointerValue(network.DHCPDV6LeaseTime)
-	model.DhcpV6Start = types.StringPointerValue(network.DHCPDV6Start)
-	model.DhcpV6Stop = types.StringPointerValue(network.DHCPDV6Stop)
-
-	// DhcpV6PDStart and DhcpV6PDStop don't have direct API counterparts; set to null
-	model.DhcpV6PDStart = types.StringNull()
-	model.DhcpV6PDStop = types.StringNull()
-
-	// IPv6 Settings
-	if network.IPV6InterfaceType != nil && *network.IPV6InterfaceType != "" &&
-		*network.IPV6InterfaceType != "none" {
+		model.SettingPreference = types.StringPointerValue(network.SettingPreference)
+		model.InternetAccessEnabled = types.BoolValue(network.InternetAccessEnabled)
+		model.MdnsEnabled = types.BoolValue(network.MdnsEnabled)
+		model.GatewayType = types.StringPointerValue(network.GatewayType)
 		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-	} else if !model.IPv6InterfaceType.IsNull() {
-		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-	} else {
-		model.IPv6InterfaceType = types.StringNull()
-	}
-	if network.IPV6PDPrefixid != "" {
-		model.IPv6PDPrefixid = types.StringValue(network.IPV6PDPrefixid)
-	} else if !model.IPv6PDPrefixid.IsNull() {
-		model.IPv6PDPrefixid = types.StringValue(network.IPV6PDPrefixid)
-	} else {
-		model.IPv6PDPrefixid = types.StringNull()
-	}
-	model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
-	model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
-	model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
-	model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
-	model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
-	if network.IPV6RaEnabled {
-		model.IPv6RAEnable = types.BoolValue(true)
-	} else if !model.IPv6RAEnable.IsNull() {
-		model.IPv6RAEnable = types.BoolValue(false)
-	} else {
-		model.IPv6RAEnable = types.BoolNull()
+		model.LteLanEnabled = types.BoolValue(network.LteLanEnabled)
+		model.DomainName = types.StringPointerValue(network.DomainName)
 	}
 
-	// IPv6 Static - convert single subnet string to list
-	if network.IPV6Subnet != nil && *network.IPV6Subnet != "" {
-		ipv6StaticValues := []attr.Value{types.StringValue(*network.IPV6Subnet)}
-		ipv6StaticList, d := types.ListValue(types.StringType, ipv6StaticValues)
+	// Determine if this is an import (name/ID is set but required field Subnet is null)
+	isImport := previousModel != nil && previousModel.Subnet.IsNull()
+
+	// Build dhcp_guarding from API fields
+	shouldPopulateDhcpGuarding := false
+	if previousModel != nil {
+		shouldPopulateDhcpGuarding = !previousModel.DhcpGuarding.IsNull() ||
+			(isImport && network.DHCPguardEnabled)
+	} else {
+		shouldPopulateDhcpGuarding = network.DHCPguardEnabled
+	}
+
+	if shouldPopulateDhcpGuarding {
+		var serversList types.List
+		if isVLANOnly {
+			var servers []string
+			if network.DHCPDIP1 != "" {
+				servers = append(servers, network.DHCPDIP1)
+			}
+			if network.DHCPDIP2 != "" {
+				servers = append(servers, network.DHCPDIP2)
+			}
+			if network.DHCPDIP3 != "" {
+				servers = append(servers, network.DHCPDIP3)
+			}
+			if len(servers) > 0 {
+				var d diag.Diagnostics
+				serversList, d = types.ListValueFrom(ctx, types.StringType, servers)
+				diags.Append(d...)
+			} else {
+				serversList = types.ListNull(types.StringType)
+			}
+		} else {
+			serversList = types.ListNull(types.StringType)
+		}
+
+		dhcpGuardingValue := dhcpGuardingModel{
+			Enabled: types.BoolValue(network.DHCPguardEnabled),
+			Servers: serversList,
+		}
+		dhcpGuardingObj, d := types.ObjectValueFrom(ctx, dhcpGuardingValue.AttributeTypes(), dhcpGuardingValue)
 		diags.Append(d...)
-		model.IPv6Static = ipv6StaticList
+		model.DhcpGuarding = dhcpGuardingObj
 	} else {
-		model.IPv6Static = types.ListNull(types.StringType)
+		model.DhcpGuarding = types.ObjectNull(dhcpGuardingModel{}.AttributeTypes())
 	}
 
-	// WAN Settings
-	model.WANType = types.StringNull()
-	model.WANUsername = types.StringNull()
-	model.WANPassword = types.StringNull()
-	model.WANIp = types.StringNull()
-	model.WANGateway = types.StringNull()
-	model.WANNetmask = types.StringNull()
-	model.WANDNS = types.ListNull(types.StringType)
-	model.WANNetworkGroup = types.StringNull()
-	model.WANDHCPV6 = types.BoolNull()
-	model.WANGatewayV6 = types.StringNull()
-	model.WANIPv6 = types.StringNull()
-	model.WANPrefixlen = types.Int64Null()
-	model.WANTypeV6 = types.StringNull()
+	model.Vlan = types.Int64PointerValue(network.VLAN)
 
-	// WireGuard Settings
-	model.WireguardClientMode = types.StringNull()
-	model.WireguardClientPeerIP = types.StringNull()
-	model.WireguardClientPeerPort = types.Int64Null()
-	model.WireguardClientPeerPublicKey = types.StringNull()
-	model.WireguardClientPresharedKey = types.StringNull()
-	model.WireguardClientPresharedKeyEnabled = types.BoolNull()
-	model.WireguardID = types.Int64Null()
-	model.WireguardPublicKey = types.StringNull()
-	model.WireguardPrivateKey = types.StringNull()
+	// Handle lists - for now set to null
+	model.NatOutboundIPAddresses = types.ListNull(
+		types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+	)
+	model.IPAliases = types.ListNull(types.StringType)
+	model.IPv6Aliases = types.ListNull(types.StringType)
+
+	// Only populate dhcp_server if:
+	// 1. It was configured in the previous state (not null), OR
+	// 2. This is an import and DHCP is enabled (populate everything during import)
+	shouldPopulateDhcp := false
+	if previousModel != nil {
+		shouldPopulateDhcp = !previousModel.DhcpServer.IsNull() ||
+			(isImport && network.DHCPDEnabled)
+	}
+
+	if shouldPopulateDhcp {
+		// Helper function to convert empty strings to null
+		strPtrToType := func(ptr *string) types.String {
+			if ptr == nil || *ptr == "" {
+				return types.StringNull()
+			}
+			return types.StringValue(*ptr)
+		}
+
+		dhcpBootValue := dhcpBootModel{
+			Enabled:  types.BoolValue(network.DHCPDBootEnabled),
+			Server:   types.StringValue(network.DHCPDBootServer),
+			Filename: strPtrToType(network.DHCPDBootFilename),
+		}
+
+		dhcpBootObj, d := types.ObjectValueFrom(
+			ctx,
+			dhcpBootValue.AttributeTypes(),
+			dhcpBootValue,
+		)
+		diags.Append(d...)
+
+		// Build DNS servers list from DHCPDDNS1-4
+		var dnsServers []string
+		if network.DHCPDDNS1 != "" {
+			dnsServers = append(dnsServers, network.DHCPDDNS1)
+		}
+		if network.DHCPDDNS2 != "" {
+			dnsServers = append(dnsServers, network.DHCPDDNS2)
+		}
+		if network.DHCPDDNS3 != "" {
+			dnsServers = append(dnsServers, network.DHCPDDNS3)
+		}
+		if network.DHCPDDNS4 != "" {
+			dnsServers = append(dnsServers, network.DHCPDDNS4)
+		}
+
+		var dnsServersList types.List
+		if len(dnsServers) > 0 {
+			dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)
+			diags.Append(d...)
+		} else {
+			dnsServersList = types.ListNull(types.StringType)
+		}
+
+		// Build WINS addresses list from DHCPDWins1-2
+		var winsAddresses []string
+		if network.DHCPDWins1 != nil && *network.DHCPDWins1 != "" {
+			winsAddresses = append(winsAddresses, *network.DHCPDWins1)
+		}
+		if network.DHCPDWins2 != nil && *network.DHCPDWins2 != "" {
+			winsAddresses = append(winsAddresses, *network.DHCPDWins2)
+		}
+
+		var winsAddressesList types.List
+		if len(winsAddresses) > 0 {
+			winsAddressesList, d = types.ListValueFrom(ctx, types.StringType, winsAddresses)
+			diags.Append(d...)
+		} else {
+			winsAddressesList = types.ListNull(types.StringType)
+		}
+
+		winsValue := winsModel{
+			Enabled:   types.BoolValue(network.DHCPDWinsEnabled),
+			Addresses: winsAddressesList,
+		}
+
+		winsObj, d := types.ObjectValueFrom(ctx, winsValue.AttributeTypes(), winsValue)
+		diags.Append(d...)
+
+		dhcpServerValue := dhcpServerModel{
+			Boot:              dhcpBootObj,
+			Enabled:           types.BoolValue(network.DHCPDEnabled),
+			GatewayEnabled:    types.BoolValue(network.DHCPDGatewayEnabled),
+			ConflictChecking:  types.BoolValue(network.DHCPDConflictChecking),
+			NtpEnabled:        types.BoolValue(network.DHCPDNtpEnabled),
+			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
+			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
+			Leasetime:         types.Int64PointerValue(network.DHCPDLeaseTime),
+			Wins:              winsObj,
+			WpadUrl:           strPtrToType(network.DHCPDWPAdUrl),
+			Start:             types.StringPointerValue(network.DHCPDStart),
+			Stop:              types.StringPointerValue(network.DHCPDStop),
+			TftpServer:        strPtrToType(network.DHCPDTFTPServer),
+			UnifiController:   strPtrToType(network.DHCPDUnifiController),
+			DnsServers:        dnsServersList,
+		}
+
+		dhcpServerObj, d := types.ObjectValueFrom(
+			ctx,
+			dhcpServerValue.AttributeTypes(),
+			dhcpServerValue,
+		)
+		diags.Append(d...)
+		model.DhcpServer = dhcpServerObj
+	} else {
+		// Keep dhcp_server null if it wasn't in the plan/state
+		model.DhcpServer = types.ObjectNull(dhcpServerModel{}.AttributeTypes())
+	}
+
+	// Only populate dhcp_relay if:
+	// 1. It was configured in the previous state (not null), OR
+	// 2. This is an import and DHCP relay is enabled (populate everything during import)
+	shouldPopulateRelay := false
+	if previousModel != nil {
+		shouldPopulateRelay = !previousModel.DhcpRelay.IsNull() ||
+			(isImport && network.DHCPRelayEnabled)
+	}
+
+	if shouldPopulateRelay {
+		dhcpRelayValue := dhcpRelayModel{
+			Enabled: types.BoolValue(network.DHCPRelayEnabled),
+			Servers: types.ListNull(types.StringType),
+		}
+
+		dhcpRelayObj, d := types.ObjectValueFrom(
+			ctx,
+			dhcpRelayValue.AttributeTypes(),
+			dhcpRelayValue,
+		)
+		diags.Append(d...)
+		model.DhcpRelay = dhcpRelayObj
+	} else {
+		// Keep dhcp_relay null if it wasn't in the plan/state
+		model.DhcpRelay = types.ObjectNull(dhcpRelayModel{}.AttributeTypes())
+	}
 
 	return diags
 }

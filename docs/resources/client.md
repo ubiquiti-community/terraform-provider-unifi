@@ -16,14 +16,15 @@ Clients are created in the controller when observed on the network, so the resou
 
 ```terraform
 resource "unifi_network" "my_vlan" {
-  name    = "wifi-vlan"
-  purpose = "corporate"
+  name   = "wifi-vlan"
+  subnet = "10.0.0.1/24"
+  vlan   = 10
 
-  subnet       = "10.0.0.1/24"
-  vlan_id      = 10
-  dhcp_start   = "10.0.0.6"
-  dhcp_stop    = "10.0.0.254"
-  dhcp_enabled = true
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.0.6"
+    stop    = "10.0.0.254"
+  }
 }
 
 resource "unifi_client" "test" {

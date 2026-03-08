@@ -1,22 +1,24 @@
 resource "unifi_network" "vlan" {
-  name    = "wifi-vlan"
-  purpose = "corporate"
+  name   = "wifi-vlan"
+  subnet = "10.0.0.1/24"
+  vlan   = 10
 
-  subnet       = "10.0.0.1/24"
-  vlan_id      = 10
-  dhcp_start   = "10.0.0.6"
-  dhcp_stop    = "10.0.0.254"
-  dhcp_enabled = true
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.0.6"
+    stop    = "10.0.0.254"
+  }
 }
 
-resource "unifi_network" "wan" {
-  name    = "wan"
-  purpose = "wan"
+# Third-party gateway (VLAN-only) network
+resource "unifi_network" "third_party" {
+  name                = "third-party-vlan"
+  subnet              = "192.168.20.1/24"
+  vlan                = 20
+  third_party_gateway = true
 
-  wan_networkgroup = "WAN"
-  wan_type         = "pppoe"
-  wan_ip           = "192.168.1.1"
-  wan_egress_qos   = 1
-  wan_username     = "username"
-  x_wan_password   = "password"
+  dhcp_guarding = {
+    enabled = true
+    servers = ["192.168.20.1"]
+  }
 }
