@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -15,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -32,18 +35,61 @@ type portForwardResource struct {
 	client *Client
 }
 
+// portForwardWanModel describes the WAN configuration for a port forwarding rule.
+type portForwardWanModel struct {
+	Interface types.String `tfsdk:"interface"`
+	IPAddress types.String `tfsdk:"ip_address"`
+	Port      types.String `tfsdk:"port"`
+}
+
+func (m portForwardWanModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"interface":  types.StringType,
+		"ip_address": types.StringType,
+		"port":       types.StringType,
+	}
+}
+
+// portForwardForwardModel describes the forward destination for a port forwarding rule.
+type portForwardForwardModel struct {
+	IP   types.String `tfsdk:"ip"`
+	Port types.String `tfsdk:"port"`
+}
+
+func (m portForwardForwardModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"ip":   types.StringType,
+		"port": types.StringType,
+	}
+}
+
+// portForwardSourceLimitingModel describes the source limiting configuration.
+type portForwardSourceLimitingModel struct {
+	IP              types.String `tfsdk:"ip"`
+	FirewallGroupID types.String `tfsdk:"firewall_group_id"`
+	Enabled         types.Bool   `tfsdk:"enabled"`
+	Type            types.String `tfsdk:"type"`
+}
+
+func (m portForwardSourceLimitingModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"ip":                types.StringType,
+		"firewall_group_id": types.StringType,
+		"enabled":           types.BoolType,
+		"type":              types.StringType,
+	}
+}
+
 type portForwardResourceModel struct {
-	ID                   types.String `tfsdk:"id"`
-	Site                 types.String `tfsdk:"site"`
-	DstPort              types.String `tfsdk:"dst_port"`
-	Enabled              types.Bool   `tfsdk:"enabled"`
-	FwdIP                types.String `tfsdk:"fwd_ip"`
-	FwdPort              types.String `tfsdk:"fwd_port"`
-	Log                  types.Bool   `tfsdk:"log"`
-	Name                 types.String `tfsdk:"name"`
-	PortForwardInterface types.String `tfsdk:"port_forward_interface"`
-	Protocol             types.String `tfsdk:"protocol"`
-	SrcIP                types.String `tfsdk:"src_ip"`
+	ID             types.String `tfsdk:"id"`
+	Site           types.String `tfsdk:"site"`
+	Name           types.String `tfsdk:"name"`
+	Wan            types.Object `tfsdk:"wan"`
+	Forward        types.Object `tfsdk:"forward"`
+	SourceLimiting types.Object `tfsdk:"source_limiting"`
+	Protocol       types.String `tfsdk:"protocol"`
+	SyslogLogging  types.Bool   `tfsdk:"syslog_logging"`
+	Enabled        types.Bool   `tfsdk:"enabled"`
 }
 
 func (r *portForwardResource) Metadata(
@@ -79,43 +125,79 @@ func (r *portForwardResource) Schema(
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"dst_port": schema.StringAttribute{
-				MarkdownDescription: "The destination port for the forwarding.",
-				Optional:            true,
-			},
-			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether the port forwarding rule is enabled or not.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
-				DeprecationMessage:  "This attribute will be removed in a future release. Instead of disabling a port forwarding rule you can remove it from your configuration.",
-			},
-			"fwd_ip": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 address to forward traffic to.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"fwd_port": schema.StringAttribute{
-				MarkdownDescription: "The port to forward traffic to.",
-				Optional:            true,
-			},
-			"log": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to log forwarded traffic or not.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the port forwarding rule.",
 				Optional:            true,
 			},
-			"port_forward_interface": schema.StringAttribute{
-				MarkdownDescription: "The port forwarding interface. Can be `wan`, `wan2`, or `both`.",
+			"wan": schema.SingleNestedAttribute{
+				MarkdownDescription: "WAN configuration for the port forwarding rule.",
 				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("wan", "wan2", "both"),
+				Attributes: map[string]schema.Attribute{
+					"interface": schema.StringAttribute{
+						MarkdownDescription: "The WAN interface. Can be `wan`, `wan2`, or `both`.",
+						Optional:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("wan", "wan2", "both"),
+						},
+					},
+					"ip_address": schema.StringAttribute{
+						MarkdownDescription: "The WAN IP address for the port forwarding rule. Use `any` for all addresses.",
+						Optional:            true,
+						Validators: []validator.String{
+							validators.IPv4Validator(),
+						},
+					},
+					"port": schema.StringAttribute{
+						MarkdownDescription: "The WAN port or port range (e.g. `1-10,11,12`).",
+						Optional:            true,
+					},
+				},
+			},
+			"forward": schema.SingleNestedAttribute{
+				MarkdownDescription: "Forward destination configuration.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"ip": schema.StringAttribute{
+						MarkdownDescription: "The forward IPv4 address to send traffic to.",
+						Optional:            true,
+						Validators: []validator.String{
+							validators.IPv4Validator(),
+						},
+					},
+					"port": schema.StringAttribute{
+						MarkdownDescription: "The forward port or port range (e.g. `1-10,11,12`).",
+						Optional:            true,
+					},
+				},
+			},
+			"source_limiting": schema.SingleNestedAttribute{
+				MarkdownDescription: "Source limiting configuration for the port forwarding rule.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"ip": schema.StringAttribute{
+						MarkdownDescription: "The source IPv4 address (or CIDR) of the port forwarding rule. For all traffic, specify `any`.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("any"),
+					},
+					"firewall_group_id": schema.StringAttribute{
+						MarkdownDescription: "The ID of the firewall group to use for source limiting.",
+						Optional:            true,
+					},
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether source limiting is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"type": schema.StringAttribute{
+						MarkdownDescription: "The source limiting type. Can be `ip` or `firewall_group`. Inferred automatically when only one of `ip` or `firewall_group_id` is set.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("ip", "firewall_group"),
+						},
+					},
 				},
 			},
 			"protocol": schema.StringAttribute{
@@ -127,11 +209,18 @@ func (r *portForwardResource) Schema(
 					stringvalidator.OneOf("tcp_udp", "tcp", "udp"),
 				},
 			},
-			"src_ip": schema.StringAttribute{
-				MarkdownDescription: "The source IPv4 address (or CIDR) of the port forwarding rule. For all traffic, specify `any`.",
+			"syslog_logging": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether to enable syslog logging for forwarded traffic.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("any"),
+				Default:             booldefault.StaticBool(false),
+			},
+			"enabled": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether the port forwarding rule is enabled or not.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(true),
+				DeprecationMessage:  "This attribute will be removed in a future release. Instead of disabling a port forwarding rule you can remove it from your configuration.",
 			},
 		},
 	}
@@ -173,7 +262,11 @@ func (r *portForwardResource) Create(
 		return
 	}
 
-	portForward := r.modelToPortForward(ctx, &data)
+	portForward, diags := r.modelToPortForward(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -189,7 +282,7 @@ func (r *portForwardResource) Create(
 		return
 	}
 
-	r.portForwardToModel(ctx, createdPortForward, &data, site)
+	resp.Diagnostics.Append(r.portForwardToModel(ctx, createdPortForward, &data, site)...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -224,7 +317,7 @@ func (r *portForwardResource) Read(
 		return
 	}
 
-	r.portForwardToModel(ctx, portForward, &data, site)
+	resp.Diagnostics.Append(r.portForwardToModel(ctx, portForward, &data, site)...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -254,7 +347,11 @@ func (r *portForwardResource) Update(
 		site = r.client.Site
 	}
 
-	portForward := r.modelToPortForward(ctx, &state)
+	portForward, diags := r.modelToPortForward(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	portForward.ID = state.ID.ValueString()
 
 	updatedPortForward, err := r.client.UpdatePortForward(ctx, site, portForward)
@@ -266,7 +363,7 @@ func (r *portForwardResource) Update(
 		return
 	}
 
-	r.portForwardToModel(ctx, updatedPortForward, &state, site)
+	resp.Diagnostics.Append(r.portForwardToModel(ctx, updatedPortForward, &state, site)...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -333,95 +430,115 @@ func (r *portForwardResource) applyPlanToState(
 	plan *portForwardResourceModel,
 	state *portForwardResourceModel,
 ) {
-	if !plan.DstPort.IsNull() && !plan.DstPort.IsUnknown() {
-		state.DstPort = plan.DstPort
-	}
-	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
-		state.Enabled = plan.Enabled
-	}
-	if !plan.FwdIP.IsNull() && !plan.FwdIP.IsUnknown() {
-		state.FwdIP = plan.FwdIP
-	}
-	if !plan.FwdPort.IsNull() && !plan.FwdPort.IsUnknown() {
-		state.FwdPort = plan.FwdPort
-	}
-	if !plan.Log.IsNull() && !plan.Log.IsUnknown() {
-		state.Log = plan.Log
-	}
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
 	}
-	if !plan.PortForwardInterface.IsNull() && !plan.PortForwardInterface.IsUnknown() {
-		state.PortForwardInterface = plan.PortForwardInterface
+	if !plan.Wan.IsNull() && !plan.Wan.IsUnknown() {
+		state.Wan = plan.Wan
+	}
+	if !plan.Forward.IsNull() && !plan.Forward.IsUnknown() {
+		state.Forward = plan.Forward
+	}
+	if !plan.SourceLimiting.IsNull() && !plan.SourceLimiting.IsUnknown() {
+		state.SourceLimiting = plan.SourceLimiting
 	}
 	if !plan.Protocol.IsNull() && !plan.Protocol.IsUnknown() {
 		state.Protocol = plan.Protocol
 	}
-	if !plan.SrcIP.IsNull() && !plan.SrcIP.IsUnknown() {
-		state.SrcIP = plan.SrcIP
+	if !plan.SyslogLogging.IsNull() && !plan.SyslogLogging.IsUnknown() {
+		state.SyslogLogging = plan.SyslogLogging
+	}
+	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
+		state.Enabled = plan.Enabled
 	}
 }
 
 func (r *portForwardResource) modelToPortForward(
-	_ context.Context,
+	ctx context.Context,
 	model *portForwardResourceModel,
-) *unifi.PortForward {
+) (*unifi.PortForward, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
 	portForward := &unifi.PortForward{
 		Enabled: model.Enabled.ValueBool(),
-		Log:     model.Log.ValueBool(),
+		Log:     model.SyslogLogging.ValueBool(),
 		Proto:   model.Protocol.ValueString(),
-		Src:     model.SrcIP.ValueString(),
 	}
 
-	if !model.DstPort.IsNull() {
-		portForward.DstPort = model.DstPort.ValueString()
-	}
-	if !model.FwdIP.IsNull() {
-		portForward.Fwd = model.FwdIP.ValueString()
-	}
-	if !model.FwdPort.IsNull() {
-		portForward.FwdPort = model.FwdPort.ValueString()
-	}
 	if !model.Name.IsNull() {
 		portForward.Name = model.Name.ValueString()
 	}
-	if !model.PortForwardInterface.IsNull() {
-		portForward.PfwdInterface = model.PortForwardInterface.ValueString()
+
+	if !model.Wan.IsNull() && !model.Wan.IsUnknown() {
+		var wan portForwardWanModel
+		diags.Append(model.Wan.As(ctx, &wan, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		if !wan.Interface.IsNull() {
+			portForward.PfwdInterface = wan.Interface.ValueString()
+		}
+		if !wan.IPAddress.IsNull() {
+			portForward.DestinationIP = wan.IPAddress.ValueString()
+		}
+		if !wan.Port.IsNull() {
+			portForward.DstPort = wan.Port.ValueString()
+		}
 	}
 
-	return portForward
+	if !model.Forward.IsNull() && !model.Forward.IsUnknown() {
+		var fwd portForwardForwardModel
+		diags.Append(model.Forward.As(ctx, &fwd, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		if !fwd.IP.IsNull() {
+			portForward.Fwd = fwd.IP.ValueString()
+		}
+		if !fwd.Port.IsNull() {
+			portForward.FwdPort = fwd.Port.ValueString()
+		}
+	}
+
+	if !model.SourceLimiting.IsNull() && !model.SourceLimiting.IsUnknown() {
+		var src portForwardSourceLimitingModel
+		diags.Append(model.SourceLimiting.As(ctx, &src, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		portForward.Src = src.IP.ValueString()
+		portForward.SrcLimitingEnabled = src.Enabled.ValueBool()
+		if !src.FirewallGroupID.IsNull() {
+			portForward.SrcFirewallGroupID = src.FirewallGroupID.ValueString()
+		}
+
+		// Determine type: use explicit value if set, otherwise infer from which field is populated.
+		switch {
+		case !src.Type.IsNull() && !src.Type.IsUnknown():
+			portForward.SrcLimitingType = src.Type.ValueString()
+		case !src.FirewallGroupID.IsNull():
+			portForward.SrcLimitingType = "firewall_group"
+		default:
+			portForward.SrcLimitingType = "ip"
+		}
+	}
+
+	return portForward, diags
 }
 
 func (r *portForwardResource) portForwardToModel(
-	_ context.Context,
+	ctx context.Context,
 	portForward *unifi.PortForward,
 	model *portForwardResourceModel,
 	site string,
-) {
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
 	model.ID = types.StringValue(portForward.ID)
 	model.Site = types.StringValue(site)
 	model.Enabled = types.BoolValue(portForward.Enabled)
-	model.Log = types.BoolValue(portForward.Log)
+	model.SyslogLogging = types.BoolValue(portForward.Log)
 	model.Protocol = types.StringValue(portForward.Proto)
-	model.SrcIP = types.StringValue(portForward.Src)
-
-	if portForward.DstPort != "" {
-		model.DstPort = types.StringValue(portForward.DstPort)
-	} else {
-		model.DstPort = types.StringNull()
-	}
-
-	if portForward.Fwd != "" {
-		model.FwdIP = types.StringValue(portForward.Fwd)
-	} else {
-		model.FwdIP = types.StringNull()
-	}
-
-	if portForward.FwdPort != "" {
-		model.FwdPort = types.StringValue(portForward.FwdPort)
-	} else {
-		model.FwdPort = types.StringNull()
-	}
 
 	if portForward.Name != "" {
 		model.Name = types.StringValue(portForward.Name)
@@ -429,9 +546,85 @@ func (r *portForwardResource) portForwardToModel(
 		model.Name = types.StringNull()
 	}
 
-	if portForward.PfwdInterface != "" {
-		model.PortForwardInterface = types.StringValue(portForward.PfwdInterface)
+	// WAN nested object
+	if portForward.PfwdInterface != "" || portForward.DestinationIP != "" ||
+		portForward.DstPort != "" {
+		wanValue := portForwardWanModel{
+			Interface: stringValueOrNull(portForward.PfwdInterface),
+			IPAddress: stringValueOrNull(portForward.DestinationIP),
+			Port:      stringValueOrNull(portForward.DstPort),
+		}
+		wanObj, d := types.ObjectValueFrom(ctx, wanValue.AttributeTypes(), wanValue)
+		diags.Append(d...)
+		model.Wan = wanObj
+	} else if !model.Wan.IsNull() {
+		// Preserve non-null state with null fields
+		wanValue := portForwardWanModel{
+			Interface: types.StringNull(),
+			IPAddress: types.StringNull(),
+			Port:      types.StringNull(),
+		}
+		wanObj, d := types.ObjectValueFrom(ctx, wanValue.AttributeTypes(), wanValue)
+		diags.Append(d...)
+		model.Wan = wanObj
 	} else {
-		model.PortForwardInterface = types.StringNull()
+		model.Wan = types.ObjectNull(portForwardWanModel{}.AttributeTypes())
 	}
+
+	// Forward nested object
+	if portForward.Fwd != "" || portForward.FwdPort != "" {
+		fwdValue := portForwardForwardModel{
+			IP:   stringValueOrNull(portForward.Fwd),
+			Port: stringValueOrNull(portForward.FwdPort),
+		}
+		fwdObj, d := types.ObjectValueFrom(ctx, fwdValue.AttributeTypes(), fwdValue)
+		diags.Append(d...)
+		model.Forward = fwdObj
+	} else if !model.Forward.IsNull() {
+		fwdValue := portForwardForwardModel{
+			IP:   types.StringNull(),
+			Port: types.StringNull(),
+		}
+		fwdObj, d := types.ObjectValueFrom(ctx, fwdValue.AttributeTypes(), fwdValue)
+		diags.Append(d...)
+		model.Forward = fwdObj
+	} else {
+		model.Forward = types.ObjectNull(portForwardForwardModel{}.AttributeTypes())
+	}
+
+	// Source limiting nested object
+	if portForward.Src != "" || portForward.SrcLimitingEnabled ||
+		portForward.SrcFirewallGroupID != "" ||
+		portForward.SrcLimitingType != "" {
+		srcValue := portForwardSourceLimitingModel{
+			IP:              stringValueOrNull(portForward.Src),
+			FirewallGroupID: stringValueOrNull(portForward.SrcFirewallGroupID),
+			Enabled:         types.BoolValue(portForward.SrcLimitingEnabled),
+			Type:            stringValueOrNull(portForward.SrcLimitingType),
+		}
+		srcObj, d := types.ObjectValueFrom(ctx, srcValue.AttributeTypes(), srcValue)
+		diags.Append(d...)
+		model.SourceLimiting = srcObj
+	} else if !model.SourceLimiting.IsNull() {
+		srcValue := portForwardSourceLimitingModel{
+			IP:              types.StringNull(),
+			FirewallGroupID: types.StringNull(),
+			Enabled:         types.BoolValue(false),
+			Type:            types.StringNull(),
+		}
+		srcObj, d := types.ObjectValueFrom(ctx, srcValue.AttributeTypes(), srcValue)
+		diags.Append(d...)
+		model.SourceLimiting = srcObj
+	} else {
+		model.SourceLimiting = types.ObjectNull(portForwardSourceLimitingModel{}.AttributeTypes())
+	}
+
+	return diags
+}
+
+func stringValueOrNull(s string) types.String {
+	if s == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(s)
 }

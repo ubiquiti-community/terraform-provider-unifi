@@ -1105,7 +1105,12 @@ func (r *networkResource) networkToModel(
 		model.DhcpDNS = types.ListNull(types.StringType)
 	}
 
-	model.DhcpdBootEnabled = types.BoolValue(network.DHCPDBootEnabled)
+	model.DhcpdBootEnabled = types.BoolNull()
+	if network.DHCPDBootEnabled {
+		model.DhcpdBootEnabled = types.BoolValue(true)
+	} else if !model.DhcpdBootEnabled.IsNull() {
+		model.DhcpdBootEnabled = types.BoolValue(false)
+	}
 
 	if network.DHCPDBootServer != "" {
 		model.DhcpdBootServer = types.StringValue(network.DHCPDBootServer)
@@ -1115,7 +1120,13 @@ func (r *networkResource) networkToModel(
 
 	model.DhcpdBootFilename = types.StringPointerValue(network.DHCPDBootFilename)
 
-	model.DhcpRelayEnabled = types.BoolValue(network.DHCPRelayEnabled)
+	if network.DHCPRelayEnabled {
+		model.DhcpRelayEnabled = types.BoolValue(true)
+	} else if !model.DhcpRelayEnabled.IsNull() {
+		model.DhcpRelayEnabled = types.BoolValue(false)
+	} else {
+		model.DhcpRelayEnabled = types.BoolNull()
+	}
 
 	// DHCPv6 Settings
 	// Convert DHCPv6 DNS from individual fields to list
@@ -1139,7 +1150,13 @@ func (r *networkResource) networkToModel(
 	}
 
 	model.DhcpV6DNSAuto = types.BoolValue(network.DHCPDV6DNSAuto)
-	model.DhcpV6Enabled = types.BoolValue(network.DHCPDV6Enabled)
+	if network.DHCPDV6Enabled {
+		model.DhcpV6Enabled = types.BoolValue(true)
+	} else if !model.DhcpV6Enabled.IsNull() {
+		model.DhcpV6Enabled = types.BoolValue(false)
+	} else {
+		model.DhcpV6Enabled = types.BoolNull()
+	}
 	model.DhcpV6Lease = types.Int64PointerValue(network.DHCPDV6LeaseTime)
 	model.DhcpV6Start = types.StringPointerValue(network.DHCPDV6Start)
 	model.DhcpV6Stop = types.StringPointerValue(network.DHCPDV6Stop)
@@ -1149,14 +1166,33 @@ func (r *networkResource) networkToModel(
 	model.DhcpV6PDStop = types.StringNull()
 
 	// IPv6 Settings
-	model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-	model.IPv6PDPrefixid = types.StringValue(network.IPV6PDPrefixid)
+	if network.IPV6InterfaceType != nil && *network.IPV6InterfaceType != "" &&
+		*network.IPV6InterfaceType != "none" {
+		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+	} else if !model.IPv6InterfaceType.IsNull() {
+		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+	} else {
+		model.IPv6InterfaceType = types.StringNull()
+	}
+	if network.IPV6PDPrefixid != "" {
+		model.IPv6PDPrefixid = types.StringValue(network.IPV6PDPrefixid)
+	} else if !model.IPv6PDPrefixid.IsNull() {
+		model.IPv6PDPrefixid = types.StringValue(network.IPV6PDPrefixid)
+	} else {
+		model.IPv6PDPrefixid = types.StringNull()
+	}
 	model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
 	model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
 	model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
 	model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
 	model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
-	model.IPv6RAEnable = types.BoolValue(network.IPV6RaEnabled)
+	if network.IPV6RaEnabled {
+		model.IPv6RAEnable = types.BoolValue(true)
+	} else if !model.IPv6RAEnable.IsNull() {
+		model.IPv6RAEnable = types.BoolValue(false)
+	} else {
+		model.IPv6RAEnable = types.BoolNull()
+	}
 
 	// IPv6 Static - convert single subnet string to list
 	if network.IPV6Subnet != nil && *network.IPV6Subnet != "" {
