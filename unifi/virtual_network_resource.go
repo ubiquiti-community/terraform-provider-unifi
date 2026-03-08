@@ -132,6 +132,19 @@ func natOutboundIPAddresses() map[string]attr.Type {
 	}
 }
 
+// dhcpGuardingModel describes the DHCP guarding configuration.
+type dhcpGuardingModel struct {
+	Enabled types.Bool `tfsdk:"enabled"`
+	Servers types.List `tfsdk:"servers"`
+}
+
+func (m dhcpGuardingModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled": types.BoolType,
+		"servers": types.ListType{ElemType: types.StringType},
+	}
+}
+
 // dhcpRelayModel describes the DHCP relay configuration.
 type dhcpRelayModel struct {
 	Enabled types.Bool `tfsdk:"enabled"`
@@ -156,7 +169,6 @@ type virtualNetworkResourceModel struct {
 	Subnet                  cidrtypes.IPv4Prefix `tfsdk:"subnet"`
 	DomainName              types.String         `tfsdk:"domain_name"`
 	Vlan                    types.Int64          `tfsdk:"vlan"`
-	NetworkGroup            types.String         `tfsdk:"network_group"`
 	NetworkIsolationEnabled types.Bool           `tfsdk:"network_isolation_enabled"`
 	SettingPreference       types.String         `tfsdk:"setting_preference"`
 	InternetAccessEnabled   types.Bool           `tfsdk:"internet_access_enabled"`
@@ -165,12 +177,12 @@ type virtualNetworkResourceModel struct {
 	GatewayType             types.String         `tfsdk:"gateway_type"`
 	IPv6InterfaceType       types.String         `tfsdk:"ipv6_interface_type"`
 	LteLanEnabled           types.Bool           `tfsdk:"lte_lan_enabled"`
-	IPAliases               types.List           `tfsdk:"ip_aliases"`
-	IPv6Aliases             types.List           `tfsdk:"ipv6_aliases"`
-	DhcpguardEnabled        types.Bool           `tfsdk:"dhcpguard_enabled"`
-	VlanEnabled             types.Bool           `tfsdk:"vlan_enabled"`
-	DhcpServer              types.Object         `tfsdk:"dhcp_server"`
-	DhcpRelay               types.Object         `tfsdk:"dhcp_relay"`
+	IPAliases          types.List           `tfsdk:"ip_aliases"`
+	IPv6Aliases        types.List           `tfsdk:"ipv6_aliases"`
+	ThirdPartyGateway  types.Bool           `tfsdk:"third_party_gateway"`
+	DhcpGuarding       types.Object         `tfsdk:"dhcp_guarding"`
+	DhcpServer         types.Object         `tfsdk:"dhcp_server"`
+	DhcpRelay          types.Object         `tfsdk:"dhcp_relay"`
 }
 
 func (r *virtualNetworkResource) Metadata(
@@ -270,12 +282,6 @@ func (r *virtualNetworkResource) Schema(
 					int64validator.Between(1, 4094),
 				},
 			},
-			"network_group": schema.StringAttribute{
-				MarkdownDescription: "The network group. Defaults to 'LAN'.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("LAN"),
-			},
 			"network_isolation_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether network isolation is enabled.",
 				Optional:            true,
@@ -343,17 +349,31 @@ func (r *virtualNetworkResource) Schema(
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
-			"dhcpguard_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether DHCP guard is enabled.",
+			"third_party_gateway": schema.BoolAttribute{
+				MarkdownDescription: "Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
-			"vlan_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether VLAN is enabled.",
+			"dhcp_guarding": schema.SingleNestedAttribute{
+				MarkdownDescription: "DHCP guarding configuration. When `third_party_gateway` is enabled, the `servers` list specifies the allowed DHCP server IPs.",
 				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether DHCP guarding is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"servers": schema.ListAttribute{
+						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3). Only applies when `third_party_gateway` is enabled.",
+						Optional:            true,
+						ElementType:         types.StringType,
+						Validators: []validator.List{
+							listvalidator.SizeAtMost(3),
+						},
+					},
+				},
 			},
 			"dhcp_server": schema.SingleNestedAttribute{
 				MarkdownDescription: "DHCP server configuration.",
@@ -796,11 +816,43 @@ func (r *virtualNetworkResource) modelToNetwork(
 		GatewayType:             model.GatewayType.ValueStringPointer(),
 		IPV6InterfaceType:       model.IPv6InterfaceType.ValueStringPointer(),
 		LteLanEnabled:           model.LteLanEnabled.ValueBool(),
-		VLANEnabled:             model.VlanEnabled.ValueBool(),
+		VLANEnabled:             true,
 		Enabled:                 model.Enabled.ValueBool(),
 		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
-		DHCPguardEnabled:        model.DhcpguardEnabled.ValueBool(),
 		IPAliases:               []string{},
+	}
+
+	// Handle third-party gateway mode
+	if model.ThirdPartyGateway.ValueBool() {
+		network.Purpose = unifi.PurposeVLANOnly
+	}
+
+	// Handle DHCP guarding configuration
+	if !model.DhcpGuarding.IsNull() && !model.DhcpGuarding.IsUnknown() {
+		var dhcpGuarding dhcpGuardingModel
+		d := model.DhcpGuarding.As(ctx, &dhcpGuarding, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			network.DHCPguardEnabled = dhcpGuarding.Enabled.ValueBool()
+
+			// Map servers to dhcpd_ip_1..3 when third_party_gateway is enabled
+			if model.ThirdPartyGateway.ValueBool() && !dhcpGuarding.Servers.IsNull() && !dhcpGuarding.Servers.IsUnknown() {
+				var servers []string
+				d := dhcpGuarding.Servers.ElementsAs(ctx, &servers, false)
+				diags.Append(d...)
+				if !diags.HasError() {
+					if len(servers) > 0 {
+						network.DHCPDIP1 = servers[0]
+					}
+					if len(servers) > 1 {
+						network.DHCPDIP2 = servers[1]
+					}
+					if len(servers) > 2 {
+						network.DHCPDIP3 = servers[2]
+					}
+				}
+			}
+		}
 	}
 
 	// Handle domain name - set to empty string if null
@@ -1052,27 +1104,95 @@ func (r *virtualNetworkResource) networkToModel(
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringPointerValue(network.Name)
-	model.AutoScaleEnabled = types.BoolValue(network.AutoScaleEnabled)
-	if network.IPSubnet != nil {
-		model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
-	} else {
-		model.Subnet = cidrtypes.NewIPv4PrefixNull()
-	}
-	model.NetworkGroup = types.StringPointerValue(network.NetworkGroup)
-	model.NetworkIsolationEnabled = types.BoolValue(network.NetworkIsolationEnabled)
-	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
-	model.InternetAccessEnabled = types.BoolValue(network.InternetAccessEnabled)
-	model.MdnsEnabled = types.BoolValue(network.MdnsEnabled)
-	model.GatewayType = types.StringPointerValue(network.GatewayType)
-	model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-	model.LteLanEnabled = types.BoolValue(network.LteLanEnabled)
-	model.VlanEnabled = types.BoolValue(network.VLANEnabled)
 	model.Enabled = types.BoolValue(network.Enabled)
 	model.IgmpSnooping = types.BoolValue(network.IGMPSnooping)
-	model.DhcpguardEnabled = types.BoolValue(network.DHCPguardEnabled)
+	model.NetworkIsolationEnabled = types.BoolValue(network.NetworkIsolationEnabled)
 
-	// Handle optional fields
-	model.DomainName = types.StringPointerValue(network.DomainName)
+	// Set third_party_gateway based on API purpose
+	isVLANOnly := network.Purpose == unifi.PurposeVLANOnly
+	model.ThirdPartyGateway = types.BoolValue(isVLANOnly)
+
+	// For vlan-only networks, the API does not return fields like subnet, gateway_type,
+	// setting_preference, etc. Preserve the plan/state values for these irrelevant fields
+	// to avoid "inconsistent result after apply" errors.
+	if isVLANOnly && previousModel != nil {
+		model.Subnet = previousModel.Subnet
+		model.AutoScaleEnabled = previousModel.AutoScaleEnabled
+		model.SettingPreference = previousModel.SettingPreference
+		model.InternetAccessEnabled = previousModel.InternetAccessEnabled
+		model.MdnsEnabled = previousModel.MdnsEnabled
+		model.GatewayType = previousModel.GatewayType
+		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
+		model.LteLanEnabled = previousModel.LteLanEnabled
+		// domain_name uses UseStateForUnknown, so it may be unknown during Create.
+		// Resolve unknown to null since the API doesn't return it for vlan-only.
+		if previousModel.DomainName.IsUnknown() {
+			model.DomainName = types.StringNull()
+		} else {
+			model.DomainName = previousModel.DomainName
+		}
+	} else {
+		model.AutoScaleEnabled = types.BoolValue(network.AutoScaleEnabled)
+		if network.IPSubnet != nil {
+			model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
+		} else {
+			model.Subnet = cidrtypes.NewIPv4PrefixNull()
+		}
+		model.SettingPreference = types.StringPointerValue(network.SettingPreference)
+		model.InternetAccessEnabled = types.BoolValue(network.InternetAccessEnabled)
+		model.MdnsEnabled = types.BoolValue(network.MdnsEnabled)
+		model.GatewayType = types.StringPointerValue(network.GatewayType)
+		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+		model.LteLanEnabled = types.BoolValue(network.LteLanEnabled)
+		model.DomainName = types.StringPointerValue(network.DomainName)
+	}
+
+	// Determine if this is an import (name/ID is set but required field Subnet is null)
+	isImport := previousModel != nil && previousModel.Subnet.IsNull()
+
+	// Build dhcp_guarding from API fields
+	shouldPopulateDhcpGuarding := false
+	if previousModel != nil {
+		shouldPopulateDhcpGuarding = !previousModel.DhcpGuarding.IsNull() ||
+			(isImport && network.DHCPguardEnabled)
+	} else {
+		shouldPopulateDhcpGuarding = network.DHCPguardEnabled
+	}
+
+	if shouldPopulateDhcpGuarding {
+		var serversList types.List
+		if isVLANOnly {
+			var servers []string
+			if network.DHCPDIP1 != "" {
+				servers = append(servers, network.DHCPDIP1)
+			}
+			if network.DHCPDIP2 != "" {
+				servers = append(servers, network.DHCPDIP2)
+			}
+			if network.DHCPDIP3 != "" {
+				servers = append(servers, network.DHCPDIP3)
+			}
+			if len(servers) > 0 {
+				var d diag.Diagnostics
+				serversList, d = types.ListValueFrom(ctx, types.StringType, servers)
+				diags.Append(d...)
+			} else {
+				serversList = types.ListNull(types.StringType)
+			}
+		} else {
+			serversList = types.ListNull(types.StringType)
+		}
+
+		dhcpGuardingValue := dhcpGuardingModel{
+			Enabled: types.BoolValue(network.DHCPguardEnabled),
+			Servers: serversList,
+		}
+		dhcpGuardingObj, d := types.ObjectValueFrom(ctx, dhcpGuardingValue.AttributeTypes(), dhcpGuardingValue)
+		diags.Append(d...)
+		model.DhcpGuarding = dhcpGuardingObj
+	} else {
+		model.DhcpGuarding = types.ObjectNull(dhcpGuardingModel{}.AttributeTypes())
+	}
 
 	model.Vlan = types.Int64PointerValue(network.VLAN)
 
@@ -1082,9 +1202,6 @@ func (r *virtualNetworkResource) networkToModel(
 	)
 	model.IPAliases = types.ListNull(types.StringType)
 	model.IPv6Aliases = types.ListNull(types.StringType)
-
-	// Determine if this is an import (name/ID is set but required field Subnet is null)
-	isImport := previousModel != nil && previousModel.Subnet.IsNull()
 
 	// Only populate dhcp_server if:
 	// 1. It was configured in the previous state (not null), OR

@@ -26,16 +26,6 @@ func TestAccVirtualNetworkFramework_basic(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr("unifi_virtual_network.test", "vlan", "10"),
 					resource.TestCheckResourceAttr("unifi_virtual_network.test", "enabled", "true"),
-					resource.TestCheckResourceAttr(
-						"unifi_virtual_network.test",
-						"network_group",
-						"LAN",
-					),
-					resource.TestCheckResourceAttr(
-						"unifi_virtual_network.test",
-						"vlan_enabled",
-						"true",
-					),
 				),
 			},
 			{
@@ -180,6 +170,129 @@ resource "unifi_virtual_network" "test_guest" {
 	vlan                      = 30
 	internet_access_enabled   = true
 	network_isolation_enabled = true
+}
+`
+}
+
+func TestAccVirtualNetworkFramework_thirdPartyGateway(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVirtualNetworkFrameworkConfig_thirdPartyGateway(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party",
+						"name",
+						"Test Third Party",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party",
+						"vlan",
+						"3",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party",
+						"third_party_gateway",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party",
+						"dhcp_guarding.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party",
+						"dhcp_guarding.servers.#",
+						"2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party",
+						"dhcp_guarding.servers.0",
+						"192.168.20.20",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party",
+						"dhcp_guarding.servers.1",
+						"192.168.20.21",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_virtual_network.test_third_party",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateId:     "name=Test Third Party",
+				// These fields are not relevant to vlan-only networks and are not
+				// returned by the API, so they cannot be recovered during import.
+				ImportStateVerifyIgnore: []string{
+					"subnet",
+					"auto_scale_enabled",
+					"gateway_type",
+					"setting_preference",
+					"mdns_enabled",
+					"ipv6_interface_type",
+					"lte_lan_enabled",
+					"internet_access_enabled",
+				},
+			},
+		},
+	})
+}
+
+func TestAccVirtualNetworkFramework_thirdPartyGatewayMinimal(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVirtualNetworkFrameworkConfig_thirdPartyGatewayMinimal(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party_min",
+						"name",
+						"Test Third Party Minimal",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party_min",
+						"vlan",
+						"4",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_virtual_network.test_third_party_min",
+						"third_party_gateway",
+						"true",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccVirtualNetworkFrameworkConfig_thirdPartyGateway() string {
+	return `
+resource "unifi_virtual_network" "test_third_party" {
+	name                = "Test Third Party"
+	subnet              = "192.168.20.1/24"
+	vlan                = 3
+	third_party_gateway = true
+
+	dhcp_guarding = {
+		enabled = true
+		servers = ["192.168.20.20", "192.168.20.21"]
+	}
+}
+`
+}
+
+func testAccVirtualNetworkFrameworkConfig_thirdPartyGatewayMinimal() string {
+	return `
+resource "unifi_virtual_network" "test_third_party_min" {
+	name                = "Test Third Party Minimal"
+	subnet              = "192.168.20.1/24"
+	vlan                = 4
+	third_party_gateway = true
 }
 `
 }

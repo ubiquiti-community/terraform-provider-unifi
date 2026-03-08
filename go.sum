@@ -672,6 +672,8 @@ github.com/ubiquiti-community/go-unifi v1.33.42 h1:m8/4xpaz3RLoC7c60diMGL3bEbbvI
 github.com/ubiquiti-community/go-unifi v1.33.42/go.mod h1:lOld3iJD/7eXE5+phOVWz3Y45qTlb73g24tPipLIkac=
 github.com/ubiquiti-community/go-unifi v1.33.43-0.20260308062849-784130408f9b h1:YPWUjIA1Zp0of1SehRn+QQGJ3gleLiok992IZccU1go=
 github.com/ubiquiti-community/go-unifi v1.33.43-0.20260308062849-784130408f9b/go.mod h1:lOld3iJD/7eXE5+phOVWz3Y45qTlb73g24tPipLIkac=
+github.com/ubiquiti-community/go-unifi v1.33.43-0.20260308092921-f8954c0f8ccf h1:0HMJRvHLe/Pgt2KLbR5ijKFsNfuOPCU0ZjN451jHsEA=
+github.com/ubiquiti-community/go-unifi v1.33.43-0.20260308092921-f8954c0f8ccf/go.mod h1:lOld3iJD/7eXE5+phOVWz3Y45qTlb73g24tPipLIkac=
 github.com/vbatts/tar-split v0.12.2 h1:w/Y6tjxpeiFMR47yzZPlPj/FcPLpXbTUi/9H7d3CPa4=
 github.com/vbatts/tar-split v0.12.2/go.mod h1:eF6B6i6ftWQcDqEn3/iGFRFRo8cBIMSJVOpnNdfTMFA=
 github.com/vmihailenco/msgpack v3.3.3+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=
