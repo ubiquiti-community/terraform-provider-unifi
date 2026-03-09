@@ -24,7 +24,7 @@ jobs:
   stale:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/stale@v9
+      - uses: actions/stale@v10
         with:
           # ── Issues ───────────────────────────────────────────────────────
           days-before-issue-stale: 90
