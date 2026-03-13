@@ -334,5 +334,8 @@ func (p *unifiProvider) Actions(
 func (p *unifiProvider) ListResources(context.Context) []func() list.ListResource {
 	return []func() list.ListResource{
 		NewClientListResource,
+		NewNetworkListResource,
+		NewVPNClientListResource,
+		NewVPNServerListResource,
 	}
 }

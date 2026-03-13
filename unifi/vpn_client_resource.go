@@ -12,8 +12,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -30,15 +33,42 @@ import (
 var (
 	_ resource.Resource                = &vpnClientResource{}
 	_ resource.ResourceWithImportState = &vpnClientResource{}
+	_ resource.ResourceWithIdentity    = &vpnClientResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &vpnClientResource{}
+	_ list.ListResourceWithConfigure = &vpnClientResource{}
 )
 
 func NewVPNClientResource() resource.Resource {
 	return &vpnClientResource{}
 }
 
+func NewVPNClientListResource() list.ListResource {
+	return &vpnClientResource{}
+}
+
 // vpnClientResource defines the resource implementation.
 type vpnClientResource struct {
 	client *Client
+}
+
+type vpnClientIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// vpnClientListConfigModel describes the list configuration model.
+type vpnClientListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// vpnClientListFilterModel represents a single name/value filter entry.
+type vpnClientListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 // wireguardConfigurationModel describes the WireGuard configuration file upload.
@@ -112,6 +142,21 @@ func (r *vpnClientResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_vpn_client"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *vpnClientResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *vpnClientResource) Schema(
@@ -323,6 +368,8 @@ func (r *vpnClientResource) Create(
 	}
 
 	// Save data into Terraform state
+	idModel := vpnClientIdentityModel{ID: data.ID}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -383,6 +430,8 @@ func (r *vpnClientResource) Read(
 	}
 
 	// Save updated data into Terraform state
+	idModel := vpnClientIdentityModel{ID: data.ID}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -437,6 +486,8 @@ func (r *vpnClientResource) Update(
 	}
 
 	// Save updated data into Terraform state
+	idModel := vpnClientIdentityModel{ID: data.ID}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -481,14 +532,19 @@ func (r *vpnClientResource) ImportState(
 		req.ID = idParts[1]
 	}
 
-	rootAttributeName := "name"
 	if strings.HasPrefix(req.ID, "name=") {
 		req.ID = strings.TrimPrefix(req.ID, "name=")
+		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
-		rootAttributeName = "id"
+		idModel := vpnClientIdentityModel{ID: types.StringValue(req.ID)}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
+	} else {
+		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 	}
-
-	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
@@ -737,4 +793,113 @@ func (r *vpnClientResource) networkToModel(
 	model.Wireguard = wireguardObj
 
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *vpnClientResource) ListResourceConfigSchema(
+	ctx context.Context,
+	req list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List VPN client connections in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list VPN clients from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *vpnClientResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config vpnClientListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []vpnClientListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	networks, err := r.client.ListNetwork(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing VPN Clients", "Could not list networks: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, network := range networks {
+			// Filter by purpose: only vpn-client networks.
+			if network.Purpose != unifi.PurposeVPNClient {
+				continue
+			}
+
+			// Apply name filter if specified.
+			if nameFilter, ok := postFilters["name"]; ok {
+				if network.Name == nil || *network.Name != nameFilter {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+			if network.Name != nil {
+				result.DisplayName = *network.Name
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(ctx, path.Root("id"), types.StringValue(network.ID))...,
+			)
+
+			// Convert to model.
+			var model vpnClientResourceModel
+			result.Diagnostics.Append(r.networkToModel(ctx, &network, &model, site, &vpnClientResourceModel{})...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }
