@@ -48,7 +48,7 @@ resource "unifi_network" "third_party" {
 
 ### Optional
 
-- `auto_scale_enabled` (Boolean) Specifies whether auto-scaling is enabled.
+- `auto_scale` (Boolean) Specifies whether auto-scaling is enabled.
 - `dhcp_guarding` (Attributes) DHCP guarding configuration. When `third_party_gateway` is enabled, the `servers` list specifies the allowed DHCP server IPs. (see [below for nested schema](#nestedatt--dhcp_guarding))
 - `dhcp_relay` (Attributes) DHCP relay configuration. (see [below for nested schema](#nestedatt--dhcp_relay))
 - `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
@@ -56,14 +56,14 @@ resource "unifi_network" "third_party" {
 - `enabled` (Boolean) Specifies whether the network is enabled.
 - `gateway_type` (String) The gateway type. Must be one of `default` or `switch`.
 - `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled.
-- `internet_access_enabled` (Boolean) Specifies whether internet access is enabled.
+- `internet_access` (Boolean) Specifies whether internet access is enabled.
 - `ip_aliases` (List of String) List of IP aliases for the network.
 - `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
 - `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.
-- `lte_lan_enabled` (Boolean) Specifies whether LTE LAN is enabled.
-- `mdns_enabled` (Boolean) Specifies whether mDNS is enabled.
+- `lte_lan` (Boolean) Specifies whether LTE LAN is enabled.
+- `multicast_dns` (Boolean) Specifies whether mDNS is enabled.
 - `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
-- `network_isolation_enabled` (Boolean) Specifies whether network isolation is enabled.
+- `network_isolation` (Boolean) Specifies whether network isolation is enabled.
 - `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the network with.
 - `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.

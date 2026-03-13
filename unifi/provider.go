@@ -296,6 +296,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewVPNClientResource,
 		NewVPNServerResource,
 		NewClientQosRateResource,
+		NewTrafficRouteResource,
 	}
 }
 
@@ -336,5 +337,6 @@ func (p *unifiProvider) ListResources(context.Context) []func() list.ListResourc
 		NewNetworkListResource,
 		NewVPNClientListResource,
 		NewVPNServerListResource,
+		NewTrafficRouteListResource,
 	}
 }

@@ -25,10 +25,9 @@ func TestAccNetworkFrameworkDataSource_basic(t *testing.T) {
 						"purpose",
 						"corporate",
 					),
-					// Verify ip_subnet and subnet fields are populated (regression for struct/object mismatch bug)
+					// Verify subnet is populated
 					resource.TestCheckResourceAttrSet("data.unifi_network.test", "subnet"),
-					resource.TestCheckResourceAttrSet("data.unifi_network.test", "ip_subnet"),
-					// Verify multicast_dns is readable (regression for struct/object mismatch bug)
+					// Verify multicast_dns is readable
 					resource.TestCheckResourceAttrSet("data.unifi_network.test", "multicast_dns"),
 				),
 			},
@@ -46,8 +45,8 @@ func TestAccNetworkFrameworkDataSource_byID(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("data.unifi_network.test", "id"),
 					resource.TestCheckResourceAttrSet("data.unifi_network.test", "name"),
-					// Verify ip_subnet field is accessible via ID lookup
-					resource.TestCheckResourceAttrSet("data.unifi_network.test", "ip_subnet"),
+					// Verify subnet field is accessible via ID lookup
+					resource.TestCheckResourceAttrSet("data.unifi_network.test", "subnet"),
 				),
 			},
 		},
@@ -101,11 +100,7 @@ output "network_subnet" {
 	value = data.unifi_network.test.subnet
 }
 
-output "network_ip_subnet" {
-	value = data.unifi_network.test.ip_subnet
-}
-
-output "network_mdns" {
+output "network_multicast_dns" {
 	value = data.unifi_network.test.multicast_dns
 }
 `

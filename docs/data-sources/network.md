@@ -37,45 +37,127 @@ data "unifi_network" "my_network" {
 
 ### Read-Only
 
-- `dhcp_v6_dns` (List of String) Specifies the IPv6 addresses for the DNS server to be returned from the DHCP server. Used if `dhcp_v6_dns_auto` is set to `false`.
-- `dhcp_v6_dns_auto` (Boolean) Specifies DNS source to propagate. If set `false` the entries in `dhcp_v6_dns` are used, the upstream entries otherwise
-- `dhcp_v6_enabled` (Boolean) Enable stateful DHCPv6 for static configuration.
-- `dhcp_v6_lease` (Number) Specifies the lease time for DHCPv6 addresses.
-- `dhcp_v6_start` (String) Start address of the DHCPv6 range. Used in static DHCPv6 configuration.
-- `dhcp_v6_stop` (String) End address of the DHCPv6 range. Used in static DHCPv6 configuration.
-- `dhcpd_boot_enabled` (Boolean) Toggles on the DHCP boot options. will be set to true if you have dhcpd_boot_filename, and dhcpd_boot_server set.
-- `dhcpd_boot_filename` (String) the file to PXE boot from on the dhcpd_boot_server.
-- `dhcpd_boot_server` (String) IPv4 address of a TFTP server to network boot from.
-- `dhcpd_dns` (List of String) IPv4 addresses for the DNS server to be returned from the DHCP server.
-- `dhcpd_enabled` (Boolean) whether DHCP is enabled or not on this network.
-- `dhcpd_leasetime` (Number) lease time for DHCP addresses.
-- `dhcpd_start` (String) The IPv4 address where the DHCP range of addresses starts.
-- `dhcpd_stop` (String) The IPv4 address where the DHCP range of addresses stops.
-- `domain_name` (String) The domain name of this network.
-- `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled or not.
-- `ip_subnet` (String) The IPv4 subnet of the network in CIDR notation.
-- `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of either `static`, `pd`, or `none`.
-- `ipv6_pd_interface` (String) Specifies which WAN interface to use for IPv6 PD. Must be one of either `wan` or `wan2`.
+- `auto_scale` (Boolean) Specifies whether auto-scaling is enabled.
+- `dhcp_guarding` (Attributes) DHCP guarding configuration. (see [below for nested schema](#nestedatt--dhcp_guarding))
+- `dhcp_relay` (Attributes) DHCP relay configuration. (see [below for nested schema](#nestedatt--dhcp_relay))
+- `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
+- `dhcp_v6_server` (Attributes) DHCPv6 server configuration. (see [below for nested schema](#nestedatt--dhcp_v6_server))
+- `domain_name` (String) The domain name for the network.
+- `enabled` (Boolean) Specifies whether the network is enabled.
+- `gateway_type` (String) The gateway type.
+- `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled.
+- `internet_access` (Boolean) Specifies whether internet access is enabled.
+- `ip_aliases` (List of String) List of IP aliases for the network.
+- `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
+- `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use.
+- `ipv6_pd_interface` (String) Specifies which WAN interface to use for IPv6 PD. One of `wan` or `wan2`.
 - `ipv6_pd_prefixid` (String) Specifies the IPv6 Prefix ID.
-- `ipv6_pd_start` (String) Start address of the DHCPv6 range. Used if `ipv6_interface_type` is set to `pd`.
-- `ipv6_pd_stop` (String) End address of the DHCPv6 range. Used if `ipv6_interface_type` is set to `pd`.
-- `ipv6_ra_enable` (Boolean) Specifies whether to enable router advertisements or not.
-- `ipv6_ra_preferred_lifetime` (Number) Lifetime in which the address can be used. Address becomes deprecated afterwards. Must be lower than or equal to `ipv6_ra_valid_lifetime`
-- `ipv6_ra_priority` (String) IPv6 router advertisement priority. Must be one of either `high`, `medium`, or `low`
-- `ipv6_ra_valid_lifetime` (Number) Total lifetime in which the address can be used. Must be equal to or greater than `ipv6_ra_preferred_lifetime`.
-- `ipv6_static_subnet` (String) Specifies the static IPv6 subnet (when ipv6_interface_type is 'static').
-- `multicast_dns` (Boolean) Specifies whether Multicast DNS (mDNS) is enabled or not on the network (Controller >=v7).
+- `ipv6_pd_start` (String) Start address of the DHCPv6 range when `ipv6_interface_type` is `pd`.
+- `ipv6_pd_stop` (String) End address of the DHCPv6 range when `ipv6_interface_type` is `pd`.
+- `ipv6_ra` (Boolean) Specifies whether to enable IPv6 router advertisements.
+- `ipv6_ra_preferred_lifetime` (Number) Preferred lifetime for IPv6 RA in which the address can be used.
+- `ipv6_ra_priority` (String) IPv6 router advertisement priority. One of `high`, `medium`, or `low`.
+- `ipv6_ra_valid_lifetime` (Number) Total lifetime in which the IPv6 RA address can be used.
+- `ipv6_static_subnet` (String) The static IPv6 subnet (when `ipv6_interface_type` is `static`).
+- `lte_lan` (Boolean) Specifies whether LTE LAN is enabled.
+- `multicast_dns` (Boolean) Specifies whether mDNS is enabled.
+- `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
 - `network_group` (String) The group of the network.
+- `network_isolation` (Boolean) Specifies whether network isolation is enabled.
 - `purpose` (String) The purpose of the network. One of `corporate`, `guest`, `wan`, or `vlan-only`.
-- `subnet` (String) The subnet of the network (CIDR address).
-- `vlan_id` (Number) The VLAN ID of the network.
-- `wan_dns` (List of String) DNS servers IPs of the WAN.
+- `setting_preference` (String) Setting preference. One of `auto` or `manual`.
+- `subnet` (String) The IP subnet of the network in CIDR notation.
+- `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway.
+- `vlan` (Number) The VLAN ID for the network.
+- `wan_dns` (List of String) DNS server IPs of the WAN.
 - `wan_egress_qos` (Number) Specifies the WAN egress quality of service.
 - `wan_gateway` (String) The IPv4 gateway of the WAN.
 - `wan_gateway_v6` (String) The IPv6 gateway of the WAN.
 - `wan_ip` (String) The IPv4 address of the WAN.
 - `wan_netmask` (String) The IPv4 netmask of the WAN.
-- `wan_network_group` (String) Specifies the WAN network group. One of either `WAN`, `WAN2` or `WAN_LTE_FAILOVER`.
-- `wan_type` (String) Specifies the IPV4 WAN connection type. One of either `disabled`, `static`, `dhcp`, or `pppoe`.
-- `wan_type_v6` (String) Specifies the IPV6 WAN connection type. One of either `disabled`, `static`, or `dhcpv6`.
-- `wan_username` (String) Specifies the IPV4 WAN username.
+- `wan_network_group` (String) Specifies the WAN network group. One of `WAN`, `WAN2` or `WAN_LTE_FAILOVER`.
+- `wan_type` (String) Specifies the IPv4 WAN connection type. One of `disabled`, `static`, `dhcp`, or `pppoe`.
+- `wan_type_v6` (String) Specifies the IPv6 WAN connection type. One of `disabled`, `static`, or `dhcpv6`.
+- `wan_username` (String) Specifies the IPv4 WAN username.
+
+<a id="nestedatt--dhcp_guarding"></a>
+### Nested Schema for `dhcp_guarding`
+
+Read-Only:
+
+- `enabled` (Boolean) Specifies whether DHCP guarding is enabled.
+- `servers` (List of String) List of allowed DHCP server IP addresses.
+
+
+<a id="nestedatt--dhcp_relay"></a>
+### Nested Schema for `dhcp_relay`
+
+Read-Only:
+
+- `enabled` (Boolean) Specifies whether DHCP relay is enabled.
+- `servers` (List of String) List of DHCP relay server addresses.
+
+
+<a id="nestedatt--dhcp_server"></a>
+### Nested Schema for `dhcp_server`
+
+Read-Only:
+
+- `boot` (Attributes) DHCP boot settings. (see [below for nested schema](#nestedatt--dhcp_server--boot))
+- `conflict_checking` (Boolean) Specifies whether DHCP conflict checking is enabled.
+- `dns_enabled` (Boolean) Specifies whether DHCP DNS is enabled.
+- `dns_servers` (List of String) List of DNS server addresses for DHCP clients.
+- `enabled` (Boolean) Specifies whether DHCP server is enabled.
+- `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
+- `leasetime` (Number) Specifies the lease time for DHCP addresses in seconds.
+- `ntp_enabled` (Boolean) Specifies whether DHCP NTP is enabled.
+- `start` (String) The IPv4 address where the DHCP range starts.
+- `stop` (String) The IPv4 address where the DHCP range stops.
+- `tftp_server` (String) TFTP server address.
+- `time_offset_enabled` (Boolean) Specifies whether DHCP time offset is enabled.
+- `unifi_controller` (String) UniFi controller IP address.
+- `wins` (Attributes) WINS server configuration. (see [below for nested schema](#nestedatt--dhcp_server--wins))
+- `wpad_url` (String) WPAD URL for proxy auto-configuration.
+
+<a id="nestedatt--dhcp_server--boot"></a>
+### Nested Schema for `dhcp_server.boot`
+
+Read-Only:
+
+- `enabled` (Boolean) Toggles DHCP boot options.
+- `filename` (String) Boot filename.
+- `server` (String) TFTP server for boot options.
+
+
+<a id="nestedatt--dhcp_server--wins"></a>
+### Nested Schema for `dhcp_server.wins`
+
+Read-Only:
+
+- `addresses` (List of String) List of WINS server addresses.
+- `enabled` (Boolean) Specifies whether DHCP WINS is enabled.
+
+
+
+<a id="nestedatt--dhcp_v6_server"></a>
+### Nested Schema for `dhcp_v6_server`
+
+Read-Only:
+
+- `dns_auto` (Boolean) When true, upstream DNS entries are propagated. When false, `dns_servers` are used.
+- `dns_servers` (List of String) IPv6 DNS server addresses for DHCPv6 clients.
+- `enabled` (Boolean) Specifies whether stateful DHCPv6 is enabled.
+- `lease` (Number) Lease time for DHCPv6 addresses in seconds.
+- `start` (String) Start address of the DHCPv6 range.
+- `stop` (String) End address of the DHCPv6 range.
+
+
+<a id="nestedatt--nat_outbound_ip_addresses"></a>
+### Nested Schema for `nat_outbound_ip_addresses`
+
+Read-Only:
+
+- `ip_address` (String) The IP address.
+- `ip_address_pool` (List of String) The IP address pool.
+- `mode` (String) The mode.
+- `wan_network_group` (String) The WAN network group.

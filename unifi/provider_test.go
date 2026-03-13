@@ -389,6 +389,30 @@ func waitForUniFiAPI(
 			return nil, fmt.Errorf("no networks available after %d attempts", maxRetries)
 		}
 
+		// Step 5: Ensure a default WAN network exists
+		hasWAN := false
+		for _, n := range networks {
+			if n.Purpose == unifi.PurposeWAN && n.WANNetworkGroup != nil &&
+				*n.WANNetworkGroup == "WAN" {
+				hasWAN = true
+				break
+			}
+		}
+		if !hasWAN {
+			logger.Printf("No default WAN network found, creating \"Internet 1\"...")
+			_, createErr := client.CreateNetwork(ctx, "default", &unifi.Network{
+				Name:            util.Ptr("Internet 1"),
+				Purpose:         unifi.PurposeWAN,
+				WANNetworkGroup: util.Ptr("WAN"),
+				WANType:         util.Ptr("dhcp"),
+			})
+			if createErr != nil {
+				logger.Printf("Failed to create default WAN network: %v", createErr)
+			} else {
+				logger.Printf("✓ Created default WAN network \"Internet 1\"")
+			}
+		}
+
 		logger.Printf(
 			"✓ UniFi API fully ready (login + %d sites + devices endpoint) after %d attempts",
 			len(sites),

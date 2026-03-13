@@ -53,59 +53,77 @@ resource "unifi_wan" "default" {
 
 ### Optional
 
-- `dhcp_cos` (Number) DHCP Class of Service
-- `dhcp_options` (List of Object) DHCP options (see [below for nested schema](#nestedatt--dhcp_options))
-- `dhcpv6_cos` (Number) DHCPv6 Class of Service
-- `dhcpv6_options` (Attributes List) DHCPv6 options (see [below for nested schema](#nestedatt--dhcpv6_options))
-- `dhcpv6_pd_size` (Number) DHCPv6 prefix delegation size
-- `dhcpv6_pd_size_auto` (Boolean) Whether DHCPv6 PD size is automatic
-- `dns1` (String) Primary DNS server
-- `dns2` (String) Secondary DNS server
-- `dns_preference` (String) DNS preference (auto, manual)
+- `dhcp` (Attributes) DHCP configuration (see [below for nested schema](#nestedatt--dhcp))
+- `dhcpv6` (Attributes) DHCPv6 configuration (see [below for nested schema](#nestedatt--dhcpv6))
+- `dns` (Attributes) DNS configuration (see [below for nested schema](#nestedatt--dns))
 - `egress_qos` (Attributes) Egress QoS configuration (see [below for nested schema](#nestedatt--egress_qos))
 - `enabled` (Boolean) Whether the WAN network is enabled
-- `failover_priority` (Number) Failover priority
-- `igmp_proxy_for` (String) IGMP proxy for (none, lan, guest)
-- `igmp_proxy_upstream` (Boolean) Whether IGMP proxy upstream is enabled
+- `igmp_proxy` (Attributes) IGMP proxy configuration (see [below for nested schema](#nestedatt--igmp_proxy))
 - `ip_aliases` (List of String) IP aliases
-- `ipv6_dns1` (String) Primary IPv6 DNS server
-- `ipv6_dns2` (String) Secondary IPv6 DNS server
-- `ipv6_dns_preference` (String) IPv6 DNS preference (auto, manual)
-- `ipv6_wan_delegation_type` (String) IPv6 WAN delegation type (pd, single_network, none)
-- `load_balance_type` (String) Load balance type (failover-only, weighted)
-- `load_balance_weight` (Number) Load balance weight
+- `load_balance` (Attributes) Load balance configuration (see [below for nested schema](#nestedatt--load_balance))
 - `provider_capabilities` (Attributes) WAN provider capabilities (see [below for nested schema](#nestedatt--provider_capabilities))
 - `report_wan_event` (Boolean) Whether to report WAN events
 - `site` (String) The name of the site to associate the WAN network with
 - `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
 - `type` (String) The WAN type (dhcp, static, pppoe)
 - `type_v6` (String) The IPv6 WAN type (dhcpv6, static, disabled)
-- `upnp_enabled` (Boolean) Whether UPnP is enabled
-- `upnp_nat_pmp_enabled` (Boolean) Whether UPnP NAT-PMP is enabled
-- `upnp_secure_mode` (Boolean) Whether UPnP secure mode is enabled
-- `upnp_wan_interface` (String) UPnP WAN interface
+- `upnp` (Attributes) UPnP configuration (see [below for nested schema](#nestedatt--upnp))
 - `vlan` (Attributes) VLAN configuration (see [below for nested schema](#nestedatt--vlan))
 
 ### Read-Only
 
 - `id` (String) The ID of the WAN network
 
-<a id="nestedatt--dhcp_options"></a>
-### Nested Schema for `dhcp_options`
+<a id="nestedatt--dhcp"></a>
+### Nested Schema for `dhcp`
 
 Optional:
 
-- `option_number` (Number)
-- `value` (String)
+- `cos` (Number) DHCP Class of Service
+- `options` (Attributes List) DHCP options (see [below for nested schema](#nestedatt--dhcp--options))
+
+<a id="nestedatt--dhcp--options"></a>
+### Nested Schema for `dhcp.options`
+
+Required:
+
+- `option_number` (Number) DHCP option number
+- `value` (String) DHCP option value
 
 
-<a id="nestedatt--dhcpv6_options"></a>
-### Nested Schema for `dhcpv6_options`
+
+<a id="nestedatt--dhcpv6"></a>
+### Nested Schema for `dhcpv6`
+
+Optional:
+
+- `cos` (Number) DHCPv6 Class of Service
+- `options` (Attributes List) DHCPv6 options (see [below for nested schema](#nestedatt--dhcpv6--options))
+- `pd_size` (Number) DHCPv6 prefix delegation size
+- `pd_size_auto` (Boolean) Whether DHCPv6 PD size is automatic
+- `wan_delegation_type` (String) IPv6 WAN delegation type (pd, single_network, none)
+
+<a id="nestedatt--dhcpv6--options"></a>
+### Nested Schema for `dhcpv6.options`
 
 Required:
 
 - `option_number` (Number) DHCPv6 option number (1, 11, 15, 16, or 17)
 - `value` (String) DHCPv6 option value
+
+
+
+<a id="nestedatt--dns"></a>
+### Nested Schema for `dns`
+
+Optional:
+
+- `ipv6_preference` (String) IPv6 DNS preference (auto, manual)
+- `ipv6_primary` (String) Primary IPv6 DNS server
+- `ipv6_secondary` (String) Secondary IPv6 DNS server
+- `preference` (String) DNS preference (auto, manual)
+- `primary` (String) Primary DNS server
+- `secondary` (String) Secondary DNS server
 
 
 <a id="nestedatt--egress_qos"></a>
@@ -115,6 +133,25 @@ Optional:
 
 - `enabled` (Boolean) Whether egress QoS is enabled
 - `priority` (Number) Egress QoS priority
+
+
+<a id="nestedatt--igmp_proxy"></a>
+### Nested Schema for `igmp_proxy`
+
+Optional:
+
+- `downstream` (String) IGMP proxy downstream target (none, lan, guest)
+- `upstream` (Boolean) Whether IGMP proxy upstream is enabled
+
+
+<a id="nestedatt--load_balance"></a>
+### Nested Schema for `load_balance`
+
+Optional:
+
+- `failover_priority` (Number) Failover priority
+- `type` (String) Load balance type (failover-only, weighted)
+- `weight` (Number) Load balance weight
 
 
 <a id="nestedatt--provider_capabilities"></a>
@@ -134,6 +171,17 @@ Optional:
 - `down_rate` (Number) Smart Queue download rate in kbps
 - `enabled` (Boolean) Whether Smart Queue is enabled
 - `up_rate` (Number) Smart Queue upload rate in kbps
+
+
+<a id="nestedatt--upnp"></a>
+### Nested Schema for `upnp`
+
+Optional:
+
+- `enabled` (Boolean) Whether UPnP is enabled
+- `nat_pmp_enabled` (Boolean) Whether UPnP NAT-PMP is enabled
+- `secure_mode` (Boolean) Whether UPnP secure mode is enabled
+- `wan_interface` (String) UPnP WAN interface
 
 
 <a id="nestedatt--vlan"></a>

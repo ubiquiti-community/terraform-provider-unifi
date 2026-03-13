@@ -190,29 +190,29 @@ func (d dhcpRelayModel) AttributeTypes() map[string]attr.Type {
 
 // networkResourceModel describes the resource data model.
 type networkResourceModel struct {
-	ID                      types.String         `tfsdk:"id"`
-	Site                    types.String         `tfsdk:"site"`
-	Enabled                 types.Bool           `tfsdk:"enabled"`
-	Name                    types.String         `tfsdk:"name"`
-	NatOutboundIPAddresses  types.List           `tfsdk:"nat_outbound_ip_addresses"`
-	AutoScaleEnabled        types.Bool           `tfsdk:"auto_scale_enabled"`
-	Subnet                  cidrtypes.IPv4Prefix `tfsdk:"subnet"`
-	DomainName              types.String         `tfsdk:"domain_name"`
-	Vlan                    types.Int64          `tfsdk:"vlan"`
-	NetworkIsolationEnabled types.Bool           `tfsdk:"network_isolation_enabled"`
-	SettingPreference       types.String         `tfsdk:"setting_preference"`
-	InternetAccessEnabled   types.Bool           `tfsdk:"internet_access_enabled"`
-	IgmpSnooping            types.Bool           `tfsdk:"igmp_snooping"`
-	MdnsEnabled             types.Bool           `tfsdk:"mdns_enabled"`
-	GatewayType             types.String         `tfsdk:"gateway_type"`
-	IPv6InterfaceType       types.String         `tfsdk:"ipv6_interface_type"`
-	LteLanEnabled           types.Bool           `tfsdk:"lte_lan_enabled"`
-	IPAliases               types.List           `tfsdk:"ip_aliases"`
-	IPv6Aliases             types.List           `tfsdk:"ipv6_aliases"`
-	ThirdPartyGateway       types.Bool           `tfsdk:"third_party_gateway"`
-	DhcpGuarding            types.Object         `tfsdk:"dhcp_guarding"`
-	DhcpServer              types.Object         `tfsdk:"dhcp_server"`
-	DhcpRelay               types.Object         `tfsdk:"dhcp_relay"`
+	ID                     types.String         `tfsdk:"id"`
+	Site                   types.String         `tfsdk:"site"`
+	Enabled                types.Bool           `tfsdk:"enabled"`
+	Name                   types.String         `tfsdk:"name"`
+	NatOutboundIPAddresses types.List           `tfsdk:"nat_outbound_ip_addresses"`
+	AutoScale              types.Bool           `tfsdk:"auto_scale"`
+	Subnet                 cidrtypes.IPv4Prefix `tfsdk:"subnet"`
+	DomainName             types.String         `tfsdk:"domain_name"`
+	Vlan                   types.Int64          `tfsdk:"vlan"`
+	NetworkIsolation       types.Bool           `tfsdk:"network_isolation"`
+	SettingPreference      types.String         `tfsdk:"setting_preference"`
+	InternetAccess         types.Bool           `tfsdk:"internet_access"`
+	IgmpSnooping           types.Bool           `tfsdk:"igmp_snooping"`
+	MulticastDNS           types.Bool           `tfsdk:"multicast_dns"`
+	GatewayType            types.String         `tfsdk:"gateway_type"`
+	IPv6InterfaceType      types.String         `tfsdk:"ipv6_interface_type"`
+	LteLan                 types.Bool           `tfsdk:"lte_lan"`
+	IPAliases              types.List           `tfsdk:"ip_aliases"`
+	IPv6Aliases            types.List           `tfsdk:"ipv6_aliases"`
+	ThirdPartyGateway      types.Bool           `tfsdk:"third_party_gateway"`
+	DhcpGuarding           types.Object         `tfsdk:"dhcp_guarding"`
+	DhcpServer             types.Object         `tfsdk:"dhcp_server"`
+	DhcpRelay              types.Object         `tfsdk:"dhcp_relay"`
 }
 
 func (r *networkResource) Metadata(
@@ -298,7 +298,7 @@ func (r *networkResource) Schema(
 					},
 				},
 			},
-			"auto_scale_enabled": schema.BoolAttribute{
+			"auto_scale": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether auto-scaling is enabled.",
 				Optional:            true,
 				Computed:            true,
@@ -327,7 +327,7 @@ func (r *networkResource) Schema(
 					int64validator.Between(1, 4094),
 				},
 			},
-			"network_isolation_enabled": schema.BoolAttribute{
+			"network_isolation": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether network isolation is enabled.",
 				Optional:            true,
 				Computed:            true,
@@ -342,7 +342,7 @@ func (r *networkResource) Schema(
 					stringvalidator.OneOf("auto", "manual"),
 				},
 			},
-			"internet_access_enabled": schema.BoolAttribute{
+			"internet_access": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether internet access is enabled.",
 				Optional:            true,
 				Computed:            true,
@@ -354,7 +354,7 @@ func (r *networkResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
-			"mdns_enabled": schema.BoolAttribute{
+			"multicast_dns": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether mDNS is enabled.",
 				Optional:            true,
 				Computed:            true,
@@ -378,7 +378,7 @@ func (r *networkResource) Schema(
 					stringvalidator.OneOf("none", "pd", "static"),
 				},
 			},
-			"lte_lan_enabled": schema.BoolAttribute{
+			"lte_lan": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether LTE LAN is enabled.",
 				Optional:            true,
 				Computed:            true,
@@ -869,15 +869,15 @@ func (r *networkResource) modelToNetwork(
 		Name:                    model.Name.ValueStringPointer(),
 		Purpose:                 unifi.PurposeCorporate,
 		NetworkGroup:            util.Ptr("LAN"),
-		AutoScaleEnabled:        model.AutoScaleEnabled.ValueBool(),
+		AutoScaleEnabled:        model.AutoScale.ValueBool(),
 		IPSubnet:                model.Subnet.ValueStringPointer(),
-		NetworkIsolationEnabled: model.NetworkIsolationEnabled.ValueBool(),
+		NetworkIsolationEnabled: model.NetworkIsolation.ValueBool(),
 		SettingPreference:       model.SettingPreference.ValueStringPointer(),
-		InternetAccessEnabled:   model.InternetAccessEnabled.ValueBool(),
-		MdnsEnabled:             model.MdnsEnabled.ValueBool(),
+		InternetAccessEnabled:   model.InternetAccess.ValueBool(),
+		MdnsEnabled:             model.MulticastDNS.ValueBool(),
 		GatewayType:             model.GatewayType.ValueStringPointer(),
 		IPV6InterfaceType:       model.IPv6InterfaceType.ValueStringPointer(),
-		LteLanEnabled:           model.LteLanEnabled.ValueBool(),
+		LteLanEnabled:           model.LteLan.ValueBool(),
 		VLANEnabled:             true,
 		Enabled:                 model.Enabled.ValueBool(),
 		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
@@ -1169,7 +1169,7 @@ func (r *networkResource) networkToModel(
 	model.Name = types.StringPointerValue(network.Name)
 	model.Enabled = types.BoolValue(network.Enabled)
 	model.IgmpSnooping = types.BoolValue(network.IGMPSnooping)
-	model.NetworkIsolationEnabled = types.BoolValue(network.NetworkIsolationEnabled)
+	model.NetworkIsolation = types.BoolValue(network.NetworkIsolationEnabled)
 
 	// Set third_party_gateway based on API purpose
 	isVLANOnly := network.Purpose == unifi.PurposeVLANOnly
@@ -1180,13 +1180,13 @@ func (r *networkResource) networkToModel(
 	// to avoid "inconsistent result after apply" errors.
 	if isVLANOnly && previousModel != nil {
 		model.Subnet = previousModel.Subnet
-		model.AutoScaleEnabled = previousModel.AutoScaleEnabled
+		model.AutoScale = previousModel.AutoScale
 		model.SettingPreference = previousModel.SettingPreference
-		model.InternetAccessEnabled = previousModel.InternetAccessEnabled
-		model.MdnsEnabled = previousModel.MdnsEnabled
+		model.InternetAccess = previousModel.InternetAccess
+		model.MulticastDNS = previousModel.MulticastDNS
 		model.GatewayType = previousModel.GatewayType
 		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
-		model.LteLanEnabled = previousModel.LteLanEnabled
+		model.LteLan = previousModel.LteLan
 		// domain_name uses UseStateForUnknown, so it may be unknown during Create.
 		// Resolve unknown to null since the API doesn't return it for vlan-only.
 		if previousModel.DomainName.IsUnknown() {
@@ -1195,18 +1195,18 @@ func (r *networkResource) networkToModel(
 			model.DomainName = previousModel.DomainName
 		}
 	} else {
-		model.AutoScaleEnabled = types.BoolValue(network.AutoScaleEnabled)
+		model.AutoScale = types.BoolValue(network.AutoScaleEnabled)
 		if network.IPSubnet != nil {
 			model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
 		} else {
 			model.Subnet = cidrtypes.NewIPv4PrefixNull()
 		}
 		model.SettingPreference = types.StringPointerValue(network.SettingPreference)
-		model.InternetAccessEnabled = types.BoolValue(network.InternetAccessEnabled)
-		model.MdnsEnabled = types.BoolValue(network.MdnsEnabled)
+		model.InternetAccess = types.BoolValue(network.InternetAccessEnabled)
+		model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
 		model.GatewayType = types.StringPointerValue(network.GatewayType)
 		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-		model.LteLanEnabled = types.BoolValue(network.LteLanEnabled)
+		model.LteLan = types.BoolValue(network.LteLanEnabled)
 		model.DomainName = types.StringPointerValue(network.DomainName)
 	}
 
