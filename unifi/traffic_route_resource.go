@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -51,63 +52,16 @@ type trafficRouteResource struct {
 	client *Client
 }
 
-// trafficRoutePortRangeModel describes a nested port_ranges entry.
-type trafficRoutePortRangeModel struct {
-	Start types.Int64 `tfsdk:"start"`
-	Stop  types.Int64 `tfsdk:"stop"`
+// destinationIPModel describes a nested destination.ip entry.
+type destinationIPModel struct {
+	Address types.String `tfsdk:"address"`
+	Ports   types.List   `tfsdk:"ports"`
 }
 
-func (m trafficRoutePortRangeModel) AttributeTypes() map[string]attr.Type {
+func (m destinationIPModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"start": types.Int64Type,
-		"stop":  types.Int64Type,
-	}
-}
-
-// trafficRouteDomainModel describes a nested domains entry.
-type trafficRouteDomainModel struct {
-	Domain     types.String `tfsdk:"domain"`
-	PortRanges types.List   `tfsdk:"port_ranges"`
-	Ports      types.List   `tfsdk:"ports"`
-}
-
-func (m trafficRouteDomainModel) AttributeTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"domain": types.StringType,
-		"port_ranges": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: trafficRoutePortRangeModel{}.AttributeTypes()},
-		},
-		"ports": types.ListType{ElemType: types.Int64Type},
-	}
-}
-
-// trafficRouteIPAddressModel describes a nested ip_addresses entry.
-type trafficRouteIPAddressModel struct {
-	Address    types.String `tfsdk:"ip_or_subnet"`
-	PortRanges types.List   `tfsdk:"port_ranges"`
-	Ports      types.List   `tfsdk:"ports"`
-}
-
-func (m trafficRouteIPAddressModel) AttributeTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"ip_or_subnet": types.StringType,
-		"port_ranges": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: trafficRoutePortRangeModel{}.AttributeTypes()},
-		},
-		"ports": types.ListType{ElemType: types.Int64Type},
-	}
-}
-
-// trafficRouteIPRangeModel describes a nested ip_ranges entry.
-type trafficRouteIPRangeModel struct {
-	Start types.String `tfsdk:"start"`
-	Stop  types.String `tfsdk:"stop"`
-}
-
-func (m trafficRouteIPRangeModel) AttributeTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"start": types.StringType,
-		"stop":  types.StringType,
+		"address": types.StringType,
+		"ports":   types.ListType{ElemType: types.StringType},
 	}
 }
 
@@ -152,24 +106,18 @@ func (m sourceModel) AttributeTypes() map[string]attr.Type {
 
 // destinationModel describes the nested destination attribute.
 type destinationModel struct {
-	Domains     types.List `tfsdk:"domains"`
-	IPAddresses types.List `tfsdk:"ip_addresses"`
-	IPRanges    types.List `tfsdk:"ip_ranges"`
-	Regions     types.List `tfsdk:"regions"`
+	Domain types.List `tfsdk:"domain"`
+	IP     types.List `tfsdk:"ip"`
+	Region types.List `tfsdk:"region"`
 }
 
 func (m destinationModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"domains": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: trafficRouteDomainModel{}.AttributeTypes()},
+		"domain": types.ListType{ElemType: types.StringType},
+		"ip": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: destinationIPModel{}.AttributeTypes()},
 		},
-		"ip_addresses": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: trafficRouteIPAddressModel{}.AttributeTypes()},
-		},
-		"ip_ranges": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: trafficRouteIPRangeModel{}.AttributeTypes()},
-		},
-		"regions": types.ListType{ElemType: types.StringType},
+		"region": types.ListType{ElemType: types.StringType},
 	}
 }
 
@@ -255,119 +203,51 @@ func (r *trafficRouteResource) Schema(
 				Optional:            true,
 			},
 			"destination": schema.SingleNestedAttribute{
-				MarkdownDescription: "Destination filter for this traffic route. Specify exactly one of `domains`, `regions`, or IP-based matching (`ip_addresses` and/or `ip_ranges`). When omitted, the route matches all internet traffic.",
+				MarkdownDescription: "Destination filter for this traffic route. Specify exactly one of `domain`, `region`, or `ip`. When omitted, the route matches all internet traffic.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
-					"domains": schema.ListNestedAttribute{
-						MarkdownDescription: "List of domain entries to match.",
+					"domain": schema.ListAttribute{
+						MarkdownDescription: "List of domain names to match.",
+						Optional:            true,
+						ElementType:         types.StringType,
+						Validators: []validator.List{
+							listvalidator.ConflictsWith(
+								path.MatchRelative().AtParent().AtName("region"),
+								path.MatchRelative().AtParent().AtName("ip"),
+							),
+						},
+					},
+					"ip": schema.ListNestedAttribute{
+						MarkdownDescription: "List of IP address, subnet, or IP range entries to match. Use CIDR notation (e.g. `10.0.0.0/8`) for subnets, or a hyphenated range (e.g. `192.168.10.1-192.168.10.255`) for IP ranges.",
 						Optional:            true,
 						Validators: []validator.List{
 							listvalidator.ConflictsWith(
-								path.MatchRelative().AtParent().AtName("regions"),
-								path.MatchRelative().AtParent().AtName("ip_addresses"),
-								path.MatchRelative().AtParent().AtName("ip_ranges"),
+								path.MatchRelative().AtParent().AtName("domain"),
+								path.MatchRelative().AtParent().AtName("region"),
 							),
 						},
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
-								"domain": schema.StringAttribute{
-									MarkdownDescription: "The domain name to match.",
+								"address": schema.StringAttribute{
+									MarkdownDescription: "An IP address, CIDR subnet, or hyphenated IP range to match.",
 									Required:            true,
-								},
-								"port_ranges": schema.ListNestedAttribute{
-									MarkdownDescription: "List of port ranges to match.",
-									Optional:            true,
-									NestedObject: schema.NestedAttributeObject{
-										Attributes: map[string]schema.Attribute{
-											"start": schema.Int64Attribute{
-												MarkdownDescription: "The start port of the range.",
-												Required:            true,
-											},
-											"stop": schema.Int64Attribute{
-												MarkdownDescription: "The stop port of the range.",
-												Required:            true,
-											},
-										},
-									},
 								},
 								"ports": schema.ListAttribute{
-									MarkdownDescription: "List of individual ports to match.",
+									MarkdownDescription: "List of ports or port ranges to match. Use a single number (e.g. `80`) for individual ports, or a hyphenated range (e.g. `8080-8090`) for port ranges. Only supported for IP addresses and subnets, not IP ranges.",
 									Optional:            true,
-									ElementType:         types.Int64Type,
+									ElementType:         types.StringType,
 								},
 							},
 						},
 					},
-					"ip_addresses": schema.ListNestedAttribute{
-						MarkdownDescription: "List of IP address or subnet entries to match.",
-						Optional:            true,
-						Validators: []validator.List{
-							listvalidator.ConflictsWith(
-								path.MatchRelative().AtParent().AtName("domains"),
-								path.MatchRelative().AtParent().AtName("regions"),
-							),
-						},
-						NestedObject: schema.NestedAttributeObject{
-							Attributes: map[string]schema.Attribute{
-								"ip_or_subnet": schema.StringAttribute{
-									MarkdownDescription: "An IP address or CIDR subnet to match.",
-									Required:            true,
-								},
-								"port_ranges": schema.ListNestedAttribute{
-									MarkdownDescription: "List of port ranges to match.",
-									Optional:            true,
-									NestedObject: schema.NestedAttributeObject{
-										Attributes: map[string]schema.Attribute{
-											"start": schema.Int64Attribute{
-												MarkdownDescription: "The start port of the range.",
-												Required:            true,
-											},
-											"stop": schema.Int64Attribute{
-												MarkdownDescription: "The stop port of the range.",
-												Required:            true,
-											},
-										},
-									},
-								},
-								"ports": schema.ListAttribute{
-									MarkdownDescription: "List of individual ports to match.",
-									Optional:            true,
-									ElementType:         types.Int64Type,
-								},
-							},
-						},
-					},
-					"ip_ranges": schema.ListNestedAttribute{
-						MarkdownDescription: "List of IP range entries to match.",
-						Optional:            true,
-						Validators: []validator.List{
-							listvalidator.ConflictsWith(
-								path.MatchRelative().AtParent().AtName("domains"),
-								path.MatchRelative().AtParent().AtName("regions"),
-							),
-						},
-						NestedObject: schema.NestedAttributeObject{
-							Attributes: map[string]schema.Attribute{
-								"start": schema.StringAttribute{
-									MarkdownDescription: "The start IP address of the range.",
-									Required:            true,
-								},
-								"stop": schema.StringAttribute{
-									MarkdownDescription: "The stop IP address of the range.",
-									Required:            true,
-								},
-							},
-						},
-					},
-					"regions": schema.ListAttribute{
+					"region": schema.ListAttribute{
 						MarkdownDescription: "List of regions to match.",
 						Optional:            true,
 						ElementType:         types.StringType,
 						Validators: []validator.List{
 							listvalidator.ConflictsWith(
-								path.MatchRelative().AtParent().AtName("domains"),
-								path.MatchRelative().AtParent().AtName("ip_addresses"),
-								path.MatchRelative().AtParent().AtName("ip_ranges"),
+								path.MatchRelative().AtParent().AtName("domain"),
+								path.MatchRelative().AtParent().AtName("ip"),
 							),
 						},
 					},
@@ -677,122 +557,106 @@ func (r *trafficRouteResource) modelToAPI(
 	}
 
 	// Domains
-	if hasDest && !dest.Domains.IsNull() && !dest.Domains.IsUnknown() {
+	if hasDest && !dest.Domain.IsNull() && !dest.Domain.IsUnknown() {
 		route.MatchingTarget = "DOMAIN"
-		var domains []trafficRouteDomainModel
-		diags.Append(dest.Domains.ElementsAs(ctx, &domains, false)...)
+		var domains []string
+		diags.Append(dest.Domain.ElementsAs(ctx, &domains, false)...)
 		if diags.HasError() {
 			return nil, diags
 		}
 
 		route.Domains = make([]unifi.TrafficRouteDomains, len(domains))
 		for i, d := range domains {
-			entry := unifi.TrafficRouteDomains{
-				Domain: d.Domain.ValueString(),
+			route.Domains[i] = unifi.TrafficRouteDomains{
+				Domain: d,
 			}
-
-			if !d.PortRanges.IsNull() && !d.PortRanges.IsUnknown() {
-				var portRanges []trafficRoutePortRangeModel
-				diags.Append(d.PortRanges.ElementsAs(ctx, &portRanges, false)...)
-				entry.PortRanges = make([]unifi.TrafficRoutePortRanges, len(portRanges))
-				for j, pr := range portRanges {
-					entry.PortRanges[j] = unifi.TrafficRoutePortRanges{
-						Start: pr.Start.ValueInt64Pointer(),
-						Stop:  pr.Stop.ValueInt64Pointer(),
-					}
-				}
-			}
-
-			if !d.Ports.IsNull() && !d.Ports.IsUnknown() {
-				var ports []int64
-				diags.Append(d.Ports.ElementsAs(ctx, &ports, false)...)
-				entry.Ports = ports
-			}
-
-			route.Domains[i] = entry
 		}
 	}
 
 	// Regions
-	if hasDest && !dest.Regions.IsNull() && !dest.Regions.IsUnknown() {
+	if hasDest && !dest.Region.IsNull() && !dest.Region.IsUnknown() {
 		route.MatchingTarget = "REGION"
 		var regions []string
-		diags.Append(dest.Regions.ElementsAs(ctx, &regions, false)...)
+		diags.Append(dest.Region.ElementsAs(ctx, &regions, false)...)
 		route.Regions = regions
 	}
 
-	// IP Addresses
-	if hasDest && !dest.IPAddresses.IsNull() && !dest.IPAddresses.IsUnknown() {
+	// IP (addresses and ranges combined)
+	if hasDest && !dest.IP.IsNull() && !dest.IP.IsUnknown() {
 		route.MatchingTarget = "IP"
-		var ipAddrs []trafficRouteIPAddressModel
-		diags.Append(dest.IPAddresses.ElementsAs(ctx, &ipAddrs, false)...)
+		var ips []destinationIPModel
+		diags.Append(dest.IP.ElementsAs(ctx, &ips, false)...)
 		if diags.HasError() {
 			return nil, diags
 		}
 
-		route.IPAddresses = make([]unifi.TrafficRouteIPAddresses, len(ipAddrs))
-		for i, addr := range ipAddrs {
-			entry := unifi.TrafficRouteIPAddresses{
-				Address: addr.Address.ValueString(),
-				Version: unifi.TrafficRouteIPVersionV4,
-			}
+		for _, ip := range ips {
+			address := ip.Address.ValueString()
 
-			if ipAddr, err := netip.ParseAddr(
-				addr.Address.ValueString(),
-			); err == nil &&
-				ipAddr.IsValid() {
-				if ipAddr.Is6() {
+			// Detect IP range (contains "-" but is not CIDR)
+			if strings.Contains(address, "-") {
+				parts := strings.SplitN(address, "-", 2)
+				entry := unifi.TrafficRouteIPRanges{
+					Start:   strings.TrimSpace(parts[0]),
+					Stop:    strings.TrimSpace(parts[1]),
+					Version: unifi.TrafficRouteIPVersionV4,
+				}
+				if ipAddr, err := netip.ParseAddr(entry.Start); err == nil && ipAddr.Is6() {
 					entry.Version = unifi.TrafficRouteIPVersionV6
 				}
-			}
+				route.IPRanges = append(route.IPRanges, entry)
+			} else {
+				entry := unifi.TrafficRouteIPAddresses{
+					Address: address,
+					Version: unifi.TrafficRouteIPVersionV4,
+				}
+				if ipAddr, err := netip.ParseAddr(address); err == nil && ipAddr.Is6() {
+					entry.Version = unifi.TrafficRouteIPVersionV6
+				}
 
-			if !addr.PortRanges.IsNull() && !addr.PortRanges.IsUnknown() {
-				var portRanges []trafficRoutePortRangeModel
-				diags.Append(addr.PortRanges.ElementsAs(ctx, &portRanges, false)...)
-				entry.PortRanges = make([]unifi.TrafficRoutePortRanges, len(portRanges))
-				for j, pr := range portRanges {
-					entry.PortRanges[j] = unifi.TrafficRoutePortRanges{
-						Start: pr.Start.ValueInt64Pointer(),
-						Stop:  pr.Stop.ValueInt64Pointer(),
+				// Parse ports
+				if !ip.Ports.IsNull() && !ip.Ports.IsUnknown() {
+					var portStrs []string
+					diags.Append(ip.Ports.ElementsAs(ctx, &portStrs, false)...)
+					for _, ps := range portStrs {
+						if strings.Contains(ps, "-") {
+							rangeParts := strings.SplitN(ps, "-", 2)
+							start, err1 := strconv.ParseInt(
+								strings.TrimSpace(rangeParts[0]),
+								10,
+								64,
+							)
+							stop, err2 := strconv.ParseInt(strings.TrimSpace(rangeParts[1]), 10, 64)
+							if err1 != nil || err2 != nil {
+								diags.AddError(
+									"Invalid Port Range",
+									fmt.Sprintf("could not parse port range %q", ps),
+								)
+								return nil, diags
+							}
+							entry.PortRanges = append(
+								entry.PortRanges,
+								unifi.TrafficRoutePortRanges{
+									Start: &start,
+									Stop:  &stop,
+								},
+							)
+						} else {
+							port, err := strconv.ParseInt(strings.TrimSpace(ps), 10, 64)
+							if err != nil {
+								diags.AddError(
+									"Invalid Port",
+									fmt.Sprintf("could not parse port %q", ps),
+								)
+								return nil, diags
+							}
+							entry.Ports = append(entry.Ports, port)
+						}
 					}
 				}
+
+				route.IPAddresses = append(route.IPAddresses, entry)
 			}
-
-			if !addr.Ports.IsNull() && !addr.Ports.IsUnknown() {
-				var ports []int64
-				diags.Append(addr.Ports.ElementsAs(ctx, &ports, false)...)
-				entry.Ports = ports
-			}
-
-			route.IPAddresses[i] = entry
-		}
-	}
-
-	// IP Ranges
-	if hasDest && !dest.IPRanges.IsNull() && !dest.IPRanges.IsUnknown() {
-		route.MatchingTarget = "IP"
-		var ipRanges []trafficRouteIPRangeModel
-		diags.Append(dest.IPRanges.ElementsAs(ctx, &ipRanges, false)...)
-		if diags.HasError() {
-			return nil, diags
-		}
-
-		route.IPRanges = make([]unifi.TrafficRouteIPRanges, len(ipRanges))
-		for i, r := range ipRanges {
-			entry := unifi.TrafficRouteIPRanges{
-				Start:   r.Start.ValueString(),
-				Stop:    r.Stop.ValueString(),
-				Version: unifi.TrafficRouteIPVersionV4,
-			}
-
-			if ipAddr, err := netip.ParseAddr(entry.Start); err == nil &&
-				ipAddr.IsValid() {
-				if ipAddr.Is6() {
-					entry.Version = unifi.TrafficRouteIPVersionV6
-				}
-			}
-
-			route.IPRanges[i] = entry
 		}
 	}
 
@@ -878,74 +742,13 @@ func (r *trafficRouteResource) apiToModel(
 	if len(route.Domains) > 0 {
 		elements := make([]attr.Value, len(route.Domains))
 		for i, dom := range route.Domains {
-			// Port ranges
-			var portRanges types.List
-			if len(dom.PortRanges) > 0 {
-				prElems := make([]attr.Value, len(dom.PortRanges))
-				for j, pr := range dom.PortRanges {
-					prModel := trafficRoutePortRangeModel{
-						Start: types.Int64PointerValue(pr.Start),
-						Stop:  types.Int64PointerValue(pr.Stop),
-					}
-					var d diag.Diagnostics
-					prElems[j], d = types.ObjectValueFrom(
-						ctx,
-						trafficRoutePortRangeModel{}.AttributeTypes(),
-						prModel,
-					)
-					diags.Append(d...)
-				}
-				var d diag.Diagnostics
-				portRanges, d = types.ListValue(
-					types.ObjectType{AttrTypes: trafficRoutePortRangeModel{}.AttributeTypes()},
-					prElems,
-				)
-				diags.Append(d...)
-			} else {
-				portRanges = types.ListNull(
-					types.ObjectType{AttrTypes: trafficRoutePortRangeModel{}.AttributeTypes()},
-				)
-			}
-
-			// Ports
-			var ports types.List
-			if len(dom.Ports) > 0 {
-				pElems := make([]attr.Value, len(dom.Ports))
-				for j, p := range dom.Ports {
-					pElems[j] = types.Int64Value(p)
-				}
-				var d diag.Diagnostics
-				ports, d = types.ListValue(types.Int64Type, pElems)
-				diags.Append(d...)
-			} else {
-				ports = types.ListNull(types.Int64Type)
-			}
-
-			domModel := trafficRouteDomainModel{
-				Domain:     types.StringValue(dom.Domain),
-				PortRanges: portRanges,
-				Ports:      ports,
-			}
-
-			var d diag.Diagnostics
-			elements[i], d = types.ObjectValueFrom(
-				ctx,
-				trafficRouteDomainModel{}.AttributeTypes(),
-				domModel,
-			)
-			diags.Append(d...)
+			elements[i] = types.StringValue(dom.Domain)
 		}
-
 		var d diag.Diagnostics
-		domainsList, d = types.ListValue(
-			types.ObjectType{AttrTypes: trafficRouteDomainModel{}.AttributeTypes()},
-			elements,
-		)
+		domainsList, d = types.ListValue(types.StringType, elements)
 		diags.Append(d...)
 	} else {
-		domainsList = types.ListNull(
-			types.ObjectType{AttrTypes: trafficRouteDomainModel{}.AttributeTypes()},
-		)
+		domainsList = types.ListNull(types.StringType)
 	}
 
 	// Regions
@@ -962,109 +765,64 @@ func (r *trafficRouteResource) apiToModel(
 		regionsList = types.ListNull(types.StringType)
 	}
 
-	// IP Addresses
-	var ipAddressesList types.List
-	if len(route.IPAddresses) > 0 {
-		elements := make([]attr.Value, len(route.IPAddresses))
-		for i, addr := range route.IPAddresses {
-			// Port ranges
-			var portRanges types.List
-			if len(addr.PortRanges) > 0 {
-				prElems := make([]attr.Value, len(addr.PortRanges))
-				for j, pr := range addr.PortRanges {
-					prModel := trafficRoutePortRangeModel{
-						Start: types.Int64PointerValue(pr.Start),
-						Stop:  types.Int64PointerValue(pr.Stop),
-					}
-					var d diag.Diagnostics
-					prElems[j], d = types.ObjectValueFrom(
-						ctx,
-						trafficRoutePortRangeModel{}.AttributeTypes(),
-						prModel,
-					)
-					diags.Append(d...)
+	// IP (merge IPAddresses and IPRanges into unified list)
+	var ipList types.List
+	if len(route.IPAddresses) > 0 || len(route.IPRanges) > 0 {
+		var ipElements []attr.Value
+
+		for _, addr := range route.IPAddresses {
+			// Build ports list from Ports + PortRanges
+			var portStrings []attr.Value
+			for _, p := range addr.Ports {
+				portStrings = append(portStrings, types.StringValue(strconv.FormatInt(p, 10)))
+			}
+			for _, pr := range addr.PortRanges {
+				if pr.Start != nil && pr.Stop != nil {
+					portStrings = append(portStrings, types.StringValue(
+						strconv.FormatInt(*pr.Start, 10)+"-"+strconv.FormatInt(*pr.Stop, 10),
+					))
 				}
-				var d diag.Diagnostics
-				portRanges, d = types.ListValue(
-					types.ObjectType{AttrTypes: trafficRoutePortRangeModel{}.AttributeTypes()},
-					prElems,
-				)
-				diags.Append(d...)
-			} else {
-				portRanges = types.ListNull(
-					types.ObjectType{AttrTypes: trafficRoutePortRangeModel{}.AttributeTypes()},
-				)
 			}
 
-			// Ports
 			var ports types.List
-			if len(addr.Ports) > 0 {
-				pElems := make([]attr.Value, len(addr.Ports))
-				for j, p := range addr.Ports {
-					pElems[j] = types.Int64Value(p)
-				}
+			if len(portStrings) > 0 {
 				var d diag.Diagnostics
-				ports, d = types.ListValue(types.Int64Type, pElems)
+				ports, d = types.ListValue(types.StringType, portStrings)
 				diags.Append(d...)
 			} else {
-				ports = types.ListNull(types.Int64Type)
+				ports = types.ListNull(types.StringType)
 			}
 
-			addrModel := trafficRouteIPAddressModel{
-				Address:    types.StringValue(addr.Address),
-				PortRanges: portRanges,
-				Ports:      ports,
+			ipModel := destinationIPModel{
+				Address: types.StringValue(addr.Address),
+				Ports:   ports,
 			}
 
-			var d diag.Diagnostics
-			elements[i], d = types.ObjectValueFrom(
-				ctx,
-				trafficRouteIPAddressModel{}.AttributeTypes(),
-				addrModel,
-			)
+			obj, d := types.ObjectValueFrom(ctx, destinationIPModel{}.AttributeTypes(), ipModel)
 			diags.Append(d...)
+			ipElements = append(ipElements, obj)
+		}
+
+		for _, ipRange := range route.IPRanges {
+			ipModel := destinationIPModel{
+				Address: types.StringValue(ipRange.Start + "-" + ipRange.Stop),
+				Ports:   types.ListNull(types.StringType),
+			}
+
+			obj, d := types.ObjectValueFrom(ctx, destinationIPModel{}.AttributeTypes(), ipModel)
+			diags.Append(d...)
+			ipElements = append(ipElements, obj)
 		}
 
 		var d diag.Diagnostics
-		ipAddressesList, d = types.ListValue(
-			types.ObjectType{AttrTypes: trafficRouteIPAddressModel{}.AttributeTypes()},
-			elements,
+		ipList, d = types.ListValue(
+			types.ObjectType{AttrTypes: destinationIPModel{}.AttributeTypes()},
+			ipElements,
 		)
 		diags.Append(d...)
 	} else {
-		ipAddressesList = types.ListNull(
-			types.ObjectType{AttrTypes: trafficRouteIPAddressModel{}.AttributeTypes()},
-		)
-	}
-
-	// IP Ranges
-	var ipRangesList types.List
-	if len(route.IPRanges) > 0 {
-		elements := make([]attr.Value, len(route.IPRanges))
-		for i, ipRange := range route.IPRanges {
-			rangeModel := trafficRouteIPRangeModel{
-				Start: types.StringValue(ipRange.Start),
-				Stop:  types.StringValue(ipRange.Stop),
-			}
-
-			var d diag.Diagnostics
-			elements[i], d = types.ObjectValueFrom(
-				ctx,
-				trafficRouteIPRangeModel{}.AttributeTypes(),
-				rangeModel,
-			)
-			diags.Append(d...)
-		}
-
-		var d diag.Diagnostics
-		ipRangesList, d = types.ListValue(
-			types.ObjectType{AttrTypes: trafficRouteIPRangeModel{}.AttributeTypes()},
-			elements,
-		)
-		diags.Append(d...)
-	} else {
-		ipRangesList = types.ListNull(
-			types.ObjectType{AttrTypes: trafficRouteIPRangeModel{}.AttributeTypes()},
+		ipList = types.ListNull(
+			types.ObjectType{AttrTypes: destinationIPModel{}.AttributeTypes()},
 		)
 	}
 
@@ -1072,10 +830,9 @@ func (r *trafficRouteResource) apiToModel(
 	if len(route.Domains) > 0 || len(route.Regions) > 0 || len(route.IPAddresses) > 0 ||
 		len(route.IPRanges) > 0 {
 		dest := destinationModel{
-			Domains:     domainsList,
-			IPAddresses: ipAddressesList,
-			IPRanges:    ipRangesList,
-			Regions:     regionsList,
+			Domain: domainsList,
+			IP:     ipList,
+			Region: regionsList,
 		}
 		var d diag.Diagnostics
 		model.Destination, d = types.ObjectValueFrom(ctx, destinationModel{}.AttributeTypes(), dest)

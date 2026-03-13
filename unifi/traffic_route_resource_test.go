@@ -22,12 +22,12 @@ func TestAccTrafficRoute_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_traffic_route.test", "enabled", "true"),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.#",
+						"destination.ip.#",
 						"1",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.0.ip_or_subnet",
+						"destination.ip.0.address",
 						"192.168.1.2",
 					),
 					resource.TestCheckResourceAttr(
@@ -58,7 +58,7 @@ resource "unifi_traffic_route" "test" {
 	next_hop				    = "192.168.1.1"
 	network_id			    = data.unifi_network.default.id
 	destination = {
-		ip_addresses = [{ ip_or_subnet = "192.168.1.2" }]
+		ip = [{ address = "192.168.1.2" }]
 	}
 	kill_switch_enabled = false
 }
@@ -80,48 +80,43 @@ func TestAccTrafficRoute_ipAddresses(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.#",
+						"destination.ip.#",
 						"2",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.0.ip_or_subnet",
+						"destination.ip.0.address",
 						"10.0.0.0/8",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.0.ports.#",
+						"destination.ip.0.ports.#",
 						"2",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.0.ports.0",
+						"destination.ip.0.ports.0",
 						"80",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.0.ports.1",
+						"destination.ip.0.ports.1",
 						"443",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.1.ip_or_subnet",
+						"destination.ip.1.address",
 						"192.168.1.0/24",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.1.port_ranges.#",
+						"destination.ip.1.ports.#",
 						"1",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.1.port_ranges.0.start",
-						"8080",
-					),
-					resource.TestCheckResourceAttr(
-						"unifi_traffic_route.test",
-						"destination.ip_addresses.1.port_ranges.0.stop",
-						"8090",
+						"destination.ip.1.ports.0",
+						"8080-8090",
 					),
 				),
 			},
@@ -141,14 +136,14 @@ resource "unifi_traffic_route" "test" {
 	enabled         = true
 
 	destination = {
-		ip_addresses = [
+		ip = [
 			{
-				ip_or_subnet = "10.0.0.0/8"
-				ports        = [80, 443]
+				address = "10.0.0.0/8"
+				ports   = ["80", "443"]
 			},
 			{
-				ip_or_subnet = "192.168.1.0/24"
-				port_ranges  = [{ start = 8080, stop = 8090 }]
+				address = "192.168.1.0/24"
+				ports   = ["8080-8090"]
 			},
 		]
 	}
@@ -171,18 +166,13 @@ func TestAccTrafficRoute_ipRanges(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_ranges.#",
+						"destination.ip.#",
 						"1",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_ranges.0.start",
-						"10.0.0.1",
-					),
-					resource.TestCheckResourceAttr(
-						"unifi_traffic_route.test",
-						"destination.ip_ranges.0.stop",
-						"10.0.0.100",
+						"destination.ip.0.address",
+						"10.0.0.1-10.0.0.100",
 					),
 				),
 			},
@@ -202,12 +192,7 @@ resource "unifi_traffic_route" "test" {
 	enabled         = true
 
 	destination = {
-		ip_ranges = [
-			{
-				start   = "10.0.0.1"
-				stop    = "10.0.0.100"
-			},
-		]
+		ip = [{ address = "10.0.0.1-10.0.0.100" }]
 	}
 }
 `
@@ -246,7 +231,7 @@ resource "unifi_traffic_route" "test" {
 	description     = "tfacc-source-default-route"
 	enabled         = true
 	destination = {
-		domains = [{ "domain" = "test.example.com" }]
+		domain = ["test.example.com"]
 	}
 }
 `
@@ -269,12 +254,12 @@ func TestAccTrafficRoute_update(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_traffic_route.test", "enabled", "true"),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.domains.#",
+						"destination.domain.#",
 						"1",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.domains.0.domain",
+						"destination.domain.0",
 						"before.example.com",
 					),
 					resource.TestCheckResourceAttr(
@@ -296,17 +281,17 @@ func TestAccTrafficRoute_update(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_traffic_route.test", "enabled", "true"),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.domains.#",
+						"destination.domain.#",
 						"2",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.domains.0.domain",
+						"destination.domain.0",
 						"after1.example.com",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.domains.1.domain",
+						"destination.domain.1",
 						"after2.example.com",
 					),
 					resource.TestCheckResourceAttr(
@@ -333,7 +318,7 @@ resource "unifi_traffic_route" "test" {
 	description     = "tfacc-update-route"
 	enabled         = true
 	destination = {
-		domains = [{ "domain" = "before.example.com" }]
+		domain = ["before.example.com"]
 	}
 }
 `
@@ -345,7 +330,7 @@ resource "unifi_traffic_route" "test" {
 	description        = "tfacc-update-route-modified"
 	enabled            = true
 	destination = {
-		domains = [{ "domain" = "after1.example.com" }, { "domain" = "after2.example.com" }]
+		domain = ["after1.example.com", "after2.example.com"]
 	}
 	kill_switch_enabled = true
 }
@@ -358,7 +343,7 @@ resource "unifi_traffic_route" "test" {
 	description     = "tfacc-update-route-modified"
 	enabled         = false
 	destination = {
-		domains = [{ "domain" = "after1.example.com" }, { "domain" = "after2.example.com" }]
+		domain = ["after1.example.com", "after2.example.com"]
 	}
 }
 `
@@ -379,17 +364,17 @@ func TestAccTrafficRoute_regions(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.regions.#",
+						"destination.region.#",
 						"2",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.regions.0",
+						"destination.region.0",
 						"US",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.regions.1",
+						"destination.region.1",
 						"CA",
 					),
 				),
@@ -409,7 +394,7 @@ resource "unifi_traffic_route" "test" {
 	description     = "tfacc-region-route"
 	enabled         = true
 	destination = {
-		regions = ["US", "CA"]
+		region = ["US", "CA"]
 	}
 }
 `
@@ -436,28 +421,18 @@ func TestAccTrafficRoute_fullConfig(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.#",
-						"1",
+						"destination.ip.#",
+						"2",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_addresses.0.ip_or_subnet",
+						"destination.ip.0.address",
 						"172.16.0.0/12",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
-						"destination.ip_ranges.#",
-						"1",
-					),
-					resource.TestCheckResourceAttr(
-						"unifi_traffic_route.test",
-						"destination.ip_ranges.0.start",
-						"192.168.0.1",
-					),
-					resource.TestCheckResourceAttr(
-						"unifi_traffic_route.test",
-						"destination.ip_ranges.0.stop",
-						"192.168.0.50",
+						"destination.ip.1.address",
+						"192.168.0.1-192.168.0.50",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_traffic_route.test",
@@ -488,13 +463,9 @@ resource "unifi_traffic_route" "test" {
 	kill_switch_enabled = true
 
 	destination = {
-		ip_addresses = [{ ip_or_subnet = "172.16.0.0/12" }]
-
-		ip_ranges = [
-			{
-				start   = "192.168.0.1"
-				stop    = "192.168.0.50"
-			},
+		ip = [
+			{ address = "172.16.0.0/12" },
+			{ address = "192.168.0.1-192.168.0.50" },
 		]
 	}
 
