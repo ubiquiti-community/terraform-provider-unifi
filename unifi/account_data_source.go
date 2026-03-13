@@ -152,7 +152,7 @@ func (d *accountDataSource) Read(
 	data.ID = types.StringValue(account.ID)
 	data.Site = types.StringValue(site)
 	data.Name = types.StringValue(account.Name)
-	data.Password = types.StringValue(account.XPassword)
+	data.Password = types.StringValue(account.Password)
 	data.TunnelType = types.Int64PointerValue(account.TunnelType)
 	data.TunnelMediumType = types.Int64PointerValue(account.TunnelMediumType)
 	data.NetworkID = types.StringValue(account.NetworkID)

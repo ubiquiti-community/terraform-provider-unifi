@@ -35,9 +35,9 @@ type radiusProfileResource struct {
 }
 
 type radiusServerModel struct {
-	IP      types.String `tfsdk:"ip"`
-	Port    types.Int64  `tfsdk:"port"`
-	XSecret types.String `tfsdk:"x_secret"`
+	IP     types.String `tfsdk:"ip"`
+	Port   types.Int64  `tfsdk:"port"`
+	Secret types.String `tfsdk:"x_secret"`
 }
 
 type radiusProfileResourceModel struct {
@@ -446,9 +446,9 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 		radiusProfile.AuthServers = append(
 			radiusProfile.AuthServers,
 			unifi.RADIUSProfileAuthServers{
-				IP:      authServer.IP.ValueString(),
-				Port:    authServer.Port.ValueInt64Pointer(),
-				XSecret: authServer.XSecret.ValueString(),
+				IP:     authServer.IP.ValueString(),
+				Port:   authServer.Port.ValueInt64Pointer(),
+				Secret: authServer.Secret.ValueString(),
 			},
 		)
 	}
@@ -457,9 +457,9 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 		radiusProfile.AcctServers = append(
 			radiusProfile.AcctServers,
 			unifi.RADIUSProfileAcctServers{
-				IP:      acctServer.IP.ValueString(),
-				Port:    acctServer.Port.ValueInt64Pointer(),
-				XSecret: acctServer.XSecret.ValueString(),
+				IP:     acctServer.IP.ValueString(),
+				Port:   acctServer.Port.ValueInt64Pointer(),
+				Secret: acctServer.Secret.ValueString(),
 			},
 		)
 	}
@@ -487,18 +487,18 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	model.AuthServer = []radiusServerModel{}
 	for _, authServer := range radiusProfile.AuthServers {
 		model.AuthServer = append(model.AuthServer, radiusServerModel{
-			IP:      types.StringValue(authServer.IP),
-			Port:    types.Int64PointerValue(authServer.Port),
-			XSecret: types.StringValue(authServer.XSecret),
+			IP:     types.StringValue(authServer.IP),
+			Port:   types.Int64PointerValue(authServer.Port),
+			Secret: types.StringValue(authServer.Secret),
 		})
 	}
 
 	model.AcctServer = []radiusServerModel{}
 	for _, acctServer := range radiusProfile.AcctServers {
 		model.AcctServer = append(model.AcctServer, radiusServerModel{
-			IP:      types.StringValue(acctServer.IP),
-			Port:    types.Int64PointerValue(acctServer.Port),
-			XSecret: types.StringValue(acctServer.XSecret),
+			IP:     types.StringValue(acctServer.IP),
+			Port:   types.Int64PointerValue(acctServer.Port),
+			Secret: types.StringValue(acctServer.Secret),
 		})
 	}
 }

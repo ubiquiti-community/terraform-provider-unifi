@@ -436,7 +436,7 @@ func (r *dynamicDNSResource) modelToDynamicDNS(
 		dynamicDNS.Login = model.Login.ValueString()
 	}
 	if !model.Password.IsNull() {
-		dynamicDNS.XPassword = model.Password.ValueString()
+		dynamicDNS.Password = model.Password.ValueString()
 	}
 
 	return dynamicDNS
@@ -472,8 +472,8 @@ func (r *dynamicDNSResource) dynamicDNSToModel(
 		model.Login = types.StringNull()
 	}
 
-	if dynamicDNS.XPassword != "" {
-		model.Password = types.StringValue(dynamicDNS.XPassword)
+	if dynamicDNS.Password != "" {
+		model.Password = types.StringValue(dynamicDNS.Password)
 	} else {
 		model.Password = types.StringNull()
 	}

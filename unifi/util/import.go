@@ -1,4 +1,4 @@
-package unifi
+package util
 
 import (
 	"fmt"

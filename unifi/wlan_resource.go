@@ -791,7 +791,7 @@ func (r *wlanFrameworkResource) planToWLAN(
 		WPA3Support:              plan.WPA3Support.ValueBool(),
 		WPA3Transition:           plan.WPA3Transition.ValueBool(),
 		PMFMode:                  plan.PMFMode.ValueString(),
-		XPassphrase:              plan.Passphrase.ValueString(),
+		Passphrase:               plan.Passphrase.ValueString(),
 		HideSSID:                 plan.HideSSID.ValueBool(),
 		IsGuest:                  plan.IsGuest.ValueBool(),
 		Enabled:                  plan.Enabled.ValueBool(),
@@ -943,8 +943,8 @@ func (r *wlanFrameworkResource) wlanToModel(
 	}
 
 	// Only set passphrase if it's not empty (don't overwrite sensitive data unnecessarily)
-	if wlan.XPassphrase != "" {
-		model.Passphrase = types.StringValue(wlan.XPassphrase)
+	if wlan.Passphrase != "" {
+		model.Passphrase = types.StringValue(wlan.Passphrase)
 	}
 
 	model.HideSSID = types.BoolValue(wlan.HideSSID)

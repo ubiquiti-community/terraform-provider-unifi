@@ -1025,7 +1025,7 @@ func (r *settingResource) radiusModelToSetting(
 		setting.InterimUpdateInterval = model.InterimUpdateInterval.ValueInt64Pointer()
 	}
 	if !model.Secret.IsNull() && !model.Secret.IsUnknown() {
-		setting.XSecret = model.Secret.ValueString()
+		setting.Secret = model.Secret.ValueString()
 	}
 
 	return setting
@@ -1048,8 +1048,8 @@ func (r *settingResource) radiusSettingToModel(
 	model.InterimUpdateInterval = types.Int64PointerValue(setting.InterimUpdateInterval)
 
 	if !plan.Secret.IsNull() && !plan.Secret.IsUnknown() {
-		if setting.XSecret != "" {
-			model.Secret = types.StringValue(setting.XSecret)
+		if setting.Secret != "" {
+			model.Secret = types.StringValue(setting.Secret)
 		} else {
 			model.Secret = types.StringNull()
 		}

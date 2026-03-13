@@ -79,7 +79,7 @@ type deviceResourceModel struct {
 	// Advanced features
 	OutdoorModeOverride types.String `tfsdk:"outdoor_mode_override"`
 	Volume              types.Int64  `tfsdk:"volume"`
-	XBaresipPassword    types.String `tfsdk:"x_baresip_password"`
+	BaresipPassword     types.String `tfsdk:"x_baresip_password"`
 
 	// LCD/LCM settings
 	LcmBrightness          types.Int64  `tfsdk:"lcm_brightness"`
@@ -1124,8 +1124,8 @@ func (r *deviceResource) Update(
 	if !plan.Volume.IsNull() && !plan.Volume.IsUnknown() {
 		state.Volume = plan.Volume
 	}
-	if !plan.XBaresipPassword.IsNull() && !plan.XBaresipPassword.IsUnknown() {
-		state.XBaresipPassword = plan.XBaresipPassword
+	if !plan.BaresipPassword.IsNull() && !plan.BaresipPassword.IsUnknown() {
+		state.BaresipPassword = plan.BaresipPassword
 	}
 	if !plan.LcmBrightness.IsNull() && !plan.LcmBrightness.IsUnknown() {
 		state.LcmBrightness = plan.LcmBrightness
@@ -1395,10 +1395,10 @@ func (r *deviceResource) setResourceData(
 
 	model.Volume = types.Int64PointerValue(device.Volume)
 
-	if device.XBaresipPassword == "" {
-		model.XBaresipPassword = types.StringNull()
+	if device.BaresipPassword == "" {
+		model.BaresipPassword = types.StringNull()
 	} else {
-		model.XBaresipPassword = types.StringValue(device.XBaresipPassword)
+		model.BaresipPassword = types.StringValue(device.BaresipPassword)
 	}
 
 	// LCD/LCM settings
@@ -1517,8 +1517,8 @@ func (r *deviceResource) modelToAPIDevice(
 	if !model.Volume.IsNull() && !model.Volume.IsUnknown() {
 		device.Volume = model.Volume.ValueInt64Pointer()
 	}
-	if !model.XBaresipPassword.IsNull() {
-		device.XBaresipPassword = model.XBaresipPassword.ValueString()
+	if !model.BaresipPassword.IsNull() {
+		device.BaresipPassword = model.BaresipPassword.ValueString()
 	}
 
 	// LCD/LCM settings

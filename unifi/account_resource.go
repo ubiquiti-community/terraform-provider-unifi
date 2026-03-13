@@ -358,7 +358,7 @@ func (r *accountFrameworkResource) modelToAccount(
 ) *unifi.Account {
 	account := &unifi.Account{
 		Name:      model.Name.ValueString(),
-		XPassword: model.Password.ValueString(),
+		Password: model.Password.ValueString(),
 	}
 
 	account.TunnelType = model.TunnelType.ValueInt64Pointer()
@@ -382,7 +382,7 @@ func (r *accountFrameworkResource) accountToModel(
 	model.ID = types.StringValue(account.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(account.Name)
-	model.Password = types.StringValue(account.XPassword)
+	model.Password = types.StringValue(account.Password)
 	model.TunnelType = types.Int64PointerValue(account.TunnelType)
 	model.TunnelMediumType = types.Int64PointerValue(account.TunnelMediumType)
 
