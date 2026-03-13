@@ -668,7 +668,13 @@ func (r *vpnServerResource) ImportState(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
+		resource.ImportStatePassthroughWithIdentity(
+			ctx,
+			path.Root("id"),
+			path.Root("id"),
+			req,
+			resp,
+		)
 	} else {
 		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 	}
@@ -1083,12 +1089,17 @@ func (r *vpnServerResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(ctx, path.Root("id"), types.StringValue(network.ID))...,
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(network.ID),
+				)...,
 			)
 
 			// Convert to model.
 			var model vpnServerResourceModel
-			result.Diagnostics.Append(r.networkToModel(ctx, &network, &model, site, &vpnServerResourceModel{})...)
+			result.Diagnostics.Append(
+				r.networkToModel(ctx, &network, &model, site, &vpnServerResourceModel{})...)
 			if !result.Diagnostics.HasError() {
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}

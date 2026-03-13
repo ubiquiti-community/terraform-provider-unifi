@@ -357,7 +357,7 @@ func (r *accountFrameworkResource) modelToAccount(
 	model *accountFrameworkResourceModel,
 ) *unifi.Account {
 	account := &unifi.Account{
-		Name:      model.Name.ValueString(),
+		Name:     model.Name.ValueString(),
 		Password: model.Password.ValueString(),
 	}
 

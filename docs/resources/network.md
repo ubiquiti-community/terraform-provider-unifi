@@ -146,6 +146,8 @@ Optional:
 
 Import is supported using the following syntax:
 
+The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
 ```shell
 # import by ID from provider configured site
 terraform import unifi_network.mynetwork 5dc28e5e9106d105bdc87217
