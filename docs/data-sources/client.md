@@ -44,7 +44,6 @@ data "unifi_client" "default" {
 - `qos_rate` (Attributes) QoS rate limiting configuration from the client's group. (see [below for nested schema](#nestedatt--qos_rate))
 
 <a id="nestedatt--qos_rate"></a>
-
 ### Nested Schema for `qos_rate`
 
 Read-Only:
