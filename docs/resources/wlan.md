@@ -19,7 +19,7 @@ variable "vlan_id" {
 data "unifi_ap_group" "default" {
 }
 
-data "unifi_client_group" "default" {
+data "unifi_client_qos_rate" "default" {
 }
 
 resource "unifi_network" "vlan" {
@@ -46,7 +46,7 @@ resource "unifi_wlan" "wifi" {
 
   network_id    = unifi_network.vlan.id
   ap_group_ids  = [data.unifi_ap_group.default.id]
-  user_group_id = data.unifi_client_group.default.id
+  user_group_id = data.unifi_client_qos_rate.default.id
 }
 ```
 

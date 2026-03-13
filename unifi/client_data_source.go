@@ -26,20 +26,20 @@ type clientDataSource struct {
 
 // clientDataSourceModel describes the data source data model.
 type clientDataSourceModel struct {
-	ID                     types.String `tfsdk:"id"`
-	Site                   types.String `tfsdk:"site"`
-	MAC                    types.String `tfsdk:"mac"`
-	Name                   types.String `tfsdk:"name"`
-	DisplayName            types.String `tfsdk:"display_name"`
-	GroupID                types.String `tfsdk:"group_id"`
-	Note                   types.String `tfsdk:"note"`
-	FixedIP                types.String `tfsdk:"fixed_ip"`
-	FixedApMAC             types.String `tfsdk:"fixed_ap_mac"`
-	NetworkID              types.String `tfsdk:"network_id"`
-	NetworkMembersGroupIDs types.List   `tfsdk:"network_members_group_ids"`
-	Blocked                types.Bool   `tfsdk:"blocked"`
-	LocalDNSRecord         types.String `tfsdk:"local_dns_record"`
-	Hostname               types.String `tfsdk:"hostname"`
+	ID             types.String `tfsdk:"id"`
+	Site           types.String `tfsdk:"site"`
+	MAC            types.String `tfsdk:"mac"`
+	Name           types.String `tfsdk:"name"`
+	DisplayName    types.String `tfsdk:"display_name"`
+	QOSRate        types.Object `tfsdk:"qos_rate"`
+	Note           types.String `tfsdk:"note"`
+	FixedIP        types.String `tfsdk:"fixed_ip"`
+	FixedApMAC     types.String `tfsdk:"fixed_ap_mac"`
+	NetworkID      types.String `tfsdk:"network_id"`
+	Groups         types.List   `tfsdk:"groups"`
+	Blocked        types.Bool   `tfsdk:"blocked"`
+	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
+	Hostname       types.String `tfsdk:"hostname"`
 }
 
 func (d *clientDataSource) Metadata(
@@ -80,9 +80,27 @@ func (d *clientDataSource) Schema(
 				MarkdownDescription: "The display name of the client.",
 				Computed:            true,
 			},
-			"group_id": schema.StringAttribute{
-				MarkdownDescription: "The group ID to attach to the client (controls QoS and other group-based settings).",
+			"qos_rate": schema.SingleNestedAttribute{
+				MarkdownDescription: "QoS rate limiting configuration from the client's group.",
 				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						MarkdownDescription: "The ID of the client group.",
+						Computed:            true,
+					},
+					"name": schema.StringAttribute{
+						MarkdownDescription: "The name of the client group.",
+						Computed:            true,
+					},
+					"max_up": schema.Int64Attribute{
+						MarkdownDescription: "Maximum upload rate in kbps.",
+						Computed:            true,
+					},
+					"max_down": schema.Int64Attribute{
+						MarkdownDescription: "Maximum download rate in kbps.",
+						Computed:            true,
+					},
+				},
 			},
 			"note": schema.StringAttribute{
 				MarkdownDescription: "A note with additional information for the client.",
@@ -100,8 +118,8 @@ func (d *clientDataSource) Schema(
 				MarkdownDescription: "The network ID for this client.",
 				Computed:            true,
 			},
-			"network_members_group_ids": schema.ListAttribute{
-				MarkdownDescription: "List of network member group IDs for this client.",
+			"groups": schema.ListAttribute{
+				MarkdownDescription: "List of network members group names for this client.",
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
@@ -208,9 +226,25 @@ func (d *clientDataSource) Read(
 	}
 
 	if client.UserGroupID != "" {
-		state.GroupID = types.StringValue(client.UserGroupID)
+		group, err := d.client.GetClientGroup(ctx, site, client.UserGroupID)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Reading Client Group",
+				fmt.Sprintf("Could not read client group %q: %s", client.UserGroupID, err.Error()),
+			)
+			return
+		}
+		qos := qosRateModel{
+			ID:      types.StringValue(group.ID),
+			Name:    types.StringValue(group.Name),
+			MaxUp:   types.Int64PointerValue(group.QOSRateMaxUp),
+			MaxDown: types.Int64PointerValue(group.QOSRateMaxDown),
+		}
+		var objDiags diag.Diagnostics
+		state.QOSRate, objDiags = types.ObjectValueFrom(ctx, qosRateModel{}.AttributeTypes(), qos)
+		resp.Diagnostics.Append(objDiags...)
 	} else {
-		state.GroupID = types.StringNull()
+		state.QOSRate = types.ObjectNull(qosRateModel{}.AttributeTypes())
 	}
 
 	if client.Note != "" {
@@ -239,17 +273,35 @@ func (d *clientDataSource) Read(
 		state.NetworkID = types.StringNull()
 	}
 
-	// Convert NetworkMembersGroupIDs from []string to List
+	// Resolve NetworkMembersGroupIDs to tag names
 	if len(client.NetworkMembersGroupIDs) > 0 {
-		elements := make([]attr.Value, len(client.NetworkMembersGroupIDs))
-		for i, id := range client.NetworkMembersGroupIDs {
-			elements[i] = types.StringValue(id)
+		groups, err := d.client.ListNetworkMembersGroups(ctx, site)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Listing Groups",
+				"Could not list network members groups: "+err.Error(),
+			)
+			return
 		}
-		var listDiags diag.Diagnostics
-		state.NetworkMembersGroupIDs, listDiags = types.ListValue(types.StringType, elements)
-		resp.Diagnostics.Append(listDiags...)
+		idToName := make(map[string]string, len(groups))
+		for _, g := range groups {
+			idToName[g.ID] = g.Name
+		}
+		elements := make([]attr.Value, 0, len(client.NetworkMembersGroupIDs))
+		for _, id := range client.NetworkMembersGroupIDs {
+			if name, ok := idToName[id]; ok {
+				elements = append(elements, types.StringValue(name))
+			}
+		}
+		if len(elements) > 0 {
+			var listDiags diag.Diagnostics
+			state.Groups, listDiags = types.ListValue(types.StringType, elements)
+			resp.Diagnostics.Append(listDiags...)
+		} else {
+			state.Groups = types.ListNull(types.StringType)
+		}
 	} else {
-		state.NetworkMembersGroupIDs = types.ListNull(types.StringType)
+		state.Groups = types.ListNull(types.StringType)
 	}
 
 	state.Blocked = types.BoolPointerValue(client.Blocked)

@@ -10,17 +10,17 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var _ datasource.DataSource = &clientGroupDataSource{}
+var _ datasource.DataSource = &clientQosRateDataSource{}
 
-func NewClientGroupDataSource() datasource.DataSource {
-	return &clientGroupDataSource{}
+func NewClientQosRateDataSource() datasource.DataSource {
+	return &clientQosRateDataSource{}
 }
 
-type clientGroupDataSource struct {
+type clientQosRateDataSource struct {
 	client *Client
 }
 
-type clientGroupDataSourceModel struct {
+type clientQosRateDataSourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
 	Name           types.String `tfsdk:"name"`
@@ -28,34 +28,34 @@ type clientGroupDataSourceModel struct {
 	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
-func (d *clientGroupDataSource) Metadata(
+func (d *clientQosRateDataSource) Metadata(
 	ctx context.Context,
 	req datasource.MetadataRequest,
 	resp *datasource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_client_group"
+	resp.TypeName = req.ProviderTypeName + "_client_qos_rate"
 }
 
-func (d *clientGroupDataSource) Schema(
+func (d *clientQosRateDataSource) Schema(
 	ctx context.Context,
 	req datasource.SchemaRequest,
 	resp *datasource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Data source for client groups.",
+		MarkdownDescription: "Data source for client QOS rates.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				MarkdownDescription: "The ID of this client group.",
+				MarkdownDescription: "The ID of this client QOS rate.",
 				Computed:            true,
 			},
 			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site the client group is associated with.",
+				MarkdownDescription: "The name of the site the client QOS rate is associated with.",
 				Optional:            true,
 				Computed:            true,
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "The name of the client group to look up.",
+				MarkdownDescription: "The name of the client QOS rate to look up.",
 				Required:            true,
 			},
 			"qos_rate_max_down": schema.Int64Attribute{
@@ -70,7 +70,7 @@ func (d *clientGroupDataSource) Schema(
 	}
 }
 
-func (d *clientGroupDataSource) Configure(
+func (d *clientQosRateDataSource) Configure(
 	ctx context.Context,
 	req datasource.ConfigureRequest,
 	resp *datasource.ConfigureResponse,
@@ -94,12 +94,12 @@ func (d *clientGroupDataSource) Configure(
 	d.client = client
 }
 
-func (d *clientGroupDataSource) Read(
+func (d *clientQosRateDataSource) Read(
 	ctx context.Context,
 	req datasource.ReadRequest,
 	resp *datasource.ReadResponse,
 ) {
-	var data clientGroupDataSourceModel
+	var data clientQosRateDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -116,8 +116,8 @@ func (d *clientGroupDataSource) Read(
 	clientGroups, err := d.client.ListClientGroup(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading Client Groups",
-			"Could not read client groups: "+err.Error(),
+			"Error Reading Client QOS Rates",
+			"Could not read client QOS rates: "+err.Error(),
 		)
 		return
 	}
@@ -132,7 +132,7 @@ func (d *clientGroupDataSource) Read(
 
 	if clientGroup == nil {
 		resp.Diagnostics.AddError(
-			"Client Group Not Found",
+			"Client QOS Rate Not Found",
 			fmt.Sprintf("Client group with name %s not found", name),
 		)
 		return

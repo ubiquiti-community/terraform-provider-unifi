@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
@@ -61,23 +63,42 @@ type clientResource struct {
 	groupCache   map[string]map[string]string // site → (name → id)
 }
 
+// qosRateModel describes the nested qos_rate attribute.
+type qosRateModel struct {
+	ID      types.String `tfsdk:"id"`
+	Name    types.String `tfsdk:"name"`
+	MaxUp   types.Int64  `tfsdk:"max_up"`
+	MaxDown types.Int64  `tfsdk:"max_down"`
+}
+
+func (m qosRateModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"id":       types.StringType,
+		"name":     types.StringType,
+		"max_up":   types.Int64Type,
+		"max_down": types.Int64Type,
+	}
+}
+
 // clientResourceModel describes the resource data model.
 type clientResourceModel struct {
-	ID                     types.String `tfsdk:"id"`
-	Site                   types.String `tfsdk:"site"`
-	MAC                    types.String `tfsdk:"mac"`
-	Name                   types.String `tfsdk:"name"`
-	DisplayName            types.String `tfsdk:"display_name"`
-	GroupID                types.String `tfsdk:"group_id"`
-	Note                   types.String `tfsdk:"note"`
-	FixedIP                types.String `tfsdk:"fixed_ip"`
-	FixedApMAC             types.String `tfsdk:"fixed_ap_mac"`
-	NetworkID              types.String `tfsdk:"network_id"`
-	NetworkMembersGroupIDs types.List   `tfsdk:"network_members_group_ids"`
-	Blocked                types.Bool   `tfsdk:"blocked"`
-	LocalDNSRecord         types.String `tfsdk:"local_dns_record"`
-	AllowExisting          types.Bool   `tfsdk:"allow_existing"`
-	SkipForgetOnDestroy    types.Bool   `tfsdk:"skip_forget_on_destroy"`
+	ID             types.String `tfsdk:"id"`
+	Site           types.String `tfsdk:"site"`
+	MAC            types.String `tfsdk:"mac"`
+	Name           types.String `tfsdk:"name"`
+	DisplayName    types.String `tfsdk:"display_name"`
+	QOSRate        types.Object `tfsdk:"qos_rate"`
+	Note           types.String `tfsdk:"note"`
+	FixedIP        types.String `tfsdk:"fixed_ip"`
+	FixedApMAC     types.String `tfsdk:"fixed_ap_mac"`
+	NetworkID      types.String `tfsdk:"network_id"`
+	Groups         types.List   `tfsdk:"groups"`
+	Blocked        types.Bool   `tfsdk:"blocked"`
+	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
+
+	// These control import and create behavior to allow the resource to take over existing clients instead of erroring, and to allow it to just be removed from Terraform management without deleting in UniFi.
+	AllowExisting       types.Bool `tfsdk:"allow_existing"`
+	SkipForgetOnDestroy types.Bool `tfsdk:"skip_forget_on_destroy"`
 
 	// Computed attributes
 	Hostname types.String `tfsdk:"hostname"`
@@ -173,12 +194,31 @@ Clients are created in the controller when observed on the network, so the resou
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"group_id": schema.StringAttribute{
-				MarkdownDescription: "The group ID to attach to the client (controls QoS and other group-based settings).",
+			"qos_rate": schema.SingleNestedAttribute{
+				MarkdownDescription: "QoS rate limiting configuration. Controls the client group (usergroup) used for bandwidth limits.",
 				Optional:            true,
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				Attributes: map[string]schema.Attribute{
+					"id": schema.StringAttribute{
+						MarkdownDescription: "The ID of the client group (usergroup). If set, this group is used directly.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"name": schema.StringAttribute{
+						MarkdownDescription: "The name of the client group. If set, the group is looked up or created by name.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"max_up": schema.Int64Attribute{
+						MarkdownDescription: "Maximum upload rate in kbps.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"max_down": schema.Int64Attribute{
+						MarkdownDescription: "Maximum download rate in kbps.",
+						Optional:            true,
+						Computed:            true,
+					},
 				},
 			},
 			"note": schema.StringAttribute{
@@ -213,8 +253,8 @@ Clients are created in the controller when observed on the network, so the resou
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"network_members_group_ids": schema.ListAttribute{
-				MarkdownDescription: "List of network member group IDs for this client.",
+			"groups": schema.ListAttribute{
+				MarkdownDescription: "List of network members group names for this client.",
 				Optional:            true,
 				Computed:            true,
 				ElementType:         types.StringType,
@@ -312,7 +352,7 @@ func (r *clientResource) Create(
 	}
 
 	// Convert the plan to UniFi Client struct
-	client, diags := r.planToClient(ctx, plan)
+	client, diags := r.planToClient(ctx, site, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -568,7 +608,7 @@ func (r *clientResource) Update(
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			// Client no longer exists, recreate it
-			planClient, diags := r.planToClient(ctx, plan)
+			planClient, diags := r.planToClient(ctx, site, plan)
 			resp.Diagnostics.Append(diags...)
 			if resp.Diagnostics.HasError() {
 				return
@@ -607,7 +647,7 @@ func (r *clientResource) Update(
 	}
 
 	// Step 2: Convert plan to client format to get the desired changes
-	planClient, diags := r.planToClient(ctx, plan)
+	planClient, diags := r.planToClient(ctx, site, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -658,8 +698,8 @@ func (r *clientResource) applyPlanToState( //nolint:unused
 	if !plan.DisplayName.IsNull() && !plan.DisplayName.IsUnknown() {
 		state.DisplayName = plan.DisplayName
 	}
-	if !plan.GroupID.IsNull() && !plan.GroupID.IsUnknown() {
-		state.GroupID = plan.GroupID
+	if !plan.QOSRate.IsNull() && !plan.QOSRate.IsUnknown() {
+		state.QOSRate = plan.QOSRate
 	}
 	if !plan.Note.IsNull() && !plan.Note.IsUnknown() {
 		state.Note = plan.Note
@@ -673,8 +713,8 @@ func (r *clientResource) applyPlanToState( //nolint:unused
 	if !plan.NetworkID.IsNull() && !plan.NetworkID.IsUnknown() {
 		state.NetworkID = plan.NetworkID
 	}
-	if !plan.NetworkMembersGroupIDs.IsNull() && !plan.NetworkMembersGroupIDs.IsUnknown() {
-		state.NetworkMembersGroupIDs = plan.NetworkMembersGroupIDs
+	if !plan.Groups.IsNull() && !plan.Groups.IsUnknown() {
+		state.Groups = plan.Groups
 	}
 	if !plan.Blocked.IsNull() && !plan.Blocked.IsUnknown() {
 		state.Blocked = plan.Blocked
@@ -774,6 +814,7 @@ func (r *clientResource) ImportState(
 
 func (r *clientResource) planToClient(
 	ctx context.Context,
+	site string,
 	plan clientResourceModel,
 ) (*unifi.Client, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -791,10 +832,25 @@ func (r *clientResource) planToClient(
 	localDNSRecord := plan.LocalDNSRecord.ValueString()
 	networkID := plan.NetworkID.ValueString()
 
-	// Convert network_members_group_ids from List to []string
+	// Resolve tag names to network members group IDs
 	var networkMembersGroupIDs []string
-	if !plan.NetworkMembersGroupIDs.IsNull() && !plan.NetworkMembersGroupIDs.IsUnknown() {
-		diags.Append(plan.NetworkMembersGroupIDs.ElementsAs(ctx, &networkMembersGroupIDs, false)...)
+	if !plan.Groups.IsNull() && !plan.Groups.IsUnknown() {
+		var tagNames []string
+		diags.Append(plan.Groups.ElementsAs(ctx, &tagNames, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		for _, name := range tagNames {
+			id, err := r.resolveGroupID(ctx, site, name)
+			if err != nil {
+				diags.AddError(
+					"Error Resolving Tag",
+					fmt.Sprintf("Could not resolve tag %q: %s", name, err.Error()),
+				)
+				return nil, diags
+			}
+			networkMembersGroupIDs = append(networkMembersGroupIDs, id)
+		}
 	}
 
 	client := &unifi.Client{
@@ -802,7 +858,6 @@ func (r *clientResource) planToClient(
 		MAC:         plan.MAC.ValueString(),
 		Name:        plan.Name.ValueString(),
 		DisplayName: plan.DisplayName.ValueString(),
-		UserGroupID: plan.GroupID.ValueString(),
 		Note:        plan.Note.ValueString(),
 		Blocked:     plan.Blocked.ValueBoolPointer(),
 
@@ -829,11 +884,28 @@ func (r *clientResource) planToClient(
 		client.VirtualNetworkOverrideEnabled = util.Ptr(true)
 	}
 
+	// Resolve qos_rate to a client group (usergroup) ID.
+	if !plan.QOSRate.IsNull() && !plan.QOSRate.IsUnknown() {
+		var qos qosRateModel
+		d := plan.QOSRate.As(ctx, &qos, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if diags.HasError() {
+			return nil, diags
+		}
+
+		groupID, d := r.resolveClientGroup(ctx, site, qos)
+		diags.Append(d...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		client.UserGroupID = groupID
+	}
+
 	return client, diags
 }
 
 func (r *clientResource) clientToModel(
-	_ context.Context,
+	ctx context.Context,
 	client *unifi.Client,
 	model *clientResourceModel,
 	site string,
@@ -853,23 +925,50 @@ func (r *clientResource) clientToModel(
 	model.MAC = util.StringValueOrNull(client.MAC)
 	model.Name = util.StringValueOrNull(client.Name)
 	model.DisplayName = util.StringValueOrNull(client.DisplayName)
-	model.GroupID = util.StringValueOrNull(client.UserGroupID)
 	model.Note = util.StringValueOrNull(client.Note)
 	model.FixedIP = util.StringValueOrNull(client.FixedIP)
 	model.FixedApMAC = util.StringValueOrNull(client.FixedApMAC)
 	model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
 
-	// Convert NetworkMembersGroupIDs from []string to List
+	// Populate qos_rate from the client's UserGroupID by looking up the client group.
+	if client.UserGroupID != "" {
+		group, err := r.client.GetClientGroup(ctx, site, client.UserGroupID)
+		if err != nil {
+			diags.AddError(
+				"Error Reading Client Group",
+				fmt.Sprintf("Could not read client group %q: %s", client.UserGroupID, err.Error()),
+			)
+			return diags
+		}
+		qos := qosRateModel{
+			ID:      types.StringValue(group.ID),
+			Name:    types.StringValue(group.Name),
+			MaxUp:   types.Int64PointerValue(group.QOSRateMaxUp),
+			MaxDown: types.Int64PointerValue(group.QOSRateMaxDown),
+		}
+		var objDiags diag.Diagnostics
+		model.QOSRate, objDiags = types.ObjectValueFrom(ctx, qosRateModel{}.AttributeTypes(), qos)
+		diags.Append(objDiags...)
+	} else {
+		model.QOSRate = types.ObjectNull(qosRateModel{}.AttributeTypes())
+	}
+
+	// Resolve NetworkMembersGroupIDs (IDs) back to tag names
 	if len(client.NetworkMembersGroupIDs) > 0 {
-		elements := make([]attr.Value, len(client.NetworkMembersGroupIDs))
-		for i, id := range client.NetworkMembersGroupIDs {
-			elements[i] = types.StringValue(id)
+		tagNames, err := r.resolveGroupNames(ctx, site, client.NetworkMembersGroupIDs)
+		if err != nil {
+			diags.AddError("Error Resolving Groups", err.Error())
+			return diags
+		}
+		elements := make([]attr.Value, len(tagNames))
+		for i, name := range tagNames {
+			elements[i] = types.StringValue(name)
 		}
 		var listDiags diag.Diagnostics
-		model.NetworkMembersGroupIDs, listDiags = types.ListValue(types.StringType, elements)
+		model.Groups, listDiags = types.ListValue(types.StringType, elements)
 		diags.Append(listDiags...)
 	} else {
-		model.NetworkMembersGroupIDs = types.ListNull(types.StringType)
+		model.Groups = types.ListNull(types.StringType)
 	}
 
 	model.Blocked = types.BoolPointerValue(client.Blocked)
@@ -954,6 +1053,51 @@ func (r *clientResource) ListResourceConfigSchema(
 	}
 }
 
+// resolveGroupNames looks up network members group names by their IDs.
+// Uses the same cache as resolveGroupID (populating it if needed).
+func (r *clientResource) resolveGroupNames(
+	ctx context.Context,
+	site string,
+	ids []string,
+) ([]string, error) {
+	r.groupCacheMu.Lock()
+	defer r.groupCacheMu.Unlock()
+
+	if r.groupCache == nil {
+		r.groupCache = make(map[string]map[string]string)
+	}
+
+	// Ensure cache is populated for this site.
+	if _, ok := r.groupCache[site]; !ok {
+		groups, err := r.client.ListNetworkMembersGroups(ctx, site)
+		if err != nil {
+			return nil, fmt.Errorf("listing network members groups: %w", err)
+		}
+		siteCache := make(map[string]string, len(groups))
+		for _, g := range groups {
+			siteCache[g.Name] = g.ID
+		}
+		r.groupCache[site] = siteCache
+	}
+
+	// Build reverse map id → name from cache.
+	siteCache := r.groupCache[site]
+	idToName := make(map[string]string, len(siteCache))
+	for name, id := range siteCache {
+		idToName[id] = name
+	}
+
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		name, ok := idToName[id]
+		if !ok {
+			return nil, fmt.Errorf("network members group with ID %q not found", id)
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
 // resolveGroupID looks up a network members group by name and returns its ID.
 // Results are cached per site to avoid repeated API calls.
 func (r *clientResource) resolveGroupID(
@@ -986,10 +1130,120 @@ func (r *clientResource) resolveGroupID(
 	r.groupCache[site] = siteCache
 
 	id, ok := siteCache[groupName]
-	if !ok {
-		return "", fmt.Errorf("network members group %q not found", groupName)
+	if ok {
+		return id, nil
 	}
-	return id, nil
+
+	// Group not found — create it.
+	created, err := r.client.CreateNetworkMembersGroup(ctx, site, &unifi.NetworkMembersGroup{
+		Name:    groupName,
+		Members: []string{},
+		Type:    "CLIENTS",
+	})
+	if err != nil {
+		return "", fmt.Errorf("creating network members group %q: %w", groupName, err)
+	}
+
+	siteCache[groupName] = created.ID
+	return created.ID, nil
+}
+
+// resolveClientGroup resolves a qosRateModel to a client group (usergroup) ID.
+// If ID is set, it is used directly.
+// If name is set, the group is looked up or created by name with the specified rates.
+// If neither is set, a name is derived from max_up/max_down and the group is looked up or created.
+func (r *clientResource) resolveClientGroup(
+	ctx context.Context,
+	site string,
+	qos qosRateModel,
+) (string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	// Case 1: ID is explicitly provided — use it directly.
+	if !qos.ID.IsNull() && !qos.ID.IsUnknown() && qos.ID.ValueString() != "" {
+		return qos.ID.ValueString(), diags
+	}
+
+	// Determine the group name.
+	var groupName string
+	if !qos.Name.IsNull() && !qos.Name.IsUnknown() && qos.Name.ValueString() != "" {
+		// Case 2: Name is provided.
+		groupName = qos.Name.ValueString()
+	} else {
+		// Case 3: Auto-generate name from rate limits.
+		maxUp := int64(-1)
+		maxDown := int64(-1)
+		if !qos.MaxUp.IsNull() && !qos.MaxUp.IsUnknown() {
+			maxUp = qos.MaxUp.ValueInt64()
+		}
+		if !qos.MaxDown.IsNull() && !qos.MaxDown.IsUnknown() {
+			maxDown = qos.MaxDown.ValueInt64()
+		}
+		groupName = fmt.Sprintf("qos-up%d-down%d", maxUp, maxDown)
+	}
+
+	// Look up or create the client group by name.
+	groups, err := r.client.ListClientGroup(ctx, site)
+	if err != nil {
+		diags.AddError("Error Listing Client Groups", "Could not list client groups: "+err.Error())
+		return "", diags
+	}
+
+	for _, g := range groups {
+		if g.Name == groupName {
+			// Update rates if they differ from what's requested.
+			needsUpdate := false
+			if !qos.MaxUp.IsNull() && !qos.MaxUp.IsUnknown() {
+				desired := qos.MaxUp.ValueInt64()
+				if g.QOSRateMaxUp == nil || *g.QOSRateMaxUp != desired {
+					g.QOSRateMaxUp = &desired
+					needsUpdate = true
+				}
+			}
+			if !qos.MaxDown.IsNull() && !qos.MaxDown.IsUnknown() {
+				desired := qos.MaxDown.ValueInt64()
+				if g.QOSRateMaxDown == nil || *g.QOSRateMaxDown != desired {
+					g.QOSRateMaxDown = &desired
+					needsUpdate = true
+				}
+			}
+			if needsUpdate {
+				_, err := r.client.UpdateClientGroup(ctx, site, &g)
+				if err != nil {
+					diags.AddError(
+						"Error Updating Client Group",
+						fmt.Sprintf("Could not update client group %q: %s", groupName, err.Error()),
+					)
+					return "", diags
+				}
+			}
+			return g.ID, diags
+		}
+	}
+
+	// Group not found — create it.
+	newGroup := &unifi.ClientGroup{
+		Name: groupName,
+	}
+	if !qos.MaxUp.IsNull() && !qos.MaxUp.IsUnknown() {
+		v := qos.MaxUp.ValueInt64()
+		newGroup.QOSRateMaxUp = &v
+	}
+	if !qos.MaxDown.IsNull() && !qos.MaxDown.IsUnknown() {
+		v := qos.MaxDown.ValueInt64()
+		newGroup.QOSRateMaxDown = &v
+	}
+
+	created, err := r.client.CreateClientGroup(ctx, site, newGroup)
+	if err != nil {
+		diags.AddError(
+			"Error Creating Client Group",
+			fmt.Sprintf("Could not create client group %q: %s", groupName, err.Error()),
+		)
+		return "", diags
+	}
+
+	return created.ID, diags
 }
 
 func (r *clientResource) List(
@@ -1017,7 +1271,8 @@ func (r *clientResource) List(
 	apiFilters := make(map[string]string)
 	postFilters := make(map[string]map[string]struct{})
 
-	// Resolve the group attribute to an ID first (special case — needs an API call).
+	// Resolve the group attribute to an ID for post-filtering.
+	var groupIDFilter string
 	if !config.Group.IsNull() && !config.Group.IsUnknown() {
 		groupID, err := r.resolveGroupID(ctx, site, config.Group.ValueString())
 		if err != nil {
@@ -1026,12 +1281,12 @@ func (r *clientResource) List(
 			stream.Results = list.ListResultsStreamDiagnostics(d)
 			return
 		}
-		apiFilters["network_members_group_ids"] = groupID
+		groupIDFilter = groupID
 	}
 
 	// Process generic filter blocks.
 	// API-passthrough names: oui, blocked, is_wired (first value used).
-	// Post-filter names: network_id, network_name (OR across values).
+	// Post-filter names: network_id, network_name, name, display_name, fixed_ip (OR across values).
 
 	filters := []clientListFilterModel{}
 	config.Filter.ElementsAs(ctx, &filters, false)
@@ -1041,7 +1296,7 @@ func (r *clientResource) List(
 		value := f.Value.ValueString()
 
 		switch name {
-		case "network_id", "network_name":
+		case "network_id", "network_name", "name", "display_name", "fixed_ip":
 			set := make(map[string]struct{}, 1)
 			set[value] = struct{}{}
 			postFilters[name] = set
@@ -1080,11 +1335,43 @@ func (r *clientResource) List(
 
 	networkIDFilter := postFilters["network_id"]
 	networkNameFilter := postFilters["network_name"]
+	nameFilter := postFilters["name"]
+	displayNameFilter := postFilters["display_name"]
+	fixedIPFilter := postFilters["fixed_ip"]
 
 	// Define the function that will push results into the stream.
 	stream.Results = func(push func(list.ListResult) bool) {
 		for _, client := range clients {
 			info := infoByUserID[client.ID]
+
+			// Post-filter by group ID: check if the resolved group ID is in the client's group list.
+			if groupIDFilter != "" {
+				found := slices.Contains(client.NetworkMembersGroupIDs, groupIDFilter)
+				if !found {
+					continue
+				}
+			}
+
+			// Post-filter by name.
+			if len(nameFilter) > 0 {
+				if _, ok := nameFilter[client.Name]; !ok {
+					continue
+				}
+			}
+
+			// Post-filter by display_name.
+			if len(displayNameFilter) > 0 {
+				if _, ok := displayNameFilter[client.DisplayName]; !ok {
+					continue
+				}
+			}
+
+			// Post-filter by fixed_ip.
+			if len(fixedIPFilter) > 0 {
+				if _, ok := fixedIPFilter[client.FixedIP]; !ok {
+					continue
+				}
+			}
 
 			// Post-filter by network_id (OR across values): match VirtualNetworkOverrideID or NetworkID.
 			if len(networkIDFilter) > 0 {

@@ -1,18 +1,18 @@
 ---
-page_title: Client Group (Resource)
+page_title: Client Qos Rate (Resource)
 subcategory: ""
 description: |-
-  Manages a client group, which can be used to limit bandwidth for groups of clients.
+  Manages a client QOS rate, which can be used to limit bandwidth for groups of clients.
 ---
 
-# Client Group (Resource)
+# Client Qos Rate (Resource)
 
-Manages a client group, which can be used to limit bandwidth for groups of clients.
+Manages a client QOS rate, which can be used to limit bandwidth for groups of clients.
 
 ## Example Usage
 
 ```terraform
-resource "unifi_client_group" "wifi" {
+resource "unifi_client_qos_rate" "wifi" {
   name = "wifi"
 
   qos_rate_max_down = 2000 # 2mbps
@@ -27,7 +27,8 @@ resource "unifi_client" "test" {
 
   fixed_ip   = "10.0.0.50"
   network_id = unifi_network.my_vlan.id
-  group_id   = unifi_client_group.wifi.id
+
+  qos_rate = { id = unifi_client_qos_rate.wifi.id }
 }
 ```
 
@@ -36,17 +37,17 @@ resource "unifi_client" "test" {
 
 ### Required
 
-- `name` (String) The name of the client group.
+- `name` (String) The name of the client QOS rate.
 
 ### Optional
 
 - `qos_rate_max_down` (Number) The QOS maximum download rate.
 - `qos_rate_max_up` (Number) The QOS maximum upload rate.
-- `site` (String) The name of the site to associate the client group with.
+- `site` (String) The name of the site to associate the client QOS rate with.
 
 ### Read-Only
 
-- `id` (String) The ID of the client group.
+- `id` (String) The ID of the client QOS rate.
 
 ## Import
 
@@ -56,5 +57,5 @@ The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp
 
 ```shell
 # import using the ID
-terraform import unifi_client_group.wifi 5fe6261995fe130013456a36
+terraform import unifi_client_qos_rate.wifi 5fe6261995fe130013456a36
 ```

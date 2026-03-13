@@ -27,3 +27,35 @@ resource "unifi_bgp" "test" {
 	enabled     = true
 }
 `
+
+func TestAccBGPConfig_structured(t *testing.T) {
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccBGPConfigStructured,
+				ExpectError: regexp.MustCompile(".*"),
+			},
+		},
+	})
+}
+
+const testAccBGPConfigStructured = `
+resource "unifi_bgp" "test" {
+	description = "BGP"
+	enabled     = true
+
+	asn       = 65000
+	router_id = "10.0.0.1"
+
+	peers = [
+		{
+			name        = "CILIUM"
+			remote_as   = 65001
+			description = "Cilium peer group"
+			networks    = ["10.1.40.0/26", "fd00:10::/64"]
+		},
+	]
+}
+`

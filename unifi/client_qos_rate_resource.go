@@ -20,21 +20,21 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &clientGroupFrameworkResource{}
-	_ resource.ResourceWithImportState = &clientGroupFrameworkResource{}
+	_ resource.Resource                = &clientQosRateResource{}
+	_ resource.ResourceWithImportState = &clientQosRateResource{}
 )
 
-func NewClientGroupFrameworkResource() resource.Resource {
-	return &clientGroupFrameworkResource{}
+func NewClientQosRateResource() resource.Resource {
+	return &clientQosRateResource{}
 }
 
-// clientGroupFrameworkResource defines the resource implementation.
-type clientGroupFrameworkResource struct {
+// clientQosRateResource defines the resource implementation.
+type clientQosRateResource struct {
 	client *Client
 }
 
-// clientGroupFrameworkResourceModel describes the resource data model.
-type clientGroupFrameworkResourceModel struct {
+// clientQosRateResourceModel describes the resource data model.
+type clientQosRateResourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
 	Name           types.String `tfsdk:"name"`
@@ -42,32 +42,32 @@ type clientGroupFrameworkResourceModel struct {
 	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
-func (r *clientGroupFrameworkResource) Metadata(
+func (r *clientQosRateResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_client_group"
+	resp.TypeName = req.ProviderTypeName + "_client_qos_rate"
 }
 
-func (r *clientGroupFrameworkResource) Schema(
+func (r *clientQosRateResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Manages a client group, which can be used to limit bandwidth for groups of clients.`,
+		MarkdownDescription: `Manages a client QOS rate, which can be used to limit bandwidth for groups of clients.`,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				MarkdownDescription: "The ID of the client group.",
+				MarkdownDescription: "The ID of the client QOS rate.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"site": schema.StringAttribute{
-				MarkdownDescription: "The name of the site to associate the client group with.",
+				MarkdownDescription: "The name of the site to associate the client QOS rate with.",
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -76,7 +76,7 @@ func (r *clientGroupFrameworkResource) Schema(
 				},
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "The name of the client group.",
+				MarkdownDescription: "The name of the client QOS rate.",
 				Required:            true,
 			},
 			"qos_rate_max_down": schema.Int64Attribute{
@@ -85,50 +85,7 @@ func (r *clientGroupFrameworkResource) Schema(
 				Computed:            true,
 				Default:             int64default.StaticInt64(-1),
 				Validators: []validator.Int64{
-					int64validator.OneOf(
-						-1,
-						2,
-						3,
-						4,
-						5,
-						6,
-						7,
-						8,
-						9,
-						10,
-						15,
-						20,
-						25,
-						30,
-						40,
-						50,
-						75,
-						100,
-						150,
-						200,
-						250,
-						300,
-						400,
-						500,
-						750,
-						1000,
-						1500,
-						2000,
-						2500,
-						3000,
-						4000,
-						5000,
-						7500,
-						10000,
-						15000,
-						20000,
-						25000,
-						30000,
-						40000,
-						50000,
-						75000,
-						100000,
-					),
+					int64validator.Between(2, 100000),
 				},
 			},
 			"qos_rate_max_up": schema.Int64Attribute{
@@ -137,57 +94,14 @@ func (r *clientGroupFrameworkResource) Schema(
 				Computed:            true,
 				Default:             int64default.StaticInt64(-1),
 				Validators: []validator.Int64{
-					int64validator.OneOf(
-						-1,
-						2,
-						3,
-						4,
-						5,
-						6,
-						7,
-						8,
-						9,
-						10,
-						15,
-						20,
-						25,
-						30,
-						40,
-						50,
-						75,
-						100,
-						150,
-						200,
-						250,
-						300,
-						400,
-						500,
-						750,
-						1000,
-						1500,
-						2000,
-						2500,
-						3000,
-						4000,
-						5000,
-						7500,
-						10000,
-						15000,
-						20000,
-						25000,
-						30000,
-						40000,
-						50000,
-						75000,
-						100000,
-					),
+					int64validator.Between(2, 100000),
 				},
 			},
 		},
 	}
 }
 
-func (r *clientGroupFrameworkResource) Configure(
+func (r *clientQosRateResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
 	resp *resource.ConfigureResponse,
@@ -211,12 +125,12 @@ func (r *clientGroupFrameworkResource) Configure(
 	r.client = client
 }
 
-func (r *clientGroupFrameworkResource) Create(
+func (r *clientQosRateResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
 	resp *resource.CreateResponse,
 ) {
-	var plan clientGroupFrameworkResourceModel
+	var plan clientQosRateResourceModel
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -230,7 +144,7 @@ func (r *clientGroupFrameworkResource) Create(
 	}
 
 	// Convert the plan to UniFi ClientGroup struct
-	clientGroup, diags := r.planToClientGroup(ctx, plan)
+	clientGroup, diags := r.planToClientQosRate(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -240,14 +154,14 @@ func (r *clientGroupFrameworkResource) Create(
 	createdClientGroup, err := r.client.CreateClientGroup(ctx, site, clientGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Creating Client Group",
-			"Could not create client group: "+err.Error(),
+			"Error Creating Client QOS Rate",
+			"Could not create client QOS rate: "+err.Error(),
 		)
 		return
 	}
 
 	// Convert response back to model
-	diags = r.clientGroupToModel(ctx, createdClientGroup, &plan, site)
+	diags = r.clientQosRateToModel(ctx, createdClientGroup, &plan, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -257,12 +171,12 @@ func (r *clientGroupFrameworkResource) Create(
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *clientGroupFrameworkResource) Read(
+func (r *clientQosRateResource) Read(
 	ctx context.Context,
 	req resource.ReadRequest,
 	resp *resource.ReadResponse,
 ) {
-	var state clientGroupFrameworkResourceModel
+	var state clientQosRateResourceModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -285,14 +199,14 @@ func (r *clientGroupFrameworkResource) Read(
 	}
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading Client Group",
-			"Could not read client group with ID "+id+": "+err.Error(),
+			"Error Reading Client QOS Rate",
+			"Could not read client QOS rate with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	// Convert API response to model
-	diags = r.clientGroupToModel(ctx, clientGroup, &state, site)
+	diags = r.clientQosRateToModel(ctx, clientGroup, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -302,13 +216,13 @@ func (r *clientGroupFrameworkResource) Read(
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r *clientGroupFrameworkResource) Update(
+func (r *clientQosRateResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state clientGroupFrameworkResourceModel
-	var plan clientGroupFrameworkResourceModel
+	var state clientQosRateResourceModel
+	var plan clientQosRateResourceModel
 
 	// Step 1: Read the current state (which already contains API values from previous reads)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -331,7 +245,7 @@ func (r *clientGroupFrameworkResource) Update(
 	}
 
 	// Step 3: Convert the updated state to API format
-	clientGroup, diags := r.planToClientGroup(ctx, state)
+	clientGroup, diags := r.planToClientQosRate(ctx, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -345,14 +259,14 @@ func (r *clientGroupFrameworkResource) Update(
 	updatedClientGroup, err := r.client.UpdateClientGroup(ctx, site, clientGroup)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Updating Client Group",
-			"Could not update client group with ID "+state.ID.ValueString()+": "+err.Error(),
+			"Error Updating Client QOS Rate",
+			"Could not update client QOS rate with ID "+state.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
 	// Step 5: Update state with API response
-	diags = r.clientGroupToModel(ctx, updatedClientGroup, &state, site)
+	diags = r.clientQosRateToModel(ctx, updatedClientGroup, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -362,10 +276,10 @@ func (r *clientGroupFrameworkResource) Update(
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *clientGroupFrameworkResource) applyPlanToState(
+func (r *clientQosRateResource) applyPlanToState(
 	_ context.Context,
-	plan *clientGroupFrameworkResourceModel,
-	state *clientGroupFrameworkResourceModel,
+	plan *clientQosRateResourceModel,
+	state *clientQosRateResourceModel,
 ) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -379,12 +293,12 @@ func (r *clientGroupFrameworkResource) applyPlanToState(
 	}
 }
 
-func (r *clientGroupFrameworkResource) Delete(
+func (r *clientQosRateResource) Delete(
 	ctx context.Context,
 	req resource.DeleteRequest,
 	resp *resource.DeleteResponse,
 ) {
-	var state clientGroupFrameworkResourceModel
+	var state clientQosRateResourceModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -405,14 +319,14 @@ func (r *clientGroupFrameworkResource) Delete(
 	}
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Deleting Client Group",
-			"Could not delete client group with ID "+id+": "+err.Error(),
+			"Error Deleting Client QOS Rate",
+			"Could not delete client QOS rate with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 }
 
-func (r *clientGroupFrameworkResource) ImportState(
+func (r *clientQosRateResource) ImportState(
 	ctx context.Context,
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
@@ -428,16 +342,16 @@ func (r *clientGroupFrameworkResource) ImportState(
 
 // Helper functions for conversion and merging
 
-func (r *clientGroupFrameworkResource) planToClientGroup(
+func (r *clientQosRateResource) planToClientQosRate(
 	_ context.Context,
-	plan clientGroupFrameworkResourceModel,
+	plan clientQosRateResourceModel,
 ) (*unifi.ClientGroup, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if plan.ID.IsNull() && plan.Name.IsNull() {
 		diags.AddError(
-			"Invalid Client Group",
-			"Client Group must have either an ID or Name to be imported",
+			"Invalid Client QOS Rate",
+			"Client QOS Rate must have either an ID or Name to be imported",
 		)
 		return nil, diags
 	}
@@ -452,18 +366,18 @@ func (r *clientGroupFrameworkResource) planToClientGroup(
 	return clientGroup, diags
 }
 
-func (r *clientGroupFrameworkResource) clientGroupToModel(
+func (r *clientQosRateResource) clientQosRateToModel(
 	_ context.Context,
 	clientGroup *unifi.ClientGroup,
-	model *clientGroupFrameworkResourceModel,
+	model *clientQosRateResourceModel,
 	site string,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	if model.ID.IsNull() && model.Name.IsNull() {
 		diags.AddError(
-			"Invalid Client Group",
-			"Client Group must have either an ID or Name to be imported",
+			"Invalid Client QOS Rate",
+			"Client QOS Rate must have either an ID or Name to be imported",
 		)
 		return diags
 	}

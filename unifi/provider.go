@@ -291,11 +291,11 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewSiteFrameworkResource,
 		NewStaticRouteFrameworkResource,
 		NewClientResource,
-		NewClientGroupFrameworkResource,
 		NewWANResource,
 		NewWLANFrameworkResource,
 		NewVPNClientResource,
 		NewVPNServerResource,
+		NewClientQosRateResource,
 	}
 }
 
@@ -311,8 +311,7 @@ func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		NewDNSRecordDataSource,
 		NewPortProfileDataSource,
 		NewRadiusProfileDataSource,
-		NewClientGroupDataSource,
-		NewNetworkMembersGroupListDataSource,
+		NewClientQosRateDataSource,
 	}
 }
 

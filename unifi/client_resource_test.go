@@ -119,3 +119,79 @@ resource "unifi_client" "test" {
 }
 `
 }
+
+func TestAccClientFramework_groups(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Step 1: Create client with one group
+			{
+				Config: testAccClientFrameworkConfig_groups_one(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"name",
+						"tfacc-groups-client",
+					),
+					resource.TestCheckResourceAttr("unifi_client.test", "mac", "01:23:45:67:89:ae"),
+					resource.TestCheckResourceAttr("unifi_client.test", "groups.#", "1"),
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"groups.0",
+						"tfacc-group-a",
+					),
+				),
+			},
+			// Step 2: Import the client and verify groups survive
+			{
+				ResourceName:            "unifi_client.test",
+				ImportState:             true,
+				ImportStateKind:         resource.ImportBlockWithResourceIdentity,
+				ImportStateVerifyIgnore: []string{"allow_existing", "skip_forget_on_destroy"},
+			},
+			// Step 3: Add another group
+			{
+				Config: testAccClientFrameworkConfig_groups_two(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"name",
+						"tfacc-groups-client",
+					),
+					resource.TestCheckResourceAttr("unifi_client.test", "groups.#", "2"),
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"groups.0",
+						"tfacc-group-a",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"groups.1",
+						"tfacc-group-b",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccClientFrameworkConfig_groups_one() string {
+	return `
+resource "unifi_client" "test" {
+	name   = "tfacc-groups-client"
+	mac    = "01:23:45:67:89:ae"
+	groups = ["tfacc-group-a"]
+}
+`
+}
+
+func testAccClientFrameworkConfig_groups_two() string {
+	return `
+resource "unifi_client" "test" {
+	name   = "tfacc-groups-client"
+	mac    = "01:23:45:67:89:ae"
+	groups = ["tfacc-group-a", "tfacc-group-b"]
+}
+`
+}
