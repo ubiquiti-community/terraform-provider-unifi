@@ -17,15 +17,11 @@ Manages a traffic route in the UniFi controller. Traffic routes allow you to ste
 ### Optional
 
 - `description` (String) A description of the traffic route (max 128 characters).
-- `domains` (Attributes List) List of domain entries to match for this traffic route. (see [below for nested schema](#nestedatt--domains))
+- `destination` (Attributes) Destination filter for this traffic route. Specify exactly one of `domains`, `regions`, or IP-based matching (`ip_addresses` and/or `ip_ranges`). When omitted, the route matches all internet traffic. (see [below for nested schema](#nestedatt--destination))
 - `enabled` (Boolean) Whether the traffic route is enabled.
-- `ip_addresses` (Attributes List) List of IP address or subnet entries to match. (see [below for nested schema](#nestedatt--ip_addresses))
-- `ip_ranges` (Attributes List) List of IP range entries to match. (see [below for nested schema](#nestedatt--ip_ranges))
 - `kill_switch_enabled` (Boolean) Whether the kill switch is enabled. When enabled, traffic is blocked if the target network/VPN is unavailable.
-- `matching_target` (String) The matching target type for the traffic route (e.g. `INTERNET`, `DOMAIN`, `IP`, `REGION`).
 - `network_id` (String) The ID of the network or VPN to route matching traffic through. Defaults to the primary WAN network.
 - `next_hop` (String) The next hop for the traffic route.
-- `regions` (List of String) List of regions to match for this traffic route.
 - `site` (String) The name of the site to associate the traffic route with.
 - `source` (Attributes) Source filter for this traffic route. When omitted, the route applies to all clients. (see [below for nested schema](#nestedatt--source))
 
@@ -33,8 +29,18 @@ Manages a traffic route in the UniFi controller. Traffic routes allow you to ste
 
 - `id` (String) The ID of the traffic route.
 
-<a id="nestedatt--domains"></a>
-### Nested Schema for `domains`
+<a id="nestedatt--destination"></a>
+### Nested Schema for `destination`
+
+Optional:
+
+- `domains` (Attributes List) List of domain entries to match. (see [below for nested schema](#nestedatt--destination--domains))
+- `ip_addresses` (Attributes List) List of IP address or subnet entries to match. (see [below for nested schema](#nestedatt--destination--ip_addresses))
+- `ip_ranges` (Attributes List) List of IP range entries to match. (see [below for nested schema](#nestedatt--destination--ip_ranges))
+- `regions` (List of String) List of regions to match.
+
+<a id="nestedatt--destination--domains"></a>
+### Nested Schema for `destination.domains`
 
 Required:
 
@@ -42,11 +48,11 @@ Required:
 
 Optional:
 
-- `port_ranges` (Attributes List) List of port ranges to match. (see [below for nested schema](#nestedatt--domains--port_ranges))
+- `port_ranges` (Attributes List) List of port ranges to match. (see [below for nested schema](#nestedatt--destination--domains--port_ranges))
 - `ports` (List of Number) List of individual ports to match.
 
-<a id="nestedatt--domains--port_ranges"></a>
-### Nested Schema for `domains.port_ranges`
+<a id="nestedatt--destination--domains--port_ranges"></a>
+### Nested Schema for `destination.domains.port_ranges`
 
 Required:
 
@@ -55,8 +61,8 @@ Required:
 
 
 
-<a id="nestedatt--ip_addresses"></a>
-### Nested Schema for `ip_addresses`
+<a id="nestedatt--destination--ip_addresses"></a>
+### Nested Schema for `destination.ip_addresses`
 
 Required:
 
@@ -64,11 +70,11 @@ Required:
 
 Optional:
 
-- `port_ranges` (Attributes List) List of port ranges to match. (see [below for nested schema](#nestedatt--ip_addresses--port_ranges))
+- `port_ranges` (Attributes List) List of port ranges to match. (see [below for nested schema](#nestedatt--destination--ip_addresses--port_ranges))
 - `ports` (List of Number) List of individual ports to match.
 
-<a id="nestedatt--ip_addresses--port_ranges"></a>
-### Nested Schema for `ip_addresses.port_ranges`
+<a id="nestedatt--destination--ip_addresses--port_ranges"></a>
+### Nested Schema for `destination.ip_addresses.port_ranges`
 
 Required:
 
@@ -77,13 +83,14 @@ Required:
 
 
 
-<a id="nestedatt--ip_ranges"></a>
-### Nested Schema for `ip_ranges`
+<a id="nestedatt--destination--ip_ranges"></a>
+### Nested Schema for `destination.ip_ranges`
 
 Required:
 
 - `start` (String) The start IP address of the range.
 - `stop` (String) The stop IP address of the range.
+
 
 
 <a id="nestedatt--source"></a>
