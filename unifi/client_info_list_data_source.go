@@ -96,6 +96,11 @@ func (d *clientInfoListDataSource) Read(
 	}
 
 	site := data.Site.ValueString()
+	// Track whether the site was explicitly set by the user. An explicit site
+	// that results in a 404 is more likely a misconfiguration and should remain
+	// a hard error. A missing site falls back to the provider default, where a
+	// 404 is commonly caused by the endpoint being unsupported on the controller.
+	siteExplicitlySet := !data.Site.IsNull() && !data.Site.IsUnknown()
 	if site == "" {
 		site = d.client.Site
 	}
@@ -103,10 +108,11 @@ func (d *clientInfoListDataSource) Read(
 	clientInfoList, err := d.client.ListClientInfo(ctx, site)
 	if err != nil {
 		var notFoundErr *gounifi.NotFoundError
-		if errors.As(err, &notFoundErr) {
+		if errors.As(err, &notFoundErr) && !siteExplicitlySet {
 			// The active clients endpoint is not available on all UniFi controller
-			// versions or configurations. Return an empty list with a warning rather
-			// than failing the plan entirely.
+			// versions or configurations. When the site was not explicitly
+			// configured (using the provider default), return an empty list with a
+			// warning rather than failing the plan entirely.
 			resp.Diagnostics.AddWarning(
 				"Active Clients Endpoint Not Available",
 				"The active clients API endpoint returned 404. This may mean the feature "+
