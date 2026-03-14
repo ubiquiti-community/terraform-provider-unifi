@@ -91,9 +91,9 @@ resource "unifi_port_forward" "ssh_firewall_group" {
 
 # Port forward with syslog logging enabled
 resource "unifi_port_forward" "game_server" {
-  name           = "Game Server"
-  protocol       = "udp"
-  syslog_logging = true
+  name     = "Game Server"
+  protocol = "udp"
+  logging  = true
 
   wan = {
     port = "27015"
@@ -113,11 +113,11 @@ resource "unifi_port_forward" "game_server" {
 
 - `enabled` (Boolean, Deprecated) Specifies whether the port forwarding rule is enabled or not.
 - `forward` (Attributes) Forward destination configuration. (see [below for nested schema](#nestedatt--forward))
+- `logging` (Boolean) Specifies whether to enable syslog logging for forwarded traffic.
 - `name` (String) The name of the port forwarding rule.
 - `protocol` (String) The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`.
 - `site` (String) The name of the site to associate the port forwarding rule with.
 - `source_limiting` (Attributes) Source limiting configuration for the port forwarding rule. (see [below for nested schema](#nestedatt--source_limiting))
-- `syslog_logging` (Boolean) Specifies whether to enable syslog logging for forwarded traffic.
 - `wan` (Attributes) WAN configuration for the port forwarding rule. (see [below for nested schema](#nestedatt--wan))
 
 ### Read-Only
@@ -156,6 +156,8 @@ Optional:
 ## Import
 
 Import is supported using the following syntax:
+
+The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 # import from provider configured site

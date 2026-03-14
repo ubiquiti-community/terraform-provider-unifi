@@ -14,8 +14,13 @@ It is not recommended to use your own account for management of your controller.
 Terraform is recommended. You can create a **Limited Admin** with **Local Access Only** and
 provide that information for authentication. Two-factor authentication is not supported in the provider.
 
+{{ if .HasExamples -}}
 ## Example Usage
 
-{{tffile "examples/provider/provider.tf"}}
+{{- range .ExampleFiles }}
+
+{{ tffile . }}
+{{- end }}
+{{- end }}
 
 {{ .SchemaMarkdown | trimspace }}

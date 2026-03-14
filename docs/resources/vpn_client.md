@@ -131,6 +131,8 @@ Required:
 
 Import is supported using the following syntax:
 
+The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
 ```shell
 # Import a VPN client by ID
 terraform import unifi_vpn_client.wireguard_vpn 507f1f77bcf86cd799439011

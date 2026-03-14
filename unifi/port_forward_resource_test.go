@@ -43,7 +43,7 @@ func TestAccPortForward_basic(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_port_forward.test",
-						"syslog_logging",
+						"logging",
 						"false",
 					),
 				),
@@ -263,7 +263,7 @@ func TestAccPortForward_update(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_port_forward.test_update",
-						"syslog_logging",
+						"logging",
 						"true",
 					),
 				),
@@ -288,7 +288,7 @@ func TestAccPortForward_syslogLogging(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_port_forward.test_log",
-						"syslog_logging",
+						"logging",
 						"true",
 					),
 				),
@@ -432,7 +432,7 @@ func testAccPortForwardConfig_update_after() string {
 resource "unifi_port_forward" "test_update" {
   name          = "tfacc-update-forward-renamed"
   protocol      = "tcp_udp"
-  syslog_logging = true
+  logging = true
 
   wan = {
     port = "9443"
@@ -450,7 +450,7 @@ func testAccPortForwardConfig_syslogLogging() string {
 	return `
 resource "unifi_port_forward" "test_log" {
   name           = "tfacc-logging"
-  syslog_logging = true
+  logging = true
 
   wan = {
     port = "3000"

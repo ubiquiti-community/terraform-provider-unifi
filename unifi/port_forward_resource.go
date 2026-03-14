@@ -88,7 +88,7 @@ type portForwardResourceModel struct {
 	Forward        types.Object `tfsdk:"forward"`
 	SourceLimiting types.Object `tfsdk:"source_limiting"`
 	Protocol       types.String `tfsdk:"protocol"`
-	SyslogLogging  types.Bool   `tfsdk:"syslog_logging"`
+	Logging        types.Bool   `tfsdk:"logging"`
 	Enabled        types.Bool   `tfsdk:"enabled"`
 }
 
@@ -209,7 +209,7 @@ func (r *portForwardResource) Schema(
 					stringvalidator.OneOf("tcp_udp", "tcp", "udp"),
 				},
 			},
-			"syslog_logging": schema.BoolAttribute{
+			"logging": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether to enable syslog logging for forwarded traffic.",
 				Optional:            true,
 				Computed:            true,
@@ -445,8 +445,8 @@ func (r *portForwardResource) applyPlanToState(
 	if !plan.Protocol.IsNull() && !plan.Protocol.IsUnknown() {
 		state.Protocol = plan.Protocol
 	}
-	if !plan.SyslogLogging.IsNull() && !plan.SyslogLogging.IsUnknown() {
-		state.SyslogLogging = plan.SyslogLogging
+	if !plan.Logging.IsNull() && !plan.Logging.IsUnknown() {
+		state.Logging = plan.Logging
 	}
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
 		state.Enabled = plan.Enabled
@@ -461,7 +461,7 @@ func (r *portForwardResource) modelToPortForward(
 
 	portForward := &unifi.PortForward{
 		Enabled: model.Enabled.ValueBool(),
-		Log:     model.SyslogLogging.ValueBool(),
+		Log:     model.Logging.ValueBool(),
 		Proto:   model.Protocol.ValueString(),
 	}
 
@@ -537,7 +537,7 @@ func (r *portForwardResource) portForwardToModel(
 	model.ID = types.StringValue(portForward.ID)
 	model.Site = types.StringValue(site)
 	model.Enabled = types.BoolValue(portForward.Enabled)
-	model.SyslogLogging = types.BoolValue(portForward.Log)
+	model.Logging = types.BoolValue(portForward.Log)
 	model.Protocol = types.StringValue(portForward.Proto)
 
 	if portForward.Name != "" {

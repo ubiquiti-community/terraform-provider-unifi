@@ -1,4 +1,5 @@
-resource "unifi_bgp" "default" {
+## Raw config mode
+resource "unifi_bgp" "raw" {
   description      = "BGP"
   enabled          = true
   upload_file_name = "bgp.conf"
@@ -52,4 +53,22 @@ route-map CILIUM-OUT-V6 permit 10
 line vty
 !
 EOF
+}
+
+## Structured config mode
+resource "unifi_bgp" "structured" {
+  description = "BGP"
+  enabled     = true
+
+  asn       = 65000
+  router_id = "10.0.0.1"
+
+  peers = [
+    {
+      name        = "CILIUM"
+      remote_as   = 65001
+      description = "Cilium peer group"
+      networks    = ["10.1.40.0/26", "fd00:10::/64"]
+    },
+  ]
 }

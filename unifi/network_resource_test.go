@@ -120,12 +120,12 @@ func TestAccNetworkFramework_guest(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_guest",
-						"internet_access_enabled",
+						"internet_access",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_guest",
-						"network_isolation_enabled",
+						"network_isolation",
 						"true",
 					),
 				),
@@ -165,11 +165,11 @@ resource "unifi_network" "test_dhcp" {
 func testAccNetworkFrameworkConfig_guest() string {
 	return `
 resource "unifi_network" "test_guest" {
-	name                      = "Guest Network"
-	subnet                    = "192.168.30.1/24"
-	vlan                      = 30
-	internet_access_enabled   = true
-	network_isolation_enabled = true
+	name              = "Guest Network"
+	subnet            = "192.168.30.1/24"
+	vlan              = 30
+	internet_access   = true
+	network_isolation = true
 }
 `
 }
@@ -228,13 +228,13 @@ func TestAccNetworkFramework_thirdPartyGateway(t *testing.T) {
 				// returned by the API, so they cannot be recovered during import.
 				ImportStateVerifyIgnore: []string{
 					"subnet",
-					"auto_scale_enabled",
+					"auto_scale",
 					"gateway_type",
 					"setting_preference",
-					"mdns_enabled",
+					"multicast_dns",
 					"ipv6_interface_type",
-					"lte_lan_enabled",
-					"internet_access_enabled",
+					"lte_lan",
+					"internet_access",
 				},
 			},
 		},

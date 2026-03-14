@@ -33,6 +33,8 @@ resource "unifi_site" "mysite" {
 
 Import is supported using the following syntax:
 
+The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
 ```shell
 # import using the API/UI ID
 terraform import unifi_site.mysite 5fe6261995fe130013456a36

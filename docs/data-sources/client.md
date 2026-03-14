@@ -34,11 +34,21 @@ data "unifi_client" "default" {
 - `display_name` (String) The display name of the client.
 - `fixed_ap_mac` (String) The MAC address of the access point to which this client should be fixed.
 - `fixed_ip` (String) A fixed IPv4 address for this client.
-- `group_id` (String) The group ID to attach to the client (controls QoS and other group-based settings).
+- `groups` (List of String) List of network members group names for this client.
 - `hostname` (String) The hostname of the client.
 - `id` (String) The ID of the client.
 - `local_dns_record` (String) Specifies the local DNS record for this client.
 - `name` (String) The name of the client.
 - `network_id` (String) The network ID for this client.
-- `network_members_group_ids` (List of String) List of network member group IDs for this client.
 - `note` (String) A note with additional information for the client.
+- `qos_rate` (Attributes) QoS rate limiting configuration from the client's group. (see [below for nested schema](#nestedatt--qos_rate))
+
+<a id="nestedatt--qos_rate"></a>
+### Nested Schema for `qos_rate`
+
+Read-Only:
+
+- `id` (String) The ID of the client group.
+- `max_down` (Number) Maximum download rate in kbps.
+- `max_up` (Number) Maximum upload rate in kbps.
+- `name` (String) The name of the client group.

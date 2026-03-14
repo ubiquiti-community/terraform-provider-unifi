@@ -6,33 +6,33 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccClientGroupFramework_basic(t *testing.T) {
+func TestAccClientQosRate_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccClientGroupFrameworkConfig_basic(),
+				Config: testAccClientQosRateConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"name",
 						"tfacc-group",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"qos_rate_max_down",
 						"-1",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"qos_rate_max_up",
 						"-1",
 					),
 				),
 			},
 			{
-				ResourceName:      "unifi_client_group.test",
+				ResourceName:      "unifi_client_qos_rate.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -40,34 +40,34 @@ func TestAccClientGroupFramework_basic(t *testing.T) {
 	})
 }
 
-func testAccClientGroupFrameworkConfig_basic() string {
+func testAccClientQosRateConfig_basic() string {
 	return `
-resource "unifi_client_group" "test" {
+resource "unifi_client_qos_rate" "test" {
 	name = "tfacc-group"
 }
 `
 }
 
-func TestAccClientGroupFramework_qos(t *testing.T) {
+func TestAccClientQosRate_qos(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccClientGroupFrameworkConfig_qos(),
+				Config: testAccClientQosRateConfig_qos(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"name",
 						"tfacc-qos-group",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"qos_rate_max_down",
 						"1000",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"qos_rate_max_up",
 						"500",
 					),
@@ -77,9 +77,9 @@ func TestAccClientGroupFramework_qos(t *testing.T) {
 	})
 }
 
-func testAccClientGroupFrameworkConfig_qos() string {
+func testAccClientQosRateConfig_qos() string {
 	return `
-resource "unifi_client_group" "test" {
+resource "unifi_client_qos_rate" "test" {
 	name               = "tfacc-qos-group"
 	qos_rate_max_down  = 1000
 	qos_rate_max_up    = 500
@@ -87,36 +87,36 @@ resource "unifi_client_group" "test" {
 `
 }
 
-func TestAccClientGroupFramework_update(t *testing.T) {
+func TestAccClientQosRate_update(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccClientGroupFrameworkConfig_update_before(),
+				Config: testAccClientQosRateConfig_update_before(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"name",
 						"tfacc-update-group",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"qos_rate_max_down",
 						"100",
 					),
 				),
 			},
 			{
-				Config: testAccClientGroupFrameworkConfig_update_after(),
+				Config: testAccClientQosRateConfig_update_after(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"name",
 						"tfacc-update-group-renamed",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_client_group.test",
+						"unifi_client_qos_rate.test",
 						"qos_rate_max_down",
 						"200",
 					),
@@ -126,18 +126,18 @@ func TestAccClientGroupFramework_update(t *testing.T) {
 	})
 }
 
-func testAccClientGroupFrameworkConfig_update_before() string {
+func testAccClientQosRateConfig_update_before() string {
 	return `
-resource "unifi_client_group" "test" {
+resource "unifi_client_qos_rate" "test" {
 	name               = "tfacc-update-group"
 	qos_rate_max_down  = 100
 }
 `
 }
 
-func testAccClientGroupFrameworkConfig_update_after() string {
+func testAccClientQosRateConfig_update_after() string {
 	return `
-resource "unifi_client_group" "test" {
+resource "unifi_client_qos_rate" "test" {
 	name               = "tfacc-update-group-renamed"
 	qos_rate_max_down  = 200
 }

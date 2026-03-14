@@ -96,9 +96,9 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 				MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1",
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(13),
+				Default:             int64default.StaticInt64(3),
 				Validators: []validator.Int64{
-					int64validator.Between(1, 13),
+					int64validator.Between(1, 12),
 				},
 			},
 			"tunnel_medium_type": schema.Int64Attribute{
@@ -357,7 +357,7 @@ func (r *accountFrameworkResource) modelToAccount(
 	model *accountFrameworkResourceModel,
 ) *unifi.Account {
 	account := &unifi.Account{
-		Name:      model.Name.ValueString(),
+		Name:     model.Name.ValueString(),
 		Password: model.Password.ValueString(),
 	}
 

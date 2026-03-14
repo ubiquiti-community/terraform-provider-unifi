@@ -21,7 +21,7 @@ func TestAccAccountFramework_basic(t *testing.T) {
 						"password",
 						"test-password",
 					),
-					resource.TestCheckResourceAttr("unifi_account.test", "tunnel_type", "13"),
+					resource.TestCheckResourceAttr("unifi_account.test", "tunnel_type", "3"),
 					resource.TestCheckResourceAttr("unifi_account.test", "tunnel_medium_type", "6"),
 				),
 			},

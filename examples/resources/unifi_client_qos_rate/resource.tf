@@ -1,4 +1,4 @@
-resource "unifi_client_group" "wifi" {
+resource "unifi_client_qos_rate" "wifi" {
   name = "wifi"
 
   qos_rate_max_down = 2000 # 2mbps
@@ -13,5 +13,6 @@ resource "unifi_client" "test" {
 
   fixed_ip   = "10.0.0.50"
   network_id = unifi_network.my_vlan.id
-  group_id   = unifi_client_group.wifi.id
+
+  qos_rate = { id = unifi_client_qos_rate.wifi.id }
 }

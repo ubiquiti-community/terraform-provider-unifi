@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -58,47 +59,29 @@ type wanResourceModel struct {
 
 	// QoS Settings
 	EgressQoS types.Object `tfsdk:"egress_qos"`
-	DHCPCoS   types.Int64  `tfsdk:"dhcp_cos"`
-	DHCPV6CoS types.Int64  `tfsdk:"dhcpv6_cos"`
 
 	// DNS Settings
-	DNS1              types.String `tfsdk:"dns1"`
-	DNS2              types.String `tfsdk:"dns2"`
-	IPv6DNS1          types.String `tfsdk:"ipv6_dns1"`
-	IPv6DNS2          types.String `tfsdk:"ipv6_dns2"`
-	DNSPreference     types.String `tfsdk:"dns_preference"`
-	IPv6DNSPreference types.String `tfsdk:"ipv6_dns_preference"`
+	DNS types.Object `tfsdk:"dns"`
 
-	// DHCPv6 Settings
-	DHCPV6PDSize     types.Int64 `tfsdk:"dhcpv6_pd_size"`
-	DHCPV6PDSizeAuto types.Bool  `tfsdk:"dhcpv6_pd_size_auto"`
-	DHCPV6Options    types.List  `tfsdk:"dhcpv6_options"`
-
-	// IPv6 Settings
-	IPv6WANDelegationType types.String `tfsdk:"ipv6_wan_delegation_type"`
+	// DHCP Settings
+	DHCP   types.Object `tfsdk:"dhcp"`
+	DHCPv6 types.Object `tfsdk:"dhcpv6"`
 
 	// Smart Queue Settings
 	SmartQ types.Object `tfsdk:"smartq"`
 
 	// UPnP Settings
-	UPnPEnabled       types.Bool   `tfsdk:"upnp_enabled"`
-	UPnPWANInterface  types.String `tfsdk:"upnp_wan_interface"`
-	UPnPNatPMPEnabled types.Bool   `tfsdk:"upnp_nat_pmp_enabled"`
-	UPnPSecureMode    types.Bool   `tfsdk:"upnp_secure_mode"`
+	UPnP types.Object `tfsdk:"upnp"`
 
 	// Load Balance Settings
-	LoadBalanceType   types.String `tfsdk:"load_balance_type"`
-	LoadBalanceWeight types.Int64  `tfsdk:"load_balance_weight"`
-	FailoverPriority  types.Int64  `tfsdk:"failover_priority"`
+	LoadBalance types.Object `tfsdk:"load_balance"`
 
 	// IGMP Settings
-	IGMPProxyFor      types.String `tfsdk:"igmp_proxy_for"`
-	IGMPProxyUpstream types.Bool   `tfsdk:"igmp_proxy_upstream"`
+	IGMPProxy types.Object `tfsdk:"igmp_proxy"`
 
 	// Additional Settings
 	ReportWANEvent types.Bool `tfsdk:"report_wan_event"`
 	Enabled        types.Bool `tfsdk:"enabled"`
-	DHCPOptions    types.List `tfsdk:"dhcp_options"`
 	IPAliases      types.List `tfsdk:"ip_aliases"`
 
 	// Provider Capabilities
@@ -172,6 +155,108 @@ func (m dhcpOptionModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// dnsModel describes the DNS configuration nested object.
+type dnsModel struct {
+	Primary        types.String `tfsdk:"primary"`
+	Secondary      types.String `tfsdk:"secondary"`
+	IPv6Primary    types.String `tfsdk:"ipv6_primary"`
+	IPv6Secondary  types.String `tfsdk:"ipv6_secondary"`
+	Preference     types.String `tfsdk:"preference"`
+	IPv6Preference types.String `tfsdk:"ipv6_preference"`
+}
+
+func (m dnsModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"primary":         types.StringType,
+		"secondary":       types.StringType,
+		"ipv6_primary":    types.StringType,
+		"ipv6_secondary":  types.StringType,
+		"preference":      types.StringType,
+		"ipv6_preference": types.StringType,
+	}
+}
+
+// upnpModel describes the UPnP configuration nested object.
+type upnpModel struct {
+	Enabled       types.Bool   `tfsdk:"enabled"`
+	WANInterface  types.String `tfsdk:"wan_interface"`
+	NatPMPEnabled types.Bool   `tfsdk:"nat_pmp_enabled"`
+	SecureMode    types.Bool   `tfsdk:"secure_mode"`
+}
+
+func (m upnpModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":         types.BoolType,
+		"wan_interface":   types.StringType,
+		"nat_pmp_enabled": types.BoolType,
+		"secure_mode":     types.BoolType,
+	}
+}
+
+// loadBalanceModel describes the load balance configuration nested object.
+type loadBalanceModel struct {
+	Type             types.String `tfsdk:"type"`
+	Weight           types.Int64  `tfsdk:"weight"`
+	FailoverPriority types.Int64  `tfsdk:"failover_priority"`
+}
+
+func (m loadBalanceModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"type":              types.StringType,
+		"weight":            types.Int64Type,
+		"failover_priority": types.Int64Type,
+	}
+}
+
+// igmpProxyModel describes the IGMP proxy configuration nested object.
+type igmpProxyModel struct {
+	Downstream types.String `tfsdk:"downstream"`
+	Upstream   types.Bool   `tfsdk:"upstream"`
+}
+
+func (m igmpProxyModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"downstream": types.StringType,
+		"upstream":   types.BoolType,
+	}
+}
+
+// dhcpv6WanModel describes the DHCPv6 WAN configuration nested object.
+type dhcpv6WanModel struct {
+	CoS            types.Int64  `tfsdk:"cos"`
+	PDSize         types.Int64  `tfsdk:"pd_size"`
+	PDSizeAuto     types.Bool   `tfsdk:"pd_size_auto"`
+	Options        types.List   `tfsdk:"options"`
+	DelegationType types.String `tfsdk:"wan_delegation_type"`
+}
+
+func (m dhcpv6WanModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"cos":          types.Int64Type,
+		"pd_size":      types.Int64Type,
+		"pd_size_auto": types.BoolType,
+		"options": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()},
+		},
+		"wan_delegation_type": types.StringType,
+	}
+}
+
+// dhcpWanModel describes the DHCP WAN configuration nested object.
+type dhcpWanModel struct {
+	CoS     types.Int64 `tfsdk:"cos"`
+	Options types.List  `tfsdk:"options"`
+}
+
+func (m dhcpWanModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"cos": types.Int64Type,
+		"options": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()},
+		},
+	}
+}
+
 func (r *wanResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
@@ -230,7 +315,11 @@ func (r *wanResource) Schema(
 			},
 			"vlan": schema.SingleNestedAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "VLAN configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						Optional:            true,
@@ -251,7 +340,11 @@ func (r *wanResource) Schema(
 			},
 			"egress_qos": schema.SingleNestedAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Egress QoS configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						Optional:            true,
@@ -270,124 +363,174 @@ func (r *wanResource) Schema(
 					},
 				},
 			},
-			"dhcp_cos": schema.Int64Attribute{
+			"dns": schema.SingleNestedAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "DHCP Class of Service",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
+				MarkdownDescription: "DNS configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-				Validators: []validator.Int64{
-					int64validator.Between(0, 7),
-				},
-			},
-			"dhcpv6_cos": schema.Int64Attribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "DHCPv6 Class of Service",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
-				Validators: []validator.Int64{
-					int64validator.Between(0, 7),
-				},
-			},
-			"dns1": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "Primary DNS server",
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"dns2": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "Secondary DNS server",
-				Validators: []validator.String{
-					validators.IPv4Validator(),
-				},
-			},
-			"ipv6_dns1": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "Primary IPv6 DNS server",
-			},
-			"ipv6_dns2": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "Secondary IPv6 DNS server",
-			},
-			"dns_preference": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "DNS preference (auto, manual)",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-				Validators: []validator.String{
-					stringvalidator.OneOf("auto", "manual"),
-				},
-			},
-			"ipv6_dns_preference": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "IPv6 DNS preference (auto, manual)",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-				Validators: []validator.String{
-					stringvalidator.OneOf("auto", "manual"),
-				},
-			},
-			"dhcpv6_pd_size": schema.Int64Attribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "DHCPv6 prefix delegation size",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
-				Validators: []validator.Int64{
-					int64validator.Between(48, 64),
-				},
-			},
-			"dhcpv6_pd_size_auto": schema.BoolAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Whether DHCPv6 PD size is automatic",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"dhcpv6_options": schema.ListNestedAttribute{
-				Optional:            true,
-				MarkdownDescription: "DHCPv6 options",
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"option_number": schema.Int64Attribute{
-							Required:            true,
-							MarkdownDescription: "DHCPv6 option number (1, 11, 15, 16, or 17)",
-							Validators: []validator.Int64{
-								int64validator.OneOf(1, 11, 15, 16, 17),
-							},
+				Attributes: map[string]schema.Attribute{
+					"primary": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Primary DNS server",
+						Validators: []validator.String{
+							validators.IPv4Validator(),
 						},
-						"value": schema.StringAttribute{
-							Required:            true,
-							MarkdownDescription: "DHCPv6 option value",
+					},
+					"secondary": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Secondary DNS server",
+						Validators: []validator.String{
+							validators.IPv4Validator(),
+						},
+					},
+					"ipv6_primary": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Primary IPv6 DNS server",
+					},
+					"ipv6_secondary": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Secondary IPv6 DNS server",
+					},
+					"preference": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "DNS preference (auto, manual)",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.String{
+							stringvalidator.OneOf("auto", "manual"),
+						},
+					},
+					"ipv6_preference": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "IPv6 DNS preference (auto, manual)",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.String{
+							stringvalidator.OneOf("auto", "manual"),
 						},
 					},
 				},
 			},
-			"ipv6_wan_delegation_type": schema.StringAttribute{
+			"dhcp": schema.SingleNestedAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "IPv6 WAN delegation type (pd, single_network, none)",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				MarkdownDescription: "DHCP configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-				Validators: []validator.String{
-					stringvalidator.OneOf("pd", "single_network", "none"),
+				Attributes: map[string]schema.Attribute{
+					"cos": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "DHCP Class of Service",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.Int64{
+							int64validator.Between(0, 7),
+						},
+					},
+					"options": schema.ListNestedAttribute{
+						Optional:            true,
+						MarkdownDescription: "DHCP options",
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"option_number": schema.Int64Attribute{
+									Required:            true,
+									MarkdownDescription: "DHCP option number",
+								},
+								"value": schema.StringAttribute{
+									Required:            true,
+									MarkdownDescription: "DHCP option value",
+								},
+							},
+						},
+					},
+				},
+			},
+			"dhcpv6": schema.SingleNestedAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "DHCPv6 configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"cos": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "DHCPv6 Class of Service",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.Int64{
+							int64validator.Between(0, 7),
+						},
+					},
+					"pd_size": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "DHCPv6 prefix delegation size",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.Int64{
+							int64validator.Between(48, 64),
+						},
+					},
+					"pd_size_auto": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Whether DHCPv6 PD size is automatic",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"options": schema.ListNestedAttribute{
+						Optional:            true,
+						MarkdownDescription: "DHCPv6 options",
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"option_number": schema.Int64Attribute{
+									Required:            true,
+									MarkdownDescription: "DHCPv6 option number (1, 11, 15, 16, or 17)",
+									Validators: []validator.Int64{
+										int64validator.OneOf(1, 11, 15, 16, 17),
+									},
+								},
+								"value": schema.StringAttribute{
+									Required:            true,
+									MarkdownDescription: "DHCPv6 option value",
+								},
+							},
+						},
+					},
+					"wan_delegation_type": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "IPv6 WAN delegation type (pd, single_network, none)",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.String{
+							stringvalidator.OneOf("pd", "single_network", "none"),
+						},
+					},
 				},
 			},
 			"smartq": schema.SingleNestedAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Smart Queue configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						Optional:            true,
@@ -405,84 +548,114 @@ func (r *wanResource) Schema(
 					},
 				},
 			},
-			"upnp_enabled": schema.BoolAttribute{
+			"upnp": schema.SingleNestedAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Whether UPnP is enabled",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+				MarkdownDescription: "UPnP configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Whether UPnP is enabled",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"wan_interface": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "UPnP WAN interface",
+					},
+					"nat_pmp_enabled": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Whether UPnP NAT-PMP is enabled",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"secure_mode": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Whether UPnP secure mode is enabled",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
 				},
 			},
-			"upnp_wan_interface": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "UPnP WAN interface",
-			},
-			"upnp_nat_pmp_enabled": schema.BoolAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Whether UPnP NAT-PMP is enabled",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"upnp_secure_mode": schema.BoolAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Whether UPnP secure mode is enabled",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"load_balance_type": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Load balance type (failover-only, weighted)",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-				Validators: []validator.String{
-					stringvalidator.OneOf("failover-only", "weighted"),
-				},
-			},
-			"load_balance_weight": schema.Int64Attribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Load balance weight",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
-				Validators: []validator.Int64{
-					int64validator.Between(1, 100),
-				},
-			},
-			"failover_priority": schema.Int64Attribute{
+			"load_balance": schema.SingleNestedAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Failover priority",
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
+				MarkdownDescription: "Load balance configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-				Validators: []validator.Int64{
-					int64validator.Between(1, 10),
+				Attributes: map[string]schema.Attribute{
+					"type": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Load balance type (failover-only, weighted)",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.String{
+							stringvalidator.OneOf("failover-only", "weighted"),
+						},
+					},
+					"weight": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Load balance weight",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.Int64{
+							int64validator.Between(1, 100),
+						},
+					},
+					"failover_priority": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Failover priority",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.Int64{
+							int64validator.Between(1, 10),
+						},
+					},
 				},
 			},
-			"igmp_proxy_for": schema.StringAttribute{
+			"igmp_proxy": schema.SingleNestedAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "IGMP proxy for (none, lan, guest)",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				MarkdownDescription: "IGMP proxy configuration",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-				Validators: []validator.String{
-					stringvalidator.OneOf("none", "lan", "guest"),
-				},
-			},
-			"igmp_proxy_upstream": schema.BoolAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Whether IGMP proxy upstream is enabled",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+				Attributes: map[string]schema.Attribute{
+					"downstream": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "IGMP proxy downstream target (none, lan, guest)",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.String{
+							stringvalidator.OneOf("none", "lan", "guest"),
+						},
+					},
+					"upstream": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Whether IGMP proxy upstream is enabled",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
 				},
 			},
 			"report_wan_event": schema.BoolAttribute{
@@ -498,16 +671,6 @@ func (r *wanResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 				MarkdownDescription: "Whether the WAN network is enabled",
-			},
-			"dhcp_options": schema.ListAttribute{
-				ElementType: types.ObjectType{
-					AttrTypes: map[string]attr.Type{
-						"option_number": types.Int64Type,
-						"value":         types.StringType,
-					},
-				},
-				Optional:            true,
-				MarkdownDescription: "DHCP options",
 			},
 			"ip_aliases": schema.ListAttribute{
 				ElementType:         types.StringType,
@@ -698,86 +861,16 @@ func (r *wanResource) overlayConfig(
 	if !config.TypeV6.IsNull() {
 		state.TypeV6 = plan.TypeV6
 	}
-	if !config.Vlan.IsNull() {
-		state.Vlan = plan.Vlan
-	}
-	if !config.EgressQoS.IsNull() {
-		state.EgressQoS = plan.EgressQoS
-	}
-	if !config.DHCPCoS.IsNull() {
-		state.DHCPCoS = plan.DHCPCoS
-	}
-	if !config.DHCPV6CoS.IsNull() {
-		state.DHCPV6CoS = plan.DHCPV6CoS
-	}
-	if !config.DNS1.IsNull() {
-		state.DNS1 = plan.DNS1
-	}
-	if !config.DNS2.IsNull() {
-		state.DNS2 = plan.DNS2
-	}
-	if !config.IPv6DNS1.IsNull() {
-		state.IPv6DNS1 = plan.IPv6DNS1
-	}
-	if !config.IPv6DNS2.IsNull() {
-		state.IPv6DNS2 = plan.IPv6DNS2
-	}
-	if !config.DNSPreference.IsNull() {
-		state.DNSPreference = plan.DNSPreference
-	}
-	if !config.IPv6DNSPreference.IsNull() {
-		state.IPv6DNSPreference = plan.IPv6DNSPreference
-	}
-	if !config.DHCPV6PDSize.IsNull() {
-		state.DHCPV6PDSize = plan.DHCPV6PDSize
-	}
-	if !config.DHCPV6PDSizeAuto.IsNull() {
-		state.DHCPV6PDSizeAuto = plan.DHCPV6PDSizeAuto
-	}
-	if !config.IPv6WANDelegationType.IsNull() {
-		state.IPv6WANDelegationType = plan.IPv6WANDelegationType
-	}
-	if !config.SmartQ.IsNull() {
-		state.SmartQ = plan.SmartQ
-	}
-	if !config.UPnPEnabled.IsNull() {
-		state.UPnPEnabled = plan.UPnPEnabled
-	}
-	if !config.UPnPWANInterface.IsNull() {
-		state.UPnPWANInterface = plan.UPnPWANInterface
-	}
-	if !config.UPnPNatPMPEnabled.IsNull() {
-		state.UPnPNatPMPEnabled = plan.UPnPNatPMPEnabled
-	}
-	if !config.UPnPSecureMode.IsNull() {
-		state.UPnPSecureMode = plan.UPnPSecureMode
-	}
-	if !config.LoadBalanceType.IsNull() {
-		state.LoadBalanceType = plan.LoadBalanceType
-	}
-	if !config.LoadBalanceWeight.IsNull() {
-		state.LoadBalanceWeight = plan.LoadBalanceWeight
-	}
-	if !config.FailoverPriority.IsNull() {
-		state.FailoverPriority = plan.FailoverPriority
-	}
-	if !config.IGMPProxyFor.IsNull() {
-		state.IGMPProxyFor = plan.IGMPProxyFor
-	}
-	if !config.IGMPProxyUpstream.IsNull() {
-		state.IGMPProxyUpstream = plan.IGMPProxyUpstream
-	}
+	// Note: nested objects (Vlan, EgressQoS, DNS, DHCP, DHCPv6, SmartQ, UPnP,
+	// LoadBalance, IGMPProxy) are NOT overlaid from the plan because the plan
+	// may contain unknown values for computed child attributes that don't have
+	// prior state (e.g. on initial create). The API response in state already
+	// has the correct, fully-resolved values for these objects.
 	if !config.ReportWANEvent.IsNull() {
 		state.ReportWANEvent = plan.ReportWANEvent
 	}
 	if !config.Enabled.IsNull() {
 		state.Enabled = plan.Enabled
-	}
-	if !config.DHCPOptions.IsNull() {
-		state.DHCPOptions = plan.DHCPOptions
-	}
-	if !config.DHCPV6Options.IsNull() {
-		state.DHCPV6Options = plan.DHCPV6Options
 	}
 	if !config.IPAliases.IsNull() {
 		state.IPAliases = plan.IPAliases
@@ -919,80 +1012,32 @@ func (r *wanResource) applyPlanToState(
 	if !plan.EgressQoS.IsNull() && !plan.EgressQoS.IsUnknown() {
 		state.EgressQoS = plan.EgressQoS
 	}
-	if !plan.DHCPCoS.IsNull() && !plan.DHCPCoS.IsUnknown() {
-		state.DHCPCoS = plan.DHCPCoS
+	if !plan.DNS.IsNull() && !plan.DNS.IsUnknown() {
+		state.DNS = plan.DNS
 	}
-	if !plan.DHCPV6CoS.IsNull() && !plan.DHCPV6CoS.IsUnknown() {
-		state.DHCPV6CoS = plan.DHCPV6CoS
+	if !plan.DHCP.IsNull() && !plan.DHCP.IsUnknown() {
+		state.DHCP = plan.DHCP
 	}
-	if !plan.DNS1.IsNull() && !plan.DNS1.IsUnknown() {
-		state.DNS1 = plan.DNS1
-	}
-	if !plan.DNS2.IsNull() && !plan.DNS2.IsUnknown() {
-		state.DNS2 = plan.DNS2
-	}
-	if !plan.IPv6DNS1.IsNull() && !plan.IPv6DNS1.IsUnknown() {
-		state.IPv6DNS1 = plan.IPv6DNS1
-	}
-	if !plan.IPv6DNS2.IsNull() && !plan.IPv6DNS2.IsUnknown() {
-		state.IPv6DNS2 = plan.IPv6DNS2
-	}
-	if !plan.DNSPreference.IsNull() && !plan.DNSPreference.IsUnknown() {
-		state.DNSPreference = plan.DNSPreference
-	}
-	if !plan.IPv6DNSPreference.IsNull() && !plan.IPv6DNSPreference.IsUnknown() {
-		state.IPv6DNSPreference = plan.IPv6DNSPreference
-	}
-	if !plan.DHCPV6PDSize.IsNull() && !plan.DHCPV6PDSize.IsUnknown() {
-		state.DHCPV6PDSize = plan.DHCPV6PDSize
-	}
-	if !plan.DHCPV6PDSizeAuto.IsNull() && !plan.DHCPV6PDSizeAuto.IsUnknown() {
-		state.DHCPV6PDSizeAuto = plan.DHCPV6PDSizeAuto
-	}
-	if !plan.DHCPV6Options.IsNull() && !plan.DHCPV6Options.IsUnknown() {
-		state.DHCPV6Options = plan.DHCPV6Options
-	}
-	if !plan.IPv6WANDelegationType.IsNull() && !plan.IPv6WANDelegationType.IsUnknown() {
-		state.IPv6WANDelegationType = plan.IPv6WANDelegationType
+	if !plan.DHCPv6.IsNull() && !plan.DHCPv6.IsUnknown() {
+		state.DHCPv6 = plan.DHCPv6
 	}
 	if !plan.SmartQ.IsNull() && !plan.SmartQ.IsUnknown() {
 		state.SmartQ = plan.SmartQ
 	}
-	if !plan.UPnPEnabled.IsNull() && !plan.UPnPEnabled.IsUnknown() {
-		state.UPnPEnabled = plan.UPnPEnabled
+	if !plan.UPnP.IsNull() && !plan.UPnP.IsUnknown() {
+		state.UPnP = plan.UPnP
 	}
-	if !plan.UPnPWANInterface.IsNull() && !plan.UPnPWANInterface.IsUnknown() {
-		state.UPnPWANInterface = plan.UPnPWANInterface
+	if !plan.LoadBalance.IsNull() && !plan.LoadBalance.IsUnknown() {
+		state.LoadBalance = plan.LoadBalance
 	}
-	if !plan.UPnPNatPMPEnabled.IsNull() && !plan.UPnPNatPMPEnabled.IsUnknown() {
-		state.UPnPNatPMPEnabled = plan.UPnPNatPMPEnabled
-	}
-	if !plan.UPnPSecureMode.IsNull() && !plan.UPnPSecureMode.IsUnknown() {
-		state.UPnPSecureMode = plan.UPnPSecureMode
-	}
-	if !plan.LoadBalanceType.IsNull() && !plan.LoadBalanceType.IsUnknown() {
-		state.LoadBalanceType = plan.LoadBalanceType
-	}
-	if !plan.LoadBalanceWeight.IsNull() && !plan.LoadBalanceWeight.IsUnknown() {
-		state.LoadBalanceWeight = plan.LoadBalanceWeight
-	}
-	if !plan.FailoverPriority.IsNull() && !plan.FailoverPriority.IsUnknown() {
-		state.FailoverPriority = plan.FailoverPriority
-	}
-	if !plan.IGMPProxyFor.IsNull() && !plan.IGMPProxyFor.IsUnknown() {
-		state.IGMPProxyFor = plan.IGMPProxyFor
-	}
-	if !plan.IGMPProxyUpstream.IsNull() && !plan.IGMPProxyUpstream.IsUnknown() {
-		state.IGMPProxyUpstream = plan.IGMPProxyUpstream
+	if !plan.IGMPProxy.IsNull() && !plan.IGMPProxy.IsUnknown() {
+		state.IGMPProxy = plan.IGMPProxy
 	}
 	if !plan.ReportWANEvent.IsNull() && !plan.ReportWANEvent.IsUnknown() {
 		state.ReportWANEvent = plan.ReportWANEvent
 	}
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
 		state.Enabled = plan.Enabled
-	}
-	if !plan.DHCPOptions.IsNull() && !plan.DHCPOptions.IsUnknown() {
-		state.DHCPOptions = plan.DHCPOptions
 	}
 	if !plan.IPAliases.IsNull() && !plan.IPAliases.IsUnknown() {
 		state.IPAliases = plan.IPAliases
@@ -1084,32 +1129,31 @@ func (r *wanResource) modelToNetwork(
 		network.WANTypeV6 = model.TypeV6.ValueStringPointer()
 	}
 
-	// DHCP CoS
-	if !model.DHCPCoS.IsNull() && !model.DHCPCoS.IsUnknown() {
-		network.WANDHCPCos = model.DHCPCoS.ValueInt64Pointer()
-	}
-	if !model.DHCPV6CoS.IsNull() && !model.DHCPV6CoS.IsUnknown() {
-		network.WANDHCPv6Cos = model.DHCPV6CoS.ValueInt64Pointer()
-	}
-
 	// DNS Settings
-	if !model.DNS1.IsNull() && !model.DNS1.IsUnknown() {
-		network.WANDNS1 = model.DNS1.ValueStringPointer()
-	}
-	if !model.DNS2.IsNull() && !model.DNS2.IsUnknown() {
-		network.WANDNS2 = model.DNS2.ValueStringPointer()
-	}
-	if !model.IPv6DNS1.IsNull() && !model.IPv6DNS1.IsUnknown() {
-		network.WANIPV6DNS1 = model.IPv6DNS1.ValueStringPointer()
-	}
-	if !model.IPv6DNS2.IsNull() && !model.IPv6DNS2.IsUnknown() {
-		network.WANIPV6DNS2 = model.IPv6DNS2.ValueStringPointer()
-	}
-	if !model.DNSPreference.IsNull() && !model.DNSPreference.IsUnknown() {
-		network.WANDNSPreference = model.DNSPreference.ValueStringPointer()
-	}
-	if !model.IPv6DNSPreference.IsNull() && !model.IPv6DNSPreference.IsUnknown() {
-		network.WANIPV6DNSPreference = model.IPv6DNSPreference.ValueStringPointer()
+	if !model.DNS.IsNull() && !model.DNS.IsUnknown() {
+		var dns dnsModel
+		d := model.DNS.As(ctx, &dns, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			if !dns.Primary.IsNull() && !dns.Primary.IsUnknown() {
+				network.WANDNS1 = dns.Primary.ValueStringPointer()
+			}
+			if !dns.Secondary.IsNull() && !dns.Secondary.IsUnknown() {
+				network.WANDNS2 = dns.Secondary.ValueStringPointer()
+			}
+			if !dns.IPv6Primary.IsNull() && !dns.IPv6Primary.IsUnknown() {
+				network.WANIPV6DNS1 = dns.IPv6Primary.ValueStringPointer()
+			}
+			if !dns.IPv6Secondary.IsNull() && !dns.IPv6Secondary.IsUnknown() {
+				network.WANIPV6DNS2 = dns.IPv6Secondary.ValueStringPointer()
+			}
+			if !dns.Preference.IsNull() && !dns.Preference.IsUnknown() {
+				network.WANDNSPreference = dns.Preference.ValueStringPointer()
+			}
+			if !dns.IPv6Preference.IsNull() && !dns.IPv6Preference.IsUnknown() {
+				network.WANIPV6DNSPreference = dns.IPv6Preference.ValueStringPointer()
+			}
+		}
 	}
 
 	// Handle VLAN configuration
@@ -1134,27 +1178,64 @@ func (r *wanResource) modelToNetwork(
 		}
 	}
 
-	// DHCPv6 Settings
-	if !model.DHCPV6PDSize.IsNull() && !model.DHCPV6PDSize.IsUnknown() {
-		network.WANDHCPv6PDSize = model.DHCPV6PDSize.ValueInt64Pointer()
-	}
-	if !model.DHCPV6PDSizeAuto.IsNull() && !model.DHCPV6PDSizeAuto.IsUnknown() {
-		network.WANDHCPv6PDSizeAuto = model.DHCPV6PDSizeAuto.ValueBool()
-	}
-	if !model.IPv6WANDelegationType.IsNull() && !model.IPv6WANDelegationType.IsUnknown() {
-		network.IPV6WANDelegationType = model.IPv6WANDelegationType.ValueStringPointer()
+	// DHCP Settings
+	if !model.DHCP.IsNull() && !model.DHCP.IsUnknown() {
+		var dhcp dhcpWanModel
+		d := model.DHCP.As(ctx, &dhcp, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			if !dhcp.CoS.IsNull() && !dhcp.CoS.IsUnknown() {
+				network.WANDHCPCos = dhcp.CoS.ValueInt64Pointer()
+			}
+			if !dhcp.Options.IsNull() && !dhcp.Options.IsUnknown() {
+				var dhcpOptionsModel []dhcpOptionModel
+				diags.Append(dhcp.Options.ElementsAs(ctx, &dhcpOptionsModel, false)...)
+				if !diags.HasError() {
+					dhcpOptions := make([]unifi.NetworkWANDHCPOptions, len(dhcpOptionsModel))
+					for i, opt := range dhcpOptionsModel {
+						dhcpOptions[i] = unifi.NetworkWANDHCPOptions{
+							OptionNumber: opt.OptionNumber.ValueInt64Pointer(),
+							Value:        opt.Value.ValueStringPointer(),
+						}
+					}
+					network.WANDHCPOptions = dhcpOptions
+				}
+			}
+		}
 	}
 
-	// Convert DHCPv6 options list
-	if !model.DHCPV6Options.IsNull() && !model.DHCPV6Options.IsUnknown() {
-		var dhcpV6Options []dhcpOptionModel
-		diags.Append(model.DHCPV6Options.ElementsAs(ctx, &dhcpV6Options, false)...)
+	// DHCPv6 Settings
+	if !model.DHCPv6.IsNull() && !model.DHCPv6.IsUnknown() {
+		var dhcpv6 dhcpv6WanModel
+		d := model.DHCPv6.As(ctx, &dhcpv6, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
 		if !diags.HasError() {
-			network.WANDHCPv6Options = make([]unifi.NetworkWANDHCPv6Options, len(dhcpV6Options))
-			for i, opt := range dhcpV6Options {
-				network.WANDHCPv6Options[i] = unifi.NetworkWANDHCPv6Options{
-					OptionNumber: opt.OptionNumber.ValueInt64Pointer(),
-					Value:        opt.Value.ValueStringPointer(),
+			if !dhcpv6.CoS.IsNull() && !dhcpv6.CoS.IsUnknown() {
+				network.WANDHCPv6Cos = dhcpv6.CoS.ValueInt64Pointer()
+			}
+			if !dhcpv6.PDSize.IsNull() && !dhcpv6.PDSize.IsUnknown() {
+				network.WANDHCPv6PDSize = dhcpv6.PDSize.ValueInt64Pointer()
+			}
+			if !dhcpv6.PDSizeAuto.IsNull() && !dhcpv6.PDSizeAuto.IsUnknown() {
+				network.WANDHCPv6PDSizeAuto = dhcpv6.PDSizeAuto.ValueBool()
+			}
+			if !dhcpv6.DelegationType.IsNull() && !dhcpv6.DelegationType.IsUnknown() {
+				network.IPV6WANDelegationType = dhcpv6.DelegationType.ValueStringPointer()
+			}
+			if !dhcpv6.Options.IsNull() && !dhcpv6.Options.IsUnknown() {
+				var dhcpV6Options []dhcpOptionModel
+				diags.Append(dhcpv6.Options.ElementsAs(ctx, &dhcpV6Options, false)...)
+				if !diags.HasError() {
+					network.WANDHCPv6Options = make(
+						[]unifi.NetworkWANDHCPv6Options,
+						len(dhcpV6Options),
+					)
+					for i, opt := range dhcpV6Options {
+						network.WANDHCPv6Options[i] = unifi.NetworkWANDHCPv6Options{
+							OptionNumber: opt.OptionNumber.ValueInt64Pointer(),
+							Value:        opt.Value.ValueStringPointer(),
+						}
+					}
 				}
 			}
 		}
@@ -1173,57 +1254,62 @@ func (r *wanResource) modelToNetwork(
 	}
 
 	// UPnP Settings
-	if !model.UPnPEnabled.IsNull() && !model.UPnPEnabled.IsUnknown() {
-		network.UPnPEnabled = model.UPnPEnabled.ValueBoolPointer()
-	}
-	if !model.UPnPWANInterface.IsNull() && !model.UPnPWANInterface.IsUnknown() {
-		network.UPnPWANInterface = model.UPnPWANInterface.ValueStringPointer()
-	}
-	if !model.UPnPNatPMPEnabled.IsNull() && !model.UPnPNatPMPEnabled.IsUnknown() {
-		network.UPnPNatPMPEnabled = model.UPnPNatPMPEnabled.ValueBoolPointer()
-	}
-	if !model.UPnPSecureMode.IsNull() && !model.UPnPSecureMode.IsUnknown() {
-		network.UPnPSecureMode = model.UPnPSecureMode.ValueBoolPointer()
+	if !model.UPnP.IsNull() && !model.UPnP.IsUnknown() {
+		var upnp upnpModel
+		d := model.UPnP.As(ctx, &upnp, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			if !upnp.Enabled.IsNull() && !upnp.Enabled.IsUnknown() {
+				network.UPnPEnabled = upnp.Enabled.ValueBoolPointer()
+			}
+			if !upnp.WANInterface.IsNull() && !upnp.WANInterface.IsUnknown() {
+				network.UPnPWANInterface = upnp.WANInterface.ValueStringPointer()
+			}
+			if !upnp.NatPMPEnabled.IsNull() && !upnp.NatPMPEnabled.IsUnknown() {
+				network.UPnPNatPMPEnabled = upnp.NatPMPEnabled.ValueBoolPointer()
+			}
+			if !upnp.SecureMode.IsNull() && !upnp.SecureMode.IsUnknown() {
+				network.UPnPSecureMode = upnp.SecureMode.ValueBoolPointer()
+			}
+		}
 	}
 
 	// Load Balance Settings
-	if !model.LoadBalanceType.IsNull() && !model.LoadBalanceType.IsUnknown() {
-		network.WANLoadBalanceType = model.LoadBalanceType.ValueStringPointer()
-	}
-	if !model.LoadBalanceWeight.IsNull() && !model.LoadBalanceWeight.IsUnknown() {
-		network.WANLoadBalanceWeight = model.LoadBalanceWeight.ValueInt64Pointer()
-	}
-	if !model.FailoverPriority.IsNull() && !model.FailoverPriority.IsUnknown() {
-		network.WANFailoverPriority = model.FailoverPriority.ValueInt64Pointer()
+	if !model.LoadBalance.IsNull() && !model.LoadBalance.IsUnknown() {
+		var lb loadBalanceModel
+		d := model.LoadBalance.As(ctx, &lb, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			if !lb.Type.IsNull() && !lb.Type.IsUnknown() {
+				network.WANLoadBalanceType = lb.Type.ValueStringPointer()
+			}
+			if !lb.Weight.IsNull() && !lb.Weight.IsUnknown() {
+				network.WANLoadBalanceWeight = lb.Weight.ValueInt64Pointer()
+			}
+			if !lb.FailoverPriority.IsNull() && !lb.FailoverPriority.IsUnknown() {
+				network.WANFailoverPriority = lb.FailoverPriority.ValueInt64Pointer()
+			}
+		}
 	}
 
 	// IGMP Settings
-	if !model.IGMPProxyFor.IsNull() && !model.IGMPProxyFor.IsUnknown() {
-		network.IGMPProxyFor = model.IGMPProxyFor.ValueStringPointer()
-	}
-	if !model.IGMPProxyUpstream.IsNull() && !model.IGMPProxyUpstream.IsUnknown() {
-		network.IGMPProxyUpstream = model.IGMPProxyUpstream.ValueBool()
+	if !model.IGMPProxy.IsNull() && !model.IGMPProxy.IsUnknown() {
+		var igmp igmpProxyModel
+		d := model.IGMPProxy.As(ctx, &igmp, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() {
+			if !igmp.Downstream.IsNull() && !igmp.Downstream.IsUnknown() {
+				network.IGMPProxyFor = igmp.Downstream.ValueStringPointer()
+			}
+			if !igmp.Upstream.IsNull() && !igmp.Upstream.IsUnknown() {
+				network.IGMPProxyUpstream = igmp.Upstream.ValueBool()
+			}
+		}
 	}
 
 	// Additional Settings
 	if !model.ReportWANEvent.IsNull() && !model.ReportWANEvent.IsUnknown() {
 		network.ReportWANEvent = model.ReportWANEvent.ValueBool()
-	}
-
-	// Convert DHCP options list
-	if !model.DHCPOptions.IsNull() && !model.DHCPOptions.IsUnknown() {
-		var dhcpOptionsModel []dhcpOptionModel
-		diags.Append(model.DHCPOptions.ElementsAs(ctx, &dhcpOptionsModel, false)...)
-		if !diags.HasError() {
-			dhcpOptions := make([]unifi.NetworkWANDHCPOptions, len(dhcpOptionsModel))
-			for i, opt := range dhcpOptionsModel {
-				dhcpOptions[i] = unifi.NetworkWANDHCPOptions{
-					OptionNumber: opt.OptionNumber.ValueInt64Pointer(),
-					Value:        opt.Value.ValueStringPointer(),
-				}
-			}
-			network.WANDHCPOptions = dhcpOptions
-		}
 	}
 
 	// Convert IP aliases list
@@ -1302,72 +1388,109 @@ func (r *wanResource) networkToModel(
 		model.EgressQoS = egressQosObj
 	}
 
-	// QoS Settings — only overwrite when API returns a value
-	if network.WANDHCPCos != nil {
-		model.DHCPCoS = types.Int64Value(*network.WANDHCPCos)
-	}
-	if network.WANDHCPv6Cos != nil {
-		model.DHCPV6CoS = types.Int64Value(*network.WANDHCPv6Cos)
-	}
-
-	// DNS Settings — only overwrite when API returns a value
-	if network.WANDNS1 != nil {
-		model.DNS1 = types.StringValue(*network.WANDNS1)
-	}
-	if network.WANDNS2 != nil {
-		model.DNS2 = types.StringValue(*network.WANDNS2)
-	}
-	if network.WANIPV6DNS1 != nil {
-		model.IPv6DNS1 = types.StringValue(*network.WANIPV6DNS1)
-	}
-	if network.WANIPV6DNS2 != nil {
-		model.IPv6DNS2 = types.StringValue(*network.WANIPV6DNS2)
-	}
-
-	// DNS Preference — only overwrite when API returns a value
-	if network.WANDNSPreference != nil {
-		model.DNSPreference = types.StringValue(*network.WANDNSPreference)
-	}
-	if network.WANIPV6DNSPreference != nil {
-		model.IPv6DNSPreference = types.StringValue(*network.WANIPV6DNSPreference)
-	}
-
-	// DHCPv6 Settings — only overwrite when API returns a value
-	if network.WANDHCPv6PDSize != nil {
-		model.DHCPV6PDSize = types.Int64Value(*network.WANDHCPv6PDSize)
-	}
-	model.DHCPV6PDSizeAuto = types.BoolValue(network.WANDHCPv6PDSizeAuto)
-
-	if network.IPV6WANDelegationType != nil {
-		model.IPv6WANDelegationType = types.StringValue(*network.IPV6WANDelegationType)
-	}
-
-	// Convert DHCPv6 options to list
-	if len(network.WANDHCPv6Options) > 0 {
-		dhcpV6OptionAttrTypes := map[string]attr.Type{
-			"option_number": types.Int64Type,
-			"value":         types.StringType,
+	// DNS Settings — only populate if model already has it or API has data
+	hasDNSData := network.WANDNS1 != nil || network.WANDNS2 != nil ||
+		network.WANIPV6DNS1 != nil || network.WANIPV6DNS2 != nil ||
+		network.WANDNSPreference != nil || network.WANIPV6DNSPreference != nil
+	if !model.DNS.IsNull() || hasDNSData {
+		var currentDNS dnsModel
+		if !model.DNS.IsNull() && !model.DNS.IsUnknown() {
+			d := model.DNS.As(ctx, &currentDNS, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
 		}
-		dhcpV6OptionsValues := make([]attr.Value, len(network.WANDHCPv6Options))
-		for i, opt := range network.WANDHCPv6Options {
-			dhcpV6OptionsValues[i], _ = types.ObjectValue(
-				dhcpV6OptionAttrTypes,
-				map[string]attr.Value{
-					"option_number": types.Int64PointerValue(opt.OptionNumber),
-					"value":         types.StringPointerValue(opt.Value),
-				},
-			)
+		if network.WANDNS1 != nil {
+			currentDNS.Primary = types.StringValue(*network.WANDNS1)
 		}
-		model.DHCPV6Options, diags = types.ListValue(
-			types.ObjectType{AttrTypes: dhcpV6OptionAttrTypes},
-			dhcpV6OptionsValues,
-		)
-	} else {
-		dhcpV6OptionAttrTypes := map[string]attr.Type{
-			"option_number": types.Int64Type,
-			"value":         types.StringType,
+		if network.WANDNS2 != nil {
+			currentDNS.Secondary = types.StringValue(*network.WANDNS2)
 		}
-		model.DHCPV6Options = types.ListNull(types.ObjectType{AttrTypes: dhcpV6OptionAttrTypes})
+		if network.WANIPV6DNS1 != nil {
+			currentDNS.IPv6Primary = types.StringValue(*network.WANIPV6DNS1)
+		}
+		if network.WANIPV6DNS2 != nil {
+			currentDNS.IPv6Secondary = types.StringValue(*network.WANIPV6DNS2)
+		}
+		if network.WANDNSPreference != nil {
+			currentDNS.Preference = types.StringValue(*network.WANDNSPreference)
+		}
+		if network.WANIPV6DNSPreference != nil {
+			currentDNS.IPv6Preference = types.StringValue(*network.WANIPV6DNSPreference)
+		}
+		dnsObj, d := types.ObjectValueFrom(ctx, currentDNS.AttributeTypes(), currentDNS)
+		diags.Append(d...)
+		model.DNS = dnsObj
+	}
+
+	// DHCP Settings — only populate if model already has it or API has data
+	hasDHCPData := network.WANDHCPCos != nil || len(network.WANDHCPOptions) > 0
+	if !model.DHCP.IsNull() || hasDHCPData {
+		var currentDHCP dhcpWanModel
+		if !model.DHCP.IsNull() && !model.DHCP.IsUnknown() {
+			d := model.DHCP.As(ctx, &currentDHCP, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+		}
+		if network.WANDHCPCos != nil {
+			currentDHCP.CoS = types.Int64Value(*network.WANDHCPCos)
+		}
+		dhcpOptType := types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()}
+		if len(network.WANDHCPOptions) > 0 {
+			dhcpOptionsValues := make([]attr.Value, len(network.WANDHCPOptions))
+			for i, opt := range network.WANDHCPOptions {
+				dhcpOptionsValues[i], _ = types.ObjectValue(
+					dhcpOptionModel{}.AttributeTypes(),
+					map[string]attr.Value{
+						"option_number": types.Int64PointerValue(opt.OptionNumber),
+						"value":         types.StringPointerValue(opt.Value),
+					},
+				)
+			}
+			currentDHCP.Options, _ = types.ListValue(dhcpOptType, dhcpOptionsValues)
+		} else if currentDHCP.Options.IsNull() || currentDHCP.Options.IsUnknown() {
+			currentDHCP.Options = types.ListNull(dhcpOptType)
+		}
+		dhcpObj, d := types.ObjectValueFrom(ctx, currentDHCP.AttributeTypes(), currentDHCP)
+		diags.Append(d...)
+		model.DHCP = dhcpObj
+	}
+
+	// DHCPv6 Settings — only populate if model already has it or API has data
+	hasDHCPv6Data := network.WANDHCPv6Cos != nil || network.WANDHCPv6PDSize != nil ||
+		network.IPV6WANDelegationType != nil || len(network.WANDHCPv6Options) > 0
+	if !model.DHCPv6.IsNull() || hasDHCPv6Data {
+		var currentDHCPv6 dhcpv6WanModel
+		if !model.DHCPv6.IsNull() && !model.DHCPv6.IsUnknown() {
+			d := model.DHCPv6.As(ctx, &currentDHCPv6, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+		}
+		if network.WANDHCPv6Cos != nil {
+			currentDHCPv6.CoS = types.Int64Value(*network.WANDHCPv6Cos)
+		}
+		if network.WANDHCPv6PDSize != nil {
+			currentDHCPv6.PDSize = types.Int64Value(*network.WANDHCPv6PDSize)
+		}
+		currentDHCPv6.PDSizeAuto = types.BoolValue(network.WANDHCPv6PDSizeAuto)
+		if network.IPV6WANDelegationType != nil {
+			currentDHCPv6.DelegationType = types.StringValue(*network.IPV6WANDelegationType)
+		}
+		dhcpV6OptType := types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()}
+		if len(network.WANDHCPv6Options) > 0 {
+			dhcpV6OptionsValues := make([]attr.Value, len(network.WANDHCPv6Options))
+			for i, opt := range network.WANDHCPv6Options {
+				dhcpV6OptionsValues[i], _ = types.ObjectValue(
+					dhcpOptionModel{}.AttributeTypes(),
+					map[string]attr.Value{
+						"option_number": types.Int64PointerValue(opt.OptionNumber),
+						"value":         types.StringPointerValue(opt.Value),
+					},
+				)
+			}
+			currentDHCPv6.Options, _ = types.ListValue(dhcpV6OptType, dhcpV6OptionsValues)
+		} else if currentDHCPv6.Options.IsNull() || currentDHCPv6.Options.IsUnknown() {
+			currentDHCPv6.Options = types.ListNull(dhcpV6OptType)
+		}
+		dhcpv6Obj, d := types.ObjectValueFrom(ctx, currentDHCPv6.AttributeTypes(), currentDHCPv6)
+		diags.Append(d...)
+		model.DHCPv6 = dhcpv6Obj
 	}
 
 	// Smart Queue Settings — only create/update the object if model already has it or API has data
@@ -1393,68 +1516,75 @@ func (r *wanResource) networkToModel(
 		model.SmartQ = smartqObj
 	}
 
-	// UPnP Settings — only overwrite when API returns a value
-	if network.UPnPEnabled != nil {
-		model.UPnPEnabled = types.BoolValue(*network.UPnPEnabled)
-	}
-	if network.UPnPWANInterface != nil {
-		model.UPnPWANInterface = types.StringValue(*network.UPnPWANInterface)
-	}
-	if network.UPnPNatPMPEnabled != nil {
-		model.UPnPNatPMPEnabled = types.BoolValue(*network.UPnPNatPMPEnabled)
-	}
-	if network.UPnPSecureMode != nil {
-		model.UPnPSecureMode = types.BoolValue(*network.UPnPSecureMode)
+	// UPnP Settings — only populate if model already has it or API has data
+	hasUPnPData := network.UPnPEnabled != nil || network.UPnPWANInterface != nil ||
+		network.UPnPNatPMPEnabled != nil || network.UPnPSecureMode != nil
+	if !model.UPnP.IsNull() || hasUPnPData {
+		var currentUPnP upnpModel
+		if !model.UPnP.IsNull() && !model.UPnP.IsUnknown() {
+			d := model.UPnP.As(ctx, &currentUPnP, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+		}
+		if network.UPnPEnabled != nil {
+			currentUPnP.Enabled = types.BoolValue(*network.UPnPEnabled)
+		}
+		if network.UPnPWANInterface != nil {
+			currentUPnP.WANInterface = types.StringValue(*network.UPnPWANInterface)
+		}
+		if network.UPnPNatPMPEnabled != nil {
+			currentUPnP.NatPMPEnabled = types.BoolValue(*network.UPnPNatPMPEnabled)
+		}
+		if network.UPnPSecureMode != nil {
+			currentUPnP.SecureMode = types.BoolValue(*network.UPnPSecureMode)
+		}
+		upnpObj, d := types.ObjectValueFrom(ctx, currentUPnP.AttributeTypes(), currentUPnP)
+		diags.Append(d...)
+		model.UPnP = upnpObj
 	}
 
-	// Load Balance Settings — only overwrite when API returns a value
-	if network.WANLoadBalanceType != nil {
-		model.LoadBalanceType = types.StringValue(*network.WANLoadBalanceType)
-	}
-	if network.WANLoadBalanceWeight != nil {
-		model.LoadBalanceWeight = types.Int64Value(*network.WANLoadBalanceWeight)
-	}
-	if network.WANFailoverPriority != nil {
-		model.FailoverPriority = types.Int64Value(*network.WANFailoverPriority)
+	// Load Balance Settings — only populate if model already has it or API has data
+	hasLBData := network.WANLoadBalanceType != nil || network.WANLoadBalanceWeight != nil ||
+		network.WANFailoverPriority != nil
+	if !model.LoadBalance.IsNull() || hasLBData {
+		var currentLB loadBalanceModel
+		if !model.LoadBalance.IsNull() && !model.LoadBalance.IsUnknown() {
+			d := model.LoadBalance.As(ctx, &currentLB, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+		}
+		if network.WANLoadBalanceType != nil {
+			currentLB.Type = types.StringValue(*network.WANLoadBalanceType)
+		}
+		if network.WANLoadBalanceWeight != nil {
+			currentLB.Weight = types.Int64Value(*network.WANLoadBalanceWeight)
+		}
+		if network.WANFailoverPriority != nil {
+			currentLB.FailoverPriority = types.Int64Value(*network.WANFailoverPriority)
+		}
+		lbObj, d := types.ObjectValueFrom(ctx, currentLB.AttributeTypes(), currentLB)
+		diags.Append(d...)
+		model.LoadBalance = lbObj
 	}
 
-	// IGMP Settings — only overwrite when API returns a value
-	if network.IGMPProxyFor != nil {
-		model.IGMPProxyFor = types.StringValue(*network.IGMPProxyFor)
+	// IGMP Settings — only populate if model already has it or API has data
+	hasIGMPData := network.IGMPProxyFor != nil || network.IGMPProxyUpstream
+	if !model.IGMPProxy.IsNull() || hasIGMPData {
+		var currentIGMP igmpProxyModel
+		if !model.IGMPProxy.IsNull() && !model.IGMPProxy.IsUnknown() {
+			d := model.IGMPProxy.As(ctx, &currentIGMP, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+		}
+		if network.IGMPProxyFor != nil {
+			currentIGMP.Downstream = types.StringValue(*network.IGMPProxyFor)
+		}
+		currentIGMP.Upstream = types.BoolValue(network.IGMPProxyUpstream)
+		igmpObj, d := types.ObjectValueFrom(ctx, currentIGMP.AttributeTypes(), currentIGMP)
+		diags.Append(d...)
+		model.IGMPProxy = igmpObj
 	}
-	model.IGMPProxyUpstream = types.BoolValue(network.IGMPProxyUpstream)
 
 	// Additional Settings
 	model.ReportWANEvent = types.BoolValue(network.ReportWANEvent)
 	model.Enabled = types.BoolValue(network.Enabled)
-
-	// Convert DHCP options to list
-	if len(network.WANDHCPOptions) > 0 {
-		dhcpOptionAttrTypes := map[string]attr.Type{
-			"option_number": types.Int64Type,
-			"value":         types.StringType,
-		}
-		dhcpOptionsValues := make([]attr.Value, len(network.WANDHCPOptions))
-		for i, opt := range network.WANDHCPOptions {
-			dhcpOptionsValues[i], _ = types.ObjectValue(
-				dhcpOptionAttrTypes,
-				map[string]attr.Value{
-					"option_number": types.Int64PointerValue(opt.OptionNumber),
-					"value":         types.StringPointerValue(opt.Value),
-				},
-			)
-		}
-		model.DHCPOptions, diags = types.ListValue(
-			types.ObjectType{AttrTypes: dhcpOptionAttrTypes},
-			dhcpOptionsValues,
-		)
-	} else {
-		dhcpOptionAttrTypes := map[string]attr.Type{
-			"option_number": types.Int64Type,
-			"value":         types.StringType,
-		}
-		model.DHCPOptions = types.ListNull(types.ObjectType{AttrTypes: dhcpOptionAttrTypes})
-	}
 
 	// Convert IP aliases to list
 	if len(network.WANIPAliases) > 0 {
@@ -1512,51 +1642,6 @@ func applyWANDefaults(model *wanResourceModel) {
 	if model.TypeV6.IsUnknown() {
 		model.TypeV6 = types.StringNull()
 	}
-	if model.DHCPCoS.IsUnknown() {
-		model.DHCPCoS = types.Int64Null()
-	}
-	if model.DHCPV6CoS.IsUnknown() {
-		model.DHCPV6CoS = types.Int64Null()
-	}
-	if model.DNSPreference.IsUnknown() {
-		model.DNSPreference = types.StringNull()
-	}
-	if model.IPv6DNSPreference.IsUnknown() {
-		model.IPv6DNSPreference = types.StringNull()
-	}
-	if model.DHCPV6PDSize.IsUnknown() {
-		model.DHCPV6PDSize = types.Int64Null()
-	}
-	if model.DHCPV6PDSizeAuto.IsUnknown() {
-		model.DHCPV6PDSizeAuto = types.BoolNull()
-	}
-	if model.IPv6WANDelegationType.IsUnknown() {
-		model.IPv6WANDelegationType = types.StringNull()
-	}
-	if model.UPnPEnabled.IsUnknown() {
-		model.UPnPEnabled = types.BoolNull()
-	}
-	if model.UPnPNatPMPEnabled.IsUnknown() {
-		model.UPnPNatPMPEnabled = types.BoolNull()
-	}
-	if model.UPnPSecureMode.IsUnknown() {
-		model.UPnPSecureMode = types.BoolNull()
-	}
-	if model.LoadBalanceType.IsUnknown() {
-		model.LoadBalanceType = types.StringNull()
-	}
-	if model.LoadBalanceWeight.IsUnknown() {
-		model.LoadBalanceWeight = types.Int64Null()
-	}
-	if model.FailoverPriority.IsUnknown() {
-		model.FailoverPriority = types.Int64Null()
-	}
-	if model.IGMPProxyFor.IsUnknown() {
-		model.IGMPProxyFor = types.StringNull()
-	}
-	if model.IGMPProxyUpstream.IsUnknown() {
-		model.IGMPProxyUpstream = types.BoolNull()
-	}
 	if model.ReportWANEvent.IsUnknown() {
 		model.ReportWANEvent = types.BoolNull()
 	}
@@ -1576,17 +1661,25 @@ func applyWANDefaults(model *wanResourceModel) {
 	if model.ProviderCapabilities.IsNull() || model.ProviderCapabilities.IsUnknown() {
 		model.ProviderCapabilities = types.ObjectNull(providerCapabilitiesModel{}.AttributeTypes())
 	}
+	if model.DNS.IsNull() || model.DNS.IsUnknown() {
+		model.DNS = types.ObjectNull(dnsModel{}.AttributeTypes())
+	}
+	if model.DHCP.IsNull() || model.DHCP.IsUnknown() {
+		model.DHCP = types.ObjectNull(dhcpWanModel{}.AttributeTypes())
+	}
+	if model.DHCPv6.IsNull() || model.DHCPv6.IsUnknown() {
+		model.DHCPv6 = types.ObjectNull(dhcpv6WanModel{}.AttributeTypes())
+	}
+	if model.UPnP.IsNull() || model.UPnP.IsUnknown() {
+		model.UPnP = types.ObjectNull(upnpModel{}.AttributeTypes())
+	}
+	if model.LoadBalance.IsNull() || model.LoadBalance.IsUnknown() {
+		model.LoadBalance = types.ObjectNull(loadBalanceModel{}.AttributeTypes())
+	}
+	if model.IGMPProxy.IsNull() || model.IGMPProxy.IsUnknown() {
+		model.IGMPProxy = types.ObjectNull(igmpProxyModel{}.AttributeTypes())
+	}
 	// List types need properly-typed null values
-	if model.DHCPOptions.IsNull() || model.DHCPOptions.IsUnknown() {
-		model.DHCPOptions = types.ListNull(
-			types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()},
-		)
-	}
-	if model.DHCPV6Options.IsNull() || model.DHCPV6Options.IsUnknown() {
-		model.DHCPV6Options = types.ListNull(
-			types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()},
-		)
-	}
 	if model.IPAliases.IsNull() || model.IPAliases.IsUnknown() {
 		model.IPAliases = types.ListNull(types.StringType)
 	}

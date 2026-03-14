@@ -77,9 +77,9 @@ resource "unifi_port_forward" "ssh_firewall_group" {
 
 # Port forward with syslog logging enabled
 resource "unifi_port_forward" "game_server" {
-  name           = "Game Server"
-  protocol       = "udp"
-  syslog_logging = true
+  name     = "Game Server"
+  protocol = "udp"
+  logging  = true
 
   wan = {
     port = "27015"
