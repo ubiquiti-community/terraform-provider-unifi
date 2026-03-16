@@ -639,15 +639,11 @@ func (d *networkDataSource) setDataSourceData(
 	// dhcp_guarding
 	{
 		var serversList types.List
-		if network.Purpose == unifi.PurposeVLANOnly {
-			servers := collectNonEmptyStrings(network.DHCPDIP1, network.DHCPDIP2, network.DHCPDIP3)
-			if len(servers) > 0 {
-				l, d := types.ListValueFrom(ctx, types.StringType, servers)
-				diags.Append(d...)
-				serversList = l
-			} else {
-				serversList = types.ListNull(types.StringType)
-			}
+		servers := collectNonEmptyStrings(network.DHCPDIP1, network.DHCPDIP2, network.DHCPDIP3)
+		if len(servers) > 0 {
+			l, d := types.ListValueFrom(ctx, types.StringType, servers)
+			diags.Append(d...)
+			serversList = l
 		} else {
 			serversList = types.ListNull(types.StringType)
 		}
@@ -736,9 +732,17 @@ func (d *networkDataSource) setDataSourceData(
 
 	// dhcp_relay
 	{
+		var relayServersVal types.List
+		if len(network.DHCPRelayServers) > 0 {
+			l, d := types.ListValueFrom(ctx, types.StringType, network.DHCPRelayServers)
+			diags.Append(d...)
+			relayServersVal = l
+		} else {
+			relayServersVal = types.ListNull(types.StringType)
+		}
 		dhcpRelayValue := dhcpRelayModel{
 			Enabled: types.BoolValue(network.DHCPRelayEnabled),
-			Servers: types.ListNull(types.StringType),
+			Servers: relayServersVal,
 		}
 		dhcpRelayObj, d := types.ObjectValueFrom(
 			ctx,
