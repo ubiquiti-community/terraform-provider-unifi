@@ -79,7 +79,7 @@ resource "unifi_network" "third_party" {
 Optional:
 
 - `enabled` (Boolean) Specifies whether DHCP guarding is enabled.
-- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3). Only applies when `third_party_gateway` is enabled.
+- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3).
 
 
 <a id="nestedatt--dhcp_relay"></a>

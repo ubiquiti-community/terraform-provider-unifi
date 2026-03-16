@@ -1382,7 +1382,11 @@ func (r *networkResource) networkToModel(
 		var relayServersVal types.List
 		if len(network.DHCPRelayServers) > 0 {
 			var d diag.Diagnostics
-			relayServersVal, d = types.ListValueFrom(ctx, types.StringType, network.DHCPRelayServers)
+			relayServersVal, d = types.ListValueFrom(
+				ctx,
+				types.StringType,
+				network.DHCPRelayServers,
+			)
 			diags.Append(d...)
 		} else {
 			relayServersVal = types.ListNull(types.StringType)
