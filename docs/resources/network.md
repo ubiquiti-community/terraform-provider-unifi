@@ -49,7 +49,7 @@ resource "unifi_network" "third_party" {
 ### Optional
 
 - `auto_scale` (Boolean) Specifies whether auto-scaling is enabled.
-- `dhcp_guarding` (Attributes) DHCP guarding configuration. When `third_party_gateway` is enabled, the `servers` list specifies the allowed DHCP server IPs. (see [below for nested schema](#nestedatt--dhcp_guarding))
+- `dhcp_guarding` (Attributes) DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network. (see [below for nested schema](#nestedatt--dhcp_guarding))
 - `dhcp_relay` (Attributes) DHCP relay configuration. (see [below for nested schema](#nestedatt--dhcp_relay))
 - `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
 - `domain_name` (String) The domain name for the network.
@@ -79,7 +79,7 @@ resource "unifi_network" "third_party" {
 Optional:
 
 - `enabled` (Boolean) Specifies whether DHCP guarding is enabled.
-- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3). Only applies when `third_party_gateway` is enabled.
+- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3).
 
 
 <a id="nestedatt--dhcp_relay"></a>

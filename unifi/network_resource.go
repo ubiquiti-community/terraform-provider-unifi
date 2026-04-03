@@ -401,7 +401,7 @@ func (r *networkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"dhcp_guarding": schema.SingleNestedAttribute{
-				MarkdownDescription: "DHCP guarding configuration. When `third_party_gateway` is enabled, the `servers` list specifies the allowed DHCP server IPs.",
+				MarkdownDescription: "DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
@@ -411,7 +411,7 @@ func (r *networkResource) Schema(
 						Default:             booldefault.StaticBool(false),
 					},
 					"servers": schema.ListAttribute{
-						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3). Only applies when `third_party_gateway` is enabled.",
+						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3).",
 						Optional:            true,
 						ElementType:         types.StringType,
 						Validators: []validator.List{
@@ -897,9 +897,8 @@ func (r *networkResource) modelToNetwork(
 		if !diags.HasError() {
 			network.DHCPguardEnabled = dhcpGuarding.Enabled.ValueBool()
 
-			// Map servers to dhcpd_ip_1..3 when third_party_gateway is enabled
-			if model.ThirdPartyGateway.ValueBool() && !dhcpGuarding.Servers.IsNull() &&
-				!dhcpGuarding.Servers.IsUnknown() {
+			// Map servers to dhcpd_ip_1..3
+			if !dhcpGuarding.Servers.IsNull() && !dhcpGuarding.Servers.IsUnknown() {
 				var servers []string
 				d := dhcpGuarding.Servers.ElementsAs(ctx, &servers, false)
 				diags.Append(d...)
@@ -1140,9 +1139,13 @@ func (r *networkResource) modelToNetwork(
 				var servers []string
 				d := dhcpRelay.Servers.ElementsAs(ctx, &servers, false)
 				diags.Append(d...)
-				// if !diags.HasError() {
-				// 	// DHCPRelayServers field not available in current API version
-				// }
+				if !diags.HasError() {
+					// The go-unifi client's marshalCorporate maps RemoteVPNSubnets → dhcp_relay_servers
+					// JSON field. marshalGuest uses DHCPRelayServers directly. Setting both ensures
+					// relay servers are serialized correctly for any network purpose.
+					network.RemoteVPNSubnets = servers
+					network.DHCPRelayServers = servers
+				}
 			}
 		}
 	} else {
@@ -1224,24 +1227,11 @@ func (r *networkResource) networkToModel(
 
 	if shouldPopulateDhcpGuarding {
 		var serversList types.List
-		if isVLANOnly {
-			var servers []string
-			if network.DHCPDIP1 != "" {
-				servers = append(servers, network.DHCPDIP1)
-			}
-			if network.DHCPDIP2 != "" {
-				servers = append(servers, network.DHCPDIP2)
-			}
-			if network.DHCPDIP3 != "" {
-				servers = append(servers, network.DHCPDIP3)
-			}
-			if len(servers) > 0 {
-				var d diag.Diagnostics
-				serversList, d = types.ListValueFrom(ctx, types.StringType, servers)
-				diags.Append(d...)
-			} else {
-				serversList = types.ListNull(types.StringType)
-			}
+		servers := collectNonEmptyStrings(network.DHCPDIP1, network.DHCPDIP2, network.DHCPDIP3)
+		if len(servers) > 0 {
+			var d diag.Diagnostics
+			serversList, d = types.ListValueFrom(ctx, types.StringType, servers)
+			diags.Append(d...)
 		} else {
 			serversList = types.ListNull(types.StringType)
 		}
@@ -1389,9 +1379,21 @@ func (r *networkResource) networkToModel(
 	}
 
 	if shouldPopulateRelay {
+		var relayServersVal types.List
+		if len(network.DHCPRelayServers) > 0 {
+			var d diag.Diagnostics
+			relayServersVal, d = types.ListValueFrom(
+				ctx,
+				types.StringType,
+				network.DHCPRelayServers,
+			)
+			diags.Append(d...)
+		} else {
+			relayServersVal = types.ListNull(types.StringType)
+		}
 		dhcpRelayValue := dhcpRelayModel{
 			Enabled: types.BoolValue(network.DHCPRelayEnabled),
-			Servers: types.ListNull(types.StringType),
+			Servers: relayServersVal,
 		}
 
 		dhcpRelayObj, d := types.ObjectValueFrom(
