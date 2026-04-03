@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-log/tflogtest"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -55,7 +56,9 @@ func runAcceptanceTests(m *testing.M) int {
 		panic(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(
+		tflogtest.RootLogger(context.Background(), os.Stdout),
+	)
 	defer cancel()
 
 	logger := NewLogger(ctx)
