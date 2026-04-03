@@ -32,32 +32,62 @@ func (l *UnifiLogger) log(fn func()) {
 
 func (l *UnifiLogger) Error(msg string, keysAndValues ...any) {
 	l.log(func() {
-		fields, _ := convertToFields(keysAndValues)
+		fields, err := convertToFields(keysAndValues)
+		if err != nil {
+			tflog.SubsystemError(
+				l.ctx,
+				subsystem,
+				fmt.Sprintf("invalid log key-value pairs: %s", err),
+			)
+		}
 		tflog.SubsystemError(l.ctx, subsystem, msg, fields)
 	})
 }
 
 func (l *UnifiLogger) Printf(format string, v ...any) {
-	tflog.SubsystemInfo(l.ctx, subsystem, fmt.Sprintf(format, v...))
+	l.log(func() {
+		tflog.SubsystemInfo(l.ctx, subsystem, fmt.Sprintf(format, v...))
+	})
 }
 
 func (l *UnifiLogger) Info(msg string, keysAndValues ...any) {
 	l.log(func() {
-		fields, _ := convertToFields(keysAndValues)
+		fields, err := convertToFields(keysAndValues)
+		if err != nil {
+			tflog.SubsystemError(
+				l.ctx,
+				subsystem,
+				fmt.Sprintf("invalid log key-value pairs: %s", err),
+			)
+		}
 		tflog.SubsystemInfo(l.ctx, subsystem, msg, fields)
 	})
 }
 
 func (l *UnifiLogger) Debug(msg string, keysAndValues ...any) {
 	l.log(func() {
-		fields, _ := convertToFields(keysAndValues)
+		fields, err := convertToFields(keysAndValues)
+		if err != nil {
+			tflog.SubsystemError(
+				l.ctx,
+				subsystem,
+				fmt.Sprintf("invalid log key-value pairs: %s", err),
+			)
+		}
 		tflog.SubsystemDebug(l.ctx, subsystem, msg, fields)
 	})
 }
 
 func (l *UnifiLogger) Warn(msg string, keysAndValues ...any) {
 	l.log(func() {
-		fields, _ := convertToFields(keysAndValues)
+		fields, err := convertToFields(keysAndValues)
+		if err != nil {
+			tflog.SubsystemError(
+				l.ctx,
+				subsystem,
+				fmt.Sprintf("invalid log key-value pairs: %s", err),
+			)
+		}
 		tflog.SubsystemWarn(l.ctx, subsystem, msg, fields)
 	})
 }

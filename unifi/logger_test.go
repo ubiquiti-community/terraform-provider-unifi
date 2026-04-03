@@ -175,7 +175,13 @@ func TestUnifiLogger_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			logger.Debug("performing request", "method", "GET", "url", "https://unifi.example.com/api")
+			logger.Debug(
+				"performing request",
+				"method",
+				"GET",
+				"url",
+				"https://unifi.example.com/api",
+			)
 		}()
 	}
 	wg.Wait()
