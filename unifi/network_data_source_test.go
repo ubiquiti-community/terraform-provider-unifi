@@ -105,3 +105,101 @@ output "network_multicast_dns" {
 }
 `
 }
+
+func TestAccNetworkFrameworkDataSource_dhcpGuardingServers(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkDataSourceConfig_dhcpGuardingServers(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test_guarding_ds",
+						"dhcp_guarding.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test_guarding_ds",
+						"dhcp_guarding.servers.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test_guarding_ds",
+						"dhcp_guarding.servers.0",
+						"10.0.51.1",
+					),
+				),
+			},
+		},
+	})
+}
+
+func TestAccNetworkFrameworkDataSource_dhcpRelayServers(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkDataSourceConfig_dhcpRelayServers(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test_relay_ds",
+						"dhcp_relay.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test_relay_ds",
+						"dhcp_relay.servers.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test_relay_ds",
+						"dhcp_relay.servers.0",
+						"192.168.52.1",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccNetworkFrameworkDataSourceConfig_dhcpGuardingServers() string {
+	return `
+resource "unifi_network" "test_guarding" {
+	name                = "Test DHCP Guarding DS"
+	vlan                = 51
+	third_party_gateway = true
+
+	dhcp_guarding = {
+		enabled = true
+		servers = ["10.0.51.1"]
+	}
+}
+
+data "unifi_network" "test_guarding_ds" {
+	name       = unifi_network.test_guarding.name
+	depends_on = [unifi_network.test_guarding]
+}
+`
+}
+
+func testAccNetworkFrameworkDataSourceConfig_dhcpRelayServers() string {
+	return `
+resource "unifi_network" "test_relay_ds_net" {
+	name   = "Test DHCP Relay DS"
+	subnet = "192.168.52.1/24"
+	vlan   = 52
+
+	dhcp_relay = {
+		enabled = true
+		servers = ["192.168.52.1"]
+	}
+}
+
+data "unifi_network" "test_relay_ds" {
+	name       = unifi_network.test_relay_ds_net.name
+	depends_on = [unifi_network.test_relay_ds_net]
+}
+`
+}

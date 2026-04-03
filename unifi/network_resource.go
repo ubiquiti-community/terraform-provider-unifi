@@ -401,7 +401,7 @@ func (r *networkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"dhcp_guarding": schema.SingleNestedAttribute{
-				MarkdownDescription: "DHCP guarding configuration. When `third_party_gateway` is enabled, the `servers` list specifies the allowed DHCP server IPs.",
+				MarkdownDescription: "DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{

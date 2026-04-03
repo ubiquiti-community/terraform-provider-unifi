@@ -296,3 +296,72 @@ resource "unifi_network" "test_third_party_min" {
 }
 `
 }
+
+func TestAccNetworkFramework_dhcpRelay(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkConfig_dhcpRelay(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_relay",
+						"name",
+						"Test DHCP Relay",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_relay",
+						"vlan",
+						"50",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_relay",
+						"dhcp_relay.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_relay",
+						"dhcp_relay.servers.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_relay",
+						"dhcp_relay.servers.0",
+						"192.168.50.1",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_network.test_relay",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateId:     "name=Test DHCP Relay",
+				ImportStateVerifyIgnore: []string{
+					"auto_scale",
+					"gateway_type",
+					"setting_preference",
+					"multicast_dns",
+					"ipv6_interface_type",
+					"lte_lan",
+					"internet_access",
+				},
+			},
+		},
+	})
+}
+
+func testAccNetworkFrameworkConfig_dhcpRelay() string {
+	return `
+resource "unifi_network" "test_relay" {
+	name   = "Test DHCP Relay"
+	subnet = "192.168.50.1/24"
+	vlan   = 50
+
+	dhcp_relay = {
+		enabled = true
+		servers = ["192.168.50.1"]
+	}
+}
+`
+}
