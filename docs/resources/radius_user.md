@@ -1,5 +1,5 @@
 ---
-page_title: Account (Resource)
+page_title: Radius User (Resource)
 subcategory: ""
 description: |-
   Manages a RADIUS user account
@@ -9,7 +9,7 @@ description: |-
   NOTE: MAC-based authentication accounts can only be used for wireless and wired clients. L2TP remote access does not apply.
 ---
 
-# Account (Resource)
+# Radius User (Resource)
 
 Manages a RADIUS user account
 

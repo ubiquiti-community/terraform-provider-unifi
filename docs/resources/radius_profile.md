@@ -41,7 +41,7 @@ Manages RADIUS profiles.
 Required:
 
 - `ip` (String) IP address of accounting service server.
-- `x_secret` (String, Sensitive) Shared secret for accounting server.
+- `secret` (String, Sensitive) Shared secret for accounting server.
 
 Optional:
 
@@ -54,7 +54,7 @@ Optional:
 Required:
 
 - `ip` (String) IP address of authentication service server.
-- `x_secret` (String, Sensitive) Shared secret for authentication server.
+- `secret` (String, Sensitive) Shared secret for authentication server.
 
 Optional:
 

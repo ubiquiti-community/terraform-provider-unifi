@@ -19,21 +19,21 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &accountFrameworkResource{}
-	_ resource.ResourceWithImportState = &accountFrameworkResource{}
+	_ resource.Resource                = &radiusUserResource{}
+	_ resource.ResourceWithImportState = &radiusUserResource{}
 )
 
-func NewAccountFrameworkResource() resource.Resource {
-	return &accountFrameworkResource{}
+func NewRadiusUserResource() resource.Resource {
+	return &radiusUserResource{}
 }
 
-// accountFrameworkResource defines the resource implementation.
-type accountFrameworkResource struct {
+// radiusUserResource defines the resource implementation.
+type radiusUserResource struct {
 	client *Client
 }
 
-// accountFrameworkResourceModel describes the resource data model.
-type accountFrameworkResourceModel struct {
+// radiusUserResourceModel describes the resource data model.
+type radiusUserResourceModel struct {
 	ID               types.String `tfsdk:"id"`
 	Site             types.String `tfsdk:"site"`
 	Name             types.String `tfsdk:"name"`
@@ -43,15 +43,15 @@ type accountFrameworkResourceModel struct {
 	NetworkID        types.String `tfsdk:"network_id"`
 }
 
-func (r *accountFrameworkResource) Metadata(
+func (r *radiusUserResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_account"
+	resp.TypeName = req.ProviderTypeName + "_radius_user"
 }
 
-func (r *accountFrameworkResource) Schema(
+func (r *radiusUserResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
@@ -118,7 +118,7 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 	}
 }
 
-func (r *accountFrameworkResource) Configure(
+func (r *radiusUserResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
 	resp *resource.ConfigureResponse,
@@ -142,12 +142,12 @@ func (r *accountFrameworkResource) Configure(
 	r.client = client
 }
 
-func (r *accountFrameworkResource) Create(
+func (r *radiusUserResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
 	resp *resource.CreateResponse,
 ) {
-	var data accountFrameworkResourceModel
+	var data radiusUserResourceModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -156,7 +156,7 @@ func (r *accountFrameworkResource) Create(
 	}
 
 	// Convert to unifi.Account
-	account := r.modelToAccount(ctx, &data)
+	account := r.modelToRadiusUser(ctx, &data)
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -167,25 +167,25 @@ func (r *accountFrameworkResource) Create(
 	createdAccount, err := r.client.CreateAccount(ctx, site, account)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Creating Account",
+			"Error Creating Radius User",
 			err.Error(),
 		)
 		return
 	}
 
 	// Convert back to model
-	r.accountToModel(ctx, createdAccount, &data, site)
+	r.radiusUserToModel(ctx, createdAccount, &data, site)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *accountFrameworkResource) Read(
+func (r *radiusUserResource) Read(
 	ctx context.Context,
 	req resource.ReadRequest,
 	resp *resource.ReadResponse,
 ) {
-	var data accountFrameworkResourceModel
+	var data radiusUserResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -206,26 +206,26 @@ func (r *accountFrameworkResource) Read(
 			return
 		}
 		resp.Diagnostics.AddError(
-			"Error Reading Account",
-			"Could not read account with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Error Reading Radius User",
+			"Could not read radius user with ID "+data.ID.ValueString()+": "+err.Error(),
 		)
 		return
 	}
 
 	// Convert to model
-	r.accountToModel(ctx, account, &data, site)
+	r.radiusUserToModel(ctx, account, &data, site)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *accountFrameworkResource) Update(
+func (r *radiusUserResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state accountFrameworkResourceModel
-	var plan accountFrameworkResourceModel
+	var state radiusUserResourceModel
+	var plan radiusUserResourceModel
 
 	// Step 1: Read the current state (which already contains API values from previous reads)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -248,32 +248,32 @@ func (r *accountFrameworkResource) Update(
 	}
 
 	// Step 3: Convert the updated state to API format
-	account := r.modelToAccount(ctx, &state)
+	account := r.modelToRadiusUser(ctx, &state)
 	account.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
 	updatedAccount, err := r.client.UpdateAccount(ctx, site, account)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Updating Account",
+			"Error Updating Radius User",
 			err.Error(),
 		)
 		return
 	}
 
 	// Step 5: Update state with API response
-	r.accountToModel(ctx, updatedAccount, &state, site)
+	r.radiusUserToModel(ctx, updatedAccount, &state, site)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *accountFrameworkResource) Delete(
+func (r *radiusUserResource) Delete(
 	ctx context.Context,
 	req resource.DeleteRequest,
 	resp *resource.DeleteResponse,
 ) {
-	var data accountFrameworkResourceModel
+	var data radiusUserResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -290,14 +290,14 @@ func (r *accountFrameworkResource) Delete(
 	err := r.client.DeleteAccount(ctx, site, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Deleting Account",
+			"Error Deleting Radius User",
 			err.Error(),
 		)
 		return
 	}
 }
 
-func (r *accountFrameworkResource) ImportState(
+func (r *radiusUserResource) ImportState(
 	ctx context.Context,
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
@@ -328,10 +328,10 @@ func (r *accountFrameworkResource) ImportState(
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *accountFrameworkResource) applyPlanToState(
+func (r *radiusUserResource) applyPlanToState(
 	_ context.Context,
-	plan *accountFrameworkResourceModel,
-	state *accountFrameworkResourceModel,
+	plan *radiusUserResourceModel,
+	state *radiusUserResourceModel,
 ) {
 	// Apply plan values to state, but only if plan value is not null/unknown
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -351,10 +351,10 @@ func (r *accountFrameworkResource) applyPlanToState(
 	}
 }
 
-// modelToAccount converts the Terraform model to the API struct.
-func (r *accountFrameworkResource) modelToAccount(
+// modelToRadiusUser converts the Terraform model to the API struct.
+func (r *radiusUserResource) modelToRadiusUser(
 	_ context.Context,
-	model *accountFrameworkResourceModel,
+	model *radiusUserResourceModel,
 ) *unifi.Account {
 	account := &unifi.Account{
 		Name:     model.Name.ValueString(),
@@ -372,11 +372,11 @@ func (r *accountFrameworkResource) modelToAccount(
 	return account
 }
 
-// accountToModel converts the API struct to the Terraform model.
-func (r *accountFrameworkResource) accountToModel(
+// radiusUserToModel converts the API struct to the Terraform model.
+func (r *radiusUserResource) radiusUserToModel(
 	_ context.Context,
 	account *unifi.Account,
-	model *accountFrameworkResourceModel,
+	model *radiusUserResourceModel,
 	site string,
 ) {
 	model.ID = types.StringValue(account.ID)

@@ -1,13 +1,13 @@
 ---
-page_title: Account (Data Source)
+page_title: Radius User (Data Source)
 subcategory: ""
 description: |-
-  Data source for RADIUS user accounts.
+  Data source for RADIUS users.
 ---
 
-# Account (Data Source)
+# Radius User (Data Source)
 
-Data source for RADIUS user accounts.
+Data source for RADIUS users.
 
 
 
