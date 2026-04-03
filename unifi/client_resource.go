@@ -936,7 +936,11 @@ func (r *clientResource) reconcileCreatedClient(
 	}
 
 	mergedClient := r.mergeClient(currentClient, plannedClient)
-	tflog.Info(ctx, "Merged Client: ")
+	tflog.Debug(ctx, "Merging created client", map[string]any{
+		"site":        site,
+		"mac":         plannedClient.MAC,
+		"merged_id":   mergedClient.ID,
+	})
 	updatedClient, err := r.client.UpdateClient(ctx, site, mergedClient)
 	if err != nil {
 		diags.AddError(
