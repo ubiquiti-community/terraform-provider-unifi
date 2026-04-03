@@ -37,7 +37,7 @@ type radiusProfileResource struct {
 type radiusServerModel struct {
 	IP     types.String `tfsdk:"ip"`
 	Port   types.Int64  `tfsdk:"port"`
-	Secret types.String `tfsdk:"x_secret"`
+	Secret types.String `tfsdk:"secret"`
 }
 
 type radiusProfileResourceModel struct {
@@ -159,7 +159,7 @@ func (r *radiusProfileResource) Schema(
 								int64validator.Between(1, 65535),
 							},
 						},
-						"x_secret": schema.StringAttribute{
+						"secret": schema.StringAttribute{
 							MarkdownDescription: "Shared secret for authentication server.",
 							Required:            true,
 							Sensitive:           true,
@@ -187,7 +187,7 @@ func (r *radiusProfileResource) Schema(
 								int64validator.Between(1, 65535),
 							},
 						},
-						"x_secret": schema.StringAttribute{
+						"secret": schema.StringAttribute{
 							MarkdownDescription: "Shared secret for accounting server.",
 							Required:            true,
 							Sensitive:           true,

@@ -430,7 +430,7 @@ resource "unifi_radius_profile" "test" {
   auth_server {
     ip       = "192.168.1.100"
     port     = 1812
-    x_secret = "radius-secret"
+    secret   = "radius-secret"
   }
 }
 
@@ -454,7 +454,7 @@ resource "unifi_radius_profile" "test" {
   auth_server {
     ip       = "192.168.1.100"
     port     = 1812
-    x_secret = "radius-secret"
+    secret   = "radius-secret"
   }
 }
 
@@ -479,7 +479,7 @@ resource "unifi_radius_profile" "test" {
   auth_server {
     ip       = "192.168.1.100"
     port     = 1812
-    x_secret = "radius-secret"
+    secret   = "radius-secret"
   }
 }
 
@@ -504,7 +504,7 @@ resource "unifi_radius_profile" "test" {
   auth_server {
     ip       = "192.168.1.100"
     port     = 1812
-    x_secret = "radius-secret"
+    secret   = "radius-secret"
   }
 }
 
@@ -526,7 +526,7 @@ resource "unifi_radius_profile" "test" {
   auth_server {
     ip       = "192.168.1.100"
     port     = 1812
-    x_secret = "radius-secret"
+    secret   = "radius-secret"
   }
 }
 
@@ -551,7 +551,7 @@ resource "unifi_radius_profile" "test" {
   auth_server {
     ip       = "192.168.1.100"
     port     = 1812
-    x_secret = "radius-secret"
+    secret   = "radius-secret"
   }
 }
 
