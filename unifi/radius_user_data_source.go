@@ -10,17 +10,17 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-var _ datasource.DataSource = &accountDataSource{}
+var _ datasource.DataSource = &radiusUserDataSource{}
 
-func NewAccountDataSource() datasource.DataSource {
-	return &accountDataSource{}
+func NewRadiusUserDataSource() datasource.DataSource {
+	return &radiusUserDataSource{}
 }
 
-type accountDataSource struct {
+type radiusUserDataSource struct {
 	client *Client
 }
 
-type accountDataSourceModel struct {
+type radiusUserDataSourceModel struct {
 	ID               types.String `tfsdk:"id"`
 	Site             types.String `tfsdk:"site"`
 	Name             types.String `tfsdk:"name"`
@@ -30,21 +30,21 @@ type accountDataSourceModel struct {
 	NetworkID        types.String `tfsdk:"network_id"`
 }
 
-func (d *accountDataSource) Metadata(
+func (d *radiusUserDataSource) Metadata(
 	ctx context.Context,
 	req datasource.MetadataRequest,
 	resp *datasource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_account"
+	resp.TypeName = req.ProviderTypeName + "_radius_user"
 }
 
-func (d *accountDataSource) Schema(
+func (d *radiusUserDataSource) Schema(
 	ctx context.Context,
 	req datasource.SchemaRequest,
 	resp *datasource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Data source for RADIUS user accounts.",
+		MarkdownDescription: "Data source for RADIUS users.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -81,7 +81,7 @@ func (d *accountDataSource) Schema(
 	}
 }
 
-func (d *accountDataSource) Configure(
+func (d *radiusUserDataSource) Configure(
 	ctx context.Context,
 	req datasource.ConfigureRequest,
 	resp *datasource.ConfigureResponse,
@@ -105,12 +105,12 @@ func (d *accountDataSource) Configure(
 	d.client = client
 }
 
-func (d *accountDataSource) Read(
+func (d *radiusUserDataSource) Read(
 	ctx context.Context,
 	req datasource.ReadRequest,
 	resp *datasource.ReadResponse,
 ) {
-	var data accountDataSourceModel
+	var data radiusUserDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -127,8 +127,8 @@ func (d *accountDataSource) Read(
 	accounts, err := d.client.ListAccount(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading Accounts",
-			"Could not read accounts: "+err.Error(),
+			"Error Reading Radius Users",
+			"Could not read radius users: "+err.Error(),
 		)
 		return
 	}
@@ -143,8 +143,8 @@ func (d *accountDataSource) Read(
 
 	if account == nil {
 		resp.Diagnostics.AddError(
-			"Account Not Found",
-			fmt.Sprintf("Account with name %s not found", name),
+			"Radius User Not Found",
+			fmt.Sprintf("Radius user with name %s not found", name),
 		)
 		return
 	}

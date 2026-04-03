@@ -124,12 +124,14 @@ func (r *firewallRuleResource) Schema(
 				},
 			},
 			"rule_index": schema.Int64Attribute{
-				MarkdownDescription: "The index of the rule. Must be >= 2000 < 3000 or >= 4000 < 5000.",
+				MarkdownDescription: "The index of the rule. Must be >= 2000 < 3000, >= 4000 < 5000, >= 20000 < 30000, or >= 40000 < 50000.",
 				Required:            true,
 				Validators: []validator.Int64{
 					int64validator.Any(
 						int64validator.Between(2000, 2999),
 						int64validator.Between(4000, 4999),
+						int64validator.Between(20000, 29999),
+						int64validator.Between(40000, 49999),
 					),
 				},
 			},

@@ -276,7 +276,8 @@ func (p *unifiProvider) Configure(
 
 func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewAccountFrameworkResource,
+		NewRadiusUserResource,
+		NewDeprecatedAccountResource,
 		NewBGPResource,
 		NewDeviceFrameworkResource,
 		NewDNSRecordFrameworkResource,
@@ -307,7 +308,8 @@ func (p *unifiProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		NewClientInfoListDataSource,
 		NewClientListDataSource,
 		NewNetworkDataSource,
-		NewAccountDataSource,
+		NewRadiusUserDataSource,
+		NewDeprecatedAccountDataSource,
 		NewAPGroupDataSource,
 		NewDNSRecordDataSource,
 		NewPortProfileDataSource,
