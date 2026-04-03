@@ -11,6 +11,8 @@ on:
 
   pull_request:
     types: ["opened", "synchronize"]
+    branches-ignore:
+      - "dependabot/**"
     paths:
       - "**.go"
       - "vendor/**"
@@ -22,9 +24,6 @@ on:
 jobs:
   gosec:
     name: gosec
-    # Skip running on Dependabot PRs to avoid blocking their merges,
-    # as they often lack the permissions required for security-events: write
-    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       actions: read
