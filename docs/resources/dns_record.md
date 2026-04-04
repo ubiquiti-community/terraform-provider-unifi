@@ -28,6 +28,7 @@ resource "unifi_dns_record" "test" {
 ### Required
 
 - `name` (String) The key of the DNS record.
+- `record_type` (String) The type of the DNS record.
 - `value` (String) The value of the DNS record.
 
 ### Optional
@@ -35,7 +36,6 @@ resource "unifi_dns_record" "test" {
 - `enabled` (Boolean) Whether the DNS record is enabled.
 - `port` (Number) The port of the DNS record.
 - `priority` (Number) The priority of the DNS record.
-- `record_type` (String) The type of the DNS record.
 - `site` (String) The name of the site to associate the DNS record with.
 - `ttl` (Number) The TTL of the DNS record.
 - `weight` (Number) The weight of the DNS record.
