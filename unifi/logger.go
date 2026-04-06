@@ -3,7 +3,6 @@ package unifi
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -13,83 +12,78 @@ const (
 )
 
 type UnifiLogger struct {
-	ctx context.Context
-	mu  sync.Mutex
+	baseCtx context.Context
 }
 
 func NewLogger(ctx context.Context) *UnifiLogger {
 	return &UnifiLogger{
-		ctx: tflog.NewSubsystem(ctx, subsystem),
+		baseCtx: ctx,
 	}
 }
 
-// Factor the lock boilerplate into one place.
-func (l *UnifiLogger) log(fn func()) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	fn()
+func (l *UnifiLogger) ctx() context.Context {
+	// Create a fresh subsystem context each time
+	return tflog.NewSubsystem(l.baseCtx, subsystem)
 }
 
 func (l *UnifiLogger) Error(msg string, keysAndValues ...any) {
-	l.log(func() {
-		fields, err := convertToFields(keysAndValues)
-		if err != nil {
-			tflog.SubsystemError(
-				l.ctx,
-				subsystem,
-				fmt.Sprintf("invalid log key-value pairs: %s", err),
-			)
-		}
-		tflog.SubsystemError(l.ctx, subsystem, msg, fields)
-	})
+	ctx := l.ctx()
+
+	fields, err := convertToFields(keysAndValues)
+	if err != nil {
+		tflog.SubsystemError(
+			ctx,
+			subsystem,
+			fmt.Sprintf("invalid log key-value pairs: %s", err),
+		)
+	}
+	tflog.SubsystemError(ctx, subsystem, msg, fields)
 }
 
 func (l *UnifiLogger) Printf(format string, v ...any) {
-	l.log(func() {
-		tflog.SubsystemInfo(l.ctx, subsystem, fmt.Sprintf(format, v...))
-	})
+	tflog.SubsystemInfo(l.ctx(), subsystem, fmt.Sprintf(format, v...))
 }
 
 func (l *UnifiLogger) Info(msg string, keysAndValues ...any) {
-	l.log(func() {
-		fields, err := convertToFields(keysAndValues)
-		if err != nil {
-			tflog.SubsystemError(
-				l.ctx,
-				subsystem,
-				fmt.Sprintf("invalid log key-value pairs: %s", err),
-			)
-		}
-		tflog.SubsystemInfo(l.ctx, subsystem, msg, fields)
-	})
+	ctx := l.ctx()
+
+	fields, err := convertToFields(keysAndValues)
+	if err != nil {
+		tflog.SubsystemError(
+			ctx,
+			subsystem,
+			fmt.Sprintf("invalid log key-value pairs: %s", err),
+		)
+	}
+	tflog.SubsystemInfo(ctx, subsystem, msg, fields)
 }
 
 func (l *UnifiLogger) Debug(msg string, keysAndValues ...any) {
-	l.log(func() {
-		fields, err := convertToFields(keysAndValues)
-		if err != nil {
-			tflog.SubsystemError(
-				l.ctx,
-				subsystem,
-				fmt.Sprintf("invalid log key-value pairs: %s", err),
-			)
-		}
-		tflog.SubsystemDebug(l.ctx, subsystem, msg, fields)
-	})
+	ctx := l.ctx()
+
+	fields, err := convertToFields(keysAndValues)
+	if err != nil {
+		tflog.SubsystemError(
+			ctx,
+			subsystem,
+			fmt.Sprintf("invalid log key-value pairs: %s", err),
+		)
+	}
+	tflog.SubsystemDebug(ctx, subsystem, msg, fields)
 }
 
 func (l *UnifiLogger) Warn(msg string, keysAndValues ...any) {
-	l.log(func() {
-		fields, err := convertToFields(keysAndValues)
-		if err != nil {
-			tflog.SubsystemError(
-				l.ctx,
-				subsystem,
-				fmt.Sprintf("invalid log key-value pairs: %s", err),
-			)
-		}
-		tflog.SubsystemWarn(l.ctx, subsystem, msg, fields)
-	})
+	ctx := l.ctx()
+
+	fields, err := convertToFields(keysAndValues)
+	if err != nil {
+		tflog.SubsystemError(
+			ctx,
+			subsystem,
+			fmt.Sprintf("invalid log key-value pairs: %s", err),
+		)
+	}
+	tflog.SubsystemWarn(ctx, subsystem, msg, fields)
 }
 
 func convertToFields(keysAndValues []any) (map[string]any, error) {
