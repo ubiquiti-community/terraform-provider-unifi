@@ -150,6 +150,7 @@ type portOverrideModel struct {
 	StormctrlUcastLevel        types.Int64  `tfsdk:"stormctrl_ucast_level"`
 	StormctrlUcastRate         types.Int64  `tfsdk:"stormctrl_ucast_rate"`
 	StpPortMode                types.Bool   `tfsdk:"stp_port_mode"`
+	TaggedNetworkIDs           types.List   `tfsdk:"tagged_networkconf_ids"`
 	TaggedVLANMgmt             types.String `tfsdk:"tagged_vlan_mgmt"`
 	VoiceNetworkID             types.String `tfsdk:"voice_networkconf_id"`
 }
@@ -824,6 +825,11 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 							Computed:    true,
 						},
+						"tagged_networkconf_ids": schema.ListAttribute{
+							Description: "List of network IDs to tag on this port.",
+							Optional:    true,
+							ElementType: types.StringType,
+						},
 						"tagged_vlan_mgmt": schema.StringAttribute{
 							Description: "Tagged VLAN management.",
 							Optional:    true,
@@ -1068,11 +1074,19 @@ func (r *deviceResource) Read(
 		return
 	}
 
-	// Restore plan-only flags and user-configured port_override
+	// Restore plan-only flags
 	state.AllowAdoption = allowAdoption
 	state.ForgetOnDestroy = forgetOnDestroy
+
+	// Reconcile port_override: the API returns all ports with all fields, but
+	// the user only configures a subset. Rebuild state from the API response
+	// using only the ports/fields the user configured, so drift is detectable.
 	if !priorPortOverride.IsNull() && !priorPortOverride.IsUnknown() {
-		state.PortOverride = priorPortOverride
+		reconciled, reconcileDiags := r.reconcilePortOverrides(ctx, priorPortOverride, device.PortOverrides)
+		resp.Diagnostics.Append(reconcileDiags...)
+		if !resp.Diagnostics.HasError() {
+			state.PortOverride = reconciled
+		}
 	}
 
 	diags = resp.State.Set(ctx, state)
@@ -1676,6 +1690,136 @@ func (r *deviceResource) modelToAPIDevice(
 	return device, diags
 }
 
+// reconcilePortOverrides rebuilds the port_override Set from the API response,
+// but only for ports and fields that the user explicitly configured. This lets
+// Terraform detect drift (e.g. tagged VLANs not applied) without the phantom
+// drift caused by computed fields the API adds for every port.
+func (r *deviceResource) reconcilePortOverrides(
+	ctx context.Context,
+	prior types.Set,
+	apiOverrides []unifi.DevicePortOverrides,
+) (types.Set, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	// Build a map from port index → API port override for fast lookup.
+	apiByIndex := make(map[int64]unifi.DevicePortOverrides, len(apiOverrides))
+	for _, po := range apiOverrides {
+		if po.PortIDX != nil {
+			apiByIndex[*po.PortIDX] = po
+		}
+	}
+
+	// Iterate over the user-configured (prior) port overrides and rebuild each
+	// one using values from the API response for the same port index.
+	var priorModels []portOverrideModel
+	diags.Append(prior.ElementsAs(ctx, &priorModels, false)...)
+	if diags.HasError() {
+		return prior, diags
+	}
+
+	elements := make([]attr.Value, 0, len(priorModels))
+	for _, pm := range priorModels {
+		idx := pm.Index.ValueInt64()
+		apiPO, found := apiByIndex[idx]
+		if !found {
+			// Port not in API response — keep prior value unchanged.
+			objVal, objDiags := types.ObjectValueFrom(ctx, pm.AttributeTypes(), pm)
+			diags.Append(objDiags...)
+			elements = append(elements, objVal)
+			continue
+		}
+
+		// Build a new model seeded from the prior (user config), then update
+		// only the fields that were explicitly set (non-null in prior) with
+		// the actual API value so drift is visible.
+		updated := pm
+
+		if !pm.Name.IsNull() {
+			if apiPO.Name == "" {
+				updated.Name = types.StringNull()
+			} else {
+				updated.Name = types.StringValue(apiPO.Name)
+			}
+		}
+		if !pm.NativeNetworkID.IsNull() {
+			if apiPO.NATiveNetworkID == "" {
+				updated.NativeNetworkID = types.StringNull()
+			} else {
+				updated.NativeNetworkID = types.StringValue(apiPO.NATiveNetworkID)
+			}
+		}
+		if !pm.Forward.IsNull() {
+			if apiPO.Forward == "" {
+				updated.Forward = types.StringNull()
+			} else {
+				updated.Forward = types.StringValue(apiPO.Forward)
+			}
+		}
+		if !pm.TaggedVLANMgmt.IsNull() {
+			if apiPO.TaggedVLANMgmt == "" {
+				updated.TaggedVLANMgmt = types.StringNull()
+			} else {
+				updated.TaggedVLANMgmt = types.StringValue(apiPO.TaggedVLANMgmt)
+			}
+		}
+		if !pm.ExcludedNetworkIDs.IsNull() {
+			if len(apiPO.ExcludedNetworkIDs) > 0 {
+				sorted := make([]string, len(apiPO.ExcludedNetworkIDs))
+				copy(sorted, apiPO.ExcludedNetworkIDs)
+				sort.Strings(sorted)
+				vals := make([]attr.Value, len(sorted))
+				for i, id := range sorted {
+					vals[i] = types.StringValue(id)
+				}
+				listVal, listDiags := types.ListValue(types.StringType, vals)
+				diags.Append(listDiags...)
+				updated.ExcludedNetworkIDs = listVal
+			} else {
+				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
+				diags.Append(listDiags...)
+				updated.ExcludedNetworkIDs = emptyList
+			}
+		}
+		if !pm.TaggedNetworkIDs.IsNull() {
+			if len(apiPO.TaggedNetworkIDs) > 0 {
+				vals := make([]attr.Value, len(apiPO.TaggedNetworkIDs))
+				for i, id := range apiPO.TaggedNetworkIDs {
+					vals[i] = types.StringValue(id)
+				}
+				listVal, listDiags := types.ListValue(types.StringType, vals)
+				diags.Append(listDiags...)
+				updated.TaggedNetworkIDs = listVal
+			} else {
+				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
+				diags.Append(listDiags...)
+				updated.TaggedNetworkIDs = emptyList
+			}
+		}
+		if !pm.PortProfileID.IsNull() {
+			if apiPO.PortProfileID == "" {
+				updated.PortProfileID = types.StringNull()
+			} else {
+				updated.PortProfileID = types.StringValue(apiPO.PortProfileID)
+			}
+		}
+
+		objVal, objDiags := types.ObjectValueFrom(ctx, updated.AttributeTypes(), updated)
+		diags.Append(objDiags...)
+		elements = append(elements, objVal)
+	}
+
+	if diags.HasError() {
+		return prior, diags
+	}
+
+	setValue, setDiags := types.SetValue(types.ObjectType{AttrTypes: portOverrideAttrTypes()}, elements)
+	diags.Append(setDiags...)
+	if diags.HasError() {
+		return prior, diags
+	}
+	return setValue, diags
+}
+
 func (r *deviceResource) portOverridesToFramework(
 	ctx context.Context,
 	pos []unifi.DevicePortOverrides,
@@ -1840,6 +1984,20 @@ func (r *deviceResource) portOverridesToFramework(
 				continue
 			}
 			model.ExcludedNetworkIDs = listVal
+		}
+
+		if len(po.TaggedNetworkIDs) == 0 {
+			model.TaggedNetworkIDs = types.ListNull(types.StringType)
+		} else {
+			taggedValues := make([]attr.Value, 0, len(po.TaggedNetworkIDs))
+			for _, id := range po.TaggedNetworkIDs {
+				taggedValues = append(taggedValues, types.StringValue(id))
+			}
+			listVal, listDiags := types.ListValue(types.StringType, taggedValues)
+			diags.Append(listDiags...)
+			if !diags.HasError() {
+				model.TaggedNetworkIDs = listVal
+			}
 		}
 
 		if len(po.MulticastRouterNetworkIDs) == 0 {
@@ -2032,6 +2190,15 @@ func (r *deviceResource) frameworkToPortOverrides(
 				po.ExcludedNetworkIDs = excludedIDs
 			}
 
+			if !model.TaggedNetworkIDs.IsNull() {
+				var taggedIDs []string
+				diags.Append(model.TaggedNetworkIDs.ElementsAs(ctx, &taggedIDs, true)...)
+				if diags.HasError() {
+					return nil, diags
+				}
+				po.TaggedNetworkIDs = taggedIDs
+			}
+
 			if !model.MulticastRouterNetworkIDs.IsNull() {
 				var multicastIDs []string
 				diags.Append(
@@ -2177,6 +2344,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"stormctrl_ucast_level":            types.Int64Type,
 		"stormctrl_ucast_rate":             types.Int64Type,
 		"stp_port_mode":                    types.BoolType,
+		"tagged_networkconf_ids":           types.ListType{ElemType: types.StringType},
 		"tagged_vlan_mgmt":                 types.StringType,
 		"voice_networkconf_id":             types.StringType,
 	}
