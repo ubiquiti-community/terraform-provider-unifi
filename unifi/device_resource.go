@@ -1081,7 +1081,11 @@ func (r *deviceResource) Read(
 	// Reconcile port_override: the API returns all ports with all fields, but
 	// the user only configures a subset. Rebuild state from the API response
 	// using only the ports/fields the user configured, so drift is detectable.
-	if !priorPortOverride.IsNull() && !priorPortOverride.IsUnknown() {
+	// If the user configured no port_overrides, keep state null so Terraform
+	// doesn't plan to remove ports it doesn't manage.
+	if priorPortOverride.IsNull() || priorPortOverride.IsUnknown() {
+		state.PortOverride = priorPortOverride
+	} else {
 		reconciled, reconcileDiags := r.reconcilePortOverrides(ctx, priorPortOverride, device.PortOverrides)
 		resp.Diagnostics.Append(reconcileDiags...)
 		if !resp.Diagnostics.HasError() {
@@ -1852,7 +1856,7 @@ func (r *deviceResource) portOverridesToFramework(
 		}
 
 		if po.OpMode == "" {
-			model.OpMode = types.StringValue("switch")
+			model.OpMode = types.StringNull()
 		} else {
 			model.OpMode = types.StringValue(po.OpMode)
 		}
@@ -2081,9 +2085,9 @@ func (r *deviceResource) frameworkToPortOverrides(
 			if !model.PortProfileID.IsNull() {
 				po.PortProfileID = model.PortProfileID.ValueString()
 			}
-			if !model.OpMode.IsNull() {
-				po.OpMode = model.OpMode.ValueString()
-			}
+			// op_mode is intentionally not written: the API returns it on GET
+			// but rejects it on PUT for gateway devices. Switches work fine
+			// without it as the controller preserves the existing value.
 			if !model.PoeMode.IsNull() {
 				po.PoeMode = model.PoeMode.ValueString()
 			}
