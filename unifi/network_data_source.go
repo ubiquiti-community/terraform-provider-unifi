@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -25,27 +24,6 @@ func NewNetworkDataSource() datasource.DataSource {
 // networkDataSource defines the data source implementation.
 type networkDataSource struct {
 	client *Client
-}
-
-// dhcpV6ServerModel describes the DHCPv6 server configuration (data source only).
-type dhcpV6ServerModel struct {
-	Enabled    types.Bool   `tfsdk:"enabled"`
-	DNSAuto    types.Bool   `tfsdk:"dns_auto"`
-	DNSServers types.List   `tfsdk:"dns_servers"`
-	Lease      types.Int64  `tfsdk:"lease"`
-	Start      types.String `tfsdk:"start"`
-	Stop       types.String `tfsdk:"stop"`
-}
-
-func (m dhcpV6ServerModel) AttributeTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"enabled":     types.BoolType,
-		"dns_auto":    types.BoolType,
-		"dns_servers": types.ListType{ElemType: types.StringType},
-		"lease":       types.Int64Type,
-		"start":       types.StringType,
-		"stop":        types.StringType,
-	}
 }
 
 // networkDataSourceModel describes the data source data model.
