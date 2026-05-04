@@ -135,18 +135,6 @@ resource "unifi_static_route" "test" {
 `
 }
 
-func testAccStaticRouteFrameworkConfig_nextHop(nextHop string) string {
-	return `
-resource "unifi_static_route" "test" {
-	name     = "test-route"
-	network  = "192.168.100.0/24"
-	type     = "nexthop-route"
-	distance = 1
-	next_hop = "` + nextHop + `"
-}
-`
-}
-
 func testAccStaticRouteFrameworkConfig_ipv6() string {
 	return `
 resource "unifi_static_route" "test" {
