@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -104,9 +105,48 @@ type settingUSGModel struct {
 	UPnPWANInterface               types.String `tfsdk:"upnp_wan_interface"`
 }
 
+type settingDohCustomServerModel struct {
+	Enabled    types.Bool   `tfsdk:"enabled"`
+	SDNSStamp  types.String `tfsdk:"sdns_stamp"`
+	ServerName types.String `tfsdk:"server_name"`
+}
+
+type settingDohModel struct {
+	CustomServers types.List   `tfsdk:"custom_servers"`
+	ServerNames   types.List   `tfsdk:"server_names"`
+	State         types.String `tfsdk:"state"`
+}
+
+type settingIpsHoneypotModel struct {
+	IPAddress types.String `tfsdk:"ip_address"`
+	NetworkID types.String `tfsdk:"network_id"`
+	Version   types.String `tfsdk:"version"`
+}
+
+type settingIpsWhitelistModel struct {
+	Direction types.String `tfsdk:"direction"`
+	Mode      types.String `tfsdk:"mode"`
+	Value     types.String `tfsdk:"value"`
+}
+
+type settingIpsModel struct {
+	AdvancedFilteringPreference         types.String `tfsdk:"advanced_filtering_preference"`
+	ContentFilteringBlockingPageEnabled types.Bool   `tfsdk:"content_filtering_blocking_page_enabled"`
+	EnabledCategories                   types.List   `tfsdk:"enabled_categories"`
+	EnabledNetworks                     types.List   `tfsdk:"enabled_networks"`
+	Honeypot                            types.List   `tfsdk:"honeypot"`
+	HoneypotEnabled                     types.Bool   `tfsdk:"honeypot_enabled"`
+	IPSMode                             types.String `tfsdk:"ips_mode"`
+	MemoryOptimized                     types.Bool   `tfsdk:"memory_optimized"`
+	RestrictTorrents                    types.Bool   `tfsdk:"restrict_torrents"`
+	SuppressionWhitelist                types.List   `tfsdk:"suppression_whitelist"`
+}
+
 type settingResourceModel struct {
 	ID     types.String `tfsdk:"id"`
 	Site   types.String `tfsdk:"site"`
+	Doh    types.Object `tfsdk:"doh"`
+	Ips    types.Object `tfsdk:"ips"`
 	Mgmt   types.Object `tfsdk:"mgmt"`
 	Radius types.Object `tfsdk:"radius"`
 	USG    types.Object `tfsdk:"usg"`
@@ -143,6 +183,162 @@ func (r *settingResource) Schema(
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"doh": schema.SingleNestedAttribute{
+				MarkdownDescription: "Encrypted DNS (DNS-over-HTTPS) settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"state": schema.StringAttribute{
+						MarkdownDescription: "Encrypted DNS state: off, auto, manual, or custom.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("off", "auto", "manual", "custom"),
+						},
+					},
+					"server_names": schema.ListAttribute{
+						MarkdownDescription: "Predefined DNS provider names (e.g. \"cloudflare\", \"google\").",
+						Optional:            true,
+						Computed:            true,
+						ElementType:         types.StringType,
+					},
+					"custom_servers": schema.ListNestedAttribute{
+						MarkdownDescription: "Custom DNS servers specified via DNS stamp.",
+						Optional:            true,
+						Computed:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"enabled": schema.BoolAttribute{
+									MarkdownDescription: "Enable this custom server. Defaults to true.",
+									Optional:            true,
+									Computed:            true,
+									Default:             booldefault.StaticBool(true),
+								},
+								"sdns_stamp": schema.StringAttribute{
+									MarkdownDescription: "DNS stamp (sdns://) for the custom resolver.",
+									Required:            true,
+								},
+								"server_name": schema.StringAttribute{
+									MarkdownDescription: "Human-readable name for this custom server.",
+									Required:            true,
+								},
+							},
+						},
+					},
+				},
+			},
+			"ips": schema.SingleNestedAttribute{
+				MarkdownDescription: "Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"ips_mode": schema.StringAttribute{
+						MarkdownDescription: "IPS operating mode: ids (detect only), ips (detect and block), ipsInline, or disabled.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("ids", "ips", "ipsInline", "disabled"),
+						},
+					},
+					"enabled_categories": schema.ListAttribute{
+						MarkdownDescription: "Emerging Threats ruleset categories to enable (e.g. \"emerging-malware\", \"tor\", \"phishing\").",
+						Optional:            true,
+						Computed:            true,
+						ElementType:         types.StringType,
+					},
+					"enabled_networks": schema.ListAttribute{
+						MarkdownDescription: "Network IDs to apply IPS inspection to.",
+						Optional:            true,
+						Computed:            true,
+						ElementType:         types.StringType,
+					},
+					"honeypot_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable honeypot to detect internal port scans.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"honeypot": schema.ListNestedAttribute{
+						MarkdownDescription: "Honeypot IP addresses per network.",
+						Optional:            true,
+						Computed:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"ip_address": schema.StringAttribute{
+									MarkdownDescription: "IP address to use as a honeypot.",
+									Required:            true,
+								},
+								"network_id": schema.StringAttribute{
+									MarkdownDescription: "Network ID this honeypot IP belongs to.",
+									Required:            true,
+								},
+								"version": schema.StringAttribute{
+									MarkdownDescription: "IP version: v4 or v6.",
+									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.OneOf("v4", "v6"),
+									},
+								},
+							},
+						},
+					},
+					"restrict_torrents": schema.BoolAttribute{
+						MarkdownDescription: "Block BitTorrent traffic.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"content_filtering_blocking_page_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Show a blocking page when content filtering blocks a request.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"memory_optimized": schema.BoolAttribute{
+						MarkdownDescription: "Use memory-optimized IPS ruleset (reduced rule set for low-memory devices).",
+						Optional:            true,
+						Computed:            true,
+					},
+					"advanced_filtering_preference": schema.StringAttribute{
+						MarkdownDescription: "Advanced filtering mode: manual or disabled.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("manual", "disabled"),
+						},
+					},
+					"suppression_whitelist": schema.ListNestedAttribute{
+						MarkdownDescription: "IPS suppression whitelist entries — sources/destinations to exclude from inspection.",
+						Optional:            true,
+						Computed:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"direction": schema.StringAttribute{
+									MarkdownDescription: "Match direction: both, src, or dest.",
+									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.OneOf("both", "src", "dest"),
+									},
+								},
+								"mode": schema.StringAttribute{
+									MarkdownDescription: "Match mode: ip, subnet, or network.",
+									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.OneOf("ip", "subnet", "network"),
+									},
+								},
+								"value": schema.StringAttribute{
+									MarkdownDescription: "IP address, CIDR subnet, or network ID to whitelist.",
+									Required:            true,
+								},
+							},
+						},
+					},
 				},
 			},
 			"mgmt": schema.SingleNestedAttribute{
@@ -501,6 +697,40 @@ func (r *settingResource) Create(
 	}
 
 	// Update each configured setting type
+	if !data.Doh.IsNull() && !data.Doh.IsUnknown() {
+		var doh settingDohModel
+		resp.Diagnostics.Append(data.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		setting := r.dohModelToSetting(ctx, &doh, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating DoH Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.Ips.IsNull() && !data.Ips.IsUnknown() {
+		var ips settingIpsModel
+		resp.Diagnostics.Append(data.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		setting := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating IPS Setting", err.Error())
+			return
+		}
+	}
+
 	if !data.Mgmt.IsNull() && !data.Mgmt.IsUnknown() {
 		var mgmt settingMgmtModel
 		resp.Diagnostics.Append(data.Mgmt.As(ctx, &mgmt, basetypes.ObjectAsOptions{})...)
@@ -608,6 +838,40 @@ func (r *settingResource) Update(
 	}
 
 	// Update each configured setting type
+	if !plan.Doh.IsNull() && !plan.Doh.IsUnknown() {
+		var doh settingDohModel
+		resp.Diagnostics.Append(plan.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		setting := r.dohModelToSetting(ctx, &doh, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating DoH Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.Ips.IsNull() && !plan.Ips.IsUnknown() {
+		var ips settingIpsModel
+		resp.Diagnostics.Append(plan.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		setting := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating IPS Setting", err.Error())
+			return
+		}
+	}
+
 	if !plan.Mgmt.IsNull() && !plan.Mgmt.IsUnknown() {
 		var mgmt settingMgmtModel
 		resp.Diagnostics.Append(plan.Mgmt.As(ctx, &mgmt, basetypes.ObjectAsOptions{})...)
@@ -703,6 +967,92 @@ func (r *settingResource) readSettings(
 	data.Site = types.StringValue(site)
 
 	// Only read settings that were configured in the plan, set others to null
+
+	dohCustomServerAttrTypes := map[string]attr.Type{
+		"enabled":     types.BoolType,
+		"sdns_stamp":  types.StringType,
+		"server_name": types.StringType,
+	}
+	dohAttrTypes := map[string]attr.Type{
+		"state":        types.StringType,
+		"server_names": types.ListType{ElemType: types.StringType},
+		"custom_servers": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: dohCustomServerAttrTypes},
+		},
+	}
+	honeypotAttrTypes := map[string]attr.Type{
+		"ip_address": types.StringType,
+		"network_id": types.StringType,
+		"version":    types.StringType,
+	}
+	whitelistAttrTypes := map[string]attr.Type{
+		"direction": types.StringType,
+		"mode":      types.StringType,
+		"value":     types.StringType,
+	}
+	ipsAttrTypes := map[string]attr.Type{
+		"advanced_filtering_preference":          types.StringType,
+		"content_filtering_blocking_page_enabled": types.BoolType,
+		"enabled_categories":                     types.ListType{ElemType: types.StringType},
+		"enabled_networks":                       types.ListType{ElemType: types.StringType},
+		"honeypot_enabled":                       types.BoolType,
+		"honeypot":                               types.ListType{ElemType: types.ObjectType{AttrTypes: honeypotAttrTypes}},
+		"ips_mode":                               types.StringType,
+		"memory_optimized":                       types.BoolType,
+		"restrict_torrents":                      types.BoolType,
+		"suppression_whitelist":                  types.ListType{ElemType: types.ObjectType{AttrTypes: whitelistAttrTypes}},
+	}
+
+	// DoH settings
+	if !data.Doh.IsNull() && !data.Doh.IsUnknown() {
+		var planDoh settingDohModel
+		diags.Append(data.Doh.As(ctx, &planDoh, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return
+		}
+
+		_, dohSetting, err := ui.GetSetting[*settings.Doh](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading DoH Setting", err.Error())
+			return
+		}
+
+		dohModel := r.dohSettingToModel(ctx, dohSetting, &planDoh, diags)
+		objValue, d := types.ObjectValueFrom(ctx, dohAttrTypes, dohModel)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Doh = objValue
+	} else {
+		data.Doh = types.ObjectNull(dohAttrTypes)
+	}
+
+	// IPS settings
+	if !data.Ips.IsNull() && !data.Ips.IsUnknown() {
+		var planIps settingIpsModel
+		diags.Append(data.Ips.As(ctx, &planIps, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return
+		}
+
+		_, ipsSetting, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading IPS Setting", err.Error())
+			return
+		}
+
+		ipsModel := r.ipsSettingToModel(ctx, ipsSetting, &planIps, diags)
+		objValue, d := types.ObjectValueFrom(ctx, ipsAttrTypes, ipsModel)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Ips = objValue
+	} else {
+		data.Ips = types.ObjectNull(ipsAttrTypes)
+	}
+
 	// Mgmt settings
 	if !data.Mgmt.IsNull() && !data.Mgmt.IsUnknown() {
 		// Get the current plan/state values
@@ -1461,6 +1811,312 @@ func (r *settingResource) usgSettingToModel(
 		}
 	} else {
 		model.UPnPWANInterface = types.StringNull()
+	}
+
+	return model
+}
+
+// DoH conversion functions.
+func (r *settingResource) dohModelToSetting(
+	ctx context.Context,
+	model *settingDohModel,
+	diags *diag.Diagnostics,
+) *settings.Doh {
+	setting := &settings.Doh{}
+
+	if !model.State.IsNull() && !model.State.IsUnknown() {
+		setting.State = model.State.ValueString()
+	}
+	if !model.ServerNames.IsNull() && !model.ServerNames.IsUnknown() {
+		diags.Append(model.ServerNames.ElementsAs(ctx, &setting.ServerNames, false)...)
+		if diags.HasError() {
+			return setting
+		}
+	}
+	if !model.CustomServers.IsNull() && !model.CustomServers.IsUnknown() {
+		var servers []settingDohCustomServerModel
+		diags.Append(model.CustomServers.ElementsAs(ctx, &servers, false)...)
+		if diags.HasError() {
+			return setting
+		}
+		for _, s := range servers {
+			enabled := true
+			if !s.Enabled.IsNull() && !s.Enabled.IsUnknown() {
+				enabled = s.Enabled.ValueBool()
+			}
+			setting.CustomServers = append(setting.CustomServers, settings.SettingDohCustomServers{
+				Enabled:    enabled,
+				SdnsStamp:  s.SDNSStamp.ValueString(),
+				ServerName: s.ServerName.ValueString(),
+			})
+		}
+	}
+
+	return setting
+}
+
+func (r *settingResource) dohSettingToModel(
+	ctx context.Context,
+	setting *settings.Doh,
+	plan *settingDohModel,
+	diags *diag.Diagnostics,
+) *settingDohModel {
+	model := &settingDohModel{}
+
+	if !plan.State.IsNull() && !plan.State.IsUnknown() {
+		if setting.State != "" {
+			model.State = types.StringValue(setting.State)
+		} else {
+			model.State = types.StringNull()
+		}
+	} else {
+		model.State = types.StringNull()
+	}
+
+	if !plan.ServerNames.IsNull() && !plan.ServerNames.IsUnknown() {
+		if len(setting.ServerNames) > 0 {
+			listVal, d := types.ListValueFrom(ctx, types.StringType, setting.ServerNames)
+			diags.Append(d...)
+			model.ServerNames = listVal
+		} else {
+			model.ServerNames = types.ListNull(types.StringType)
+		}
+	} else {
+		model.ServerNames = types.ListNull(types.StringType)
+	}
+
+	customServerAttrTypes := map[string]attr.Type{
+		"enabled":     types.BoolType,
+		"sdns_stamp":  types.StringType,
+		"server_name": types.StringType,
+	}
+	if !plan.CustomServers.IsNull() && !plan.CustomServers.IsUnknown() {
+		if len(setting.CustomServers) > 0 {
+			var servers []settingDohCustomServerModel
+			for _, s := range setting.CustomServers {
+				servers = append(servers, settingDohCustomServerModel{
+					Enabled:    types.BoolValue(s.Enabled),
+					SDNSStamp:  types.StringValue(s.SdnsStamp),
+					ServerName: types.StringValue(s.ServerName),
+				})
+			}
+			listVal, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: customServerAttrTypes}, servers)
+			diags.Append(d...)
+			model.CustomServers = listVal
+		} else {
+			model.CustomServers = types.ListNull(types.ObjectType{AttrTypes: customServerAttrTypes})
+		}
+	} else {
+		model.CustomServers = types.ListNull(types.ObjectType{AttrTypes: customServerAttrTypes})
+	}
+
+	return model
+}
+
+// IPS conversion functions.
+func (r *settingResource) ipsModelToSetting(
+	ctx context.Context,
+	model *settingIpsModel,
+	diags *diag.Diagnostics,
+) *settings.Ips {
+	setting := &settings.Ips{}
+
+	if !model.IPSMode.IsNull() && !model.IPSMode.IsUnknown() {
+		setting.IPsMode = model.IPSMode.ValueString()
+	}
+	if !model.HoneypotEnabled.IsNull() && !model.HoneypotEnabled.IsUnknown() {
+		setting.HoneypotEnabled = model.HoneypotEnabled.ValueBool()
+	}
+	if !model.RestrictTorrents.IsNull() && !model.RestrictTorrents.IsUnknown() {
+		setting.RestrictTorrents = model.RestrictTorrents.ValueBool()
+	}
+	if !model.ContentFilteringBlockingPageEnabled.IsNull() && !model.ContentFilteringBlockingPageEnabled.IsUnknown() {
+		setting.ContentFilteringBlockingPageEnabled = model.ContentFilteringBlockingPageEnabled.ValueBool()
+	}
+	if !model.MemoryOptimized.IsNull() && !model.MemoryOptimized.IsUnknown() {
+		setting.MemoryOptimized = model.MemoryOptimized.ValueBool()
+	}
+	if !model.AdvancedFilteringPreference.IsNull() && !model.AdvancedFilteringPreference.IsUnknown() {
+		setting.AdvancedFilteringPreference = model.AdvancedFilteringPreference.ValueString()
+	}
+	if !model.EnabledCategories.IsNull() && !model.EnabledCategories.IsUnknown() {
+		diags.Append(model.EnabledCategories.ElementsAs(ctx, &setting.EnabledCategories, false)...)
+		if diags.HasError() {
+			return setting
+		}
+	}
+	if !model.EnabledNetworks.IsNull() && !model.EnabledNetworks.IsUnknown() {
+		diags.Append(model.EnabledNetworks.ElementsAs(ctx, &setting.EnabledNetworks, false)...)
+		if diags.HasError() {
+			return setting
+		}
+	}
+	if !model.Honeypot.IsNull() && !model.Honeypot.IsUnknown() {
+		var honeypots []settingIpsHoneypotModel
+		diags.Append(model.Honeypot.ElementsAs(ctx, &honeypots, false)...)
+		if diags.HasError() {
+			return setting
+		}
+		for _, h := range honeypots {
+			setting.Honeypot = append(setting.Honeypot, settings.SettingIpsHoneypot{
+				IPAddress: h.IPAddress.ValueString(),
+				NetworkID: h.NetworkID.ValueString(),
+				Version:   h.Version.ValueString(),
+			})
+		}
+	}
+	if !model.SuppressionWhitelist.IsNull() && !model.SuppressionWhitelist.IsUnknown() {
+		var whitelist []settingIpsWhitelistModel
+		diags.Append(model.SuppressionWhitelist.ElementsAs(ctx, &whitelist, false)...)
+		if diags.HasError() {
+			return setting
+		}
+		if setting.Suppression == nil {
+			setting.Suppression = &settings.SettingIpsSuppression{}
+		}
+		for _, w := range whitelist {
+			setting.Suppression.Whitelist = append(
+				setting.Suppression.Whitelist,
+				settings.SettingIpsWhitelist{
+					Direction: w.Direction.ValueString(),
+					Mode:      w.Mode.ValueString(),
+					Value:     w.Value.ValueString(),
+				},
+			)
+		}
+	}
+
+	return setting
+}
+
+func (r *settingResource) ipsSettingToModel(
+	ctx context.Context,
+	setting *settings.Ips,
+	plan *settingIpsModel,
+	diags *diag.Diagnostics,
+) *settingIpsModel {
+	model := &settingIpsModel{}
+
+	if !plan.IPSMode.IsNull() && !plan.IPSMode.IsUnknown() {
+		if setting.IPsMode != "" {
+			model.IPSMode = types.StringValue(setting.IPsMode)
+		} else {
+			model.IPSMode = types.StringNull()
+		}
+	} else {
+		model.IPSMode = types.StringNull()
+	}
+
+	if !plan.HoneypotEnabled.IsNull() && !plan.HoneypotEnabled.IsUnknown() {
+		model.HoneypotEnabled = types.BoolValue(setting.HoneypotEnabled)
+	} else {
+		model.HoneypotEnabled = types.BoolNull()
+	}
+
+	if !plan.RestrictTorrents.IsNull() && !plan.RestrictTorrents.IsUnknown() {
+		model.RestrictTorrents = types.BoolValue(setting.RestrictTorrents)
+	} else {
+		model.RestrictTorrents = types.BoolNull()
+	}
+
+	if !plan.ContentFilteringBlockingPageEnabled.IsNull() && !plan.ContentFilteringBlockingPageEnabled.IsUnknown() {
+		model.ContentFilteringBlockingPageEnabled = types.BoolValue(setting.ContentFilteringBlockingPageEnabled)
+	} else {
+		model.ContentFilteringBlockingPageEnabled = types.BoolNull()
+	}
+
+	if !plan.MemoryOptimized.IsNull() && !plan.MemoryOptimized.IsUnknown() {
+		model.MemoryOptimized = types.BoolValue(setting.MemoryOptimized)
+	} else {
+		model.MemoryOptimized = types.BoolNull()
+	}
+
+	if !plan.AdvancedFilteringPreference.IsNull() && !plan.AdvancedFilteringPreference.IsUnknown() {
+		if setting.AdvancedFilteringPreference != "" {
+			model.AdvancedFilteringPreference = types.StringValue(setting.AdvancedFilteringPreference)
+		} else {
+			model.AdvancedFilteringPreference = types.StringNull()
+		}
+	} else {
+		model.AdvancedFilteringPreference = types.StringNull()
+	}
+
+	if !plan.EnabledCategories.IsNull() && !plan.EnabledCategories.IsUnknown() {
+		if len(setting.EnabledCategories) > 0 {
+			listVal, d := types.ListValueFrom(ctx, types.StringType, setting.EnabledCategories)
+			diags.Append(d...)
+			model.EnabledCategories = listVal
+		} else {
+			model.EnabledCategories = types.ListNull(types.StringType)
+		}
+	} else {
+		model.EnabledCategories = types.ListNull(types.StringType)
+	}
+
+	if !plan.EnabledNetworks.IsNull() && !plan.EnabledNetworks.IsUnknown() {
+		if len(setting.EnabledNetworks) > 0 {
+			listVal, d := types.ListValueFrom(ctx, types.StringType, setting.EnabledNetworks)
+			diags.Append(d...)
+			model.EnabledNetworks = listVal
+		} else {
+			model.EnabledNetworks = types.ListNull(types.StringType)
+		}
+	} else {
+		model.EnabledNetworks = types.ListNull(types.StringType)
+	}
+
+	honeypotAttrTypes := map[string]attr.Type{
+		"ip_address": types.StringType,
+		"network_id": types.StringType,
+		"version":    types.StringType,
+	}
+	if !plan.Honeypot.IsNull() && !plan.Honeypot.IsUnknown() {
+		if len(setting.Honeypot) > 0 {
+			var honeypots []settingIpsHoneypotModel
+			for _, h := range setting.Honeypot {
+				honeypots = append(honeypots, settingIpsHoneypotModel{
+					IPAddress: types.StringValue(h.IPAddress),
+					NetworkID: types.StringValue(h.NetworkID),
+					Version:   types.StringValue(h.Version),
+				})
+			}
+			listVal, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: honeypotAttrTypes}, honeypots)
+			diags.Append(d...)
+			model.Honeypot = listVal
+		} else {
+			model.Honeypot = types.ListNull(types.ObjectType{AttrTypes: honeypotAttrTypes})
+		}
+	} else {
+		model.Honeypot = types.ListNull(types.ObjectType{AttrTypes: honeypotAttrTypes})
+	}
+
+	whitelistAttrTypes := map[string]attr.Type{
+		"direction": types.StringType,
+		"mode":      types.StringType,
+		"value":     types.StringType,
+	}
+	if !plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown() {
+		var whitelist []settings.SettingIpsWhitelist
+		if setting.Suppression != nil {
+			whitelist = setting.Suppression.Whitelist
+		}
+		if len(whitelist) > 0 {
+			var entries []settingIpsWhitelistModel
+			for _, w := range whitelist {
+				entries = append(entries, settingIpsWhitelistModel{
+					Direction: types.StringValue(w.Direction),
+					Mode:      types.StringValue(w.Mode),
+					Value:     types.StringValue(w.Value),
+				})
+			}
+			listVal, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: whitelistAttrTypes}, entries)
+			diags.Append(d...)
+			model.SuppressionWhitelist = listVal
+		} else {
+			model.SuppressionWhitelist = types.ListNull(types.ObjectType{AttrTypes: whitelistAttrTypes})
+		}
+	} else {
+		model.SuppressionWhitelist = types.ListNull(types.ObjectType{AttrTypes: whitelistAttrTypes})
 	}
 
 	return model
