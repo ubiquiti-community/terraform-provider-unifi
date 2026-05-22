@@ -878,7 +878,7 @@ func (r *networkResource) modelToNetwork(
 		GatewayType:             model.GatewayType.ValueStringPointer(),
 		IPV6InterfaceType:       model.IPv6InterfaceType.ValueStringPointer(),
 		LteLanEnabled:           model.LteLan.ValueBool(),
-		VLANEnabled:             true,
+		VLANEnabled:             !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
 		Enabled:                 model.Enabled.ValueBool(),
 		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
 		IPAliases:               []string{},
