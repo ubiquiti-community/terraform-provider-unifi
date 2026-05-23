@@ -692,7 +692,11 @@ func (r *portProfileResource) setResourceData(
 		model.LLDPMedNotifyEnabled = types.BoolNull()
 	}
 
-	model.NativeNetworkConfID = types.StringNull() // Skip for now
+	if portProfile.NATiveNetworkID != "" {
+		model.NativeNetworkConfID = types.StringValue(portProfile.NATiveNetworkID)
+	} else {
+		model.NativeNetworkConfID = types.StringNull()
+	}
 
 	if portProfile.OpMode == "" {
 		model.OpMode = types.StringValue("switch")
@@ -745,7 +749,7 @@ func (r *portProfileResource) setResourceData(
 	model.StormctrlUcastEnabled = types.BoolValue(false)
 	model.StormctrlUcastLevel = types.Int64Null()
 	model.StormctrlUcastRate = types.Int64Null()
-	model.STPPortMode = types.BoolNull()
+	model.STPPortMode = types.BoolValue(portProfile.StpPortMode)
 }
 
 func (r *portProfileResource) applyPlanToState(

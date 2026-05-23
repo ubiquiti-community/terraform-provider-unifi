@@ -478,7 +478,14 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	model.Name = types.StringValue(radiusProfile.Name)
 	model.AccountingEnabled = types.BoolValue(radiusProfile.AccountingEnabled)
 	model.InterimUpdateEnabled = types.BoolValue(radiusProfile.InterimUpdateEnabled)
-	model.InterimUpdateInterval = types.Int64PointerValue(radiusProfile.InterimUpdateInterval)
+	if radiusProfile.InterimUpdateInterval != nil {
+		model.InterimUpdateInterval = types.Int64PointerValue(radiusProfile.InterimUpdateInterval)
+	} else {
+		// UniFi API does not return interim_update_interval for some built-in profiles
+		// (e.g. Default, UID). Use the schema default so state stays in sync and
+		// ignore_changes / plan-modifiers do not generate perpetual drift.
+		model.InterimUpdateInterval = types.Int64Value(3600)
+	}
 	model.UseUSGAcctServer = types.BoolValue(radiusProfile.UseUsgAcctServer)
 	model.UseUSGAuthServer = types.BoolValue(radiusProfile.UseUsgAuthServer)
 	model.VlanEnabled = types.BoolValue(radiusProfile.VLANEnabled)
