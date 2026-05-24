@@ -18,6 +18,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -198,6 +200,9 @@ Clients are created in the controller when observed on the network, so the resou
 				MarkdownDescription: "QoS rate limiting configuration. Controls the client group (usergroup) used for bandwidth limits.",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"id": schema.StringAttribute{
 						MarkdownDescription: "The ID of the client group (usergroup). If set, this group is used directly.",
@@ -258,6 +263,9 @@ Clients are created in the controller when observed on the network, so the resou
 				Optional:            true,
 				Computed:            true,
 				ElementType:         types.StringType,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"blocked": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this client should be blocked from the network.",
@@ -971,7 +979,11 @@ func (r *clientResource) clientToModel(
 		model.Groups = types.ListNull(types.StringType)
 	}
 
-	model.Blocked = types.BoolPointerValue(client.Blocked)
+	// Some controllers (e.g. UniFi OS 5.x / Network App 10.x) omit "blocked" for
+	// fixed-IP-only clients, so client.Blocked is nil. Store the documented default
+	// (false) instead of null; otherwise the schema's Default(false) makes the next
+	// plan propose false → a spurious diff on every create/import.
+	model.Blocked = types.BoolValue(client.Blocked != nil && *client.Blocked)
 	model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
 
 	// Computed attributes
