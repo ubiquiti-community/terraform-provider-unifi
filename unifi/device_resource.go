@@ -17,6 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -248,14 +250,16 @@ func (r *deviceResource) Schema(
 				},
 			},
 			"name": schema.StringAttribute{
-				Description: "The name of the device.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "The name of the device.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"disabled": schema.BoolAttribute{
-				Description: "Specifies whether this device should be disabled.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Specifies whether this device should be disabled.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"allow_adoption": schema.BoolAttribute{
 				Description: "Specifies whether this resource should tell the controller to adopt the device on create.",
@@ -272,107 +276,124 @@ func (r *deviceResource) Schema(
 
 			// Network configuration
 			"config_network": schema.SingleNestedAttribute{
-				Description: "Network configuration for the device.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Network configuration for the device.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
 				Attributes: map[string]schema.Attribute{
 					"type": schema.StringAttribute{
-						Description: "Network configuration type (dhcp or static).",
-						Optional:    true,
-						Computed:    true,
+						Description:   "Network configuration type (dhcp or static).",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						Validators: []validator.String{
 							stringvalidator.OneOf("dhcp", "static"),
 						},
 					},
 					"ip": schema.StringAttribute{
-						Description: "IP address (for static configuration).",
-						Optional:    true,
-						Computed:    true,
+						Description:   "IP address (for static configuration).",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"netmask": schema.StringAttribute{
-						Description: "Network mask (for static configuration).",
-						Optional:    true,
-						Computed:    true,
+						Description:   "Network mask (for static configuration).",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"gateway": schema.StringAttribute{
-						Description: "Gateway address (for static configuration).",
-						Optional:    true,
-						Computed:    true,
+						Description:   "Gateway address (for static configuration).",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"dns1": schema.StringAttribute{
-						Description: "Primary DNS server.",
-						Optional:    true,
-						Computed:    true,
+						Description:   "Primary DNS server.",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"dns2": schema.StringAttribute{
-						Description: "Secondary DNS server.",
-						Optional:    true,
-						Computed:    true,
+						Description:   "Secondary DNS server.",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"dnssuffix": schema.StringAttribute{
-						Description: "DNS suffix.",
-						Optional:    true,
-						Computed:    true,
+						Description:   "DNS suffix.",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"bonding_enabled": schema.BoolAttribute{
-						Description: "Enable network bonding.",
-						Optional:    true,
-						Computed:    true,
+						Description:   "Enable network bonding.",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 					},
 				},
 			},
 
 			// LED settings
 			"led_override": schema.StringAttribute{
-				Description: "LED override setting; valid values are `default`, `on`, and `off`.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "LED override setting; valid values are `default`, `on`, and `off`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
 					stringvalidator.OneOf("default", "on", "off"),
 				},
 			},
 			"led_override_color": schema.StringAttribute{
-				Description: "LED color override (hex color code).",
-				Optional:    true,
-				Computed:    true,
+				Description:   "LED color override (hex color code).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"led_override_color_brightness": schema.Int64Attribute{
-				Description: "LED brightness (0-100).",
-				Optional:    true,
-				Computed:    true,
+				Description:   "LED brightness (0-100).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 
 			// Device features
 			"bandsteering_mode": schema.StringAttribute{
-				Description: "Band steering mode; valid values are `off`, `equal`, and `prefer_5g`.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Band steering mode; valid values are `off`, `equal`, and `prefer_5g`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
 					stringvalidator.OneOf("off", "equal", "prefer_5g"),
 				},
 			},
 			"flowctrl_enabled": schema.BoolAttribute{
-				Description: "Enable flow control.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Enable flow control.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"jumboframe_enabled": schema.BoolAttribute{
-				Description: "Enable jumbo frames.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Enable jumbo frames.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"stp_version": schema.StringAttribute{
-				Description: "STP version; valid values are `stp`, `rstp`, and `disabled`.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "STP version; valid values are `stp`, `rstp`, and `disabled`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
 					stringvalidator.OneOf("stp", "rstp", "disabled"),
 				},
 			},
 			"stp_priority": schema.Int64Attribute{
-				Description: "STP priority.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "STP priority.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 				Validators: []validator.Int64{
 					int64validator.OneOf(
 						0, 4096, 8192, 12288, 16384, 20480,
@@ -382,16 +403,18 @@ func (r *deviceResource) Schema(
 				},
 			},
 			"locked": schema.BoolAttribute{
-				Description: "Specifies whether the device is locked.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Specifies whether the device is locked.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 
 			// PoE settings
 			"poe_mode": schema.StringAttribute{
-				Description: "PoE mode; valid values are `auto`, `pasv24`, `passthrough`, and `off`.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "PoE mode; valid values are `auto`, `pasv24`, `passthrough`, and `off`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "pasv24", "passthrough", "off"),
 				},
@@ -399,103 +422,120 @@ func (r *deviceResource) Schema(
 
 			// VLAN
 			"switch_vlan_enabled": schema.BoolAttribute{
-				Description: "Enable VLAN support on the switch.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Enable VLAN support on the switch.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 
 			// Advanced features
 			"outdoor_mode_override": schema.StringAttribute{
-				Description: "Outdoor mode override; valid values are `default`, `on`, and `off`.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Outdoor mode override; valid values are `default`, `on`, and `off`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators: []validator.String{
 					stringvalidator.OneOf("default", "on", "off"),
 				},
 			},
 			"volume": schema.Int64Attribute{
-				Description: "Volume level (0-100).",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Volume level (0-100).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"x_baresip_password": schema.StringAttribute{
-				Description: "Baresip password.",
-				Optional:    true,
-				Sensitive:   true,
-				Computed:    true,
+				Description:   "Baresip password.",
+				Optional:      true,
+				Sensitive:     true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 
 			// LCD/LCM settings
 			"lcm_brightness": schema.Int64Attribute{
-				Description: "LCM brightness (1-100).",
-				Optional:    true,
-				Computed:    true,
+				Description:   "LCM brightness (1-100).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"lcm_brightness_override": schema.BoolAttribute{
-				Description: "Override LCM brightness.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Override LCM brightness.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"lcm_idle_timeout": schema.Int64Attribute{
-				Description: "LCM idle timeout in seconds (10-3600).",
-				Optional:    true,
-				Computed:    true,
+				Description:   "LCM idle timeout in seconds (10-3600).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"lcm_idle_timeout_override": schema.BoolAttribute{
-				Description: "Override LCM idle timeout.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Override LCM idle timeout.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"lcm_night_mode_begins": schema.StringAttribute{
-				Description: "LCM night mode begin time (HH:MM format).",
-				Optional:    true,
-				Computed:    true,
+				Description:   "LCM night mode begin time (HH:MM format).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"lcm_night_mode_ends": schema.StringAttribute{
-				Description: "LCM night mode end time (HH:MM format).",
-				Optional:    true,
-				Computed:    true,
+				Description:   "LCM night mode end time (HH:MM format).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 
 			// Outlet settings
 			"outlet_enabled": schema.BoolAttribute{
-				Description: "Enable outlet control.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Enable outlet control.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 
 			// Management
 			"mgmt_network_id": schema.StringAttribute{
-				Description: "Management network ID.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Management network ID.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 
 			// Computed attributes
 			"adopted": schema.BoolAttribute{
-				Description: "Whether the device is adopted.",
-				Computed:    true,
+				Description:   "Whether the device is adopted.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"model": schema.StringAttribute{
-				Description: "Device model.",
-				Computed:    true,
+				Description:   "Device model.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"type": schema.StringAttribute{
-				Description: "Device type.",
-				Computed:    true,
+				Description:   "Device type.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"state": schema.Int64Attribute{
-				Description: "Device state.",
-				Computed:    true,
+				Description:   "Device state.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 
 			// Radio table.
 			// UseStateForUnknown on each nested Computed+Optional attribute so refreshed values (e.g. `name`)
 			// survive plan and aren't dropped from the round-trip PUT.
 			"radio_table": schema.ListNestedAttribute{
-				Description: "Radio configuration table.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Radio configuration table.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"radio": schema.StringAttribute{
@@ -618,9 +658,10 @@ func (r *deviceResource) Schema(
 
 			// Outlet overrides
 			"outlet_overrides": schema.ListNestedAttribute{
-				Description: "Outlet configuration overrides.",
-				Optional:    true,
-				Computed:    true,
+				Description:   "Outlet configuration overrides.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"index": schema.Int64Attribute{
@@ -1282,6 +1323,9 @@ func (r *deviceResource) ModifyPlan(
 	merged, diags := mergePortOverridesByIndex(plan.PortOverride, state.PortOverride)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if merged.Equal(plan.PortOverride) {
 		return
 	}
 	plan.PortOverride = merged
