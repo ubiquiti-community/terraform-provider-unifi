@@ -15,6 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -486,7 +488,9 @@ func (r *deviceResource) Schema(
 				Computed:    true,
 			},
 
-			// Radio table
+			// Radio table.
+			// UseStateForUnknown on each nested Computed+Optional attribute so refreshed values (e.g. `name`)
+			// survive plan and aren't dropped from the round-trip PUT.
 			"radio_table": schema.ListNestedAttribute{
 				Description: "Radio configuration table.",
 				Optional:    true,
@@ -494,99 +498,118 @@ func (r *deviceResource) Schema(
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"radio": schema.StringAttribute{
-							Description: "Radio band (ng, na, ad, 6e).",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Radio band (ng, na, ad, 6e).",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						},
 						"channel": schema.StringAttribute{
-							Description: "Channel number or 'auto'.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Channel number or 'auto'.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						},
 						"ht": schema.Int64Attribute{
-							Description: "Channel width (20, 40, 80, 160).",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Channel width (20, 40, 80, 160).",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 						},
 						"tx_power": schema.StringAttribute{
-							Description: "Transmit power or 'auto'.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Transmit power or 'auto'.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						},
 						"tx_power_mode": schema.StringAttribute{
-							Description: "Transmit power mode (auto, medium, high, low, custom).",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Transmit power mode (auto, medium, high, low, custom).",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						},
 						"min_rssi_enabled": schema.BoolAttribute{
-							Description: "Enable minimum RSSI.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Enable minimum RSSI.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 						"min_rssi": schema.Int64Attribute{
-							Description: "Minimum RSSI value.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Minimum RSSI value.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 						},
 						"antenna_gain": schema.Int64Attribute{
-							Description: "Antenna gain.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Antenna gain.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 						},
 						"antenna_id": schema.Int64Attribute{
-							Description: "Antenna ID.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Antenna ID.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 						},
 						"assisted_roaming_enabled": schema.BoolAttribute{
-							Description: "Enable assisted roaming.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Enable assisted roaming.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 						"assisted_roaming_rssi": schema.Int64Attribute{
-							Description: "Assisted roaming RSSI threshold.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Assisted roaming RSSI threshold.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 						},
 						"dfs": schema.BoolAttribute{
-							Description: "Enable DFS (Dynamic Frequency Selection).",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Enable DFS (Dynamic Frequency Selection).",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 						"hard_noise_floor_enabled": schema.BoolAttribute{
-							Description: "Enable hard noise floor.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Enable hard noise floor.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 						"loadbalance_enabled": schema.BoolAttribute{
-							Description: "Enable load balancing.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Enable load balancing.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 						"maxsta": schema.Int64Attribute{
-							Description: "Maximum number of stations.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Maximum number of stations.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 						},
 						"name": schema.StringAttribute{
-							Description: "Radio name.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Radio name.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						},
 						"sens_level": schema.Int64Attribute{
-							Description: "Sensitivity level.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Sensitivity level.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 						},
 						"sens_level_enabled": schema.BoolAttribute{
-							Description: "Enable sensitivity level.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Enable sensitivity level.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 						"vwire_enabled": schema.BoolAttribute{
-							Description: "Enable virtual wire.",
-							Optional:    true,
-							Computed:    true,
+							Description:   "Enable virtual wire.",
+							Optional:      true,
+							Computed:      true,
+							PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 						},
 					},
 				},
@@ -2140,6 +2163,15 @@ func outletOverrideAttrTypes() map[string]attr.Type {
 	}
 }
 
+// int64PointerOrNil treats both Null and Unknown as absent — the framework's
+// ValueInt64Pointer returns &0 for Unknown, which would leak as a literal zero.
+func int64PointerOrNil(v types.Int64) *int64 {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	return v.ValueInt64Pointer()
+}
+
 // stringOrNull returns a types.String with the value or null if empty.
 func stringOrNull(s string) types.String {
 	if s == "" {
@@ -2336,21 +2368,21 @@ func (r *deviceResource) frameworkToRadioTable(
 		radio := unifi.DeviceRadioTable{
 			Radio:                  model.Radio.ValueString(),
 			Channel:                model.Channel.ValueString(),
-			Ht:                     model.Ht.ValueInt64Pointer(),
+			Ht:                     int64PointerOrNil(model.Ht),
 			TxPower:                model.TxPower.ValueString(),
 			TxPowerMode:            model.TxPowerMode.ValueString(),
 			MinRssiEnabled:         model.MinRssiEnabled.ValueBool(),
-			MinRssi:                model.MinRssi.ValueInt64Pointer(),
-			AntennaGain:            model.AntennaGain.ValueInt64Pointer(),
-			AntennaID:              model.AntennaID.ValueInt64Pointer(),
+			MinRssi:                int64PointerOrNil(model.MinRssi),
+			AntennaGain:            int64PointerOrNil(model.AntennaGain),
+			AntennaID:              int64PointerOrNil(model.AntennaID),
 			AssistedRoamingEnabled: model.AssistedRoamingEnabled.ValueBool(),
-			AssistedRoamingRssi:    model.AssistedRoamingRssi.ValueInt64Pointer(),
+			AssistedRoamingRssi:    int64PointerOrNil(model.AssistedRoamingRssi),
 			Dfs:                    model.Dfs.ValueBool(),
 			HardNoiseFloorEnabled:  model.HardNoiseFloorEnabled.ValueBool(),
 			LoadbalanceEnabled:     model.LoadbalanceEnabled.ValueBool(),
-			Maxsta:                 model.Maxsta.ValueInt64Pointer(),
+			Maxsta:                 int64PointerOrNil(model.Maxsta),
 			Name:                   model.Name.ValueString(),
-			SensLevel:              model.SensLevel.ValueInt64Pointer(),
+			SensLevel:              int64PointerOrNil(model.SensLevel),
 			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
 			VwireEnabled:           model.VwireEnabled.ValueBool(),
 		}

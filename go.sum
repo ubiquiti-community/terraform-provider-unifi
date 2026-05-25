@@ -431,8 +431,8 @@ github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0/go.mod h1:zJYVVT2
 github.com/magiconair/properties v1.5.3/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/magiconair/properties v1.8.10 h1:s31yESBquKXCV9a/ScB3ESkOjUYYv+X0rg8SYxI99mE=
 github.com/magiconair/properties v1.8.10/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=
-github.com/marco-igomes/go-unifi v0.0.0-20260525202115-c8c0a5d0350e h1:8aYs/c57fmVZ/G1Ho0mWfO76baPmRoCPXbYB43XNbzw=
-github.com/marco-igomes/go-unifi v0.0.0-20260525202115-c8c0a5d0350e/go.mod h1:lOld3iJD/7eXE5+phOVWz3Y45qTlb73g24tPipLIkac=
+github.com/marco-igomes/go-unifi v1.33.43-0.20260525215200-73b67b6db9fd h1:JDdnALWJIXc8SHqm9HFAglr43KIMqM1zu2rRDkHqujc=
+github.com/marco-igomes/go-unifi v1.33.43-0.20260525215200-73b67b6db9fd/go.mod h1:lOld3iJD/7eXE5+phOVWz3Y45qTlb73g24tPipLIkac=
 github.com/mattn/go-colorable v0.1.9/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
 github.com/mattn/go-colorable v0.1.12/go.mod h1:u5H1YNBxpqRaxsYJYSkiCWKzEfiAb1Gb520KVy5xxl4=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
