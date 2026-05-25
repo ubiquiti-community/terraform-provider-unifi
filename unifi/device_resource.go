@@ -31,6 +31,7 @@ import (
 var (
 	_ resource.Resource                = &deviceResource{}
 	_ resource.ResourceWithImportState = &deviceResource{}
+	_ resource.ResourceWithModifyPlan  = &deviceResource{}
 )
 
 func NewDeviceFrameworkResource() resource.Resource {
@@ -1255,6 +1256,103 @@ func (r *deviceResource) ImportState(
 		req,
 		resp,
 	)
+}
+
+// ModifyPlan merges each planned port_override with the same-index state element so attributes the
+// user didn't declare (but the controller stores) survive plan. Without this, port_override is a
+// SetNestedBlock whose set-membership-by-hash treats sparse user config and full controller state
+// as distinct elements, producing a spurious remove+add diff and post-apply correlation errors.
+func (r *deviceResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	// Only relevant on Update — Create has no prior state, Delete has no plan.
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan, state deviceResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	merged, diags := mergePortOverridesByIndex(plan.PortOverride, state.PortOverride)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.PortOverride = merged
+
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, plan)...)
+}
+
+// mergePortOverridesByIndex fills Null/Unknown attributes of each plan element with the matching
+// state element's value (matched by the `index` attribute). Plan elements with no state match,
+// or attributes explicitly set in plan, are left untouched.
+func mergePortOverridesByIndex(planSet, stateSet types.Set) (types.Set, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	elemType := types.ObjectType{AttrTypes: portOverrideAttrTypes()}
+	if planSet.IsNull() || planSet.IsUnknown() {
+		return planSet, diags
+	}
+
+	stateByIndex := map[int64]types.Object{}
+	if !stateSet.IsNull() && !stateSet.IsUnknown() {
+		for _, e := range stateSet.Elements() {
+			obj, ok := e.(types.Object)
+			if !ok {
+				continue
+			}
+			idx, ok := obj.Attributes()["index"].(types.Int64)
+			if !ok || idx.IsNull() || idx.IsUnknown() {
+				continue
+			}
+			stateByIndex[idx.ValueInt64()] = obj
+		}
+	}
+
+	merged := make([]attr.Value, 0, len(planSet.Elements()))
+	for _, e := range planSet.Elements() {
+		planObj, ok := e.(types.Object)
+		if !ok {
+			merged = append(merged, e)
+			continue
+		}
+		planAttrs := planObj.Attributes()
+		idx, ok := planAttrs["index"].(types.Int64)
+		if !ok || idx.IsNull() || idx.IsUnknown() {
+			merged = append(merged, planObj)
+			continue
+		}
+		stateObj, hasState := stateByIndex[idx.ValueInt64()]
+		if !hasState {
+			merged = append(merged, planObj)
+			continue
+		}
+		stateAttrs := stateObj.Attributes()
+		newAttrs := make(map[string]attr.Value, len(planAttrs))
+		for k, pv := range planAttrs {
+			if (pv.IsNull() || pv.IsUnknown()) && stateAttrs[k] != nil && !stateAttrs[k].IsNull() && !stateAttrs[k].IsUnknown() {
+				newAttrs[k] = stateAttrs[k]
+				continue
+			}
+			newAttrs[k] = pv
+		}
+		newObj, d := types.ObjectValue(portOverrideAttrTypes(), newAttrs)
+		diags.Append(d...)
+		if diags.HasError() {
+			return planSet, diags
+		}
+		merged = append(merged, newObj)
+	}
+
+	newSet, d := types.SetValue(elemType, merged)
+	diags.Append(d...)
+	return newSet, diags
 }
 
 // Helper methods
