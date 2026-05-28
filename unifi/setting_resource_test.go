@@ -1,6 +1,7 @@
 package unifi
 
 import (
+	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -348,8 +349,12 @@ func TestAccSettingResource_doh(t *testing.T) {
 
 func TestAccSettingResource_dohCustomServers(t *testing.T) {
 	// custom_servers requires controller support beyond simulation/demo mode;
-	// the controller returns DohCustomServersUnsupported (400) without it.
-	t.Skip("custom DoH servers are not supported by the simulation controller")
+	// the simulation controller returns DohCustomServersUnsupported (400).
+	// Run only against a real controller (UNIFI_SKIP_CONTAINER bypasses the
+	// docker simulation and targets the pre-set UNIFI_* endpoint).
+	if os.Getenv("UNIFI_SKIP_CONTAINER") == "" {
+		t.Skip("custom DoH servers require a real controller; set UNIFI_SKIP_CONTAINER to run")
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
@@ -452,7 +457,11 @@ func TestAccSettingResource_ips(t *testing.T) {
 func TestAccSettingResource_ipsHoneypot(t *testing.T) {
 	// Honeypot requires a UDM-class gateway; the simulation controller presents as a USG,
 	// which returns HoneypotIsNotSupportedInUsg (400).
-	t.Skip("honeypot is not supported on USG/simulation controllers; requires a UDM-class device")
+	// honeypot is not supported on USG-class/simulation controllers; it
+	// requires a UDM-class device. Run only against a real controller.
+	if os.Getenv("UNIFI_SKIP_CONTAINER") == "" {
+		t.Skip("honeypot requires a real UDM-class controller; set UNIFI_SKIP_CONTAINER to run")
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
