@@ -152,6 +152,46 @@ type settingResourceModel struct {
 	USG    types.Object `tfsdk:"usg"`
 }
 
+// Shared attribute-type maps for the doh/ips nested objects and lists. These
+// are referenced from both readSettings and the *SettingToModel conversion
+// helpers, so they live at package level to avoid drift between the two.
+var (
+	dohCustomServerAttrTypes = map[string]attr.Type{
+		"enabled":     types.BoolType,
+		"sdns_stamp":  types.StringType,
+		"server_name": types.StringType,
+	}
+	dohAttrTypes = map[string]attr.Type{
+		"state":        types.StringType,
+		"server_names": types.ListType{ElemType: types.StringType},
+		"custom_servers": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: dohCustomServerAttrTypes},
+		},
+	}
+	ipsHoneypotAttrTypes = map[string]attr.Type{
+		"ip_address": types.StringType,
+		"network_id": types.StringType,
+		"version":    types.StringType,
+	}
+	ipsWhitelistAttrTypes = map[string]attr.Type{
+		"direction": types.StringType,
+		"mode":      types.StringType,
+		"value":     types.StringType,
+	}
+	ipsAttrTypes = map[string]attr.Type{
+		"advanced_filtering_preference":           types.StringType,
+		"content_filtering_blocking_page_enabled": types.BoolType,
+		"enabled_categories":                      types.ListType{ElemType: types.StringType},
+		"enabled_networks":                        types.ListType{ElemType: types.StringType},
+		"honeypot_enabled":                        types.BoolType,
+		"honeypot":                                types.ListType{ElemType: types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}},
+		"ips_mode":                                types.StringType,
+		"memory_optimized":                        types.BoolType,
+		"restrict_torrents":                       types.BoolType,
+		"suppression_whitelist":                   types.ListType{ElemType: types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}},
+	}
+)
+
 func (r *settingResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
@@ -967,41 +1007,6 @@ func (r *settingResource) readSettings(
 	data.Site = types.StringValue(site)
 
 	// Only read settings that were configured in the plan, set others to null
-
-	dohCustomServerAttrTypes := map[string]attr.Type{
-		"enabled":     types.BoolType,
-		"sdns_stamp":  types.StringType,
-		"server_name": types.StringType,
-	}
-	dohAttrTypes := map[string]attr.Type{
-		"state":        types.StringType,
-		"server_names": types.ListType{ElemType: types.StringType},
-		"custom_servers": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: dohCustomServerAttrTypes},
-		},
-	}
-	honeypotAttrTypes := map[string]attr.Type{
-		"ip_address": types.StringType,
-		"network_id": types.StringType,
-		"version":    types.StringType,
-	}
-	whitelistAttrTypes := map[string]attr.Type{
-		"direction": types.StringType,
-		"mode":      types.StringType,
-		"value":     types.StringType,
-	}
-	ipsAttrTypes := map[string]attr.Type{
-		"advanced_filtering_preference":           types.StringType,
-		"content_filtering_blocking_page_enabled": types.BoolType,
-		"enabled_categories":                      types.ListType{ElemType: types.StringType},
-		"enabled_networks":                        types.ListType{ElemType: types.StringType},
-		"honeypot_enabled":                        types.BoolType,
-		"honeypot":                                types.ListType{ElemType: types.ObjectType{AttrTypes: honeypotAttrTypes}},
-		"ips_mode":                                types.StringType,
-		"memory_optimized":                        types.BoolType,
-		"restrict_torrents":                       types.BoolType,
-		"suppression_whitelist":                   types.ListType{ElemType: types.ObjectType{AttrTypes: whitelistAttrTypes}},
-	}
 
 	// DoH settings
 	if !data.Doh.IsNull() && !data.Doh.IsUnknown() {
@@ -1873,41 +1878,34 @@ func (r *settingResource) dohSettingToModel(
 		model.State = types.StringNull()
 	}
 
+	// When the attribute was configured (plan is known), mirror the remote
+	// value as a list — including an empty list when the controller returns
+	// none. Returning ListNull for a configured-but-empty list would differ
+	// from the planned []value and trip the "inconsistent result after apply"
+	// check. ListNull is reserved for the not-configured / unknown case.
 	if !plan.ServerNames.IsNull() && !plan.ServerNames.IsUnknown() {
-		if len(setting.ServerNames) > 0 {
-			listVal, d := types.ListValueFrom(ctx, types.StringType, setting.ServerNames)
-			diags.Append(d...)
-			model.ServerNames = listVal
-		} else {
-			model.ServerNames = types.ListNull(types.StringType)
-		}
+		listVal, d := types.ListValueFrom(ctx, types.StringType, setting.ServerNames)
+		diags.Append(d...)
+		model.ServerNames = listVal
 	} else {
 		model.ServerNames = types.ListNull(types.StringType)
 	}
 
-	customServerAttrTypes := map[string]attr.Type{
-		"enabled":     types.BoolType,
-		"sdns_stamp":  types.StringType,
-		"server_name": types.StringType,
-	}
+	customServersType := types.ObjectType{AttrTypes: dohCustomServerAttrTypes}
 	if !plan.CustomServers.IsNull() && !plan.CustomServers.IsUnknown() {
-		if len(setting.CustomServers) > 0 {
-			var servers []settingDohCustomServerModel
-			for _, s := range setting.CustomServers {
-				servers = append(servers, settingDohCustomServerModel{
-					Enabled:    types.BoolValue(s.Enabled),
-					SDNSStamp:  types.StringValue(s.SdnsStamp),
-					ServerName: types.StringValue(s.ServerName),
-				})
-			}
-			listVal, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: customServerAttrTypes}, servers)
-			diags.Append(d...)
-			model.CustomServers = listVal
-		} else {
-			model.CustomServers = types.ListNull(types.ObjectType{AttrTypes: customServerAttrTypes})
+		servers := make([]settingDohCustomServerModel, 0, len(setting.CustomServers))
+		for _, s := range setting.CustomServers {
+			servers = append(servers, settingDohCustomServerModel{
+				Enabled:    types.BoolValue(s.Enabled),
+				SDNSStamp:  types.StringValue(s.SdnsStamp),
+				ServerName: types.StringValue(s.ServerName),
+			})
 		}
+		listVal, d := types.ListValueFrom(ctx, customServersType, servers)
+		diags.Append(d...)
+		model.CustomServers = listVal
 	} else {
-		model.CustomServers = types.ListNull(types.ObjectType{AttrTypes: customServerAttrTypes})
+		model.CustomServers = types.ListNull(customServersType)
 	}
 
 	return model
@@ -2041,82 +2039,61 @@ func (r *settingResource) ipsSettingToModel(
 		model.AdvancedFilteringPreference = types.StringNull()
 	}
 
+	// Configured lists mirror the remote value (empty list included); ListNull
+	// is reserved for the not-configured / unknown case. See dohSettingToModel
+	// for why a configured-but-empty list must not become ListNull.
 	if !plan.EnabledCategories.IsNull() && !plan.EnabledCategories.IsUnknown() {
-		if len(setting.EnabledCategories) > 0 {
-			listVal, d := types.ListValueFrom(ctx, types.StringType, setting.EnabledCategories)
-			diags.Append(d...)
-			model.EnabledCategories = listVal
-		} else {
-			model.EnabledCategories = types.ListNull(types.StringType)
-		}
+		listVal, d := types.ListValueFrom(ctx, types.StringType, setting.EnabledCategories)
+		diags.Append(d...)
+		model.EnabledCategories = listVal
 	} else {
 		model.EnabledCategories = types.ListNull(types.StringType)
 	}
 
 	if !plan.EnabledNetworks.IsNull() && !plan.EnabledNetworks.IsUnknown() {
-		if len(setting.EnabledNetworks) > 0 {
-			listVal, d := types.ListValueFrom(ctx, types.StringType, setting.EnabledNetworks)
-			diags.Append(d...)
-			model.EnabledNetworks = listVal
-		} else {
-			model.EnabledNetworks = types.ListNull(types.StringType)
-		}
+		listVal, d := types.ListValueFrom(ctx, types.StringType, setting.EnabledNetworks)
+		diags.Append(d...)
+		model.EnabledNetworks = listVal
 	} else {
 		model.EnabledNetworks = types.ListNull(types.StringType)
 	}
 
-	honeypotAttrTypes := map[string]attr.Type{
-		"ip_address": types.StringType,
-		"network_id": types.StringType,
-		"version":    types.StringType,
-	}
+	honeypotType := types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}
 	if !plan.Honeypot.IsNull() && !plan.Honeypot.IsUnknown() {
-		if len(setting.Honeypot) > 0 {
-			var honeypots []settingIpsHoneypotModel
-			for _, h := range setting.Honeypot {
-				honeypots = append(honeypots, settingIpsHoneypotModel{
-					IPAddress: types.StringValue(h.IPAddress),
-					NetworkID: types.StringValue(h.NetworkID),
-					Version:   types.StringValue(h.Version),
-				})
-			}
-			listVal, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: honeypotAttrTypes}, honeypots)
-			diags.Append(d...)
-			model.Honeypot = listVal
-		} else {
-			model.Honeypot = types.ListNull(types.ObjectType{AttrTypes: honeypotAttrTypes})
+		honeypots := make([]settingIpsHoneypotModel, 0, len(setting.Honeypot))
+		for _, h := range setting.Honeypot {
+			honeypots = append(honeypots, settingIpsHoneypotModel{
+				IPAddress: types.StringValue(h.IPAddress),
+				NetworkID: types.StringValue(h.NetworkID),
+				Version:   types.StringValue(h.Version),
+			})
 		}
+		listVal, d := types.ListValueFrom(ctx, honeypotType, honeypots)
+		diags.Append(d...)
+		model.Honeypot = listVal
 	} else {
-		model.Honeypot = types.ListNull(types.ObjectType{AttrTypes: honeypotAttrTypes})
+		model.Honeypot = types.ListNull(honeypotType)
 	}
 
-	whitelistAttrTypes := map[string]attr.Type{
-		"direction": types.StringType,
-		"mode":      types.StringType,
-		"value":     types.StringType,
-	}
+	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
 	if !plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown() {
 		var whitelist []settings.SettingIpsWhitelist
 		if setting.Suppression != nil {
 			whitelist = setting.Suppression.Whitelist
 		}
-		if len(whitelist) > 0 {
-			var entries []settingIpsWhitelistModel
-			for _, w := range whitelist {
-				entries = append(entries, settingIpsWhitelistModel{
-					Direction: types.StringValue(w.Direction),
-					Mode:      types.StringValue(w.Mode),
-					Value:     types.StringValue(w.Value),
-				})
-			}
-			listVal, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: whitelistAttrTypes}, entries)
-			diags.Append(d...)
-			model.SuppressionWhitelist = listVal
-		} else {
-			model.SuppressionWhitelist = types.ListNull(types.ObjectType{AttrTypes: whitelistAttrTypes})
+		entries := make([]settingIpsWhitelistModel, 0, len(whitelist))
+		for _, w := range whitelist {
+			entries = append(entries, settingIpsWhitelistModel{
+				Direction: types.StringValue(w.Direction),
+				Mode:      types.StringValue(w.Mode),
+				Value:     types.StringValue(w.Value),
+			})
 		}
+		listVal, d := types.ListValueFrom(ctx, whitelistType, entries)
+		diags.Append(d...)
+		model.SuppressionWhitelist = listVal
 	} else {
-		model.SuppressionWhitelist = types.ListNull(types.ObjectType{AttrTypes: whitelistAttrTypes})
+		model.SuppressionWhitelist = types.ListNull(whitelistType)
 	}
 
 	return model
