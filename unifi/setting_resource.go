@@ -991,16 +991,16 @@ func (r *settingResource) readSettings(
 		"value":     types.StringType,
 	}
 	ipsAttrTypes := map[string]attr.Type{
-		"advanced_filtering_preference":          types.StringType,
+		"advanced_filtering_preference":           types.StringType,
 		"content_filtering_blocking_page_enabled": types.BoolType,
-		"enabled_categories":                     types.ListType{ElemType: types.StringType},
-		"enabled_networks":                       types.ListType{ElemType: types.StringType},
-		"honeypot_enabled":                       types.BoolType,
-		"honeypot":                               types.ListType{ElemType: types.ObjectType{AttrTypes: honeypotAttrTypes}},
-		"ips_mode":                               types.StringType,
-		"memory_optimized":                       types.BoolType,
-		"restrict_torrents":                      types.BoolType,
-		"suppression_whitelist":                  types.ListType{ElemType: types.ObjectType{AttrTypes: whitelistAttrTypes}},
+		"enabled_categories":                      types.ListType{ElemType: types.StringType},
+		"enabled_networks":                        types.ListType{ElemType: types.StringType},
+		"honeypot_enabled":                        types.BoolType,
+		"honeypot":                                types.ListType{ElemType: types.ObjectType{AttrTypes: honeypotAttrTypes}},
+		"ips_mode":                                types.StringType,
+		"memory_optimized":                        types.BoolType,
+		"restrict_torrents":                       types.BoolType,
+		"suppression_whitelist":                   types.ListType{ElemType: types.ObjectType{AttrTypes: whitelistAttrTypes}},
 	}
 
 	// DoH settings
