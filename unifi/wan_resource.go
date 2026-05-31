@@ -80,9 +80,15 @@ type wanResourceModel struct {
 	IGMPProxy types.Object `tfsdk:"igmp_proxy"`
 
 	// Additional Settings
-	ReportWANEvent types.Bool `tfsdk:"report_wan_event"`
-	Enabled        types.Bool `tfsdk:"enabled"`
-	IPAliases      types.List `tfsdk:"ip_aliases"`
+	ReportWANEvent        types.Bool   `tfsdk:"report_wan_event"`
+	Enabled               types.Bool   `tfsdk:"enabled"`
+	IPAliases             types.List   `tfsdk:"ip_aliases"`
+	SettingPreference     types.String `tfsdk:"setting_preference"`
+	IPv6SettingPreference types.String `tfsdk:"ipv6_setting_preference"`
+	SingleNetworkLAN      types.String `tfsdk:"single_network_lan"`
+	MACOverrideEnabled    types.Bool   `tfsdk:"mac_override_enabled"`
+	DsliteRemoteHost      types.String `tfsdk:"wan_dslite_remote_host"`
+	DsliteRemoteHostAuto  types.Bool   `tfsdk:"wan_dslite_remote_host_auto"`
 
 	// Provider Capabilities
 	ProviderCapabilities types.Object `tfsdk:"provider_capabilities"`
@@ -677,6 +683,60 @@ func (r *wanResource) Schema(
 				Optional:            true,
 				MarkdownDescription: "IP aliases",
 			},
+			"setting_preference": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether WAN settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "manual"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"ipv6_setting_preference": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether WAN IPv6 settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "manual"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"single_network_lan": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "The LAN network used for IPv6 single-network prefix delegation (used when the IPv6 delegation type is `single_network`).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"mac_override_enabled": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether the WAN interface MAC address is overridden.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"wan_dslite_remote_host": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "The DS-Lite AFTR remote host. Only used when `wan_dslite_remote_host_auto` is disabled.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"wan_dslite_remote_host_auto": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether the DS-Lite AFTR remote host is detected automatically.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"provider_capabilities": schema.SingleNestedAttribute{
 				Optional:            true,
 				MarkdownDescription: "WAN provider capabilities",
@@ -1045,6 +1105,24 @@ func (r *wanResource) applyPlanToState(
 	if !plan.ProviderCapabilities.IsNull() && !plan.ProviderCapabilities.IsUnknown() {
 		state.ProviderCapabilities = plan.ProviderCapabilities
 	}
+	if !plan.SettingPreference.IsNull() && !plan.SettingPreference.IsUnknown() {
+		state.SettingPreference = plan.SettingPreference
+	}
+	if !plan.IPv6SettingPreference.IsNull() && !plan.IPv6SettingPreference.IsUnknown() {
+		state.IPv6SettingPreference = plan.IPv6SettingPreference
+	}
+	if !plan.SingleNetworkLAN.IsNull() && !plan.SingleNetworkLAN.IsUnknown() {
+		state.SingleNetworkLAN = plan.SingleNetworkLAN
+	}
+	if !plan.MACOverrideEnabled.IsNull() && !plan.MACOverrideEnabled.IsUnknown() {
+		state.MACOverrideEnabled = plan.MACOverrideEnabled
+	}
+	if !plan.DsliteRemoteHost.IsNull() && !plan.DsliteRemoteHost.IsUnknown() {
+		state.DsliteRemoteHost = plan.DsliteRemoteHost
+	}
+	if !plan.DsliteRemoteHostAuto.IsNull() && !plan.DsliteRemoteHostAuto.IsUnknown() {
+		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
+	}
 }
 
 func (r *wanResource) Delete(
@@ -1310,6 +1388,24 @@ func (r *wanResource) modelToNetwork(
 	// Additional Settings
 	if !model.ReportWANEvent.IsNull() && !model.ReportWANEvent.IsUnknown() {
 		network.ReportWANEvent = model.ReportWANEvent.ValueBool()
+	}
+	if !model.SettingPreference.IsNull() && !model.SettingPreference.IsUnknown() {
+		network.SettingPreference = model.SettingPreference.ValueStringPointer()
+	}
+	if !model.IPv6SettingPreference.IsNull() && !model.IPv6SettingPreference.IsUnknown() {
+		network.IPV6SettingPreference = model.IPv6SettingPreference.ValueStringPointer()
+	}
+	if !model.SingleNetworkLAN.IsNull() && !model.SingleNetworkLAN.IsUnknown() {
+		network.SingleNetworkLan = model.SingleNetworkLAN.ValueStringPointer()
+	}
+	if !model.MACOverrideEnabled.IsNull() && !model.MACOverrideEnabled.IsUnknown() {
+		network.MACOverrideEnabled = model.MACOverrideEnabled.ValueBool()
+	}
+	if !model.DsliteRemoteHost.IsNull() && !model.DsliteRemoteHost.IsUnknown() {
+		network.WANDsliteRemoteHost = model.DsliteRemoteHost.ValueStringPointer()
+	}
+	if !model.DsliteRemoteHostAuto.IsNull() && !model.DsliteRemoteHostAuto.IsUnknown() {
+		network.WANDsliteRemoteHostAuto = model.DsliteRemoteHostAuto.ValueBool()
 	}
 
 	// Convert IP aliases list
@@ -1585,6 +1681,12 @@ func (r *wanResource) networkToModel(
 	// Additional Settings
 	model.ReportWANEvent = types.BoolValue(network.ReportWANEvent)
 	model.Enabled = types.BoolValue(network.Enabled)
+	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
+	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
+	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)
+	model.MACOverrideEnabled = types.BoolValue(network.MACOverrideEnabled)
+	model.DsliteRemoteHost = types.StringPointerValue(network.WANDsliteRemoteHost)
+	model.DsliteRemoteHostAuto = types.BoolValue(network.WANDsliteRemoteHostAuto)
 
 	// Convert IP aliases to list
 	if len(network.WANIPAliases) > 0 {

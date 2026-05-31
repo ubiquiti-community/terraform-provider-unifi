@@ -142,3 +142,51 @@ resource "unifi_wan" "nested" {
 }
 `
 }
+
+// TestAccWANFramework_additionalFields verifies the newly exposed top-level
+// fields round-trip through create, read, and import without spurious diffs.
+func TestAccWANFramework_additionalFields(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWANFrameworkConfig_additionalFields(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_wan.extra", "id"),
+					resource.TestCheckResourceAttr("unifi_wan.extra", "name", "test-wan-extra"),
+					resource.TestCheckResourceAttr(
+						"unifi_wan.extra",
+						"setting_preference",
+						"manual",
+					),
+					// Computed fields populated from the controller.
+					resource.TestCheckResourceAttrSet(
+						"unifi_wan.extra",
+						"mac_override_enabled",
+					),
+					resource.TestCheckResourceAttrSet(
+						"unifi_wan.extra",
+						"wan_dslite_remote_host_auto",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_wan.extra",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccWANFrameworkConfig_additionalFields() string {
+	return `
+resource "unifi_wan" "extra" {
+	name               = "test-wan-extra"
+	type               = "dhcp"
+	enabled            = true
+	setting_preference = "manual"
+}
+`
+}
