@@ -44,3 +44,32 @@ resource "unifi_wlan" "test" {
 }
 `
 }
+
+// TestAccWLANFramework_additionalFields verifies that the newly exposed
+// security/DTIM/toggle attributes are populated by the read path when a WLAN
+// is imported. It follows the same import-based pattern as the basic test: a
+// full create cannot be exercised here because WLAN creation currently fails
+// with a pre-existing api.err.InvalidPayload that is unrelated to these
+// attributes (a minimal WLAN with none of them set fails identically).
+func TestAccWLANFramework_additionalFields(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWLANFrameworkConfig_basic(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "wpa_mode"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "wpa_enc"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "dtim_mode"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "group_rekey"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "iapp_enabled"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "mlo_enabled"),
+				),
+				ResourceName:  "unifi_wlan.test",
+				ImportState:   true,
+				ImportStateId: "wlan1",
+			},
+		},
+	})
+}
