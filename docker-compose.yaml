@@ -15,31 +15,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
-    configs:
-      - source: unifi-init
-        target: /unifi/init.d/demo-mode
-        mode: 0757
-        uid: "1000"
-        gid: "1000"
+    # Bind-mount the init script instead of a compose `configs:` entry: the
+    # testcontainers compose-go runtime does not materialize inline config
+    # content under Podman, which left the controller out of simulation mode
+    # (no seeded admin account -> login 400). A bind mount is portable across
+    # Docker and Podman. The :Z suffix relabels for SELinux and is a no-op on
+    # hosts without it.
+    volumes:
+      - ./scripts/init.d/demo-mode:/unifi/init.d/demo-mode:Z
     ports:
       - 8443:8443
       - 3478:3478/udp
       - 10001:10001/udp
       - 8080:8080
     restart: unless-stopped
-
-configs:
-  unifi-init:
-    content: |
-      #!/bin/sh
-
-      write_config() {
-        echo "$${1}=$${2}" >> /usr/lib/unifi/data/system.properties
-      }
-
-      write_config is_simulation true
-
-      # Increase the number of demo devices to allow more concurrent tests to be executed simultaneously.
-      write_config demo.num_uap 3
-      write_config demo.num_ugw 1
-      write_config demo.num_usw 5
