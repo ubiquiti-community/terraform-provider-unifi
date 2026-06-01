@@ -54,3 +54,42 @@ resource "unifi_static_route" "test" {
 }
 `
 }
+
+func TestAccStaticRouteFramework_enabledAndGateway(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccStaticRouteFrameworkConfig_disabled(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_static_route.disabled", "enabled", "false"),
+					// gateway_type defaults to the controller value.
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.disabled",
+						"gateway_type",
+						"default",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_static_route.disabled",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccStaticRouteFrameworkConfig_disabled() string {
+	return `
+resource "unifi_static_route" "disabled" {
+	name     = "test-route-disabled"
+	network  = "192.168.101.0/24"
+	type     = "nexthop-route"
+	distance = 1
+	next_hop = "192.168.1.1"
+	enabled  = false
+}
+`
+}
