@@ -46,21 +46,26 @@ resource "unifi_port_profile" "poe_disabled" {
 - `dot1x_idle_timeout` (Number) The timeout, in seconds, to use when using the MAC Based 802.1X control. Can be between 0 and 65535
 - `egress_rate_limit_kbps` (Number) The egress rate limit, in kpbs, for the port profile. Can be between `64` and `9999999`.
 - `egress_rate_limit_kbps_enabled` (Boolean) Enable egress rate limiting for the port profile.
+- `excluded_networkconf_ids` (Set of String) The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`).
+- `fec_mode` (String) Forward Error Correction mode. Can be `rs-fec`, `fc-fec`, `default`, or `disabled`.
 - `forward` (String) The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`.
 - `full_duplex` (Boolean) Enable full duplex for the port profile.
 - `isolation` (Boolean) Enable port isolation for the port profile.
 - `lldpmed_enabled` (Boolean) Enable LLDP-MED for the port profile.
 - `lldpmed_notify_enabled` (Boolean) Enable LLDP-MED topology change notifications for the port profile.
+- `multicast_router_networkconf_ids` (Set of String) The IDs of networks designated as multicast routers for the port profile.
 - `name` (String) The name of the port profile.
-- `native_networkconf_id` (String) The ID of network to use as the main network on the port profile.
+- `native_networkconf_id` (String) The ID of network to use as the main (native/untagged) network on the port profile. Assigned by the controller if not set.
 - `op_mode` (String) The operation mode for the port profile. Can only be `switch`
 - `poe_mode` (String) The POE mode for the port profile. Can be one of `auto`, `passv24`, `passthrough` or `off`.
+- `port_keepalive_enabled` (Boolean) Enable port keepalive for the port profile.
 - `port_security_enabled` (Boolean) Enable port security for the port profile.
 - `port_security_mac_address` (Set of String) The MAC addresses associated with the port security for the port profile.
 - `priority_queue1_level` (Number) The priority queue 1 level for the port profile. Can be between 0 and 100.
 - `priority_queue2_level` (Number) The priority queue 2 level for the port profile. Can be between 0 and 100.
 - `priority_queue3_level` (Number) The priority queue 3 level for the port profile. Can be between 0 and 100.
 - `priority_queue4_level` (Number) The priority queue 4 level for the port profile. Can be between 0 and 100.
+- `setting_preference` (String) Whether the port profile settings are managed automatically or manually. Can be `auto` or `manual`.
 - `site` (String) The name of the site to associate the port profile with.
 - `speed` (Number) The link speed to set for the port profile. Can be one of `10`, `100`, `1000`, `2500`, `5000`, `10000`, `20000`, `25000`, `40000`, `50000` or `100000`
 - `stormctrl_bcast_enabled` (Boolean) Enable broadcast Storm Control for the port profile.
@@ -75,6 +80,7 @@ resource "unifi_port_profile" "poe_disabled" {
 - `stormctrl_ucast_rate` (Number) The unknown unicast Storm Control rate for the port profile. Can be between 0 and 14880000.
 - `stp_port_mode` (Boolean) Enable Spanning Tree Protocol (STP) for the port profile.
 - `tagged_networkconf_ids` (Set of String) The IDs of networks to tag traffic with for the port profile.
+- `tagged_vlan_mgmt` (String) How tagged VLANs are managed on the port. Can be `auto`, `block_all`, or `custom`.
 - `voice_networkconf_id` (String) The ID of network to use for voice traffic for the port profile.
 
 ### Read-Only
