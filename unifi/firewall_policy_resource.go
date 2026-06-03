@@ -467,16 +467,6 @@ func endpointModelToSource(
 		PortGroupID:      m.PortGroupID.ValueString(),
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
-	if !m.NetworkIDs.IsNull() && !m.NetworkIDs.IsUnknown() {
-		var networkIDs []string
-		diags.Append(m.NetworkIDs.ElementsAs(ctx, &networkIDs, false)...)
-		ep.IPs = append(ep.IPs, networkIDs...)
-	}
-	if !m.ClientMACs.IsNull() && !m.ClientMACs.IsUnknown() {
-		var clientMACs []string
-		diags.Append(m.ClientMACs.ElementsAs(ctx, &clientMACs, false)...)
-		ep.IPs = append(ep.IPs, clientMACs...)
-	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		var ips []string
 		diags.Append(m.IPs.ElementsAs(ctx, &ips, false)...)
@@ -495,16 +485,6 @@ func endpointModelToDestination(
 		MatchingTarget:   m.MatchingTarget.ValueString(),
 		PortGroupID:      m.PortGroupID.ValueString(),
 		PortMatchingType: m.PortMatchingType.ValueString(),
-	}
-	if !m.NetworkIDs.IsNull() && !m.NetworkIDs.IsUnknown() {
-		var networkIDs []string
-		diags.Append(m.NetworkIDs.ElementsAs(ctx, &networkIDs, false)...)
-		ep.IPs = append(ep.IPs, networkIDs...)
-	}
-	if !m.ClientMACs.IsNull() && !m.ClientMACs.IsUnknown() {
-		var clientMACs []string
-		diags.Append(m.ClientMACs.ElementsAs(ctx, &clientMACs, false)...)
-		ep.IPs = append(ep.IPs, clientMACs...)
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		var ips []string
