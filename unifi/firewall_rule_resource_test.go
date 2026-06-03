@@ -381,6 +381,51 @@ func TestAccFirewallRule_guestRuleset(t *testing.T) {
 	})
 }
 
+func TestAccFirewallRule_withSrcMac(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccFirewallRuleConfig_withSrcMac(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_firewall_rule.test", "id"),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_rule.test",
+						"src_mac",
+						"00:11:22:33:44:55",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_rule.test",
+						"protocol_match_excepted",
+						"true",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_firewall_rule.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccFirewallRuleConfig_withSrcMac() string {
+	return `
+resource "unifi_firewall_rule" "test" {
+  name       = "tfacc-firewall-rule-src-mac"
+  action     = "drop"
+  ruleset    = "LAN_IN"
+  rule_index = 2020
+
+  protocol                = "tcp"
+  protocol_match_excepted = true
+  src_mac                 = "00:11:22:33:44:55"
+}
+`
+}
+
 func testAccFirewallRuleConfig_basic() string {
 	return `
 resource "unifi_firewall_rule" "test" {

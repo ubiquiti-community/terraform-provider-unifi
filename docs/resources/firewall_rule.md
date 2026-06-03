@@ -49,7 +49,9 @@ resource "unifi_firewall_rule" "drop_all" {
 - `ip_sec` (String) Specify whether the rule matches on IPsec packets. Can be one of `match-ipset` or `match-none`.
 - `logging` (Boolean) Enable logging for the firewall rule.
 - `protocol` (String) The protocol of the rule.
+- `protocol_match_excepted` (Boolean) Match packets that do NOT match the specified protocol (protocol negation).
 - `protocol_v6` (String) The IPv6 protocol of the rule.
+- `setting_preference` (String) Whether the rule is managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the firewall rule with.
 - `src_address` (String) The source address for the firewall rule.
 - `src_address_ipv6` (String) The IPv6 source address for the firewall rule.
