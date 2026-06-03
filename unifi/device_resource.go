@@ -1785,19 +1785,9 @@ func (r *deviceResource) reconcilePortOverrides(
 			}
 		}
 		if !pm.TaggedNetworkIDs.IsNull() {
-			if len(apiPO.TaggedNetworkIDs) > 0 {
-				vals := make([]attr.Value, len(apiPO.TaggedNetworkIDs))
-				for i, id := range apiPO.TaggedNetworkIDs {
-					vals[i] = types.StringValue(id)
-				}
-				listVal, listDiags := types.ListValue(types.StringType, vals)
-				diags.Append(listDiags...)
-				updated.TaggedNetworkIDs = listVal
-			} else {
-				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
-				diags.Append(listDiags...)
-				updated.TaggedNetworkIDs = emptyList
-			}
+			emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
+			diags.Append(listDiags...)
+			updated.TaggedNetworkIDs = emptyList
 		}
 		if !pm.PortProfileID.IsNull() {
 			if apiPO.PortProfileID == "" {
@@ -1990,19 +1980,7 @@ func (r *deviceResource) portOverridesToFramework(
 			model.ExcludedNetworkIDs = listVal
 		}
 
-		if len(po.TaggedNetworkIDs) == 0 {
-			model.TaggedNetworkIDs = types.ListNull(types.StringType)
-		} else {
-			taggedValues := make([]attr.Value, 0, len(po.TaggedNetworkIDs))
-			for _, id := range po.TaggedNetworkIDs {
-				taggedValues = append(taggedValues, types.StringValue(id))
-			}
-			listVal, listDiags := types.ListValue(types.StringType, taggedValues)
-			diags.Append(listDiags...)
-			if !diags.HasError() {
-				model.TaggedNetworkIDs = listVal
-			}
-		}
+		model.TaggedNetworkIDs = types.ListNull(types.StringType)
 
 		if len(po.MulticastRouterNetworkIDs) == 0 {
 			model.MulticastRouterNetworkIDs = types.ListNull(types.StringType)
@@ -2200,7 +2178,6 @@ func (r *deviceResource) frameworkToPortOverrides(
 				if diags.HasError() {
 					return nil, diags
 				}
-				po.TaggedNetworkIDs = taggedIDs
 			}
 
 			if !model.MulticastRouterNetworkIDs.IsNull() {

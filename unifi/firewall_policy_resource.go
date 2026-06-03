@@ -461,13 +461,19 @@ func endpointModelToSource(ctx context.Context, m firewallPolicyEndpointModel, d
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.NetworkIDs.IsNull() && !m.NetworkIDs.IsUnknown() {
-		diags.Append(m.NetworkIDs.ElementsAs(ctx, &ep.NetworkIDs, false)...)
+		var networkIDs []string
+		diags.Append(m.NetworkIDs.ElementsAs(ctx, &networkIDs, false)...)
+		ep.IPs = append(ep.IPs, networkIDs...)
 	}
 	if !m.ClientMACs.IsNull() && !m.ClientMACs.IsUnknown() {
-		diags.Append(m.ClientMACs.ElementsAs(ctx, &ep.ClientMACs, false)...)
+		var clientMACs []string
+		diags.Append(m.ClientMACs.ElementsAs(ctx, &clientMACs, false)...)
+		ep.IPs = append(ep.IPs, clientMACs...)
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
-		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
+		var ips []string
+		diags.Append(m.IPs.ElementsAs(ctx, &ips, false)...)
+		ep.IPs = append(ep.IPs, ips...)
 	}
 	return ep
 }
@@ -480,13 +486,19 @@ func endpointModelToDestination(ctx context.Context, m firewallPolicyEndpointMod
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.NetworkIDs.IsNull() && !m.NetworkIDs.IsUnknown() {
-		diags.Append(m.NetworkIDs.ElementsAs(ctx, &ep.NetworkIDs, false)...)
+		var networkIDs []string
+		diags.Append(m.NetworkIDs.ElementsAs(ctx, &networkIDs, false)...)
+		ep.IPs = append(ep.IPs, networkIDs...)
 	}
 	if !m.ClientMACs.IsNull() && !m.ClientMACs.IsUnknown() {
-		diags.Append(m.ClientMACs.ElementsAs(ctx, &ep.ClientMACs, false)...)
+		var clientMACs []string
+		diags.Append(m.ClientMACs.ElementsAs(ctx, &clientMACs, false)...)
+		ep.IPs = append(ep.IPs, clientMACs...)
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
-		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
+		var ips []string
+		diags.Append(m.IPs.ElementsAs(ctx, &ips, false)...)
+		ep.IPs = append(ep.IPs, ips...)
 	}
 	return ep
 }
@@ -532,13 +544,8 @@ func apiSourceToEndpointModel(ctx context.Context, src *unifi.FirewallPolicySour
 		PortGroupID:      types.StringValue(src.PortGroupID),
 		PortMatchingType: types.StringValue(src.PortMatchingType),
 	}
-	networkIDs, d := types.ListValueFrom(ctx, types.StringType, src.NetworkIDs)
-	diags.Append(d...)
-	m.NetworkIDs = networkIDs
-
-	clientMACs, d := types.ListValueFrom(ctx, types.StringType, src.ClientMACs)
-	diags.Append(d...)
-	m.ClientMACs = clientMACs
+	m.NetworkIDs = types.ListNull(types.StringType)
+	m.ClientMACs = types.ListNull(types.StringType)
 
 	ips, d := types.ListValueFrom(ctx, types.StringType, src.IPs)
 	diags.Append(d...)
@@ -554,13 +561,8 @@ func apiDestinationToEndpointModel(ctx context.Context, dst *unifi.FirewallPolic
 		PortGroupID:      types.StringValue(dst.PortGroupID),
 		PortMatchingType: types.StringValue(dst.PortMatchingType),
 	}
-	networkIDs, d := types.ListValueFrom(ctx, types.StringType, dst.NetworkIDs)
-	diags.Append(d...)
-	m.NetworkIDs = networkIDs
-
-	clientMACs, d := types.ListValueFrom(ctx, types.StringType, dst.ClientMACs)
-	diags.Append(d...)
-	m.ClientMACs = clientMACs
+	m.NetworkIDs = types.ListNull(types.StringType)
+	m.ClientMACs = types.ListNull(types.StringType)
 
 	ips, d := types.ListValueFrom(ctx, types.StringType, dst.IPs)
 	diags.Append(d...)

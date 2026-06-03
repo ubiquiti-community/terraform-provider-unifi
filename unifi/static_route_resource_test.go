@@ -170,8 +170,10 @@ resource "unifi_static_route" "disabled" {
 	distance = 1
 	next_hop = "192.168.1.1"
 	enabled  = false
+}
 `
-  
+}
+
 func testAccStaticRouteFrameworkConfig_ipv6() string {
 	return `
 resource "unifi_static_route" "test" {
