@@ -1799,11 +1799,6 @@ func (r *deviceResource) reconcilePortOverrides(
 				updated.ExcludedNetworkIDs = emptyList
 			}
 		}
-		if !pm.TaggedNetworkIDs.IsNull() {
-			emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
-			diags.Append(listDiags...)
-			updated.TaggedNetworkIDs = emptyList
-		}
 		if !pm.PortProfileID.IsNull() {
 			if apiPO.PortProfileID == "" {
 				updated.PortProfileID = types.StringNull()
@@ -1997,8 +1992,6 @@ func (r *deviceResource) portOverridesToFramework(
 			}
 			model.ExcludedNetworkIDs = listVal
 		}
-
-		model.TaggedNetworkIDs = types.ListNull(types.StringType)
 
 		if len(po.MulticastRouterNetworkIDs) == 0 {
 			model.MulticastRouterNetworkIDs = types.ListNull(types.StringType)
