@@ -468,9 +468,7 @@ func endpointModelToSource(
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
-		var ips []string
-		diags.Append(m.IPs.ElementsAs(ctx, &ips, false)...)
-		ep.IPs = append(ep.IPs, ips...)
+		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
 	}
 	return ep
 }
@@ -487,9 +485,7 @@ func endpointModelToDestination(
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
-		var ips []string
-		diags.Append(m.IPs.ElementsAs(ctx, &ips, false)...)
-		ep.IPs = append(ep.IPs, ips...)
+		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
 	}
 	return ep
 }
