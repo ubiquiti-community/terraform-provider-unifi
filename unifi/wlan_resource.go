@@ -24,7 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
-	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -93,6 +93,27 @@ type wlanFrameworkResourceModel struct {
 	MinimumDataRate2GKbps    types.Int64  `tfsdk:"minimum_data_rate_2g_kbps"`
 	MinimumDataRate5GKbps    types.Int64  `tfsdk:"minimum_data_rate_5g_kbps"`
 	MinrateSettingPreference types.String `tfsdk:"minrate_setting_preference"`
+
+	// Security / encryption
+	WPAMode types.String `tfsdk:"wpa_mode"`
+	WPAEnc  types.String `tfsdk:"wpa_enc"`
+
+	// DTIM
+	DTIMMode types.String `tfsdk:"dtim_mode"`
+	DTIMNg   types.Int64  `tfsdk:"dtim_ng"`
+	DTIMNa   types.Int64  `tfsdk:"dtim_na"`
+	DTIM6E   types.Int64  `tfsdk:"dtim_6e"`
+
+	// Misc toggles
+	GroupRekey           types.Int64 `tfsdk:"group_rekey"`
+	IappEnabled          types.Bool  `tfsdk:"iapp_enabled"`
+	WPA3FastRoaming      types.Bool  `tfsdk:"wpa3_fast_roaming"`
+	WPA3Enhanced192      types.Bool  `tfsdk:"wpa3_enhanced_192"`
+	RADIUSMacAuthEnabled types.Bool  `tfsdk:"radius_mac_auth_enabled"`
+	EnhancedIot          types.Bool  `tfsdk:"enhanced_iot"`
+	Hotspot2ConfEnabled  types.Bool  `tfsdk:"hotspot2conf_enabled"`
+	MloEnabled           types.Bool  `tfsdk:"mlo_enabled"`
+	BroadcastFilterList  types.Set   `tfsdk:"bc_filter_list"`
 }
 
 func (r *wlanFrameworkResource) Metadata(
@@ -361,6 +382,110 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             stringdefault.StaticString("auto"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "manual"),
+				},
+			},
+			"wpa_mode": schema.StringAttribute{
+				MarkdownDescription: "WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("wpa2"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "wpa1", "wpa2"),
+				},
+			},
+			"wpa_enc": schema.StringAttribute{
+				MarkdownDescription: "WPA encryption. Can be one of `auto`, `ccmp`, `gcmp`, `ccmp-256`, or `gcmp-256`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("ccmp"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "ccmp", "gcmp", "ccmp-256", "gcmp-256"),
+				},
+			},
+			"dtim_mode": schema.StringAttribute{
+				MarkdownDescription: "DTIM mode. Can be one of `default` or `custom`. Use `custom` together with `dtim_ng`/`dtim_na`/`dtim_6e`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("default"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("default", "custom"),
+				},
+			},
+			"dtim_ng": schema.Int64Attribute{
+				MarkdownDescription: "DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.Between(1, 255),
+				},
+			},
+			"dtim_na": schema.Int64Attribute{
+				MarkdownDescription: "DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.Between(1, 255),
+				},
+			},
+			"dtim_6e": schema.Int64Attribute{
+				MarkdownDescription: "DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.Between(1, 255),
+				},
+			},
+			"group_rekey": schema.Int64Attribute{
+				MarkdownDescription: "Group rekey interval in seconds (0 to disable).",
+				Optional:            true,
+				Computed:            true,
+				Default:             int64default.StaticInt64(3600),
+			},
+			"iapp_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable Inter-Access Point Protocol (802.11f) for faster roaming.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"wpa3_fast_roaming": schema.BoolAttribute{
+				MarkdownDescription: "Enable WPA3 fast roaming (802.11r).",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"wpa3_enhanced_192": schema.BoolAttribute{
+				MarkdownDescription: "Enable WPA3 Enterprise 192-bit mode.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"radius_mac_auth_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable RADIUS MAC authentication.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"enhanced_iot": schema.BoolAttribute{
+				MarkdownDescription: "Enable enhanced IoT connectivity.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"hotspot2conf_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable Hotspot 2.0 configuration.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"mlo_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable Multi-Link Operation (6 GHz).",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"bc_filter_list": schema.SetAttribute{
+				MarkdownDescription: "List of MAC addresses for the broadcast filter.",
+				Optional:            true,
+				ElementType:         types.StringType,
+				Validators: []validator.Set{
+					setvalidator.ValueStringsAre(validators.MACAddressValidator()),
 				},
 			},
 		},
@@ -721,6 +846,51 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.MinrateSettingPreference.IsNull() && !plan.MinrateSettingPreference.IsUnknown() {
 		state.MinrateSettingPreference = plan.MinrateSettingPreference
 	}
+	if !plan.WPAMode.IsNull() && !plan.WPAMode.IsUnknown() {
+		state.WPAMode = plan.WPAMode
+	}
+	if !plan.WPAEnc.IsNull() && !plan.WPAEnc.IsUnknown() {
+		state.WPAEnc = plan.WPAEnc
+	}
+	if !plan.DTIMMode.IsNull() && !plan.DTIMMode.IsUnknown() {
+		state.DTIMMode = plan.DTIMMode
+	}
+	if !plan.DTIMNg.IsNull() && !plan.DTIMNg.IsUnknown() {
+		state.DTIMNg = plan.DTIMNg
+	}
+	if !plan.DTIMNa.IsNull() && !plan.DTIMNa.IsUnknown() {
+		state.DTIMNa = plan.DTIMNa
+	}
+	if !plan.DTIM6E.IsNull() && !plan.DTIM6E.IsUnknown() {
+		state.DTIM6E = plan.DTIM6E
+	}
+	if !plan.GroupRekey.IsNull() && !plan.GroupRekey.IsUnknown() {
+		state.GroupRekey = plan.GroupRekey
+	}
+	if !plan.IappEnabled.IsNull() && !plan.IappEnabled.IsUnknown() {
+		state.IappEnabled = plan.IappEnabled
+	}
+	if !plan.WPA3FastRoaming.IsNull() && !plan.WPA3FastRoaming.IsUnknown() {
+		state.WPA3FastRoaming = plan.WPA3FastRoaming
+	}
+	if !plan.WPA3Enhanced192.IsNull() && !plan.WPA3Enhanced192.IsUnknown() {
+		state.WPA3Enhanced192 = plan.WPA3Enhanced192
+	}
+	if !plan.RADIUSMacAuthEnabled.IsNull() && !plan.RADIUSMacAuthEnabled.IsUnknown() {
+		state.RADIUSMacAuthEnabled = plan.RADIUSMacAuthEnabled
+	}
+	if !plan.EnhancedIot.IsNull() && !plan.EnhancedIot.IsUnknown() {
+		state.EnhancedIot = plan.EnhancedIot
+	}
+	if !plan.Hotspot2ConfEnabled.IsNull() && !plan.Hotspot2ConfEnabled.IsUnknown() {
+		state.Hotspot2ConfEnabled = plan.Hotspot2ConfEnabled
+	}
+	if !plan.MloEnabled.IsNull() && !plan.MloEnabled.IsUnknown() {
+		state.MloEnabled = plan.MloEnabled
+	}
+	if !plan.BroadcastFilterList.IsNull() && !plan.BroadcastFilterList.IsUnknown() {
+		state.BroadcastFilterList = plan.BroadcastFilterList
+	}
 }
 
 func (r *wlanFrameworkResource) Delete(
@@ -808,17 +978,47 @@ func (r *wlanFrameworkResource) planToWLAN(
 		UapsdEnabled:             plan.Uapsd.ValueBool(),
 		FastRoamingEnabled:       plan.FastRoamingEnabled.ValueBool(),
 		MinrateSettingPreference: plan.MinrateSettingPreference.ValueString(),
-		MinrateNgEnabled:         !plan.MinimumDataRate2GKbps.IsNull(),
+		MinrateNgEnabled:         plan.MinimumDataRate2GKbps.ValueInt64() > 0,
 		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64Pointer(),
-		MinrateNaEnabled:         !plan.MinimumDataRate5GKbps.IsNull(),
+		MinrateNaEnabled:         plan.MinimumDataRate5GKbps.ValueInt64() > 0,
 		MinrateNaDataRateKbps:    plan.MinimumDataRate5GKbps.ValueInt64Pointer(),
 
-		// Set defaults that UniFi expects
-		GroupRekey:         util.Ptr[int64](3600),
-		DTIMMode:           "default",
-		WPAEnc:             "ccmp",
-		WPAMode:            "wpa2",
+		GroupRekey:         plan.GroupRekey.ValueInt64Pointer(),
+		DTIMMode:           plan.DTIMMode.ValueString(),
+		WPAEnc:             plan.WPAEnc.ValueString(),
+		WPAMode:            plan.WPAMode.ValueString(),
 		NameCombineEnabled: true,
+
+		IappEnabled:          plan.IappEnabled.ValueBool(),
+		WPA3FastRoaming:      plan.WPA3FastRoaming.ValueBool(),
+		WPA3Enhanced192:      plan.WPA3Enhanced192.ValueBool(),
+		RADIUSMACAuthEnabled: plan.RADIUSMacAuthEnabled.ValueBool(),
+		EnhancedIot:          plan.EnhancedIot.ValueBool(),
+		Hotspot2ConfEnabled:  plan.Hotspot2ConfEnabled.ValueBool(),
+		MloEnabled:           plan.MloEnabled.ValueBool(),
+	}
+
+	// DTIM per-band values (only sent when explicitly configured)
+	if !plan.DTIMNg.IsNull() && !plan.DTIMNg.IsUnknown() {
+		wlan.DTIMNg = plan.DTIMNg.ValueInt64Pointer()
+	}
+	if !plan.DTIMNa.IsNull() && !plan.DTIMNa.IsUnknown() {
+		wlan.DTIMNa = plan.DTIMNa.ValueInt64Pointer()
+	}
+	if !plan.DTIM6E.IsNull() && !plan.DTIM6E.IsUnknown() {
+		wlan.DTIM6E = plan.DTIM6E.ValueInt64Pointer()
+	}
+
+	// Broadcast filter list
+	if !plan.BroadcastFilterList.IsNull() && !plan.BroadcastFilterList.IsUnknown() {
+		var bcList []types.String
+		diags.Append(plan.BroadcastFilterList.ElementsAs(ctx, &bcList, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		for _, mac := range bcList {
+			wlan.BroadcastFilterList = append(wlan.BroadcastFilterList, mac.ValueString())
+		}
 	}
 
 	// Handle MAC filter
@@ -1030,6 +1230,45 @@ func (r *wlanFrameworkResource) wlanToModel(
 
 	model.MinimumDataRate2GKbps = types.Int64PointerValue(wlan.MinrateNgDataRateKbps)
 	model.MinimumDataRate5GKbps = types.Int64PointerValue(wlan.MinrateNaDataRateKbps)
+
+	if wlan.WPAMode != "" {
+		model.WPAMode = types.StringValue(wlan.WPAMode)
+	} else {
+		model.WPAMode = types.StringValue("wpa2")
+	}
+	if wlan.WPAEnc != "" {
+		model.WPAEnc = types.StringValue(wlan.WPAEnc)
+	} else {
+		model.WPAEnc = types.StringValue("ccmp")
+	}
+	if wlan.DTIMMode != "" {
+		model.DTIMMode = types.StringValue(wlan.DTIMMode)
+	} else {
+		model.DTIMMode = types.StringValue("default")
+	}
+	model.GroupRekey = types.Int64PointerValue(wlan.GroupRekey)
+	model.DTIMNg = types.Int64PointerValue(wlan.DTIMNg)
+	model.DTIMNa = types.Int64PointerValue(wlan.DTIMNa)
+	model.DTIM6E = types.Int64PointerValue(wlan.DTIM6E)
+	model.IappEnabled = types.BoolValue(wlan.IappEnabled)
+	model.WPA3FastRoaming = types.BoolValue(wlan.WPA3FastRoaming)
+	model.WPA3Enhanced192 = types.BoolValue(wlan.WPA3Enhanced192)
+	model.RADIUSMacAuthEnabled = types.BoolValue(wlan.RADIUSMACAuthEnabled)
+	model.EnhancedIot = types.BoolValue(wlan.EnhancedIot)
+	model.Hotspot2ConfEnabled = types.BoolValue(wlan.Hotspot2ConfEnabled)
+	model.MloEnabled = types.BoolValue(wlan.MloEnabled)
+
+	if len(wlan.BroadcastFilterList) > 0 {
+		bcValues := make([]attr.Value, len(wlan.BroadcastFilterList))
+		for i, mac := range wlan.BroadcastFilterList {
+			bcValues[i] = types.StringValue(mac)
+		}
+		bcSet, d := types.SetValue(types.StringType, bcValues)
+		diags.Append(d...)
+		model.BroadcastFilterList = bcSet
+	} else {
+		model.BroadcastFilterList = types.SetNull(types.StringType)
+	}
 
 	// Handle AP group IDs
 	if len(wlan.ApGroupIDs) > 0 {
