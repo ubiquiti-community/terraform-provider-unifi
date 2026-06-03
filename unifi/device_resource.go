@@ -2,7 +2,9 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util/retry"
 )
@@ -147,6 +150,7 @@ type portOverrideModel struct {
 	StormctrlUcastLevel        types.Int64  `tfsdk:"stormctrl_ucast_level"`
 	StormctrlUcastRate         types.Int64  `tfsdk:"stormctrl_ucast_rate"`
 	StpPortMode                types.Bool   `tfsdk:"stp_port_mode"`
+	TaggedNetworkIDs           types.List   `tfsdk:"tagged_networkconf_ids"`
 	TaggedVLANMgmt             types.String `tfsdk:"tagged_vlan_mgmt"`
 	VoiceNetworkID             types.String `tfsdk:"voice_networkconf_id"`
 }
@@ -821,6 +825,11 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 							Computed:    true,
 						},
+						"tagged_networkconf_ids": schema.ListAttribute{
+							Description: "List of network IDs to tag on this port.",
+							Optional:    true,
+							ElementType: types.StringType,
+						},
 						"tagged_vlan_mgmt": schema.StringAttribute{
 							Description: "Tagged VLAN management.",
 							Optional:    true,
@@ -942,7 +951,7 @@ func (r *deviceResource) Create(
 				unifi.DeviceStateProvisioning,
 				unifi.DeviceStateUpgrading,
 			},
-			2*time.Minute,
+			3*time.Minute,
 		)
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -958,20 +967,48 @@ func (r *deviceResource) Create(
 	plan.Site = types.StringValue(site)
 	plan.Adopted = types.BoolValue(true)
 
+	// Save plan-only values before they get overwritten later.
+	allowAdoption := plan.AllowAdoption
+	forgetOnDestroy := plan.ForgetOnDestroy
+	plannedPortOverride := plan.PortOverride
+
+	// Set Type from the API so updateDevice can include it in the PUT body.
+	// We deliberately do NOT call setResourceData here — it would fill the model
+	// with ALL device fields (radio_table, outlet_overrides, etc.) which then get
+	// serialized into the PUT body and cause "not found" errors from the API.
+	plan.Type = types.StringValue(device.Type)
+	plan.Model = types.StringValue(device.Model)
+
 	if plan.ConfigNetwork.IsNull() || plan.ConfigNetwork.IsUnknown() {
 		plan.ConfigNetwork = types.ObjectNull(configNetworkAttrTypes())
 	}
 
-	// Preserve plan-only flags
-	allowAdoption := plan.AllowAdoption
-	forgetOnDestroy := plan.ForgetOnDestroy
-
-	// Apply the update operation
+	// Apply the update operation (sends only user-configured fields + type/model)
 	diags = r.updateDevice(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Re-read the device from the API to get the actual state after create/update,
+	// but preserve port_override from the plan. The API returns ALL ports (e.g. 32)
+	// while the plan only contains the ports we manage (e.g. 27). Terraform's
+	// post-apply consistency check requires the returned set to match the plan.
+	freshDevice, _ := r.client.GetDeviceByMAC(ctx, site, plan.MAC.ValueString())
+	if freshDevice == nil {
+		freshDevice, _ = r.client.GetDevice(ctx, site, plan.ID.ValueString())
+	}
+	if freshDevice != nil {
+		r.setResourceData(ctx, &resp.Diagnostics, freshDevice, &plan, site)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	// Restore port_override from plan. The API returns ALL ports (e.g. 32) but we
+	// only manage a subset (e.g. 27). Terraform's post-apply consistency check
+	// requires the set length to match the plan. On subsequent Read, the full
+	// port state will be loaded, which may cause a one-time update on next apply.
+	plan.PortOverride = plannedPortOverride
 
 	// Restore plan-only flags
 	plan.AllowAdoption = allowAdoption
@@ -994,17 +1031,31 @@ func (r *deviceResource) Read(
 		return
 	}
 
-	// Preserve plan-only flags before reading API state
+	// Preserve plan-only flags and port_override before reading API state.
+	// Port_override is a Set where ALL fields contribute to identity. The API
+	// returns all ports with all fields, but the user only configures a subset.
+	// Keeping the user's minimal set in state prevents phantom drift on every plan.
 	allowAdoption := state.AllowAdoption
 	forgetOnDestroy := state.ForgetOnDestroy
+	priorPortOverride := state.PortOverride
 
 	id := state.ID.ValueString()
+	mac := state.MAC.ValueString()
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
-	device, err := r.client.GetDevice(ctx, site, id)
+	// Prefer GetDeviceByMAC (stat/device/{mac}) because stat/device/{id} doesn't
+	// work through the cloud connector proxy. Fall back to GetDevice for local setups.
+	var device *unifi.Device
+	var err error
+	if mac != "" {
+		device, err = r.client.GetDeviceByMAC(ctx, site, mac)
+	}
+	if device == nil || err != nil {
+		device, err = r.client.GetDevice(ctx, site, id)
+	}
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -1012,7 +1063,7 @@ func (r *deviceResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Device",
-			fmt.Sprintf("Could not read device %s: %s", id, err),
+			fmt.Sprintf("Could not read device %s (mac %s): %s", id, mac, err),
 		)
 		return
 	}
@@ -1026,6 +1077,21 @@ func (r *deviceResource) Read(
 	// Restore plan-only flags
 	state.AllowAdoption = allowAdoption
 	state.ForgetOnDestroy = forgetOnDestroy
+
+	// Reconcile port_override: the API returns all ports with all fields, but
+	// the user only configures a subset. Rebuild state from the API response
+	// using only the ports/fields the user configured, so drift is detectable.
+	// If the user configured no port_overrides, keep state null so Terraform
+	// doesn't plan to remove ports it doesn't manage.
+	if priorPortOverride.IsNull() || priorPortOverride.IsUnknown() {
+		state.PortOverride = priorPortOverride
+	} else {
+		reconciled, reconcileDiags := r.reconcilePortOverrides(ctx, priorPortOverride, device.PortOverrides)
+		resp.Diagnostics.Append(reconcileDiags...)
+		if !resp.Diagnostics.HasError() {
+			state.PortOverride = reconciled
+		}
+	}
 
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
@@ -1057,7 +1123,17 @@ func (r *deviceResource) Update(
 	}
 
 	id := state.ID.ValueString()
-	currentDevice, err := r.client.GetDevice(ctx, site, id)
+	mac := state.MAC.ValueString()
+
+	// Prefer MAC lookup (works through cloud connector). Fall back to ID lookup.
+	var currentDevice *unifi.Device
+	var err error
+	if mac != "" {
+		currentDevice, err = r.client.GetDeviceByMAC(ctx, site, mac)
+	}
+	if currentDevice == nil || err != nil {
+		currentDevice, err = r.client.GetDevice(ctx, site, id)
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Device for Update",
@@ -1066,111 +1142,53 @@ func (r *deviceResource) Update(
 		return
 	}
 
-	// Apply current API values to state
-	r.setResourceData(ctx, &resp.Diagnostics, currentDevice, &state, site)
-	if resp.Diagnostics.HasError() {
-		return
+	// Set type/model on plan from current device (required by API for PUT).
+	// We deliberately skip setResourceData to avoid filling the model with ALL
+	// device fields which would bloat the PUT body and cause API errors.
+	if plan.Type.IsNull() || plan.Type.IsUnknown() {
+		plan.Type = types.StringValue(currentDevice.Type)
+	}
+	if plan.Model.IsNull() || plan.Model.IsUnknown() {
+		plan.Model = types.StringValue(currentDevice.Model)
+	}
+	plan.ID = state.ID
+
+	// Preserve plan-only flags
+	plan.AllowAdoption = state.AllowAdoption
+	plan.ForgetOnDestroy = state.ForgetOnDestroy
+
+	if plan.ConfigNetwork.IsNull() || plan.ConfigNetwork.IsUnknown() {
+		plan.ConfigNetwork = types.ObjectNull(configNetworkAttrTypes())
 	}
 
-	// Apply plan changes to the state
-	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
-		state.Name = plan.Name
-	}
-	if !plan.Disabled.IsNull() && !plan.Disabled.IsUnknown() {
-		state.Disabled = plan.Disabled
-	}
-	if !plan.PortOverride.IsNull() && !plan.PortOverride.IsUnknown() {
-		state.PortOverride = plan.PortOverride
-	}
-	if !plan.ConfigNetwork.IsNull() && !plan.ConfigNetwork.IsUnknown() {
-		state.ConfigNetwork = plan.ConfigNetwork
-	}
-	if !plan.LedOverride.IsNull() && !plan.LedOverride.IsUnknown() {
-		state.LedOverride = plan.LedOverride
-	}
-	if !plan.LedOverrideColor.IsNull() && !plan.LedOverrideColor.IsUnknown() {
-		state.LedOverrideColor = plan.LedOverrideColor
-	}
-	if !plan.LedOverrideColorBrightness.IsNull() && !plan.LedOverrideColorBrightness.IsUnknown() {
-		state.LedOverrideColorBrightness = plan.LedOverrideColorBrightness
-	}
-	if !plan.BandsteeringMode.IsNull() && !plan.BandsteeringMode.IsUnknown() {
-		state.BandsteeringMode = plan.BandsteeringMode
-	}
-	if !plan.FlowctrlEnabled.IsNull() && !plan.FlowctrlEnabled.IsUnknown() {
-		state.FlowctrlEnabled = plan.FlowctrlEnabled
-	}
-	if !plan.JumboframeEnabled.IsNull() && !plan.JumboframeEnabled.IsUnknown() {
-		state.JumboframeEnabled = plan.JumboframeEnabled
-	}
-	if !plan.StpVersion.IsNull() && !plan.StpVersion.IsUnknown() {
-		state.StpVersion = plan.StpVersion
-	}
-	if !plan.StpPriority.IsNull() && !plan.StpPriority.IsUnknown() {
-		state.StpPriority = plan.StpPriority
-	}
-	if !plan.Locked.IsNull() && !plan.Locked.IsUnknown() {
-		state.Locked = plan.Locked
-	}
-	if !plan.PoeMode.IsNull() && !plan.PoeMode.IsUnknown() {
-		state.PoeMode = plan.PoeMode
-	}
-	if !plan.SwitchVLANEnabled.IsNull() && !plan.SwitchVLANEnabled.IsUnknown() {
-		state.SwitchVLANEnabled = plan.SwitchVLANEnabled
-	}
-	if !plan.OutdoorModeOverride.IsNull() && !plan.OutdoorModeOverride.IsUnknown() {
-		state.OutdoorModeOverride = plan.OutdoorModeOverride
-	}
-	if !plan.Volume.IsNull() && !plan.Volume.IsUnknown() {
-		state.Volume = plan.Volume
-	}
-	if !plan.BaresipPassword.IsNull() && !plan.BaresipPassword.IsUnknown() {
-		state.BaresipPassword = plan.BaresipPassword
-	}
-	if !plan.LcmBrightness.IsNull() && !plan.LcmBrightness.IsUnknown() {
-		state.LcmBrightness = plan.LcmBrightness
-	}
-	if !plan.LcmBrightnessOverride.IsNull() && !plan.LcmBrightnessOverride.IsUnknown() {
-		state.LcmBrightnessOverride = plan.LcmBrightnessOverride
-	}
-	if !plan.LcmIDleTimeout.IsNull() && !plan.LcmIDleTimeout.IsUnknown() {
-		state.LcmIDleTimeout = plan.LcmIDleTimeout
-	}
-	if !plan.LcmIDleTimeoutOverride.IsNull() && !plan.LcmIDleTimeoutOverride.IsUnknown() {
-		state.LcmIDleTimeoutOverride = plan.LcmIDleTimeoutOverride
-	}
-	if !plan.LcmNightModeBegins.IsNull() && !plan.LcmNightModeBegins.IsUnknown() {
-		state.LcmNightModeBegins = plan.LcmNightModeBegins
-	}
-	if !plan.LcmNightModeEnds.IsNull() && !plan.LcmNightModeEnds.IsUnknown() {
-		state.LcmNightModeEnds = plan.LcmNightModeEnds
-	}
-	if !plan.OutletEnabled.IsNull() && !plan.OutletEnabled.IsUnknown() {
-		state.OutletEnabled = plan.OutletEnabled
-	}
-	if !plan.OutletOverrides.IsNull() && !plan.OutletOverrides.IsUnknown() {
-		state.OutletOverrides = plan.OutletOverrides
-	}
-	if !plan.MgmtNetworkID.IsNull() && !plan.MgmtNetworkID.IsUnknown() {
-		state.MgmtNetworkID = plan.MgmtNetworkID
-	}
-	if !plan.RadioTable.IsNull() && !plan.RadioTable.IsUnknown() {
-		state.RadioTable = plan.RadioTable
-	}
+	// Save planned port overrides for post-update restore
+	plannedPortOverride := plan.PortOverride
 
-	// Preserve config-only fields that don't exist in the API.
-	// These must always come from the plan, not from API state.
-	state.AllowAdoption = plan.AllowAdoption
-	state.ForgetOnDestroy = plan.ForgetOnDestroy
-
-	// Update the resource
-	diags = r.updateDevice(ctx, &state)
+	// Update the device with only user-configured fields
+	diags = r.updateDevice(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = resp.State.Set(ctx, state)
+	// Re-read the full device state after update
+	freshDevice, _ := r.client.GetDeviceByMAC(ctx, site, mac)
+	if freshDevice == nil {
+		freshDevice, _ = r.client.GetDevice(ctx, site, id)
+	}
+	if freshDevice != nil {
+		r.setResourceData(ctx, &resp.Diagnostics, freshDevice, &plan, site)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
+	// Restore port_override from plan (API returns all ports, plan has subset)
+	plan.PortOverride = plannedPortOverride
+	plan.AllowAdoption = state.AllowAdoption
+	plan.ForgetOnDestroy = state.ForgetOnDestroy
+
+	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
 
@@ -1210,7 +1228,7 @@ func (r *deviceResource) Delete(
 		site, mac,
 		unifi.DeviceStatePending,
 		[]unifi.DeviceState{unifi.DeviceStateConnected, unifi.DeviceStateDeleting},
-		1*time.Minute,
+		3*time.Minute,
 	)
 	if _, ok := err.(*unifi.NotFoundError); !ok && err != nil {
 		resp.Diagnostics.AddError(
@@ -1226,12 +1244,70 @@ func (r *deviceResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	resource.ImportStatePassthroughID(
-		ctx,
-		path.Root("id"),
-		req,
-		resp,
-	)
+	importID := req.ID
+	mac := cleanMAC(importID)
+	site := r.client.Site
+
+	normalizeMAC := func(m string) string {
+		m = strings.ToLower(m)
+		m = strings.ReplaceAll(m, ":", "")
+		m = strings.ReplaceAll(m, "-", "")
+		return m
+	}
+
+	var device *unifi.Device
+	var getErr, listErr error
+	var deviceCount int
+
+	// First try the full GetDeviceByMAC (deserializes the entire device).
+	device, getErr = r.client.GetDeviceByMAC(ctx, site, mac)
+	if getErr != nil || device == nil || device.ID == "" {
+		if getErr != nil {
+			tflog.Warn(ctx, "GetDeviceByMAC failed, falling back to device list",
+				map[string]any{"mac": mac, "error": getErr.Error()})
+		}
+
+		// Fallback: list all devices and match by MAC to get the internal ID.
+		// This avoids the full JSON deserialization that can fail on some device types.
+		devices, err := r.client.ListDevice(ctx, site)
+		listErr = err
+		if listErr != nil {
+			resp.Diagnostics.AddError(
+				"Error Listing Devices",
+				fmt.Sprintf("Could not list devices to find MAC %s: %s (original error: %v)", mac, listErr, getErr),
+			)
+			return
+		}
+
+		deviceCount = len(devices)
+		normalizedImport := normalizeMAC(mac)
+		for _, d := range devices {
+			if normalizeMAC(d.MAC) == normalizedImport {
+				device = &d
+				break
+			}
+		}
+	}
+
+	if device == nil || device.ID == "" {
+		var macList []string
+		if deviceCount > 0 {
+			devices, _ := r.client.ListDevice(ctx, site)
+			for _, d := range devices {
+				macList = append(macList, fmt.Sprintf("%s (id=%s)", d.MAC, d.ID))
+			}
+		}
+		resp.Diagnostics.AddError(
+			"Device Not Found",
+			fmt.Sprintf("No device found with MAC %s on site %s. GetDeviceByMAC error: %v. ListDevice found %d device(s): %v",
+				mac, site, getErr, deviceCount, macList),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), device.ID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("mac"), device.MAC)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 }
 
 // Helper methods
@@ -1256,19 +1332,42 @@ func (r *deviceResource) updateDevice(
 
 	deviceReq.ID = model.ID.ValueString()
 
-	// Retry UpdateDevice on "not found" errors (timing issue with API)
-	var device *unifi.Device
-	if err := retry.RetryContext(ctx, 30*time.Second, func() *retry.RetryError {
-		d, err := r.client.UpdateDevice(ctx, site, deviceReq)
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				return retry.RetryableError(err)
-			}
-			return retry.NonRetryableError(err)
+	// Fill in required fields from the current device state if not set in the model.
+	// The API requires 'type' in the PUT body, but it's a computed field not set by users.
+	// Fill type from API. Prefer MAC lookup (works through cloud connector).
+	// Fall back to ID lookup (works locally).
+	if deviceReq.Type == "" {
+		var currentDevice *unifi.Device
+		if deviceReq.MAC != "" {
+			currentDevice, _ = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
 		}
-		device = d
-		return nil
-	}); err != nil {
+		if currentDevice == nil && deviceReq.ID != "" {
+			currentDevice, _ = r.client.GetDevice(ctx, site, deviceReq.ID)
+		}
+		if currentDevice != nil {
+			deviceReq.Type = currentDevice.Type
+		}
+	}
+	// Build a minimal Device for the PUT request. The full Device struct includes
+	// computed fields (adopted, state, etc.) with Go zero-values that the API rejects.
+	// Only send fields that the user configured or that the API requires.
+	minimalDevice := &unifi.Device{
+		ID:            deviceReq.ID,
+		Type:          deviceReq.Type,
+		MAC:           deviceReq.MAC,
+		Name:          deviceReq.Name,
+		PortOverrides: deviceReq.PortOverrides,
+	}
+
+	if reqJSON, jsonErr := json.Marshal(minimalDevice); jsonErr == nil {
+		tflog.Info(ctx, "Sending device update", map[string]any{
+			"id": minimalDevice.ID, "type": minimalDevice.Type, "mac": minimalDevice.MAC,
+			"body_length": len(reqJSON),
+		})
+	}
+
+	device, err := r.client.UpdateDevice(ctx, site, minimalDevice)
+	if err != nil {
 		diags.AddError(
 			"Error Updating Device",
 			fmt.Sprintf("Could not update device: %s", err),
@@ -1282,7 +1381,7 @@ func (r *deviceResource) updateDevice(
 		site, device.MAC,
 		unifi.DeviceStateConnected,
 		[]unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning},
-		1*time.Minute,
+		3*time.Minute,
 	); err != nil {
 		diags.AddError(
 			"Error Waiting for Device Update",
@@ -1472,6 +1571,13 @@ func (r *deviceResource) modelToAPIDevice(
 		Name: model.Name.ValueString(),
 	}
 
+	if !model.Type.IsNull() && !model.Type.IsUnknown() {
+		device.Type = model.Type.ValueString()
+	}
+	if !model.Model.IsNull() && !model.Model.IsUnknown() {
+		device.Model = model.Model.ValueString()
+	}
+
 	// Only set Disabled if it's explicitly configured
 	if !model.Disabled.IsNull() && !model.Disabled.IsUnknown() {
 		device.Disabled = model.Disabled.ValueBool()
@@ -1588,6 +1694,136 @@ func (r *deviceResource) modelToAPIDevice(
 	return device, diags
 }
 
+// reconcilePortOverrides rebuilds the port_override Set from the API response,
+// but only for ports and fields that the user explicitly configured. This lets
+// Terraform detect drift (e.g. tagged VLANs not applied) without the phantom
+// drift caused by computed fields the API adds for every port.
+func (r *deviceResource) reconcilePortOverrides(
+	ctx context.Context,
+	prior types.Set,
+	apiOverrides []unifi.DevicePortOverrides,
+) (types.Set, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	// Build a map from port index → API port override for fast lookup.
+	apiByIndex := make(map[int64]unifi.DevicePortOverrides, len(apiOverrides))
+	for _, po := range apiOverrides {
+		if po.PortIDX != nil {
+			apiByIndex[*po.PortIDX] = po
+		}
+	}
+
+	// Iterate over the user-configured (prior) port overrides and rebuild each
+	// one using values from the API response for the same port index.
+	var priorModels []portOverrideModel
+	diags.Append(prior.ElementsAs(ctx, &priorModels, false)...)
+	if diags.HasError() {
+		return prior, diags
+	}
+
+	elements := make([]attr.Value, 0, len(priorModels))
+	for _, pm := range priorModels {
+		idx := pm.Index.ValueInt64()
+		apiPO, found := apiByIndex[idx]
+		if !found {
+			// Port not in API response — keep prior value unchanged.
+			objVal, objDiags := types.ObjectValueFrom(ctx, pm.AttributeTypes(), pm)
+			diags.Append(objDiags...)
+			elements = append(elements, objVal)
+			continue
+		}
+
+		// Build a new model seeded from the prior (user config), then update
+		// only the fields that were explicitly set (non-null in prior) with
+		// the actual API value so drift is visible.
+		updated := pm
+
+		if !pm.Name.IsNull() {
+			if apiPO.Name == "" {
+				updated.Name = types.StringNull()
+			} else {
+				updated.Name = types.StringValue(apiPO.Name)
+			}
+		}
+		if !pm.NativeNetworkID.IsNull() {
+			if apiPO.NATiveNetworkID == "" {
+				updated.NativeNetworkID = types.StringNull()
+			} else {
+				updated.NativeNetworkID = types.StringValue(apiPO.NATiveNetworkID)
+			}
+		}
+		if !pm.Forward.IsNull() {
+			if apiPO.Forward == "" {
+				updated.Forward = types.StringNull()
+			} else {
+				updated.Forward = types.StringValue(apiPO.Forward)
+			}
+		}
+		if !pm.TaggedVLANMgmt.IsNull() {
+			if apiPO.TaggedVLANMgmt == "" {
+				updated.TaggedVLANMgmt = types.StringNull()
+			} else {
+				updated.TaggedVLANMgmt = types.StringValue(apiPO.TaggedVLANMgmt)
+			}
+		}
+		if !pm.ExcludedNetworkIDs.IsNull() {
+			if len(apiPO.ExcludedNetworkIDs) > 0 {
+				sorted := make([]string, len(apiPO.ExcludedNetworkIDs))
+				copy(sorted, apiPO.ExcludedNetworkIDs)
+				sort.Strings(sorted)
+				vals := make([]attr.Value, len(sorted))
+				for i, id := range sorted {
+					vals[i] = types.StringValue(id)
+				}
+				listVal, listDiags := types.ListValue(types.StringType, vals)
+				diags.Append(listDiags...)
+				updated.ExcludedNetworkIDs = listVal
+			} else {
+				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
+				diags.Append(listDiags...)
+				updated.ExcludedNetworkIDs = emptyList
+			}
+		}
+		if !pm.TaggedNetworkIDs.IsNull() {
+			if len(apiPO.TaggedNetworkIDs) > 0 {
+				vals := make([]attr.Value, len(apiPO.TaggedNetworkIDs))
+				for i, id := range apiPO.TaggedNetworkIDs {
+					vals[i] = types.StringValue(id)
+				}
+				listVal, listDiags := types.ListValue(types.StringType, vals)
+				diags.Append(listDiags...)
+				updated.TaggedNetworkIDs = listVal
+			} else {
+				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
+				diags.Append(listDiags...)
+				updated.TaggedNetworkIDs = emptyList
+			}
+		}
+		if !pm.PortProfileID.IsNull() {
+			if apiPO.PortProfileID == "" {
+				updated.PortProfileID = types.StringNull()
+			} else {
+				updated.PortProfileID = types.StringValue(apiPO.PortProfileID)
+			}
+		}
+
+		objVal, objDiags := types.ObjectValueFrom(ctx, updated.AttributeTypes(), updated)
+		diags.Append(objDiags...)
+		elements = append(elements, objVal)
+	}
+
+	if diags.HasError() {
+		return prior, diags
+	}
+
+	setValue, setDiags := types.SetValue(types.ObjectType{AttrTypes: portOverrideAttrTypes()}, elements)
+	diags.Append(setDiags...)
+	if diags.HasError() {
+		return prior, diags
+	}
+	return setValue, diags
+}
+
 func (r *deviceResource) portOverridesToFramework(
 	ctx context.Context,
 	pos []unifi.DevicePortOverrides,
@@ -1620,7 +1856,7 @@ func (r *deviceResource) portOverridesToFramework(
 		}
 
 		if po.OpMode == "" {
-			model.OpMode = types.StringValue("switch")
+			model.OpMode = types.StringNull()
 		} else {
 			model.OpMode = types.StringValue(po.OpMode)
 		}
@@ -1739,8 +1975,11 @@ func (r *deviceResource) portOverridesToFramework(
 		if len(po.ExcludedNetworkIDs) == 0 {
 			model.ExcludedNetworkIDs = types.ListNull(types.StringType)
 		} else {
-			excludedValues := make([]attr.Value, 0, len(po.ExcludedNetworkIDs))
-			for _, id := range po.ExcludedNetworkIDs {
+			sortedExcluded := make([]string, len(po.ExcludedNetworkIDs))
+			copy(sortedExcluded, po.ExcludedNetworkIDs)
+			sort.Strings(sortedExcluded)
+			excludedValues := make([]attr.Value, 0, len(sortedExcluded))
+			for _, id := range sortedExcluded {
 				excludedValues = append(excludedValues, types.StringValue(id))
 			}
 			listVal, listDiags := types.ListValue(types.StringType, excludedValues)
@@ -1749,6 +1988,20 @@ func (r *deviceResource) portOverridesToFramework(
 				continue
 			}
 			model.ExcludedNetworkIDs = listVal
+		}
+
+		if len(po.TaggedNetworkIDs) == 0 {
+			model.TaggedNetworkIDs = types.ListNull(types.StringType)
+		} else {
+			taggedValues := make([]attr.Value, 0, len(po.TaggedNetworkIDs))
+			for _, id := range po.TaggedNetworkIDs {
+				taggedValues = append(taggedValues, types.StringValue(id))
+			}
+			listVal, listDiags := types.ListValue(types.StringType, taggedValues)
+			diags.Append(listDiags...)
+			if !diags.HasError() {
+				model.TaggedNetworkIDs = listVal
+			}
 		}
 
 		if len(po.MulticastRouterNetworkIDs) == 0 {
@@ -1832,9 +2085,9 @@ func (r *deviceResource) frameworkToPortOverrides(
 			if !model.PortProfileID.IsNull() {
 				po.PortProfileID = model.PortProfileID.ValueString()
 			}
-			if !model.OpMode.IsNull() {
-				po.OpMode = model.OpMode.ValueString()
-			}
+			// op_mode is intentionally not written: the API returns it on GET
+			// but rejects it on PUT for gateway devices. Switches work fine
+			// without it as the controller preserves the existing value.
 			if !model.PoeMode.IsNull() {
 				po.PoeMode = model.PoeMode.ValueString()
 			}
@@ -1939,6 +2192,15 @@ func (r *deviceResource) frameworkToPortOverrides(
 					return nil, diags
 				}
 				po.ExcludedNetworkIDs = excludedIDs
+			}
+
+			if !model.TaggedNetworkIDs.IsNull() {
+				var taggedIDs []string
+				diags.Append(model.TaggedNetworkIDs.ElementsAs(ctx, &taggedIDs, true)...)
+				if diags.HasError() {
+					return nil, diags
+				}
+				po.TaggedNetworkIDs = taggedIDs
 			}
 
 			if !model.MulticastRouterNetworkIDs.IsNull() {
@@ -2086,6 +2348,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"stormctrl_ucast_level":            types.Int64Type,
 		"stormctrl_ucast_rate":             types.Int64Type,
 		"stp_port_mode":                    types.BoolType,
+		"tagged_networkconf_ids":           types.ListType{ElemType: types.StringType},
 		"tagged_vlan_mgmt":                 types.StringType,
 		"voice_networkconf_id":             types.StringType,
 	}
