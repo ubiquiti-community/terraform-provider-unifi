@@ -45,7 +45,7 @@ func TestUnitStaticRoute_nextHopValidation(t *testing.T) {
 
 			hasError := resp.Diagnostics.HasError()
 			if hasError != tc.wantError {
-				t.Errorf("next_hop=%q: got error=%v, want error=%v (diags: %s)",
+				t.Errorf("next_hop=%q: got error=%v, want error=%v (diags: %v)",
 					tc.nextHop, hasError, tc.wantError, resp.Diagnostics)
 			}
 		})
