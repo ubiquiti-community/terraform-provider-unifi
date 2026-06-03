@@ -80,6 +80,20 @@ func (m portForwardSourceLimitingModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// portForwardDestinationIPModel describes an additional destination IP/interface
+// pair for a port forwarding rule (used for multi-WAN setups).
+type portForwardDestinationIPModel struct {
+	DestinationIP types.String `tfsdk:"destination_ip"`
+	Interface     types.String `tfsdk:"interface"`
+}
+
+func (m portForwardDestinationIPModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"destination_ip": types.StringType,
+		"interface":      types.StringType,
+	}
+}
+
 type portForwardResourceModel struct {
 	ID             types.String `tfsdk:"id"`
 	Site           types.String `tfsdk:"site"`
@@ -87,6 +101,7 @@ type portForwardResourceModel struct {
 	Wan            types.Object `tfsdk:"wan"`
 	Forward        types.Object `tfsdk:"forward"`
 	SourceLimiting types.Object `tfsdk:"source_limiting"`
+	DestinationIPs types.List   `tfsdk:"destination_ips"`
 	Protocol       types.String `tfsdk:"protocol"`
 	Logging        types.Bool   `tfsdk:"logging"`
 	Enabled        types.Bool   `tfsdk:"enabled"`
@@ -196,6 +211,28 @@ func (r *portForwardResource) Schema(
 						Computed:            true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("ip", "firewall_group"),
+						},
+					},
+				},
+			},
+			"destination_ips": schema.ListNestedAttribute{
+				MarkdownDescription: "Additional destination IP/interface pairs for the port forwarding rule, used for multi-WAN setups.",
+				Optional:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"destination_ip": schema.StringAttribute{
+							MarkdownDescription: "The destination IPv4 address. Use `any` for all addresses.",
+							Optional:            true,
+							Validators: []validator.String{
+								validators.IPv4Validator(),
+							},
+						},
+						"interface": schema.StringAttribute{
+							MarkdownDescription: "The WAN interface for this destination (e.g. `wan`, `wan2`).",
+							Optional:            true,
+							Validators: []validator.String{
+								stringvalidator.OneOf("wan", "wan2"),
+							},
 						},
 					},
 				},
@@ -442,6 +479,9 @@ func (r *portForwardResource) applyPlanToState(
 	if !plan.SourceLimiting.IsNull() && !plan.SourceLimiting.IsUnknown() {
 		state.SourceLimiting = plan.SourceLimiting
 	}
+	if !plan.DestinationIPs.IsNull() && !plan.DestinationIPs.IsUnknown() {
+		state.DestinationIPs = plan.DestinationIPs
+	}
 	if !plan.Protocol.IsNull() && !plan.Protocol.IsUnknown() {
 		state.Protocol = plan.Protocol
 	}
@@ -497,6 +537,23 @@ func (r *portForwardResource) modelToPortForward(
 		}
 		if !fwd.Port.IsNull() {
 			portForward.FwdPort = fwd.Port.ValueString()
+		}
+	}
+
+	if !model.DestinationIPs.IsNull() && !model.DestinationIPs.IsUnknown() {
+		var dsts []portForwardDestinationIPModel
+		diags.Append(model.DestinationIPs.ElementsAs(ctx, &dsts, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		for _, d := range dsts {
+			portForward.DestinationIPs = append(
+				portForward.DestinationIPs,
+				unifi.PortForwardDestinationIPs{
+					DestinationIP: d.DestinationIP.ValueString(),
+					Interface:     d.Interface.ValueString(),
+				},
+			)
 		}
 	}
 
@@ -617,6 +674,23 @@ func (r *portForwardResource) portForwardToModel(
 		model.SourceLimiting = srcObj
 	} else {
 		model.SourceLimiting = types.ObjectNull(portForwardSourceLimitingModel{}.AttributeTypes())
+	}
+
+	// Destination IPs list (multi-WAN)
+	destElemType := types.ObjectType{AttrTypes: portForwardDestinationIPModel{}.AttributeTypes()}
+	if len(portForward.DestinationIPs) > 0 {
+		dsts := make([]portForwardDestinationIPModel, 0, len(portForward.DestinationIPs))
+		for _, d := range portForward.DestinationIPs {
+			dsts = append(dsts, portForwardDestinationIPModel{
+				DestinationIP: stringValueOrNull(d.DestinationIP),
+				Interface:     stringValueOrNull(d.Interface),
+			})
+		}
+		destList, d := types.ListValueFrom(ctx, destElemType, dsts)
+		diags.Append(d...)
+		model.DestinationIPs = destList
+	} else {
+		model.DestinationIPs = types.ListNull(destElemType)
 	}
 
 	return diags

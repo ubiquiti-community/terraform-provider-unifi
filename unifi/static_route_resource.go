@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -10,7 +11,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -20,8 +23,9 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &staticRouteFrameworkResource{}
-	_ resource.ResourceWithImportState = &staticRouteFrameworkResource{}
+	_ resource.Resource                     = &staticRouteFrameworkResource{}
+	_ resource.ResourceWithImportState      = &staticRouteFrameworkResource{}
+	_ resource.ResourceWithConfigValidators = &staticRouteFrameworkResource{}
 )
 
 func NewStaticRouteFrameworkResource() resource.Resource {
@@ -35,14 +39,17 @@ type staticRouteFrameworkResource struct {
 
 // staticRouteFrameworkResourceModel describes the resource data model.
 type staticRouteFrameworkResourceModel struct {
-	ID        types.String `tfsdk:"id"`
-	Site      types.String `tfsdk:"site"`
-	Name      types.String `tfsdk:"name"`
-	Network   types.String `tfsdk:"network"`
-	Type      types.String `tfsdk:"type"`
-	Distance  types.Int64  `tfsdk:"distance"`
-	NextHop   types.String `tfsdk:"next_hop"`
-	Interface types.String `tfsdk:"interface"`
+	ID            types.String `tfsdk:"id"`
+	Site          types.String `tfsdk:"site"`
+	Name          types.String `tfsdk:"name"`
+	Network       types.String `tfsdk:"network"`
+	Type          types.String `tfsdk:"type"`
+	Distance      types.Int64  `tfsdk:"distance"`
+	NextHop       types.String `tfsdk:"next_hop"`
+	Interface     types.String `tfsdk:"interface"`
+	Enabled       types.Bool   `tfsdk:"enabled"`
+	GatewayDevice types.String `tfsdk:"gateway_device"`
+	GatewayType   types.String `tfsdk:"gateway_type"`
 }
 
 func (r *staticRouteFrameworkResource) Metadata(
@@ -104,15 +111,37 @@ func (r *staticRouteFrameworkResource) Schema(
 				},
 			},
 			"next_hop": schema.StringAttribute{
-				MarkdownDescription: "The next hop of the static route (only valid for `nexthop-route` type).",
+				MarkdownDescription: "The next hop of the static route (only valid for `nexthop-route` type). Accepts IPv4 or IPv6 addresses.",
 				Optional:            true,
 				Validators: []validator.String{
-					validators.IPv4Validator(),
+					stringvalidator.Any(validators.IPv4Validator(), validators.IPv6Validator()),
 				},
 			},
 			"interface": schema.StringAttribute{
 				MarkdownDescription: "The interface of the static route (only valid for `interface-route` type). This can be `WAN1`, `WAN2`, or a network ID.",
 				Optional:            true,
+			},
+			"enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether the static route is enabled.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(true),
+			},
+			"gateway_device": schema.StringAttribute{
+				MarkdownDescription: "The MAC address of the gateway device, used when `gateway_type` is `switch`.",
+				Optional:            true,
+				Validators: []validator.String{
+					validators.MACAddressValidator(),
+				},
+			},
+			"gateway_type": schema.StringAttribute{
+				MarkdownDescription: "The type of gateway for the static route. Can be `default` or `switch`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("default"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("default", "switch"),
+				},
 			},
 		},
 	}
@@ -330,6 +359,78 @@ func (r *staticRouteFrameworkResource) ImportState(
 	)
 }
 
+func (r *staticRouteFrameworkResource) ConfigValidators(
+	_ context.Context,
+) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		&staticRouteIPVersionValidator{},
+	}
+}
+
+// staticRouteIPVersionValidator ensures network and next_hop use the same IP version.
+type staticRouteIPVersionValidator struct{}
+
+func (v *staticRouteIPVersionValidator) Description(_ context.Context) string {
+	return "network and next_hop must use the same IP version (both IPv4 or both IPv6)"
+}
+
+func (v *staticRouteIPVersionValidator) MarkdownDescription(_ context.Context) string {
+	return "network and next_hop must use the same IP version (both IPv4 or both IPv6)"
+}
+
+func (v *staticRouteIPVersionValidator) ValidateResource(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var network, nextHop types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("network"), &network)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("next_hop"), &nextHop)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Only validate when both are known and next_hop is set.
+	if network.IsNull() || network.IsUnknown() || nextHop.IsNull() || nextHop.IsUnknown() {
+		return
+	}
+
+	if err := validateIPVersionMatch(network.ValueString(), nextHop.ValueString()); err != nil {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("next_hop"),
+			"IP Version Mismatch",
+			err.Error(),
+		)
+	}
+}
+
+// validateIPVersionMatch returns an error if network (CIDR) and nextHop (IP) use different IP versions.
+func validateIPVersionMatch(network, nextHop string) error {
+	_, ipNet, _ := net.ParseCIDR(network)
+	if ipNet == nil {
+		return nil // already caught by the field validator
+	}
+	hop := net.ParseIP(nextHop)
+	if hop == nil {
+		return nil // already caught by the field validator
+	}
+
+	networkIsIPv4 := ipNet.IP.To4() != nil
+	hopIsIPv4 := hop.To4() != nil
+
+	if networkIsIPv4 != hopIsIPv4 {
+		return fmt.Errorf(
+			"network %q and next_hop %q must use the same IP version",
+			network,
+			nextHop,
+		)
+	}
+	return nil
+}
+
+// Ensure staticRouteIPVersionValidator satisfies the resource.ConfigValidator interface.
+var _ resource.ConfigValidator = &staticRouteIPVersionValidator{}
+
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *staticRouteFrameworkResource) applyPlanToState(
 	_ context.Context,
@@ -355,6 +456,15 @@ func (r *staticRouteFrameworkResource) applyPlanToState(
 	if !plan.Interface.IsNull() && !plan.Interface.IsUnknown() {
 		state.Interface = plan.Interface
 	}
+	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
+		state.Enabled = plan.Enabled
+	}
+	if !plan.GatewayDevice.IsNull() && !plan.GatewayDevice.IsUnknown() {
+		state.GatewayDevice = plan.GatewayDevice
+	}
+	if !plan.GatewayType.IsNull() && !plan.GatewayType.IsUnknown() {
+		state.GatewayType = plan.GatewayType
+	}
 }
 
 // modelToRouting converts the Terraform model to the API struct.
@@ -365,12 +475,17 @@ func (r *staticRouteFrameworkResource) modelToRouting(
 	routeType := model.Type.ValueString()
 
 	routing := &unifi.Routing{
-		Enabled:             true,
+		Enabled:             model.Enabled.ValueBool(),
 		Type:                "static-route",
 		Name:                model.Name.ValueString(),
 		StaticRouteNetwork:  model.Network.ValueString(), // TODO: Apply cidrZeroBased if needed
 		StaticRouteDistance: model.Distance.ValueInt64Pointer(),
 		StaticRouteType:     routeType,
+		GatewayType:         model.GatewayType.ValueString(),
+	}
+
+	if !model.GatewayDevice.IsNull() {
+		routing.GatewayDevice = model.GatewayDevice.ValueString()
 	}
 
 	switch routeType {
@@ -413,5 +528,19 @@ func (r *staticRouteFrameworkResource) routingToModel(
 		model.Interface = types.StringValue(routing.StaticRouteInterface)
 	} else {
 		model.Interface = types.StringNull()
+	}
+
+	model.Enabled = types.BoolValue(routing.Enabled)
+
+	if routing.GatewayDevice != "" {
+		model.GatewayDevice = types.StringValue(routing.GatewayDevice)
+	} else {
+		model.GatewayDevice = types.StringNull()
+	}
+
+	if routing.GatewayType != "" {
+		model.GatewayType = types.StringValue(routing.GatewayType)
+	} else {
+		model.GatewayType = types.StringValue("default")
 	}
 }

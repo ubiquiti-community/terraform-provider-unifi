@@ -32,6 +32,11 @@ func TestMain(m *testing.M) {
 		os.Exit(m.Run())
 	}
 
+	// UNIFI_SKIP_CONTAINER bypasses docker-compose and uses pre-set UNIFI_* env vars.
+	if os.Getenv("UNIFI_SKIP_CONTAINER") != "" {
+		os.Exit(m.Run())
+	}
+
 	os.Exit(runAcceptanceTests(m))
 }
 

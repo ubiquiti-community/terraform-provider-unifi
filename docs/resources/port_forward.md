@@ -111,6 +111,7 @@ resource "unifi_port_forward" "game_server" {
 
 ### Optional
 
+- `destination_ips` (Attributes List) Additional destination IP/interface pairs for the port forwarding rule, used for multi-WAN setups. (see [below for nested schema](#nestedatt--destination_ips))
 - `enabled` (Boolean, Deprecated) Specifies whether the port forwarding rule is enabled or not.
 - `forward` (Attributes) Forward destination configuration. (see [below for nested schema](#nestedatt--forward))
 - `logging` (Boolean) Specifies whether to enable syslog logging for forwarded traffic.
@@ -123,6 +124,15 @@ resource "unifi_port_forward" "game_server" {
 ### Read-Only
 
 - `id` (String) The ID of the port forwarding rule.
+
+<a id="nestedatt--destination_ips"></a>
+### Nested Schema for `destination_ips`
+
+Optional:
+
+- `destination_ip` (String) The destination IPv4 address. Use `any` for all addresses.
+- `interface` (String) The WAN interface for this destination (e.g. `wan`, `wan2`).
+
 
 <a id="nestedatt--forward"></a>
 ### Nested Schema for `forward`

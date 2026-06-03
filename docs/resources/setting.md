@@ -68,6 +68,8 @@ resource "unifi_setting" "radius_only" {
 
 ### Optional
 
+- `doh` (Attributes) Encrypted DNS (DNS-over-HTTPS) settings. (see [below for nested schema](#nestedatt--doh))
+- `ips` (Attributes) Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset. (see [below for nested schema](#nestedatt--ips))
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
 - `site` (String) The name of the site to associate the settings with.
@@ -76,6 +78,66 @@ resource "unifi_setting" "radius_only" {
 ### Read-Only
 
 - `id` (String) The ID of the settings.
+
+<a id="nestedatt--doh"></a>
+### Nested Schema for `doh`
+
+Optional:
+
+- `custom_servers` (Attributes List) Custom DNS servers specified via DNS stamp. (see [below for nested schema](#nestedatt--doh--custom_servers))
+- `server_names` (List of String) Predefined DNS provider names (e.g. "cloudflare", "google").
+- `state` (String) Encrypted DNS state: off, auto, manual, or custom.
+
+<a id="nestedatt--doh--custom_servers"></a>
+### Nested Schema for `doh.custom_servers`
+
+Required:
+
+- `sdns_stamp` (String) DNS stamp (sdns://) for the custom resolver.
+- `server_name` (String) Human-readable name for this custom server.
+
+Optional:
+
+- `enabled` (Boolean) Enable this custom server. Defaults to true.
+
+
+
+<a id="nestedatt--ips"></a>
+### Nested Schema for `ips`
+
+Optional:
+
+- `advanced_filtering_preference` (String) Advanced filtering mode: manual or disabled.
+- `content_filtering_blocking_page_enabled` (Boolean) Show a blocking page when content filtering blocks a request.
+- `enabled_categories` (List of String) Emerging Threats ruleset categories to enable (e.g. "emerging-malware", "tor", "phishing").
+- `enabled_networks` (List of String) Network IDs to apply IPS inspection to.
+- `honeypot` (Attributes List) Honeypot IP addresses per network. (see [below for nested schema](#nestedatt--ips--honeypot))
+- `honeypot_enabled` (Boolean) Enable honeypot to detect internal port scans.
+- `ips_mode` (String) IPS operating mode: ids (detect only), ips (detect and block), ipsInline, or disabled.
+- `memory_optimized` (Boolean) Use memory-optimized IPS ruleset (reduced rule set for low-memory devices).
+- `restrict_torrents` (Boolean) Block BitTorrent traffic.
+- `suppression_whitelist` (Attributes List) IPS suppression whitelist entries — sources/destinations to exclude from inspection. (see [below for nested schema](#nestedatt--ips--suppression_whitelist))
+
+<a id="nestedatt--ips--honeypot"></a>
+### Nested Schema for `ips.honeypot`
+
+Required:
+
+- `ip_address` (String) IP address to use as a honeypot.
+- `network_id` (String) Network ID this honeypot IP belongs to.
+- `version` (String) IP version: v4 or v6.
+
+
+<a id="nestedatt--ips--suppression_whitelist"></a>
+### Nested Schema for `ips.suppression_whitelist`
+
+Required:
+
+- `direction` (String) Match direction: both, src, or dest.
+- `mode` (String) Match mode: ip, subnet, or network.
+- `value` (String) IP address, CIDR subnet, or network ID to whitelist.
+
+
 
 <a id="nestedatt--mgmt"></a>
 ### Nested Schema for `mgmt`

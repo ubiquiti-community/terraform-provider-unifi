@@ -63,6 +63,8 @@ type firewallRuleResourceModel struct {
 	StateNew            types.Bool   `tfsdk:"state_new"`
 	StateRelated        types.Bool   `tfsdk:"state_related"`
 	IPSec               types.String `tfsdk:"ip_sec"`
+	SettingPreference   types.String `tfsdk:"setting_preference"`
+	ProtocolMatchExcept types.Bool   `tfsdk:"protocol_match_excepted"`
 }
 
 func (r *firewallRuleResource) Metadata(
@@ -224,22 +226,32 @@ func (r *firewallRuleResource) Schema(
 			"logging": schema.BoolAttribute{
 				MarkdownDescription: "Enable logging for the firewall rule.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"state_established": schema.BoolAttribute{
 				MarkdownDescription: "Match where the state is established.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"state_invalid": schema.BoolAttribute{
 				MarkdownDescription: "Match where the state is invalid.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"state_new": schema.BoolAttribute{
 				MarkdownDescription: "Match where the state is new.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"state_related": schema.BoolAttribute{
 				MarkdownDescription: "Match where the state is related.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"ip_sec": schema.StringAttribute{
 				MarkdownDescription: "Specify whether the rule matches on IPsec packets. Can be one of `match-ipset` or `match-none`.",
@@ -247,6 +259,20 @@ func (r *firewallRuleResource) Schema(
 				Validators: []validator.String{
 					stringvalidator.OneOf("match-ipsec", "match-none"),
 				},
+			},
+			"setting_preference": schema.StringAttribute{
+				MarkdownDescription: "Whether the rule is managed automatically by the controller or manually. Can be one of `auto` or `manual`.",
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "manual"),
+				},
+			},
+			"protocol_match_excepted": schema.BoolAttribute{
+				MarkdownDescription: "Match packets that do NOT match the specified protocol (protocol negation).",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -532,6 +558,12 @@ func (r *firewallRuleResource) applyPlanToState(
 	if !plan.IPSec.IsNull() && !plan.IPSec.IsUnknown() {
 		state.IPSec = plan.IPSec
 	}
+	if !plan.SettingPreference.IsNull() && !plan.SettingPreference.IsUnknown() {
+		state.SettingPreference = plan.SettingPreference
+	}
+	if !plan.ProtocolMatchExcept.IsNull() && !plan.ProtocolMatchExcept.IsUnknown() {
+		state.ProtocolMatchExcept = plan.ProtocolMatchExcept
+	}
 }
 
 func (r *firewallRuleResource) modelToFirewallRule(
@@ -579,6 +611,9 @@ func (r *firewallRuleResource) modelToFirewallRule(
 	if !model.SrcPort.IsNull() {
 		firewallRule.SrcPort = model.SrcPort.ValueString()
 	}
+	if !model.SrcMac.IsNull() {
+		firewallRule.SrcMACAddress = model.SrcMac.ValueString()
+	}
 
 	if !model.DstNetworkID.IsNull() {
 		firewallRule.DstNetworkID = model.DstNetworkID.ValueString()
@@ -619,6 +654,10 @@ func (r *firewallRuleResource) modelToFirewallRule(
 	if !model.IPSec.IsNull() {
 		firewallRule.IPSec = model.IPSec.ValueString()
 	}
+	if !model.SettingPreference.IsNull() {
+		firewallRule.SettingPreference = model.SettingPreference.ValueString()
+	}
+	firewallRule.ProtocolMatchExcepted = model.ProtocolMatchExcept.ValueBool()
 
 	return firewallRule
 }
@@ -698,7 +737,11 @@ func (r *firewallRuleResource) firewallRuleToModel(
 		model.SrcPort = types.StringNull()
 	}
 
-	model.SrcMac = types.StringNull()
+	if firewallRule.SrcMACAddress != "" {
+		model.SrcMac = types.StringValue(firewallRule.SrcMACAddress)
+	} else {
+		model.SrcMac = types.StringNull()
+	}
 
 	if firewallRule.DstNetworkID != "" {
 		model.DstNetworkID = types.StringValue(firewallRule.DstNetworkID)
@@ -748,4 +791,12 @@ func (r *firewallRuleResource) firewallRuleToModel(
 	} else {
 		model.IPSec = types.StringNull()
 	}
+
+	if firewallRule.SettingPreference != "" {
+		model.SettingPreference = types.StringValue(firewallRule.SettingPreference)
+	} else {
+		model.SettingPreference = types.StringNull()
+	}
+
+	model.ProtocolMatchExcept = types.BoolValue(firewallRule.ProtocolMatchExcepted)
 }

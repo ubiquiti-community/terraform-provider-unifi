@@ -60,15 +60,21 @@ resource "unifi_wan" "default" {
 - `enabled` (Boolean) Whether the WAN network is enabled
 - `igmp_proxy` (Attributes) IGMP proxy configuration (see [below for nested schema](#nestedatt--igmp_proxy))
 - `ip_aliases` (List of String) IP aliases
+- `ipv6_setting_preference` (String) Whether WAN IPv6 settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `load_balance` (Attributes) Load balance configuration (see [below for nested schema](#nestedatt--load_balance))
+- `mac_override_enabled` (Boolean) Whether the WAN interface MAC address is overridden.
 - `provider_capabilities` (Attributes) WAN provider capabilities (see [below for nested schema](#nestedatt--provider_capabilities))
 - `report_wan_event` (Boolean) Whether to report WAN events
+- `setting_preference` (String) Whether WAN settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
+- `single_network_lan` (String) The LAN network used for IPv6 single-network prefix delegation (used when the IPv6 delegation type is `single_network`).
 - `site` (String) The name of the site to associate the WAN network with
 - `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
 - `type` (String) The WAN type (dhcp, static, pppoe)
 - `type_v6` (String) The IPv6 WAN type (dhcpv6, static, disabled)
 - `upnp` (Attributes) UPnP configuration (see [below for nested schema](#nestedatt--upnp))
 - `vlan` (Attributes) VLAN configuration (see [below for nested schema](#nestedatt--vlan))
+- `wan_dslite_remote_host` (String) The DS-Lite AFTR remote host. Only used when `wan_dslite_remote_host_auto` is disabled.
+- `wan_dslite_remote_host_auto` (Boolean) Whether the DS-Lite AFTR remote host is detected automatically.
 
 ### Read-Only
 

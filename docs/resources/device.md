@@ -185,6 +185,7 @@ Optional:
 - `stormctrl_ucast_level` (Number) Unicast storm control level.
 - `stormctrl_ucast_rate` (Number) Unicast storm control rate.
 - `stp_port_mode` (Boolean) STP port mode.
+- `tagged_networkconf_ids` (List of String) List of network IDs to tag on this port.
 - `tagged_vlan_mgmt` (String) Tagged VLAN management.
 - `voice_networkconf_id` (String) Voice network ID.
 

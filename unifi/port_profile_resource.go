@@ -74,6 +74,12 @@ type portProfileResourceModel struct {
 	STPPortMode                types.Bool   `tfsdk:"stp_port_mode"`
 	TaggedNetworkConfIDs       types.Set    `tfsdk:"tagged_networkconf_ids"`
 	VoiceNetworkConfID         types.String `tfsdk:"voice_networkconf_id"`
+	ExcludedNetworkConfIDs     types.Set    `tfsdk:"excluded_networkconf_ids"`
+	MulticastRouterNetworkIDs  types.Set    `tfsdk:"multicast_router_networkconf_ids"`
+	TaggedVLANMgmt             types.String `tfsdk:"tagged_vlan_mgmt"`
+	FecMode                    types.String `tfsdk:"fec_mode"`
+	SettingPreference          types.String `tfsdk:"setting_preference"`
+	PortKeepaliveEnabled       types.Bool   `tfsdk:"port_keepalive_enabled"`
 }
 
 func (r *portProfileResource) Metadata(
@@ -184,8 +190,12 @@ func (r *portProfileResource) Schema(
 				Optional:    true,
 			},
 			"native_networkconf_id": schema.StringAttribute{
-				Description: "The ID of network to use as the main network on the port profile.",
+				Description: "The ID of network to use as the main (native/untagged) network on the port profile. Assigned by the controller if not set.",
 				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Description: "The name of the port profile.",
@@ -350,6 +360,45 @@ func (r *portProfileResource) Schema(
 			"voice_networkconf_id": schema.StringAttribute{
 				Description: "The ID of network to use for voice traffic for the port profile.",
 				Optional:    true,
+			},
+			"excluded_networkconf_ids": schema.SetAttribute{
+				Description: "The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`).",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"multicast_router_networkconf_ids": schema.SetAttribute{
+				Description: "The IDs of networks designated as multicast routers for the port profile.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"tagged_vlan_mgmt": schema.StringAttribute{
+				Description: "How tagged VLANs are managed on the port. Can be `auto`, `block_all`, or `custom`.",
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "block_all", "custom"),
+				},
+			},
+			"fec_mode": schema.StringAttribute{
+				Description: "Forward Error Correction mode. Can be `rs-fec`, `fc-fec`, `default`, or `disabled`.",
+				Optional:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("rs-fec", "fc-fec", "default", "disabled"),
+				},
+			},
+			"setting_preference": schema.StringAttribute{
+				Description: "Whether the port profile settings are managed automatically or manually. Can be `auto` or `manual`.",
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("auto", "manual"),
+				},
+			},
+			"port_keepalive_enabled": schema.BoolAttribute{
+				Description: "Enable port keepalive for the port profile.",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -642,7 +691,37 @@ func (r *portProfileResource) modelToAPIPortProfile(
 
 	portProfile.Speed = model.Speed.ValueInt64Pointer()
 
-	// Convert tagged network IDs - skip for now as field name is unclear
+	if !model.NativeNetworkConfID.IsNull() {
+		portProfile.NATiveNetworkID = model.NativeNetworkConfID.ValueString()
+	}
+	if !model.VoiceNetworkConfID.IsNull() {
+		portProfile.VoiceNetworkID = model.VoiceNetworkConfID.ValueString()
+	}
+	if !model.TaggedVLANMgmt.IsNull() && !model.TaggedVLANMgmt.IsUnknown() {
+		portProfile.TaggedVLANMgmt = model.TaggedVLANMgmt.ValueString()
+	}
+	if !model.FecMode.IsNull() {
+		portProfile.FecMode = model.FecMode.ValueString()
+	}
+	if !model.SettingPreference.IsNull() && !model.SettingPreference.IsUnknown() {
+		portProfile.SettingPreference = model.SettingPreference.ValueString()
+	}
+	portProfile.PortKeepaliveEnabled = model.PortKeepaliveEnabled.ValueBool()
+
+	if !model.ExcludedNetworkConfIDs.IsNull() && !model.ExcludedNetworkConfIDs.IsUnknown() {
+		var ids []string
+		diags.Append(model.ExcludedNetworkConfIDs.ElementsAs(ctx, &ids, false)...)
+		if !diags.HasError() {
+			portProfile.ExcludedNetworkIDs = ids
+		}
+	}
+	if !model.MulticastRouterNetworkIDs.IsNull() && !model.MulticastRouterNetworkIDs.IsUnknown() {
+		var ids []string
+		diags.Append(model.MulticastRouterNetworkIDs.ElementsAs(ctx, &ids, false)...)
+		if !diags.HasError() {
+			portProfile.MulticastRouterNetworkIDs = ids
+		}
+	}
 
 	// Handle storm control and other complex fields as needed...
 
@@ -692,7 +771,11 @@ func (r *portProfileResource) setResourceData(
 		model.LLDPMedNotifyEnabled = types.BoolNull()
 	}
 
-	model.NativeNetworkConfID = types.StringNull() // Skip for now
+	if portProfile.NATiveNetworkID != "" {
+		model.NativeNetworkConfID = types.StringValue(portProfile.NATiveNetworkID)
+	} else {
+		model.NativeNetworkConfID = types.StringNull()
+	}
 
 	if portProfile.OpMode == "" {
 		model.OpMode = types.StringValue("switch")
@@ -723,10 +806,49 @@ func (r *portProfileResource) setResourceData(
 	// Only set speed if it was in the plan or if it's non-zero
 	model.Speed = types.Int64PointerValue(portProfile.Speed)
 
-	// Convert tagged network IDs - skip for now
+	// tagged_networkconf_ids has no corresponding go-unifi field; tagged VLANs are
+	// managed via tagged_vlan_mgmt + excluded_networkconf_ids instead.
 	model.TaggedNetworkConfIDs = types.SetNull(types.StringType)
 
-	model.VoiceNetworkConfID = types.StringNull() // Skip for now
+	if portProfile.VoiceNetworkID != "" {
+		model.VoiceNetworkConfID = types.StringValue(portProfile.VoiceNetworkID)
+	} else {
+		model.VoiceNetworkConfID = types.StringNull()
+	}
+
+	if portProfile.TaggedVLANMgmt != "" {
+		model.TaggedVLANMgmt = types.StringValue(portProfile.TaggedVLANMgmt)
+	} else {
+		model.TaggedVLANMgmt = types.StringNull()
+	}
+
+	if portProfile.FecMode != "" {
+		model.FecMode = types.StringValue(portProfile.FecMode)
+	} else {
+		model.FecMode = types.StringNull()
+	}
+
+	if portProfile.SettingPreference != "" {
+		model.SettingPreference = types.StringValue(portProfile.SettingPreference)
+	} else {
+		model.SettingPreference = types.StringNull()
+	}
+
+	model.PortKeepaliveEnabled = types.BoolValue(portProfile.PortKeepaliveEnabled)
+
+	if len(portProfile.ExcludedNetworkIDs) > 0 {
+		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		model.ExcludedNetworkConfIDs = s
+	} else {
+		model.ExcludedNetworkConfIDs = types.SetNull(types.StringType)
+	}
+
+	if len(portProfile.MulticastRouterNetworkIDs) > 0 {
+		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		model.MulticastRouterNetworkIDs = s
+	} else {
+		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
+	}
 
 	// Set remaining fields to defaults or null as appropriate
 	model.EgressRateLimitKbps = types.Int64Null()
@@ -810,6 +932,24 @@ func (r *portProfileResource) applyPlanToState(
 	}
 	if !plan.VoiceNetworkConfID.IsNull() && !plan.VoiceNetworkConfID.IsUnknown() {
 		state.VoiceNetworkConfID = plan.VoiceNetworkConfID
+	}
+	if !plan.ExcludedNetworkConfIDs.IsNull() && !plan.ExcludedNetworkConfIDs.IsUnknown() {
+		state.ExcludedNetworkConfIDs = plan.ExcludedNetworkConfIDs
+	}
+	if !plan.MulticastRouterNetworkIDs.IsNull() && !plan.MulticastRouterNetworkIDs.IsUnknown() {
+		state.MulticastRouterNetworkIDs = plan.MulticastRouterNetworkIDs
+	}
+	if !plan.TaggedVLANMgmt.IsNull() && !plan.TaggedVLANMgmt.IsUnknown() {
+		state.TaggedVLANMgmt = plan.TaggedVLANMgmt
+	}
+	if !plan.FecMode.IsNull() && !plan.FecMode.IsUnknown() {
+		state.FecMode = plan.FecMode
+	}
+	if !plan.SettingPreference.IsNull() && !plan.SettingPreference.IsUnknown() {
+		state.SettingPreference = plan.SettingPreference
+	}
+	if !plan.PortKeepaliveEnabled.IsNull() && !plan.PortKeepaliveEnabled.IsUnknown() {
+		state.PortKeepaliveEnabled = plan.PortKeepaliveEnabled
 	}
 	// Apply other fields as needed...
 }

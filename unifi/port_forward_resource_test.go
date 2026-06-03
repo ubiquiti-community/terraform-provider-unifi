@@ -320,6 +320,67 @@ func TestAccPortForward_protocols(t *testing.T) {
 	}
 }
 
+func TestAccPortForward_destinationIPs(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPortForwardConfig_destinationIPs(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_port_forward.test_dst", "id"),
+					resource.TestCheckResourceAttr(
+						"unifi_port_forward.test_dst",
+						"destination_ips.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_port_forward.test_dst",
+						"destination_ips.0.destination_ip",
+						"192.0.2.10",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_port_forward.test_dst",
+						"destination_ips.0.interface",
+						"wan",
+					),
+				),
+			},
+			{
+				ResourceName:            "unifi_port_forward.test_dst",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"enabled"},
+			},
+		},
+	})
+}
+
+func testAccPortForwardConfig_destinationIPs() string {
+	return `
+resource "unifi_port_forward" "test_dst" {
+  name     = "tfacc-dst-ips"
+  protocol = "tcp"
+
+  wan = {
+    port = "8443"
+  }
+
+  forward = {
+    ip   = "192.168.1.20"
+    port = "8443"
+  }
+
+  destination_ips = [
+    {
+      destination_ip = "192.0.2.10"
+      interface      = "wan"
+    },
+  ]
+}
+`
+}
+
 func testAccPortForwardConfig_basic() string {
 	return `
 resource "unifi_port_forward" "test" {

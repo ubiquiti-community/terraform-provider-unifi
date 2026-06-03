@@ -878,7 +878,7 @@ func (r *networkResource) modelToNetwork(
 		GatewayType:             model.GatewayType.ValueStringPointer(),
 		IPV6InterfaceType:       model.IPv6InterfaceType.ValueStringPointer(),
 		LteLanEnabled:           model.LteLan.ValueBool(),
-		VLANEnabled:             true,
+		VLANEnabled:             !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
 		Enabled:                 model.Enabled.ValueBool(),
 		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
 		IPAliases:               []string{},
@@ -1278,9 +1278,13 @@ func (r *networkResource) networkToModel(
 			return types.StringValue(*ptr)
 		}
 
+		bootServer := types.StringNull()
+		if network.DHCPDBootServer != "" {
+			bootServer = types.StringValue(network.DHCPDBootServer)
+		}
 		dhcpBootValue := dhcpBootModel{
 			Enabled:  types.BoolValue(network.DHCPDBootEnabled),
-			Server:   types.StringValue(network.DHCPDBootServer),
+			Server:   bootServer,
 			Filename: strPtrToType(network.DHCPDBootFilename),
 		}
 
