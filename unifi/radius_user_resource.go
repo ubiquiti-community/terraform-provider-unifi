@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -41,6 +42,8 @@ type radiusUserResourceModel struct {
 	TunnelType       types.Int64  `tfsdk:"tunnel_type"`
 	TunnelMediumType types.Int64  `tfsdk:"tunnel_medium_type"`
 	NetworkID        types.String `tfsdk:"network_id"`
+	VLAN             types.Int64  `tfsdk:"vlan"`
+	TunnelConfigType types.String `tfsdk:"tunnel_config_type"`
 }
 
 func (r *radiusUserResource) Metadata(
@@ -113,6 +116,20 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 			"network_id": schema.StringAttribute{
 				MarkdownDescription: "ID of the network for this account",
 				Optional:            true,
+			},
+			"vlan": schema.Int64Attribute{
+				MarkdownDescription: "VLAN assigned to the account. If unset, the client falls back to the untagged VLAN.",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.Between(2, 4009),
+				},
+			},
+			"tunnel_config_type": schema.StringAttribute{
+				MarkdownDescription: "The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("vpn", "802.1x", "custom"),
+				},
 			},
 		},
 	}
@@ -349,6 +366,12 @@ func (r *radiusUserResource) applyPlanToState(
 	if !plan.NetworkID.IsNull() && !plan.NetworkID.IsUnknown() {
 		state.NetworkID = plan.NetworkID
 	}
+	if !plan.VLAN.IsNull() && !plan.VLAN.IsUnknown() {
+		state.VLAN = plan.VLAN
+	}
+	if !plan.TunnelConfigType.IsNull() && !plan.TunnelConfigType.IsUnknown() {
+		state.TunnelConfigType = plan.TunnelConfigType
+	}
 }
 
 // modelToRadiusUser converts the Terraform model to the API struct.
@@ -367,6 +390,12 @@ func (r *radiusUserResource) modelToRadiusUser(
 
 	if !model.NetworkID.IsNull() {
 		account.NetworkID = model.NetworkID.ValueString()
+	}
+	if !model.VLAN.IsNull() {
+		account.VLAN = model.VLAN.ValueInt64Pointer()
+	}
+	if !model.TunnelConfigType.IsNull() {
+		account.TunnelConfigType = model.TunnelConfigType.ValueString()
 	}
 
 	return account
@@ -390,5 +419,13 @@ func (r *radiusUserResource) radiusUserToModel(
 		model.NetworkID = types.StringValue(account.NetworkID)
 	} else {
 		model.NetworkID = types.StringNull()
+	}
+
+	model.VLAN = types.Int64PointerValue(account.VLAN)
+
+	if account.TunnelConfigType != "" {
+		model.TunnelConfigType = types.StringValue(account.TunnelConfigType)
+	} else {
+		model.TunnelConfigType = types.StringNull()
 	}
 }
