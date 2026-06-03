@@ -359,7 +359,9 @@ func (r *staticRouteFrameworkResource) ImportState(
 	)
 }
 
-func (r *staticRouteFrameworkResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
+func (r *staticRouteFrameworkResource) ConfigValidators(
+	_ context.Context,
+) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		&staticRouteIPVersionValidator{},
 	}
@@ -394,14 +396,18 @@ func (v *staticRouteIPVersionValidator) ValidateResource(
 	}
 
 	if err := validateIPVersionMatch(network.ValueString(), nextHop.ValueString()); err != nil {
-		resp.Diagnostics.AddAttributeError(path.Root("next_hop"), "IP Version Mismatch", err.Error())
+		resp.Diagnostics.AddAttributeError(
+			path.Root("next_hop"),
+			"IP Version Mismatch",
+			err.Error(),
+		)
 	}
 }
 
 // validateIPVersionMatch returns an error if network (CIDR) and nextHop (IP) use different IP versions.
 func validateIPVersionMatch(network, nextHop string) error {
-	_, ipNet, err := net.ParseCIDR(network)
-	if err != nil {
+	_, ipNet, _ := net.ParseCIDR(network)
+	if ipNet == nil {
 		return nil // already caught by the field validator
 	}
 	hop := net.ParseIP(nextHop)
@@ -413,7 +419,11 @@ func validateIPVersionMatch(network, nextHop string) error {
 	hopIsIPv4 := hop.To4() != nil
 
 	if networkIsIPv4 != hopIsIPv4 {
-		return fmt.Errorf("network %q and next_hop %q must use the same IP version.", network, nextHop)
+		return fmt.Errorf(
+			"network %q and next_hop %q must use the same IP version",
+			network,
+			nextHop,
+		)
 	}
 	return nil
 }

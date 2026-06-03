@@ -414,7 +414,10 @@ func (r *firewallPolicyResource) ImportState(
 // Conversion helpers
 // ---------------------------------------------------------------------------
 
-func modelToFirewallPolicy(ctx context.Context, model firewallPolicyModel) (*unifi.FirewallPolicy, diag.Diagnostics) {
+func modelToFirewallPolicy(
+	ctx context.Context,
+	model firewallPolicyModel,
+) (*unifi.FirewallPolicy, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	fp := &unifi.FirewallPolicy{
@@ -453,7 +456,11 @@ func modelToFirewallPolicy(ctx context.Context, model firewallPolicyModel) (*uni
 	return fp, diags
 }
 
-func endpointModelToSource(ctx context.Context, m firewallPolicyEndpointModel, diags *diag.Diagnostics) *unifi.FirewallPolicySource {
+func endpointModelToSource(
+	ctx context.Context,
+	m firewallPolicyEndpointModel,
+	diags *diag.Diagnostics,
+) *unifi.FirewallPolicySource {
 	ep := &unifi.FirewallPolicySource{
 		ZoneID:           m.ZoneID.ValueString(),
 		MatchingTarget:   m.MatchingTarget.ValueString(),
@@ -478,7 +485,11 @@ func endpointModelToSource(ctx context.Context, m firewallPolicyEndpointModel, d
 	return ep
 }
 
-func endpointModelToDestination(ctx context.Context, m firewallPolicyEndpointModel, diags *diag.Diagnostics) *unifi.FirewallPolicyDestination {
+func endpointModelToDestination(
+	ctx context.Context,
+	m firewallPolicyEndpointModel,
+	diags *diag.Diagnostics,
+) *unifi.FirewallPolicyDestination {
 	ep := &unifi.FirewallPolicyDestination{
 		ZoneID:           m.ZoneID.ValueString(),
 		MatchingTarget:   m.MatchingTarget.ValueString(),
@@ -503,7 +514,11 @@ func endpointModelToDestination(ctx context.Context, m firewallPolicyEndpointMod
 	return ep
 }
 
-func firewallPolicyToModel(ctx context.Context, fp *unifi.FirewallPolicy, model *firewallPolicyModel) diag.Diagnostics {
+func firewallPolicyToModel(
+	ctx context.Context,
+	fp *unifi.FirewallPolicy,
+	model *firewallPolicyModel,
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(fp.ID)
@@ -522,14 +537,22 @@ func firewallPolicyToModel(ctx context.Context, fp *unifi.FirewallPolicy, model 
 
 	if fp.Source != nil {
 		srcModel := apiSourceToEndpointModel(ctx, fp.Source, &diags)
-		srcObj, d := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(), srcModel)
+		srcObj, d := types.ObjectValueFrom(
+			ctx,
+			firewallPolicyEndpointModel{}.AttributeTypes(),
+			srcModel,
+		)
 		diags.Append(d...)
 		model.Source = srcObj
 	}
 
 	if fp.Destination != nil {
 		dstModel := apiDestinationToEndpointModel(ctx, fp.Destination, &diags)
-		dstObj, d := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(), dstModel)
+		dstObj, d := types.ObjectValueFrom(
+			ctx,
+			firewallPolicyEndpointModel{}.AttributeTypes(),
+			dstModel,
+		)
 		diags.Append(d...)
 		model.Destination = dstObj
 	}
@@ -537,7 +560,11 @@ func firewallPolicyToModel(ctx context.Context, fp *unifi.FirewallPolicy, model 
 	return diags
 }
 
-func apiSourceToEndpointModel(ctx context.Context, src *unifi.FirewallPolicySource, diags *diag.Diagnostics) firewallPolicyEndpointModel {
+func apiSourceToEndpointModel(
+	ctx context.Context,
+	src *unifi.FirewallPolicySource,
+	diags *diag.Diagnostics,
+) firewallPolicyEndpointModel {
 	m := firewallPolicyEndpointModel{
 		ZoneID:           types.StringValue(src.ZoneID),
 		MatchingTarget:   types.StringValue(src.MatchingTarget),
@@ -554,7 +581,11 @@ func apiSourceToEndpointModel(ctx context.Context, src *unifi.FirewallPolicySour
 	return m
 }
 
-func apiDestinationToEndpointModel(ctx context.Context, dst *unifi.FirewallPolicyDestination, diags *diag.Diagnostics) firewallPolicyEndpointModel {
+func apiDestinationToEndpointModel(
+	ctx context.Context,
+	dst *unifi.FirewallPolicyDestination,
+	diags *diag.Diagnostics,
+) firewallPolicyEndpointModel {
 	m := firewallPolicyEndpointModel{
 		ZoneID:           types.StringValue(dst.ZoneID),
 		MatchingTarget:   types.StringValue(dst.MatchingTarget),

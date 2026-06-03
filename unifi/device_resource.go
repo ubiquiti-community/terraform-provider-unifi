@@ -1086,7 +1086,11 @@ func (r *deviceResource) Read(
 	if priorPortOverride.IsNull() || priorPortOverride.IsUnknown() {
 		state.PortOverride = priorPortOverride
 	} else {
-		reconciled, reconcileDiags := r.reconcilePortOverrides(ctx, priorPortOverride, device.PortOverrides)
+		reconciled, reconcileDiags := r.reconcilePortOverrides(
+			ctx,
+			priorPortOverride,
+			device.PortOverrides,
+		)
 		resp.Diagnostics.Append(reconcileDiags...)
 		if !resp.Diagnostics.HasError() {
 			state.PortOverride = reconciled
@@ -1274,7 +1278,12 @@ func (r *deviceResource) ImportState(
 		if listErr != nil {
 			resp.Diagnostics.AddError(
 				"Error Listing Devices",
-				fmt.Sprintf("Could not list devices to find MAC %s: %s (original error: %v)", mac, listErr, getErr),
+				fmt.Sprintf(
+					"Could not list devices to find MAC %s: %s (original error: %v)",
+					mac,
+					listErr,
+					getErr,
+				),
 			)
 			return
 		}
@@ -1299,8 +1308,14 @@ func (r *deviceResource) ImportState(
 		}
 		resp.Diagnostics.AddError(
 			"Device Not Found",
-			fmt.Sprintf("No device found with MAC %s on site %s. GetDeviceByMAC error: %v. ListDevice found %d device(s): %v",
-				mac, site, getErr, deviceCount, macList),
+			fmt.Sprintf(
+				"No device found with MAC %s on site %s. GetDeviceByMAC error: %v. ListDevice found %d device(s): %v",
+				mac,
+				site,
+				getErr,
+				deviceCount,
+				macList,
+			),
 		)
 		return
 	}
@@ -1806,7 +1821,10 @@ func (r *deviceResource) reconcilePortOverrides(
 		return prior, diags
 	}
 
-	setValue, setDiags := types.SetValue(types.ObjectType{AttrTypes: portOverrideAttrTypes()}, elements)
+	setValue, setDiags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		elements,
+	)
 	diags.Append(setDiags...)
 	if diags.HasError() {
 		return prior, diags

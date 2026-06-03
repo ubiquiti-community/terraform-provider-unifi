@@ -184,11 +184,15 @@ var (
 		"enabled_categories":                      types.ListType{ElemType: types.StringType},
 		"enabled_networks":                        types.ListType{ElemType: types.StringType},
 		"honeypot_enabled":                        types.BoolType,
-		"honeypot":                                types.ListType{ElemType: types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}},
-		"ips_mode":                                types.StringType,
-		"memory_optimized":                        types.BoolType,
-		"restrict_torrents":                       types.BoolType,
-		"suppression_whitelist":                   types.ListType{ElemType: types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}},
+		"honeypot": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: ipsHoneypotAttrTypes},
+		},
+		"ips_mode":          types.StringType,
+		"memory_optimized":  types.BoolType,
+		"restrict_torrents": types.BoolType,
+		"suppression_whitelist": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
+		},
 	}
 )
 
@@ -1928,13 +1932,15 @@ func (r *settingResource) ipsModelToSetting(
 	if !model.RestrictTorrents.IsNull() && !model.RestrictTorrents.IsUnknown() {
 		setting.RestrictTorrents = model.RestrictTorrents.ValueBool()
 	}
-	if !model.ContentFilteringBlockingPageEnabled.IsNull() && !model.ContentFilteringBlockingPageEnabled.IsUnknown() {
+	if !model.ContentFilteringBlockingPageEnabled.IsNull() &&
+		!model.ContentFilteringBlockingPageEnabled.IsUnknown() {
 		setting.ContentFilteringBlockingPageEnabled = model.ContentFilteringBlockingPageEnabled.ValueBool()
 	}
 	if !model.MemoryOptimized.IsNull() && !model.MemoryOptimized.IsUnknown() {
 		setting.MemoryOptimized = model.MemoryOptimized.ValueBool()
 	}
-	if !model.AdvancedFilteringPreference.IsNull() && !model.AdvancedFilteringPreference.IsUnknown() {
+	if !model.AdvancedFilteringPreference.IsNull() &&
+		!model.AdvancedFilteringPreference.IsUnknown() {
 		setting.AdvancedFilteringPreference = model.AdvancedFilteringPreference.ValueString()
 	}
 	if !model.EnabledCategories.IsNull() && !model.EnabledCategories.IsUnknown() {
@@ -2017,8 +2023,11 @@ func (r *settingResource) ipsSettingToModel(
 		model.RestrictTorrents = types.BoolNull()
 	}
 
-	if !plan.ContentFilteringBlockingPageEnabled.IsNull() && !plan.ContentFilteringBlockingPageEnabled.IsUnknown() {
-		model.ContentFilteringBlockingPageEnabled = types.BoolValue(setting.ContentFilteringBlockingPageEnabled)
+	if !plan.ContentFilteringBlockingPageEnabled.IsNull() &&
+		!plan.ContentFilteringBlockingPageEnabled.IsUnknown() {
+		model.ContentFilteringBlockingPageEnabled = types.BoolValue(
+			setting.ContentFilteringBlockingPageEnabled,
+		)
 	} else {
 		model.ContentFilteringBlockingPageEnabled = types.BoolNull()
 	}
@@ -2031,7 +2040,9 @@ func (r *settingResource) ipsSettingToModel(
 
 	if !plan.AdvancedFilteringPreference.IsNull() && !plan.AdvancedFilteringPreference.IsUnknown() {
 		if setting.AdvancedFilteringPreference != "" {
-			model.AdvancedFilteringPreference = types.StringValue(setting.AdvancedFilteringPreference)
+			model.AdvancedFilteringPreference = types.StringValue(
+				setting.AdvancedFilteringPreference,
+			)
 		} else {
 			model.AdvancedFilteringPreference = types.StringNull()
 		}
