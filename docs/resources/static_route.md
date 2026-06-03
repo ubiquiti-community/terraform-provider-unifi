@@ -52,7 +52,7 @@ resource "unifi_static_route" "interface" {
 - `gateway_device` (String) The MAC address of the gateway device, used when `gateway_type` is `switch`.
 - `gateway_type` (String) The type of gateway for the static route. Can be `default` or `switch`.
 - `interface` (String) The interface of the static route (only valid for `interface-route` type). This can be `WAN1`, `WAN2`, or a network ID.
-- `next_hop` (String) The next hop of the static route (only valid for `nexthop-route` type).
+- `next_hop` (String) The next hop of the static route (only valid for `nexthop-route` type). Accepts IPv4 or IPv6 addresses.
 - `site` (String) The name of the site to associate the static route with.
 
 ### Read-Only

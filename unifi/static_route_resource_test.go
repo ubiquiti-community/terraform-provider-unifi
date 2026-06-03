@@ -25,7 +25,11 @@ func TestUnitStaticRoute_nextHopValidation(t *testing.T) {
 		wantError bool
 	}{
 		{name: "valid_ipv4", nextHop: "192.168.1.1", wantError: false},
-		{name: "valid_ipv6_full", nextHop: "2001:0db8:0000:0000:0000:0000:0000:0001", wantError: false},
+		{
+			name:      "valid_ipv6_full",
+			nextHop:   "2001:0db8:0000:0000:0000:0000:0000:0001",
+			wantError: false,
+		},
 		{name: "valid_ipv6_compressed", nextHop: "2001:db8::1", wantError: false},
 		{name: "valid_ipv6_loopback", nextHop: "::1", wantError: false},
 		{name: "invalid_hostname", nextHop: "not-an-ip", wantError: true},
@@ -62,8 +66,18 @@ func TestUnitStaticRoute_ipVersionValidator(t *testing.T) {
 	}{
 		{name: "ipv4_both", network: "192.168.100.0/24", nextHop: "192.168.1.1", wantError: false},
 		{name: "ipv6_both", network: "2001:db8::/32", nextHop: "2001:db8::1", wantError: false},
-		{name: "ipv4_network_ipv6_hop", network: "192.168.100.0/24", nextHop: "2001:db8::1", wantError: true},
-		{name: "ipv6_network_ipv4_hop", network: "2001:db8::/32", nextHop: "192.168.1.1", wantError: true},
+		{
+			name:      "ipv4_network_ipv6_hop",
+			network:   "192.168.100.0/24",
+			nextHop:   "2001:db8::1",
+			wantError: true,
+		},
+		{
+			name:      "ipv6_network_ipv4_hop",
+			network:   "2001:db8::/32",
+			nextHop:   "192.168.1.1",
+			wantError: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -87,10 +101,22 @@ func TestAccStaticRouteFramework_basic(t *testing.T) {
 				Config: testAccStaticRouteFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_static_route.test", "name", "test-route"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "network", "192.168.100.0/24"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "type", "nexthop-route"),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"network",
+						"192.168.100.0/24",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"type",
+						"nexthop-route",
+					),
 					resource.TestCheckResourceAttr("unifi_static_route.test", "distance", "1"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "next_hop", "192.168.1.1"),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"next_hop",
+						"192.168.1.1",
+					),
 				),
 			},
 			{
@@ -110,8 +136,16 @@ func TestAccStaticRouteFramework_ipv6NextHop(t *testing.T) {
 			{
 				Config: testAccStaticRouteFrameworkConfig_ipv6(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_static_route.test", "name", "test-route-ipv6"),
-					resource.TestCheckResourceAttr("unifi_static_route.test", "next_hop", "2001:db8::1"),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"name",
+						"test-route-ipv6",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.test",
+						"next_hop",
+						"2001:db8::1",
+					),
 				),
 			},
 			{
@@ -143,7 +177,11 @@ func TestAccStaticRouteFramework_enabledAndGateway(t *testing.T) {
 			{
 				Config: testAccStaticRouteFrameworkConfig_disabled(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_static_route.disabled", "enabled", "false"),
+					resource.TestCheckResourceAttr(
+						"unifi_static_route.disabled",
+						"enabled",
+						"false",
+					),
 					// gateway_type defaults to the controller value.
 					resource.TestCheckResourceAttr(
 						"unifi_static_route.disabled",
@@ -170,8 +208,10 @@ resource "unifi_static_route" "disabled" {
 	distance = 1
 	next_hop = "192.168.1.1"
 	enabled  = false
+}
 `
-  
+}
+
 func testAccStaticRouteFrameworkConfig_ipv6() string {
 	return `
 resource "unifi_static_route" "test" {

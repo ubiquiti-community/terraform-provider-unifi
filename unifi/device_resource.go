@@ -1086,7 +1086,11 @@ func (r *deviceResource) Read(
 	if priorPortOverride.IsNull() || priorPortOverride.IsUnknown() {
 		state.PortOverride = priorPortOverride
 	} else {
-		reconciled, reconcileDiags := r.reconcilePortOverrides(ctx, priorPortOverride, device.PortOverrides)
+		reconciled, reconcileDiags := r.reconcilePortOverrides(
+			ctx,
+			priorPortOverride,
+			device.PortOverrides,
+		)
 		resp.Diagnostics.Append(reconcileDiags...)
 		if !resp.Diagnostics.HasError() {
 			state.PortOverride = reconciled
@@ -1274,7 +1278,12 @@ func (r *deviceResource) ImportState(
 		if listErr != nil {
 			resp.Diagnostics.AddError(
 				"Error Listing Devices",
-				fmt.Sprintf("Could not list devices to find MAC %s: %s (original error: %v)", mac, listErr, getErr),
+				fmt.Sprintf(
+					"Could not list devices to find MAC %s: %s (original error: %v)",
+					mac,
+					listErr,
+					getErr,
+				),
 			)
 			return
 		}
@@ -1299,8 +1308,14 @@ func (r *deviceResource) ImportState(
 		}
 		resp.Diagnostics.AddError(
 			"Device Not Found",
-			fmt.Sprintf("No device found with MAC %s on site %s. GetDeviceByMAC error: %v. ListDevice found %d device(s): %v",
-				mac, site, getErr, deviceCount, macList),
+			fmt.Sprintf(
+				"No device found with MAC %s on site %s. GetDeviceByMAC error: %v. ListDevice found %d device(s): %v",
+				mac,
+				site,
+				getErr,
+				deviceCount,
+				macList,
+			),
 		)
 		return
 	}
@@ -1784,21 +1799,6 @@ func (r *deviceResource) reconcilePortOverrides(
 				updated.ExcludedNetworkIDs = emptyList
 			}
 		}
-		if !pm.TaggedNetworkIDs.IsNull() {
-			if len(apiPO.TaggedNetworkIDs) > 0 {
-				vals := make([]attr.Value, len(apiPO.TaggedNetworkIDs))
-				for i, id := range apiPO.TaggedNetworkIDs {
-					vals[i] = types.StringValue(id)
-				}
-				listVal, listDiags := types.ListValue(types.StringType, vals)
-				diags.Append(listDiags...)
-				updated.TaggedNetworkIDs = listVal
-			} else {
-				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
-				diags.Append(listDiags...)
-				updated.TaggedNetworkIDs = emptyList
-			}
-		}
 		if !pm.PortProfileID.IsNull() {
 			if apiPO.PortProfileID == "" {
 				updated.PortProfileID = types.StringNull()
@@ -1816,7 +1816,10 @@ func (r *deviceResource) reconcilePortOverrides(
 		return prior, diags
 	}
 
-	setValue, setDiags := types.SetValue(types.ObjectType{AttrTypes: portOverrideAttrTypes()}, elements)
+	setValue, setDiags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		elements,
+	)
 	diags.Append(setDiags...)
 	if diags.HasError() {
 		return prior, diags
@@ -1988,20 +1991,6 @@ func (r *deviceResource) portOverridesToFramework(
 				continue
 			}
 			model.ExcludedNetworkIDs = listVal
-		}
-
-		if len(po.TaggedNetworkIDs) == 0 {
-			model.TaggedNetworkIDs = types.ListNull(types.StringType)
-		} else {
-			taggedValues := make([]attr.Value, 0, len(po.TaggedNetworkIDs))
-			for _, id := range po.TaggedNetworkIDs {
-				taggedValues = append(taggedValues, types.StringValue(id))
-			}
-			listVal, listDiags := types.ListValue(types.StringType, taggedValues)
-			diags.Append(listDiags...)
-			if !diags.HasError() {
-				model.TaggedNetworkIDs = listVal
-			}
 		}
 
 		if len(po.MulticastRouterNetworkIDs) == 0 {
@@ -2192,15 +2181,6 @@ func (r *deviceResource) frameworkToPortOverrides(
 					return nil, diags
 				}
 				po.ExcludedNetworkIDs = excludedIDs
-			}
-
-			if !model.TaggedNetworkIDs.IsNull() {
-				var taggedIDs []string
-				diags.Append(model.TaggedNetworkIDs.ElementsAs(ctx, &taggedIDs, true)...)
-				if diags.HasError() {
-					return nil, diags
-				}
-				po.TaggedNetworkIDs = taggedIDs
 			}
 
 			if !model.MulticastRouterNetworkIDs.IsNull() {
