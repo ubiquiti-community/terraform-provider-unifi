@@ -2190,14 +2190,6 @@ func (r *deviceResource) frameworkToPortOverrides(
 				po.ExcludedNetworkIDs = excludedIDs
 			}
 
-			if !model.TaggedNetworkIDs.IsNull() {
-				var taggedIDs []string
-				diags.Append(model.TaggedNetworkIDs.ElementsAs(ctx, &taggedIDs, true)...)
-				if diags.HasError() {
-					return nil, diags
-				}
-			}
-
 			if !model.MulticastRouterNetworkIDs.IsNull() {
 				var multicastIDs []string
 				diags.Append(
