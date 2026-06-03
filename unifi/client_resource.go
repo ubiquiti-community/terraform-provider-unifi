@@ -391,18 +391,17 @@ func (r *clientResource) Create(
 			)
 		}
 
-		// Implement merge pattern for existing client
-		mergedClient := r.mergeClient(existingClient, pclient)
-		tflog.Info(ctx, "Merged Client: ")
-		updatedClient, err := r.client.UpdateClient(ctx, site, mergedClient)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Updating Existing Client",
-				"Could not update existing client: "+err.Error(),
-			)
-			return
+		if pclient != nil {
+			createdClient = pclient
+		} else {
+			createdClient = existingClient
 		}
-		createdClient = updatedClient
+	}
+
+	createdClient, diags = r.reconcileCreatedClient(ctx, site, createdClient, client)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Convert response back to model
@@ -620,6 +619,12 @@ func (r *clientResource) Update(
 					"Error Recreating Client",
 					"Could not recreate client: "+err.Error(),
 				)
+				return
+			}
+
+			createdClient, diags = r.reconcileCreatedClient(ctx, site, createdClient, planClient)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
 				return
 			}
 
@@ -902,6 +907,57 @@ func (r *clientResource) planToClient(
 	}
 
 	return client, diags
+}
+
+func (r *clientResource) reconcileCreatedClient(
+	ctx context.Context,
+	site string,
+	currentClient *unifi.Client,
+	plannedClient *unifi.Client,
+) (*unifi.Client, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if currentClient == nil || currentClient.ID == "" {
+		existingClient, err := r.client.GetClientByMAC(ctx, site, plannedClient.MAC)
+		if err != nil {
+			diags.AddError(
+				"Error Reading Created Client",
+				"Could not read created client with MAC "+plannedClient.MAC+": "+err.Error(),
+			)
+			return nil, diags
+		}
+
+		fullClient, err := r.client.GetClient(ctx, site, existingClient.ID)
+		if err == nil {
+			currentClient = fullClient
+		} else {
+			currentClient = existingClient
+		}
+	}
+
+	mergedClient := r.mergeClient(currentClient, plannedClient)
+	tflog.Debug(ctx, "Merging created client", map[string]any{
+		"site":        site,
+		"mac":         plannedClient.MAC,
+		"merged_id":   mergedClient.ID,
+	})
+	updatedClient, err := r.client.UpdateClient(ctx, site, mergedClient)
+	if err != nil {
+		diags.AddError(
+			"Error Updating Created Client",
+			"Could not update created client: "+err.Error(),
+		)
+		return nil, diags
+	}
+
+	if updatedClient != nil && updatedClient.ID != "" {
+		freshClient, err := r.client.GetClient(ctx, site, updatedClient.ID)
+		if err == nil {
+			return freshClient, diags
+		}
+	}
+
+	return updatedClient, diags
 }
 
 func (r *clientResource) clientToModel(
