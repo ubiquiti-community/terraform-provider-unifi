@@ -2,12 +2,14 @@ package unifi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	gounifi "github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/models"
 )
 
@@ -94,17 +96,37 @@ func (d *clientInfoListDataSource) Read(
 	}
 
 	site := data.Site.ValueString()
+	// Track whether the site was explicitly set by the user. An explicit site
+	// that results in a 404 is more likely a misconfiguration and should remain
+	// a hard error. A missing site falls back to the provider default, where a
+	// 404 is commonly caused by the endpoint being unsupported on the controller.
+	siteExplicitlySet := !data.Site.IsNull() && !data.Site.IsUnknown()
 	if site == "" {
 		site = d.client.Site
 	}
 
 	clientInfoList, err := d.client.ListClientInfo(ctx, site)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading Clients",
-			"Could not read active clients: "+err.Error(),
-		)
-		return
+		var notFoundErr *gounifi.NotFoundError
+		if errors.As(err, &notFoundErr) && !siteExplicitlySet {
+			// The active clients endpoint is not available on all UniFi controller
+			// versions or configurations. When the site was not explicitly
+			// configured (using the provider default), return an empty list with a
+			// warning rather than failing the plan entirely.
+			resp.Diagnostics.AddWarning(
+				"Active Clients Endpoint Not Available",
+				"The active clients API endpoint returned 404. This may mean the feature "+
+					"is not enabled or supported on your controller. An empty client list will be returned. "+
+					"Original error: "+err.Error(),
+			)
+			clientInfoList = gounifi.ClientList{}
+		} else {
+			resp.Diagnostics.AddError(
+				"Error Reading Clients",
+				"Could not read active clients: "+err.Error(),
+			)
+			return
+		}
 	}
 
 	clientObjects := make([]basetypes.ObjectValue, len(clientInfoList))
