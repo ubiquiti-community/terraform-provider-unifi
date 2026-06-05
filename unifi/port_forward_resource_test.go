@@ -381,6 +381,55 @@ resource "unifi_port_forward" "test_dst" {
 `
 }
 
+// TestAccPortForward_anyIP verifies that `any` is accepted for wan.ip_address
+// (the UniFi API returns "any" verbatim for rules with no destination IP
+// filter, so the provider must accept it instead of rejecting it as a
+// non-IPv4 value).
+func TestAccPortForward_anyIP(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPortForwardConfig_anyIP(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_port_forward.any", "id"),
+					resource.TestCheckResourceAttr(
+						"unifi_port_forward.any",
+						"wan.ip_address",
+						"any",
+					),
+				),
+			},
+			{
+				ResourceName:            "unifi_port_forward.any",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"enabled"},
+			},
+		},
+	})
+}
+
+func testAccPortForwardConfig_anyIP() string {
+	return `
+resource "unifi_port_forward" "any" {
+  name     = "tfacc-any-ip"
+  protocol = "tcp"
+
+  wan = {
+    ip_address = "any"
+    port       = "8081"
+  }
+
+  forward = {
+    ip   = "192.168.1.30"
+    port = "8081"
+  }
+}
+`
+}
+
 func testAccPortForwardConfig_basic() string {
 	return `
 resource "unifi_port_forward" "test" {
