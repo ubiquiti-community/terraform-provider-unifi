@@ -159,7 +159,7 @@ func (r *portForwardResource) Schema(
 						MarkdownDescription: "The WAN IP address for the port forwarding rule. Use `any` for all addresses.",
 						Optional:            true,
 						Validators: []validator.String{
-							validators.IPv4Validator(),
+							validators.IPv4OrAnyValidator(),
 						},
 					},
 					"port": schema.StringAttribute{
@@ -224,7 +224,7 @@ func (r *portForwardResource) Schema(
 							MarkdownDescription: "The destination IPv4 address. Use `any` for all addresses.",
 							Optional:            true,
 							Validators: []validator.String{
-								validators.IPv4Validator(),
+								validators.IPv4OrAnyValidator(),
 							},
 						},
 						"interface": schema.StringAttribute{
