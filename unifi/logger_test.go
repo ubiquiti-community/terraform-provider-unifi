@@ -22,6 +22,80 @@ func TestNewLogger(t *testing.T) {
 	}
 }
 
+func TestNewLogger_DoesNotInheritRootFieldsByDefault(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	ctx := tflogtest.RootLogger(context.Background(), &buf)
+	ctx = tflog.SetField(ctx, "root_only", "root-value")
+
+	logger := NewLogger(ctx)
+	logger.Info("inheritance check", "per_call", "value")
+
+	entries, err := tflogtest.MultilineJSONDecode(&buf)
+	if err != nil {
+		t.Fatalf("failed to decode log entries: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(entries))
+	}
+
+	entry := entries[0]
+	if got := entry["@module"]; got != "provider.api-client" {
+		t.Fatalf("expected api-client subsystem module, got %v", got)
+	}
+	if got := entry["per_call"]; got != "value" {
+		t.Fatalf("expected per-call field to be preserved, got %v", got)
+	}
+	if _, ok := entry["root_only"]; ok {
+		t.Fatalf("expected root field to be absent, got %v", entry["root_only"])
+	}
+}
+
+func TestNewLogger_MasksSensitivePerCallFields(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	ctx := tflogtest.RootLogger(context.Background(), &buf)
+	logger := NewLogger(ctx)
+
+	logger.Debug(
+		"masked fields",
+		"unifi_api_key",
+		"api-key-123",
+		"unifi_password",
+		"secret-password",
+		"api_key",
+		"common-api-key",
+		"password",
+		"common-password",
+		"authorization",
+		"Bearer abc123",
+		"url",
+		"https://unifi.example.com/api",
+	)
+
+	entries, err := tflogtest.MultilineJSONDecode(&buf)
+	if err != nil {
+		t.Fatalf("failed to decode log entries: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(entries))
+	}
+
+	entry := entries[0]
+	for _, key := range []string{"unifi_api_key", "unifi_password", "api_key", "password", "authorization"} {
+		if got := entry[key]; got != "***" {
+			t.Fatalf("expected %s to be masked, got %v", key, got)
+		}
+	}
+	if got := entry["url"]; got != "https://unifi.example.com/api" {
+		t.Fatalf("expected non-sensitive field to remain unchanged, got %v", got)
+	}
+}
+
 func TestUnifiLogger_Debug(t *testing.T) {
 	t.Parallel()
 
@@ -162,18 +236,13 @@ func TestUnifiLogger_ConcurrentAccess(t *testing.T) {
 
 	var buf bytes.Buffer
 	ctx := tflogtest.RootLogger(context.Background(), &buf)
-	ctx = tflog.SetField(ctx, "unifi_username", "admin")
-	ctx = tflog.SetField(ctx, "unifi_password", "secret")
-	// Masking causes ApplyMask to write to the shared Fields map in-place,
-	// which triggers the race when logging is called concurrently.
-	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "unifi_password")
 
 	logger := NewLogger(ctx)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
-		go func() {
+		go func(iter int) {
 			defer wg.Done()
 			logger.Debug(
 				"performing request",
@@ -181,10 +250,64 @@ func TestUnifiLogger_ConcurrentAccess(t *testing.T) {
 				"GET",
 				"url",
 				"https://unifi.example.com/api",
+				"iter",
+				iter,
+				"unifi_password",
+				"secret",
 			)
-		}()
+		}(i)
 	}
 	wg.Wait()
+
+	entries, err := tflogtest.MultilineJSONDecode(&buf)
+	if err != nil {
+		t.Fatalf("failed to decode log entries: %v", err)
+	}
+
+	if len(entries) != 100 {
+		t.Fatalf("expected 100 log entries, got %d", len(entries))
+	}
+
+	for _, entry := range entries {
+		if got := entry["unifi_password"]; got != "***" {
+			t.Fatalf("expected sensitive field to be masked, got %v", got)
+		}
+	}
+}
+
+func TestUnifiLogger_ConcurrentSharedFieldMasking(t *testing.T) {
+	var buf bytes.Buffer
+	ctx := tflogtest.RootLogger(context.Background(), &buf)
+	ctx = tflog.NewSubsystem(ctx, subsystem)
+	ctx = tflog.SubsystemSetField(ctx, subsystem, "unifi_password", "secret")
+	ctx = tflog.SubsystemMaskFieldValuesWithFieldKeys(ctx, subsystem, "unifi_password")
+
+	logger := &UnifiLogger{ctx: ctx}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(iter int) {
+			defer wg.Done()
+			logger.Debug("shared field masking", "iter", iter)
+		}(i)
+	}
+	wg.Wait()
+
+	entries, err := tflogtest.MultilineJSONDecode(&buf)
+	if err != nil {
+		t.Fatalf("failed to decode log entries: %v", err)
+	}
+
+	if len(entries) != 100 {
+		t.Fatalf("expected 100 log entries, got %d", len(entries))
+	}
+
+	for _, entry := range entries {
+		if got := entry["unifi_password"]; got != "***" {
+			t.Fatalf("expected shared field to be masked, got %v", got)
+		}
+	}
 }
 
 func TestUnifiLogger_ConcurrentMixedLevels(t *testing.T) {
@@ -192,35 +315,47 @@ func TestUnifiLogger_ConcurrentMixedLevels(t *testing.T) {
 
 	var buf bytes.Buffer
 	ctx := tflogtest.RootLogger(context.Background(), &buf)
-	ctx = tflog.SetField(ctx, "unifi_username", "admin")
-	ctx = tflog.SetField(ctx, "unifi_password", "secret")
-	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "unifi_password")
 
 	logger := NewLogger(ctx)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(5)
-		go func() {
+		go func(iter int) {
 			defer wg.Done()
-			logger.Debug("debug msg", "iter", i)
-		}()
-		go func() {
+			logger.Debug("debug msg", "iter", iter, "unifi_password", "secret")
+		}(i)
+		go func(iter int) {
 			defer wg.Done()
-			logger.Info("info msg", "iter", i)
-		}()
-		go func() {
+			logger.Info("info msg", "iter", iter, "unifi_password", "secret")
+		}(i)
+		go func(iter int) {
 			defer wg.Done()
-			logger.Warn("warn msg", "iter", i)
-		}()
-		go func() {
+			logger.Warn("warn msg", "iter", iter, "unifi_password", "secret")
+		}(i)
+		go func(iter int) {
 			defer wg.Done()
-			logger.Error("error msg", "iter", i)
-		}()
-		go func() {
+			logger.Error("error msg", "iter", iter, "unifi_password", "secret")
+		}(i)
+		go func(iter int) {
 			defer wg.Done()
-			logger.Printf("printf msg %d", i)
-		}()
+			logger.Printf("printf msg %d", iter)
+		}(i)
 	}
 	wg.Wait()
+
+	entries, err := tflogtest.MultilineJSONDecode(&buf)
+	if err != nil {
+		t.Fatalf("failed to decode log entries: %v", err)
+	}
+
+	if len(entries) != 500 {
+		t.Fatalf("expected 500 log entries, got %d", len(entries))
+	}
+
+	for _, entry := range entries {
+		if got := entry["unifi_password"]; got != "***" && got != nil {
+			t.Fatalf("expected sensitive field to be masked or absent, got %v", got)
+		}
+	}
 }
