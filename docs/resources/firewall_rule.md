@@ -32,7 +32,7 @@ resource "unifi_firewall_rule" "drop_all" {
 
 - `action` (String) The action of the firewall rule. Must be one of `drop`, `accept`, or `reject`.
 - `name` (String) The name of the firewall rule.
-- `rule_index` (Number) The index of the rule. Must be >= 2000 < 3000, >= 4000 < 5000, >= 20000 < 30000, or >= 40000 < 50000.
+- `rule_index` (Number) The index of the rule. Must be in one of the interface-specific blocks: `2000-2999` (LAN), `3000-3999` (WAN), `4000-4999` (GUEST), or their high-range equivalents `20000-29999`, `30000-39999`, `40000-49999` used by newer UniFi OS versions.
 - `ruleset` (String) The ruleset for the rule. This is from the perspective of the security gateway.
 
 ### Optional
