@@ -254,8 +254,12 @@ func (p *unifiProvider) Configure(
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to Create HTTP Client",
-			"An unexpected error occurred when creating the HTTP client. "+
+			"Unable to Connect to UniFi Controller",
+			"Could not create the UniFi API client. With username/password auth the "+
+				"controller may have rate-limited the login (UniFi throttles "+
+				"POST /api/auth/login under rapid or back-to-back runs); using API-key "+
+				"authentication (the `api_key` argument or `UNIFI_API_KEY`) skips the "+
+				"per-run login entirely and avoids this. Underlying error: "+
 				err.Error(),
 		)
 		return

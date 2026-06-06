@@ -18,9 +18,18 @@ type UnifiLogger struct {
 }
 
 func NewLogger(ctx context.Context) *UnifiLogger {
-	return &UnifiLogger{
-		ctx: tflog.NewSubsystem(ctx, subsystem),
-	}
+	ctx = tflog.NewSubsystem(ctx, subsystem)
+	ctx = tflog.SubsystemMaskFieldValuesWithFieldKeys(
+		ctx,
+		subsystem,
+		"unifi_api_key",
+		"unifi_password",
+		"api_key",
+		"password",
+		"authorization",
+	)
+
+	return &UnifiLogger{ctx: ctx}
 }
 
 // Factor the lock boilerplate into one place.

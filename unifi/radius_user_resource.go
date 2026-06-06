@@ -96,12 +96,13 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 				Sensitive:           true,
 			},
 			"tunnel_type": schema.Int64Attribute{
-				MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(3),
+				MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. " +
+					"Valid values are 1-13; `13` (VLAN) is the most common.",
+				Optional: true,
+				Computed: true,
+				Default:  int64default.StaticInt64(3),
 				Validators: []validator.Int64{
-					int64validator.Between(1, 12),
+					int64validator.Between(1, 13),
 				},
 			},
 			"tunnel_medium_type": schema.Int64Attribute{
