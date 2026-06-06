@@ -36,7 +36,7 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 - `site` (String) The name of the site to associate the account with.
 - `tunnel_config_type` (String) The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.
 - `tunnel_medium_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2
-- `tunnel_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1
+- `tunnel_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. Valid values are 1-13; `13` (VLAN) is the most common.
 - `vlan` (Number) VLAN assigned to the account. If unset, the client falls back to the untagged VLAN.
 
 ### Read-Only
