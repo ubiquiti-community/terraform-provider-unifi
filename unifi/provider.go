@@ -301,6 +301,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewWLANFrameworkResource,
 		NewVPNClientResource,
 		NewVPNServerResource,
+		NewWireguardPeerResource,
 		NewClientQosRateResource,
 		NewTrafficRouteResource,
 	}
