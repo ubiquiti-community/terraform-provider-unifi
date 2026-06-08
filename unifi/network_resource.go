@@ -38,6 +38,7 @@ var (
 	_ resource.Resource                = &networkResource{}
 	_ resource.ResourceWithImportState = &networkResource{}
 	_ resource.ResourceWithIdentity    = &networkResource{}
+	_ resource.ResourceWithModifyPlan  = &networkResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -633,6 +634,49 @@ func (r *networkResource) Configure(
 	r.client = client
 }
 
+// ModifyPlan forces setting_preference to "manual" when DHCP relay is enabled.
+//
+// With setting_preference "auto" the controller auto-manages the network and
+// re-enables its built-in DHCP server, which silently turns dhcp_relay off
+// (the two cannot coexist). Forcing "manual" makes the controller honor the
+// explicit relay configuration. We only override the default; an explicit
+// user-provided value is left untouched.
+func (r *networkResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return // resource is being destroyed
+	}
+
+	var configPref types.String
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("setting_preference"), &configPref)...)
+	if resp.Diagnostics.HasError() || !configPref.IsNull() {
+		return // user set it explicitly: respect their choice
+	}
+
+	var relay types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("dhcp_relay"), &relay)...)
+	if resp.Diagnostics.HasError() || relay.IsNull() || relay.IsUnknown() {
+		return
+	}
+
+	var dr dhcpRelayModel
+	resp.Diagnostics.Append(relay.As(ctx, &dr, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() || !dr.Enabled.ValueBool() {
+		return
+	}
+
+	resp.Diagnostics.Append(
+		resp.Plan.SetAttribute(
+			ctx,
+			path.Root("setting_preference"),
+			types.StringValue("manual"),
+		)...)
+}
+
 func (r *networkResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
@@ -969,6 +1013,19 @@ func (r *networkResource) modelToNetwork(
 		// }
 	}
 
+	// A DHCP server and DHCP relay cannot coexist on a network: with relay on,
+	// emitting DHCPDEnabled=true (as the default branch below would) makes the
+	// controller reject the request. We therefore skip the DHCP-server defaults
+	// when relay is enabled. ModifyPlan additionally pins setting_preference to
+	// "manual" so the controller honors the relay instead of auto-managing it.
+	relayEnabled := false
+	if !model.DhcpRelay.IsNull() && !model.DhcpRelay.IsUnknown() {
+		var dr dhcpRelayModel
+		if d := model.DhcpRelay.As(ctx, &dr, basetypes.ObjectAsOptions{}); !d.HasError() {
+			relayEnabled = dr.Enabled.ValueBool()
+		}
+	}
+
 	// Handle DHCP server configuration
 	if !model.DhcpServer.IsNull() && !model.DhcpServer.IsUnknown() {
 		var dhcpServer dhcpServerModel
@@ -1113,8 +1170,8 @@ func (r *networkResource) modelToNetwork(
 				network.DHCPDDNS4 = ""
 			}
 		}
-	} else {
-		// Set defaults when DHCP server is not configured
+	} else if !relayEnabled {
+		// Set defaults when DHCP server is not configured (and relay is off).
 		network.DHCPDBootEnabled = false
 		network.DHCPDBootServer = ""
 		network.DHCPDBootFilename = util.Ptr("")
