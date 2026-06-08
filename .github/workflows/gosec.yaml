@@ -11,8 +11,6 @@ on:
 
   pull_request:
     types: ["opened", "synchronize"]
-    branches-ignore:
-      - "dependabot/**"
     paths:
       - "**.go"
       - "vendor/**"
