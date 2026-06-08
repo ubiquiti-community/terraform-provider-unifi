@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -271,6 +272,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "MAC address filtering configuration.",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Indicates whether or not the MAC filter is turned on for the network.",
@@ -1108,6 +1112,13 @@ func (r *wlanFrameworkResource) planToWLAN(
 			)
 		}
 		wlan.ScheduleEnabled = len(wlan.ScheduleWithDuration) > 0
+	}
+
+	// The go-unifi schedule_with_duration field has no omitempty, so a nil slice
+	// marshals as `null`, which the controller rejects with api.err.InvalidPayload.
+	// Always send an empty list instead of null when there are no schedules.
+	if wlan.ScheduleWithDuration == nil {
+		wlan.ScheduleWithDuration = []unifi.WLANScheduleWithDuration{}
 	}
 
 	return wlan, diags
