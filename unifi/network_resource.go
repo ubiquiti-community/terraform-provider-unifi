@@ -379,10 +379,17 @@ func (r *networkResource) Schema(
 				},
 			},
 			"lte_lan": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether LTE LAN is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether this network/VLAN stays active when the " +
+					"gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to " +
+					"the controller's `lte_lan_enabled` flag and only matters when a " +
+					"UniFi LTE failover device is in use; otherwise it is cosmetic. " +
+					"Defaults to `true` (network stays available during LTE failover); " +
+					"set to `false` to disable it while on the LTE backup link. The " +
+					"controller may set this automatically, which is why existing " +
+					"networks can show differing values.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(true),
 			},
 			"ip_aliases": schema.ListAttribute{
 				MarkdownDescription: "List of IP aliases for the network.",
