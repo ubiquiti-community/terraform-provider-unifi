@@ -40,7 +40,7 @@ func TestAccDNSRecordFramework_defaultRecordType(t *testing.T) {
 			{
 				Config: testAccDNSRecordFrameworkConfig_defaultRecordType(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_dns_record.test", "name", "test-record-default"),
+					resource.TestCheckResourceAttr("unifi_dns_record.test", "name", "test-record-default.example.com"),
 					resource.TestCheckResourceAttr(
 						"unifi_dns_record.test",
 						"value",
@@ -48,7 +48,6 @@ func TestAccDNSRecordFramework_defaultRecordType(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "record_type", "A"),
 				),
-				ExpectError: regexp.MustCompile(".*"),
 			},
 		},
 	})
