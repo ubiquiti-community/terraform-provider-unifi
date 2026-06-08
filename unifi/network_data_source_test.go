@@ -168,6 +168,7 @@ func testAccNetworkFrameworkDataSourceConfig_dhcpGuardingServers() string {
 	return `
 resource "unifi_network" "test_guarding" {
 	name                = "Test DHCP Guarding DS"
+	subnet              = "10.0.51.1/24"
 	vlan                = 51
 	third_party_gateway = true
 
