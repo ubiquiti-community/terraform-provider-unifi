@@ -476,7 +476,10 @@ func (r *portForwardResource) applyPlanToState(
 	if !plan.Forward.IsNull() && !plan.Forward.IsUnknown() {
 		state.Forward = plan.Forward
 	}
-	if !plan.SourceLimiting.IsNull() && !plan.SourceLimiting.IsUnknown() {
+	// Track the plan exactly, including a null (omitted block): leaving a stale
+	// non-null state here would re-send and re-flatten source limiting, producing
+	// an "inconsistent result after apply" when the block was removed/omitted.
+	if !plan.SourceLimiting.IsUnknown() {
 		state.SourceLimiting = plan.SourceLimiting
 	}
 	if !plan.DestinationIPs.IsNull() && !plan.DestinationIPs.IsUnknown() {
@@ -649,25 +652,23 @@ func (r *portForwardResource) portForwardToModel(
 		model.Forward = types.ObjectNull(portForwardForwardModel{}.AttributeTypes())
 	}
 
-	// Source limiting nested object
-	if portForward.Src != "" || portForward.SrcLimitingEnabled ||
+	// Source limiting nested object.
+	//
+	// The controller returns Src="any" with limiting disabled even when no source
+	// limiting is configured, so that default alone must not produce a non-null
+	// object — otherwise an omitted source_limiting block plans as null but apply
+	// yields a non-null object ("Provider produced inconsistent result after
+	// apply"). Populate only when source limiting is genuinely configured on the
+	// controller, or when the prior plan/state already carried the block.
+	srcConfigured := portForward.SrcLimitingEnabled ||
 		portForward.SrcFirewallGroupID != "" ||
-		portForward.SrcLimitingType != "" {
+		(portForward.Src != "" && portForward.Src != "any")
+	if srcConfigured || !model.SourceLimiting.IsNull() {
 		srcValue := portForwardSourceLimitingModel{
 			IP:              stringValueOrNull(portForward.Src),
 			FirewallGroupID: stringValueOrNull(portForward.SrcFirewallGroupID),
 			Enabled:         types.BoolValue(portForward.SrcLimitingEnabled),
 			Type:            stringValueOrNull(portForward.SrcLimitingType),
-		}
-		srcObj, d := types.ObjectValueFrom(ctx, srcValue.AttributeTypes(), srcValue)
-		diags.Append(d...)
-		model.SourceLimiting = srcObj
-	} else if !model.SourceLimiting.IsNull() {
-		srcValue := portForwardSourceLimitingModel{
-			IP:              types.StringNull(),
-			FirewallGroupID: types.StringNull(),
-			Enabled:         types.BoolValue(false),
-			Type:            types.StringNull(),
 		}
 		srcObj, d := types.ObjectValueFrom(ctx, srcValue.AttributeTypes(), srcValue)
 		diags.Append(d...)
