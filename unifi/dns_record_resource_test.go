@@ -31,6 +31,29 @@ func TestAccDNSRecordFramework_basic(t *testing.T) {
 	})
 }
 
+func TestAccDNSRecordFramework_defaultRecordType(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: providerFactories,
+		CheckDestroy:             nil, // TODO: implement check destroy
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDNSRecordFrameworkConfig_defaultRecordType(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_dns_record.test", "name", "test-record-default"),
+					resource.TestCheckResourceAttr(
+						"unifi_dns_record.test",
+						"value",
+						"192.168.1.100",
+					),
+					resource.TestCheckResourceAttr("unifi_dns_record.test", "record_type", "A"),
+				),
+				ExpectError: regexp.MustCompile(".*"),
+			},
+		},
+	})
+}
+
 func testAccDNSRecordFrameworkConfig_basic() string {
 	return `
 resource "unifi_dns_record" "test" {
@@ -40,6 +63,16 @@ resource "unifi_dns_record" "test" {
   record_type = "A"
   ttl         = 300
   value       = "192.168.1.100"
+}
+`
+}
+
+func testAccDNSRecordFrameworkConfig_defaultRecordType() string {
+	return `
+resource "unifi_dns_record" "test" {
+  name     = "test-record-default.example.com"
+  ttl      = 300
+  value    = "192.168.1.100"
 }
 `
 }
