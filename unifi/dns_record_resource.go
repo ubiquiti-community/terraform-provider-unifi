@@ -109,7 +109,7 @@ func (r *dnsRecordFrameworkResource) Schema(
 				},
 			},
 			"record_type": schema.StringAttribute{
-				MarkdownDescription: "The type of the DNS record. Defaults to `A`.",
+				MarkdownDescription: "The type of the DNS record. One of `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV` or `PTR`. Defaults to `A`.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("A"),
