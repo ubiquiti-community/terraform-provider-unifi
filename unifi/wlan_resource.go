@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -70,6 +71,7 @@ type wlanFrameworkResourceModel struct {
 	WPA3Transition           types.Bool   `tfsdk:"wpa3_transition"`
 	PMFMode                  types.String `tfsdk:"pmf_mode"`
 	Passphrase               types.String `tfsdk:"passphrase"`
+	PassphraseWO             types.String `tfsdk:"passphrase_wo"`
 	HideSSID                 types.Bool   `tfsdk:"hide_ssid"`
 	IsGuest                  types.Bool   `tfsdk:"is_guest"`
 	Enabled                  types.Bool   `tfsdk:"enabled"`
@@ -190,9 +192,21 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"passphrase": schema.StringAttribute{
-				MarkdownDescription: "The passphrase for the network, this is only required if `security` is not set to `open`.",
+				MarkdownDescription: "The passphrase for the network, only required if `security` is not `open`. Stored in state — use `passphrase_wo` to avoid persisting the secret.",
 				Optional:            true,
 				Sensitive:           true,
+			},
+			"passphrase_wo": schema.StringAttribute{
+				MarkdownDescription: "Write-only equivalent of `passphrase` (Terraform 1.11+). " +
+					"Used at apply time but never written to state, so it can be sourced from " +
+					"an ephemeral resource (e.g. a Vault secret). Mutually exclusive with " +
+					"`passphrase`.",
+				Optional:  true,
+				Sensitive: true,
+				WriteOnly: true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("passphrase")),
+				},
 			},
 			"hide_ssid": schema.BoolAttribute{
 				MarkdownDescription: "Indicates whether or not to hide the SSID from broadcast.",
@@ -593,6 +607,15 @@ func (r *wlanFrameworkResource) Create(
 		return
 	}
 
+	// Write-only passphrase: read from config, use at apply time, never persist.
+	passphraseWO := r.readPassphraseWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !passphraseWO.IsNull() && !passphraseWO.IsUnknown() {
+		wlan.Passphrase = passphraseWO.ValueString()
+	}
+
 	// UDM SE API requires ap_group_ids to be set even when ap_group_mode is "all".
 	// Look up and set the default AP group ID if ap_group_mode is "all" and no ap_group_ids specified.
 	if wlan.ApGroupMode == "all" && len(wlan.ApGroupIDs) == 0 {
@@ -632,6 +655,12 @@ func (r *wlanFrameworkResource) Create(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// When the write-only passphrase is used, never persist the secret to state:
+	// keep `passphrase` null (matching the config) instead of the API echo.
+	if !passphraseWO.IsNull() {
+		plan.Passphrase = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, plan)
@@ -725,6 +754,15 @@ func (r *wlanFrameworkResource) Update(
 		return
 	}
 
+	// Write-only passphrase: read from config, use at apply time, never persist.
+	passphraseWO := r.readPassphraseWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !passphraseWO.IsNull() && !passphraseWO.IsUnknown() {
+		wlan.Passphrase = passphraseWO.ValueString()
+	}
+
 	// Step 4: Send to API
 	wlan.ID = state.ID.ValueString()
 	updatedWLAN, err := r.client.UpdateWLAN(ctx, site, wlan)
@@ -743,7 +781,24 @@ func (r *wlanFrameworkResource) Update(
 		return
 	}
 
+	// When the write-only passphrase is used, never persist the secret to state.
+	if !passphraseWO.IsNull() {
+		state.Passphrase = types.StringNull()
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// readPassphraseWO reads the write-only passphrase_wo attribute from config.
+// Write-only values are only available via the request config (never plan/state).
+func (r *wlanFrameworkResource) readPassphraseWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var passphraseWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("passphrase_wo"), &passphraseWO)...)
+	return passphraseWO
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.

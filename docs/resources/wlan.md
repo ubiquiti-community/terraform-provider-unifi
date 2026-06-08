@@ -87,7 +87,8 @@ resource "unifi_wlan" "wifi" {
 - `nas_identifier_type` (String) NAS identifier type for RADIUS.
 - `network_id` (String) ID of the network for this WLAN.
 - `no2ghz_oui` (Boolean) Connect high performance clients to 5 GHz only.
-- `passphrase` (String, Sensitive) The passphrase for the network, this is only required if `security` is not set to `open`.
+- `passphrase` (String, Sensitive) The passphrase for the network, only required if `security` is not `open`. Stored in state — use `passphrase_wo` to avoid persisting the secret.
+- `passphrase_wo` (String, Sensitive, Write-only) Write-only equivalent of `passphrase` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource (e.g. a Vault secret). Mutually exclusive with `passphrase`.
 - `pmf_mode` (String) Enable Protected Management Frames. This cannot be disabled if using WPA 3.
 - `proxy_arp` (Boolean) Reduces airtime usage by allowing APs to "proxy" common broadcast frames as unicast.
 - `radius_mac_auth_enabled` (Boolean) Enable RADIUS MAC authentication.
