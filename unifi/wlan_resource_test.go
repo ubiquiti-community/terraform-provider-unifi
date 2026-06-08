@@ -65,6 +65,12 @@ func TestAccWLANFramework_additionalFields(t *testing.T) {
 					resource.TestCheckResourceAttrSet("unifi_wlan.test", "group_rekey"),
 					resource.TestCheckResourceAttrSet("unifi_wlan.test", "iapp_enabled"),
 					resource.TestCheckResourceAttrSet("unifi_wlan.test", "mlo_enabled"),
+					// Issue #176 (secondary): the API omits minimum_data_rate_*
+					// from GET responses, so the read path must surface them as 0
+					// (the schema default), not null, to avoid perpetual plan
+					// drift after import.
+					resource.TestCheckResourceAttr("unifi_wlan.test", "minimum_data_rate_2g_kbps", "0"),
+					resource.TestCheckResourceAttr("unifi_wlan.test", "minimum_data_rate_5g_kbps", "0"),
 				),
 				ResourceName:  "unifi_wlan.test",
 				ImportState:   true,

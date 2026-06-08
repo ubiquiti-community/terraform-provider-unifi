@@ -586,6 +586,37 @@ func (r *wlanFrameworkResource) Configure(
 	r.client = client
 }
 
+// setDefaultWLANGroupID populates wlan.WLANGroupID when it is empty. go-unifi
+// serializes WLANGroupID without `omitempty`, so leaving it blank sends
+// `"wlangroup_id":""` in every POST/PUT, which UniFi Network 10.x rejects with
+// api.err.InvalidPayload. Default to the site's default WLAN group (mirrors the
+// AP-group handling in Create).
+func (r *wlanFrameworkResource) setDefaultWLANGroupID(
+	ctx context.Context,
+	site string,
+	wlan *unifi.WLAN,
+) error {
+	if wlan.WLANGroupID != "" {
+		return nil
+	}
+	groups, err := r.client.ListWLANGroup(ctx, site)
+	if err != nil {
+		return err
+	}
+	// The default WLAN group reports attr_hidden_id "Default" (note the casing
+	// differs from AP groups, which use "default"); match case-insensitively.
+	for _, group := range groups {
+		if strings.EqualFold(group.HiddenID, "default") {
+			wlan.WLANGroupID = group.ID
+			return nil
+		}
+	}
+	if len(groups) > 0 {
+		wlan.WLANGroupID = groups[0].ID
+	}
+	return nil
+}
+
 func (r *wlanFrameworkResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
@@ -642,6 +673,14 @@ func (r *wlanFrameworkResource) Create(
 		if len(wlan.ApGroupIDs) == 0 && len(apGroups) > 0 {
 			wlan.ApGroupIDs = []string{apGroups[0].ID}
 		}
+	}
+
+	if err := r.setDefaultWLANGroupID(ctx, site, wlan); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Listing WLAN Groups",
+			"Could not list WLAN groups: "+err.Error(),
+		)
+		return
 	}
 
 	// Create the WLAN
@@ -769,6 +808,13 @@ func (r *wlanFrameworkResource) Update(
 
 	// Step 4: Send to API
 	wlan.ID = state.ID.ValueString()
+	if err := r.setDefaultWLANGroupID(ctx, site, wlan); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Listing WLAN Groups",
+			"Could not list WLAN groups: "+err.Error(),
+		)
+		return
+	}
 	updatedWLAN, err := r.client.UpdateWLAN(ctx, site, wlan)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -1294,8 +1340,19 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.MinrateSettingPreference = types.StringValue("auto")
 	}
 
-	model.MinimumDataRate2GKbps = types.Int64PointerValue(wlan.MinrateNgDataRateKbps)
-	model.MinimumDataRate5GKbps = types.Int64PointerValue(wlan.MinrateNaDataRateKbps)
+	// The API omits these fields from GET responses when unset; map the missing
+	// value to 0 (the schema default) instead of null to avoid perpetual
+	// null->0 plan drift after import.
+	if wlan.MinrateNgDataRateKbps != nil {
+		model.MinimumDataRate2GKbps = types.Int64Value(*wlan.MinrateNgDataRateKbps)
+	} else {
+		model.MinimumDataRate2GKbps = types.Int64Value(0)
+	}
+	if wlan.MinrateNaDataRateKbps != nil {
+		model.MinimumDataRate5GKbps = types.Int64Value(*wlan.MinrateNaDataRateKbps)
+	} else {
+		model.MinimumDataRate5GKbps = types.Int64Value(0)
+	}
 
 	if wlan.WPAMode != "" {
 		model.WPAMode = types.StringValue(wlan.WPAMode)
