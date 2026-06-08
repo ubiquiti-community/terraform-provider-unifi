@@ -305,9 +305,11 @@ func (r *networkResource) Schema(
 				Default:             booldefault.StaticBool(true),
 			},
 			"subnet": schema.StringAttribute{
-				MarkdownDescription: "The IP subnet of the network in CIDR notation.",
-				Required:            true,
-				CustomType:          cidrtypes.IPv4PrefixType{},
+				MarkdownDescription: "The IPv4 subnet of the network in CIDR notation. Optional: it is " +
+					"not required for `vlan_only` networks (`third_party_gateway = true`), where the " +
+					"UniFi controller does not manage the subnet.",
+				Optional:   true,
+				CustomType: cidrtypes.IPv4PrefixType{},
 			},
 			"domain_name": schema.StringAttribute{
 				MarkdownDescription: "The domain name for the network.",
@@ -1220,8 +1222,11 @@ func (r *networkResource) networkToModel(
 		model.DomainName = types.StringPointerValue(network.DomainName)
 	}
 
-	// Determine if this is an import (name/ID is set but required field Subnet is null)
-	isImport := previousModel != nil && previousModel.Subnet.IsNull()
+	// Determine if this is an import. On import only the ID/identity is seeded into
+	// state, so the computed network_isolation field is still null; in every other
+	// flow (create/read/update) networkToModel always assigns it above. We can no
+	// longer use Subnet for this since it is now optional (e.g. vlan_only networks).
+	isImport := previousModel != nil && previousModel.NetworkIsolation.IsNull()
 
 	// Build dhcp_guarding from API fields
 	shouldPopulateDhcpGuarding := false

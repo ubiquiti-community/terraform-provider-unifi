@@ -44,7 +44,6 @@ resource "unifi_network" "third_party" {
 ### Required
 
 - `name` (String) The name of the network.
-- `subnet` (String) The IP subnet of the network in CIDR notation.
 
 ### Optional
 
@@ -66,6 +65,7 @@ resource "unifi_network" "third_party" {
 - `network_isolation` (Boolean) Specifies whether network isolation is enabled.
 - `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the network with.
+- `subnet` (String) The IPv4 subnet of the network in CIDR notation. Optional: it is not required for `vlan_only` networks (`third_party_gateway = true`), where the UniFi controller does not manage the subnet.
 - `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.
 - `vlan` (Number) The VLAN ID for the network.
 
