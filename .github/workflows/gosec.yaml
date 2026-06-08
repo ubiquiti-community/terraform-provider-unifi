@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
       - "vendor/**"
       - ".github/workflows/**"
 
@@ -13,6 +15,8 @@ on:
     types: ["opened", "synchronize"]
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
       - "vendor/**"
       - ".github/workflows/**"
 
