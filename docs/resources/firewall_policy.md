@@ -49,6 +49,7 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
+- `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
 
@@ -66,5 +67,6 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
+- `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).

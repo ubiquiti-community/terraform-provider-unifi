@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -59,6 +60,7 @@ type firewallPolicyEndpointModel struct {
 	NetworkIDs       types.List   `tfsdk:"network_ids"`
 	ClientMACs       types.List   `tfsdk:"client_macs"`
 	IPs              types.List   `tfsdk:"ips"`
+	Port             types.Int64  `tfsdk:"port"`
 	PortGroupID      types.String `tfsdk:"port_group_id"`
 	PortMatchingType types.String `tfsdk:"port_matching_type"`
 }
@@ -70,6 +72,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"network_ids":        types.ListType{ElemType: types.StringType},
 		"client_macs":        types.ListType{ElemType: types.StringType},
 		"ips":                types.ListType{ElemType: types.StringType},
+		"port":               types.Int64Type,
 		"port_group_id":      types.StringType,
 		"port_matching_type": types.StringType,
 	}
@@ -117,6 +120,17 @@ func (r *firewallPolicyResource) Schema(
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
+		},
+		"port": schema.Int64Attribute{
+			MarkdownDescription: "Specific port to match. Used when `port_matching_type` is `SPECIFIC`.",
+			Optional:            true,
+			Computed:            true,
+			Validators: []validator.Int64{
+				int64validator.Between(1, 65535),
+			},
+			PlanModifiers: []planmodifier.Int64{
+				int64planmodifier.UseStateForUnknown(),
+			},
 		},
 		"port_group_id": schema.StringAttribute{
 			MarkdownDescription: "ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.",
@@ -464,6 +478,7 @@ func endpointModelToSource(
 	ep := &unifi.FirewallPolicySource{
 		ZoneID:           m.ZoneID.ValueString(),
 		MatchingTarget:   m.MatchingTarget.ValueString(),
+		Port:             m.Port.ValueInt64Pointer(),
 		PortGroupID:      m.PortGroupID.ValueString(),
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
@@ -481,6 +496,7 @@ func endpointModelToDestination(
 	ep := &unifi.FirewallPolicyDestination{
 		ZoneID:           m.ZoneID.ValueString(),
 		MatchingTarget:   m.MatchingTarget.ValueString(),
+		Port:             m.Port.ValueInt64Pointer(),
 		PortGroupID:      m.PortGroupID.ValueString(),
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
@@ -544,6 +560,7 @@ func apiSourceToEndpointModel(
 	m := firewallPolicyEndpointModel{
 		ZoneID:           types.StringValue(src.ZoneID),
 		MatchingTarget:   types.StringValue(src.MatchingTarget),
+		Port:             types.Int64PointerValue(src.Port),
 		PortGroupID:      types.StringValue(src.PortGroupID),
 		PortMatchingType: types.StringValue(src.PortMatchingType),
 	}
@@ -565,6 +582,7 @@ func apiDestinationToEndpointModel(
 	m := firewallPolicyEndpointModel{
 		ZoneID:           types.StringValue(dst.ZoneID),
 		MatchingTarget:   types.StringValue(dst.MatchingTarget),
+		Port:             types.Int64PointerValue(dst.Port),
 		PortGroupID:      types.StringValue(dst.PortGroupID),
 		PortMatchingType: types.StringValue(dst.PortMatchingType),
 	}
