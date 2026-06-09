@@ -365,3 +365,175 @@ resource "unifi_network" "test_relay" {
 }
 `
 }
+
+func TestAccNetworkFramework_ipv6Static(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkConfig_ipv6Static(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_ipv6_static",
+						"name",
+						"Test IPv6 Static",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_ipv6_static",
+						"ipv6_interface_type",
+						"static",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_ipv6_static",
+						"ipv6_static_subnet",
+						"fd00::1/64",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_ipv6_static",
+						"ipv6_ra",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_ipv6_static",
+						"ipv6_ra_priority",
+						"high",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_ipv6_static",
+						"ipv6_ra_valid_lifetime",
+						"86400",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_ipv6_static",
+						"ipv6_ra_preferred_lifetime",
+						"14400",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_network.test_ipv6_static",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateId:     "name=Test IPv6 Static",
+				ImportStateVerifyIgnore: []string{
+					"dhcp_server",
+					"dhcp_relay",
+					"dhcp_v6_server",
+				},
+			},
+		},
+	})
+}
+
+func TestAccNetworkFramework_dhcpV6(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkConfig_dhcpV6(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"name",
+						"Test DHCPv6",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"ipv6_interface_type",
+						"static",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.dns_auto",
+						"false",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.dns_servers.#",
+						"2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.dns_servers.0",
+						"2001:4860:4860::8888",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.dns_servers.1",
+						"2001:4860:4860::8844",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.start",
+						"::2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.stop",
+						"::7d1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_dhcpv6",
+						"dhcp_v6_server.lease",
+						"86400",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_network.test_dhcpv6",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateId:     "name=Test DHCPv6",
+				ImportStateVerifyIgnore: []string{
+					"dhcp_server",
+					"dhcp_relay",
+				},
+			},
+		},
+	})
+}
+
+func testAccNetworkFrameworkConfig_ipv6Static() string {
+	return `
+resource "unifi_network" "test_ipv6_static" {
+	name                    = "Test IPv6 Static"
+	subnet                  = "192.168.40.1/24"
+	vlan                    = 40
+	ipv6_interface_type     = "static"
+	ipv6_static_subnet      = "fd00::1/64"
+	ipv6_ra                 = true
+	ipv6_ra_priority        = "high"
+	ipv6_ra_valid_lifetime  = 86400
+	ipv6_ra_preferred_lifetime = 14400
+}
+`
+}
+
+func testAccNetworkFrameworkConfig_dhcpV6() string {
+	return `
+resource "unifi_network" "test_dhcpv6" {
+	name                = "Test DHCPv6"
+	subnet              = "192.168.60.1/24"
+	vlan                = 60
+	ipv6_interface_type = "static"
+	ipv6_static_subnet  = "fd01::1/64"
+	ipv6_ra             = true
+
+	dhcp_v6_server = {
+		enabled     = true
+		dns_auto    = false
+		dns_servers = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+		start       = "::2"
+		stop        = "::7d1"
+		lease       = 86400
+	}
+}
+`
+}

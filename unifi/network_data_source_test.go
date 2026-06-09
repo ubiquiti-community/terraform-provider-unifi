@@ -204,3 +204,101 @@ data "unifi_network" "test_relay_ds" {
 }
 `
 }
+
+func TestAccNetworkFrameworkDataSource_ipv6(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkDataSourceConfig_ipv6(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"ipv6_interface_type",
+						"static",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"ipv6_static_subnet",
+						"fd02::1/64",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"ipv6_ra",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"ipv6_ra_priority",
+						"medium",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"ipv6_ra_preferred_lifetime",
+						"14400",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"ipv6_ra_valid_lifetime",
+						"86400",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"dhcp_v6_server.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"dhcp_v6_server.dns_auto",
+						"false",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"dhcp_v6_server.start",
+						"::2",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"dhcp_v6_server.stop",
+						"::7d1",
+					),
+					resource.TestCheckResourceAttr(
+						"data.unifi_network.test",
+						"dhcp_v6_server.lease",
+						"86400",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccNetworkFrameworkDataSourceConfig_ipv6() string {
+	return `
+resource "unifi_network" "test_ipv6_ds" {
+	name                       = "Test IPv6 DS"
+	subnet                     = "192.168.70.1/24"
+	vlan                       = 70
+	ipv6_interface_type        = "static"
+	ipv6_static_subnet         = "fd02::1/64"
+	ipv6_ra                    = true
+	ipv6_ra_priority           = "medium"
+	ipv6_ra_preferred_lifetime = 14400
+	ipv6_ra_valid_lifetime     = 86400
+
+	dhcp_v6_server = {
+		enabled  = true
+		dns_auto = false
+		start    = "::2"
+		stop     = "::7d1"
+		lease    = 86400
+	}
+}
+
+data "unifi_network" "test" {
+	name       = unifi_network.test_ipv6_ds.name
+	depends_on = [unifi_network.test_ipv6_ds]
+}
+`
+}
