@@ -68,7 +68,7 @@ jobs:
 
     - name: Run Tests
       if: always()
-      run: go tool gotestsum --junitfile junit.xml -- -coverprofile=coverage.txt -covermode=atomic -race -count=1 -v -timeout 120m ./...
+      run: gotestsum --junitfile junit.xml -- -coverprofile=coverage.txt -covermode=atomic -race -count=1 -v -timeout 120m ./...
 
     - name: Generate HTML coverage report
       if: always()
@@ -76,7 +76,7 @@ jobs:
 
     - name: Upload coverage report
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: coverage-report
         path: |
@@ -86,12 +86,12 @@ jobs:
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
-      uses: codecov/test-results-action@v1
+      uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.0.0
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
 
     - name: Upload to Codecov
       if: ${{ !cancelled() }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.1.2
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
