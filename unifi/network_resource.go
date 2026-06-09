@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
@@ -358,10 +359,17 @@ func (r *networkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"multicast_dns": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether mDNS is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Specifies whether mDNS is enabled. This is " +
+					"read back from the controller rather than defaulted: some " +
+					"controllers (notably UniFi OS gateways) ignore `mdns_enabled` " +
+					"at create/update time and always store `false`, so forcing a " +
+					"`true` default produced a \"provider produced inconsistent " +
+					"result after apply\" error.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"gateway_type": schema.StringAttribute{
 				MarkdownDescription: "The gateway type. Must be one of `default` or `switch`.",
@@ -1252,7 +1260,14 @@ func (r *networkResource) networkToModel(
 		model.AutoScale = previousModel.AutoScale
 		model.SettingPreference = previousModel.SettingPreference
 		model.InternetAccess = previousModel.InternetAccess
-		model.MulticastDNS = previousModel.MulticastDNS
+		// multicast_dns uses UseStateForUnknown, so it may be unknown during
+		// Create. Resolve it from the API value (the controller does not honor
+		// mDNS for vlan-only networks, so this is effectively false).
+		if previousModel.MulticastDNS.IsUnknown() {
+			model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
+		} else {
+			model.MulticastDNS = previousModel.MulticastDNS
+		}
 		model.GatewayType = previousModel.GatewayType
 		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
 		model.LteLan = previousModel.LteLan
