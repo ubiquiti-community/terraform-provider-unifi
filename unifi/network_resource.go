@@ -461,12 +461,16 @@ func (r *networkResource) Schema(
 				Optional:            true,
 			},
 			"ipv6_pd_start": schema.StringAttribute{
-				MarkdownDescription: "The start of the IPv6 Prefix Delegation range.",
-				Optional:            true,
+				MarkdownDescription: "The start of the IPv6 Prefix Delegation range (e.g. `::2`). " +
+					"Required together with `ipv6_pd_stop` when `ipv6_interface_type` is " +
+					"`pd`, otherwise the controller rejects the network with " +
+					"`api.err.InvalidIpv6Addr`.",
+				Optional: true,
 			},
 			"ipv6_pd_stop": schema.StringAttribute{
-				MarkdownDescription: "The end of the IPv6 Prefix Delegation range.",
-				Optional:            true,
+				MarkdownDescription: "The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). " +
+					"Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.",
+				Optional: true,
 			},
 			"ipv6_pd_auto_prefixid_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.",

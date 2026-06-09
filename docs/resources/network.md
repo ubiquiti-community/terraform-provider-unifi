@@ -62,7 +62,11 @@ resource "unifi_network" "ipv6_pd" {
   ipv6_pd_interface             = "wan"
   ipv6_pd_prefixid              = "1"
   ipv6_pd_auto_prefixid_enabled = false
-  ipv6_ra                       = true
+  # ipv6_pd_start/stop are required for a prefix-delegation network — the
+  # controller rejects it with api.err.InvalidIpv6Addr otherwise.
+  ipv6_pd_start = "::2"
+  ipv6_pd_stop  = "::7d1"
+  ipv6_ra       = true
 }
 
 # Third-party gateway (VLAN-only) network
@@ -104,8 +108,8 @@ resource "unifi_network" "third_party" {
 - `ipv6_pd_auto_prefixid_enabled` (Boolean) Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.
 - `ipv6_pd_interface` (String) The IPv6 Prefix Delegation WAN interface (e.g., `wan`, `wan2`).
 - `ipv6_pd_prefixid` (String) The IPv6 Prefix Delegation prefix ID (hex string, e.g., `0`, `1a`).
-- `ipv6_pd_start` (String) The start of the IPv6 Prefix Delegation range.
-- `ipv6_pd_stop` (String) The end of the IPv6 Prefix Delegation range.
+- `ipv6_pd_start` (String) The start of the IPv6 Prefix Delegation range (e.g. `::2`). Required together with `ipv6_pd_stop` when `ipv6_interface_type` is `pd`, otherwise the controller rejects the network with `api.err.InvalidIpv6Addr`.
+- `ipv6_pd_stop` (String) The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.
 - `ipv6_ra` (Boolean) Specifies whether IPv6 Router Advertisement (RA) is enabled.
 - `ipv6_ra_preferred_lifetime` (Number) The IPv6 Router Advertisement preferred lifetime in seconds (0-31536000).
 - `ipv6_ra_priority` (String) The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.
