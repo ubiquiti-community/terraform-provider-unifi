@@ -60,7 +60,7 @@ resource "unifi_network" "third_party" {
 - `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
 - `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.
 - `lte_lan` (Boolean) Whether this network/VLAN stays active when the gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to the controller's `lte_lan_enabled` flag and only matters when a UniFi LTE failover device is in use; otherwise it is cosmetic. Defaults to `true` (network stays available during LTE failover); set to `false` to disable it while on the LTE backup link. The controller may set this automatically, which is why existing networks can show differing values.
-- `multicast_dns` (Boolean) Specifies whether mDNS is enabled.
+- `multicast_dns` (Boolean) Specifies whether mDNS is enabled. This is read back from the controller rather than defaulted: some controllers (notably UniFi OS gateways) ignore `mdns_enabled` at create/update time and always store `false`, so forcing a `true` default produced a "provider produced inconsistent result after apply" error.
 - `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
 - `network_isolation` (Boolean) Specifies whether network isolation is enabled.
 - `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`.
