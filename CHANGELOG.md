@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.43.0] - 2026-06-09
+
+### ✨ Features
+
+- **New `unifi_wireguard_peer` resource** — manage WireGuard VPN peers (the "clients" of a WireGuard server network), with full CRUD and import (#194)
+- **New `unifi_firewall_zone` resource** — create and manage zone-based firewall zones (UniFi OS 8.x+) and their network membership, alongside the existing data source (#214, #218)
+- **IPv6 network configuration** on `unifi_network` — static IPv6 subnet, Router Advertisement (`ipv6_ra*`), Prefix Delegation (`ipv6_pd_*`) and a DHCPv6 server block (#158)
+- **WLAN private pre-shared keys (PPSK)** — per-key passphrases each optionally bound to a network/VLAN (#47, #212)
+- **WLAN write-only passphrase** `passphrase_wo` (Terraform 1.11+) so the secret is used at apply time but never persisted to state (#201)
+
+### 🐛 Bug Fixes
+
+- `unifi_device`: read `radio_table` `channel`/`tx_power` returned as numbers by UniFi 10.x controllers — previously broke device read/import with an unmarshal error (#112)
+- `unifi_device`: stop resetting `state`/`adopted` in the update payload, fixing writes on UDM / Dream Machine gateways (#177)
+- `unifi_network`: keep `dhcp_relay` enabled by pinning a manual `setting_preference` (#208)
+- `unifi_network`: stop forcing `multicast_dns = true` at create, which caused an "inconsistent result after apply" on UniFi OS gateways (#209)
+- `unifi_network`: make `subnet` optional for vlan-only networks (#124)
+- `unifi_network`: tolerate string-encoded boolean flags such as `dhcpd_enabled` from some controllers (#65)
+- `unifi_network`: send `vlan_enabled` so create/update with a VLAN no longer fails with `api.err.VlanUsed` (#76, #85)
+- `unifi_port_forward`: stop perpetual drift when the `source_limiting` block is omitted (#187)
+- `unifi_firewall_policy`: support SPECIFIC port matching via a `port` attribute (#207)
+- `unifi_wlan`: stop `mac_filter` drift, populate `wlangroup_id`, and stabilize `minimum_data_rate` (#200, #203)
+- `unifi_dns_record`: make `record_type` required (#197)
+- `unifi_port_profile`: expose forward/native/tagged VLANs in the data source schema (#196)
+- `unifi_radius_user`: allow `tunnel_type` 13 (VLAN) (#193)
+- `unifi_client`: zero-diff import/create for `blocked`/groups/`qos_rate` (#174)
+- `unifi_client_info`: don't fail with 404 on controllers where the active-clients endpoint is unavailable (#121)
+- structured logging via a dedicated subsystem (#168)
+
+### 🔧 Build & CI
+
+- run `gosec` on dependabot PRs and on `go.mod`/`go.sum` changes so dependency bumps can satisfy the code-scanning gate (#204, #205)
+- dependency updates: testcontainers/compose, terraform-plugin-testing, grouped go modules, and GitHub Actions (#206, #166)
+
+### 📄 Documentation
+
+- clarify what `lte_lan` does (#202)
+- document that `ipv6_pd_start`/`ipv6_pd_stop` are required for prefix-delegation networks (#215)
+
 ## [v0.41.20] - 2026-03-08
 
 ### 💥 Breaking Changes
