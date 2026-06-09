@@ -1347,22 +1347,26 @@ func (r *deviceResource) updateDevice(
 
 	deviceReq.ID = model.ID.ValueString()
 
-	// Fill in required fields from the current device state if not set in the model.
-	// The API requires 'type' in the PUT body, but it's a computed field not set by users.
-	// Fill type from API. Prefer MAC lookup (works through cloud connector).
-	// Fall back to ID lookup (works locally).
-	if deviceReq.Type == "" {
-		var currentDevice *unifi.Device
-		if deviceReq.MAC != "" {
-			currentDevice, _ = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
-		}
-		if currentDevice == nil && deviceReq.ID != "" {
-			currentDevice, _ = r.client.GetDevice(ctx, site, deviceReq.ID)
-		}
-		if currentDevice != nil {
-			deviceReq.Type = currentDevice.Type
-		}
+	// Fetch the current device once. We need it for two reasons:
+	//   1. 'type' is a computed field the API requires in the PUT body.
+	//   2. UpdateDevice sends a diff against the existing device. The Device
+	//      struct marshals `state` and `adopted` without omitempty, so leaving
+	//      them at their Go zero-values makes the diff try to reset state to 0
+	//      and adopted to false — which UDM/Dream Machine gateways reject with
+	//      api.err.Invalid (issue #177). Echo the current values so they don't
+	//      appear in the diff.
+	// Prefer MAC lookup (works through cloud connector); fall back to ID (local).
+	var currentDevice *unifi.Device
+	if deviceReq.MAC != "" {
+		currentDevice, _ = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
 	}
+	if currentDevice == nil && deviceReq.ID != "" {
+		currentDevice, _ = r.client.GetDevice(ctx, site, deviceReq.ID)
+	}
+	if currentDevice != nil && deviceReq.Type == "" {
+		deviceReq.Type = currentDevice.Type
+	}
+
 	// Build a minimal Device for the PUT request. The full Device struct includes
 	// computed fields (adopted, state, etc.) with Go zero-values that the API rejects.
 	// Only send fields that the user configured or that the API requires.
@@ -1372,6 +1376,10 @@ func (r *deviceResource) updateDevice(
 		MAC:           deviceReq.MAC,
 		Name:          deviceReq.Name,
 		PortOverrides: deviceReq.PortOverrides,
+	}
+	if currentDevice != nil {
+		minimalDevice.State = currentDevice.State
+		minimalDevice.Adopted = currentDevice.Adopted
 	}
 
 	if reqJSON, jsonErr := json.Marshal(minimalDevice); jsonErr == nil {
