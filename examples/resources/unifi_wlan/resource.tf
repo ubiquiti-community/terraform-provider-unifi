@@ -33,4 +33,16 @@ resource "unifi_wlan" "wifi" {
   network_id    = unifi_network.vlan.id
   ap_group_ids  = [data.unifi_ap_group.default.id]
   user_group_id = data.unifi_client_qos_rate.default.id
+
+  # Per-key (PPSK) passphrases, each optionally bound to its own network/VLAN
+  private_preshared_keys_enabled = true
+  private_preshared_keys = [
+    {
+      password   = "guest-key-1234"
+      network_id = unifi_network.vlan.id
+    },
+    {
+      password = "iot-key-5678"
+    },
+  ]
 }

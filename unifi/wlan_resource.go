@@ -60,42 +60,58 @@ type wlanMacFilterModel struct {
 	Policy  types.String `tfsdk:"policy"`
 }
 
+// wlanPrivatePresharedKeyModel represents a single private pre-shared key (PPSK)
+// entry: a per-key password optionally bound to its own VLAN/network.
+type wlanPrivatePresharedKeyModel struct {
+	NetworkID types.String `tfsdk:"network_id"`
+	Password  types.String `tfsdk:"password"`
+}
+
+func (m wlanPrivatePresharedKeyModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"network_id": types.StringType,
+		"password":   types.StringType,
+	}
+}
+
 // wlanFrameworkResourceModel describes the resource data model.
 type wlanFrameworkResourceModel struct {
-	ID                       types.String `tfsdk:"id"`
-	Site                     types.String `tfsdk:"site"`
-	Name                     types.String `tfsdk:"name"`
-	NetworkID                types.String `tfsdk:"network_id"`
-	UserGroupID              types.String `tfsdk:"user_group_id"`
-	Security                 types.String `tfsdk:"security"`
-	WPA3Support              types.Bool   `tfsdk:"wpa3_support"`
-	WPA3Transition           types.Bool   `tfsdk:"wpa3_transition"`
-	PMFMode                  types.String `tfsdk:"pmf_mode"`
-	Passphrase               types.String `tfsdk:"passphrase"`
-	PassphraseWO             types.String `tfsdk:"passphrase_wo"`
-	HideSSID                 types.Bool   `tfsdk:"hide_ssid"`
-	IsGuest                  types.Bool   `tfsdk:"is_guest"`
-	Enabled                  types.Bool   `tfsdk:"enabled"`
-	ApGroupIDs               types.Set    `tfsdk:"ap_group_ids"`
-	ApGroupMode              types.String `tfsdk:"ap_group_mode"`
-	VLANEnabled              types.Bool   `tfsdk:"vlan_enabled"`
-	VLAN                     types.Int64  `tfsdk:"vlan"`
-	WLANBand                 types.String `tfsdk:"wlan_band"`
-	WLANBands                types.Set    `tfsdk:"wlan_bands"`
-	MulticastEnhance         types.Bool   `tfsdk:"multicast_enhance"`
-	MacFilter                types.Object `tfsdk:"mac_filter"`
-	RadiusProfileID          types.String `tfsdk:"radius_profile_id"`
-	NasIDentifierType        types.String `tfsdk:"nas_identifier_type"`
-	Schedule                 types.List   `tfsdk:"schedule"`
-	No2GhzOui                types.Bool   `tfsdk:"no2ghz_oui"`
-	L2Isolation              types.Bool   `tfsdk:"l2_isolation"`
-	ProxyArp                 types.Bool   `tfsdk:"proxy_arp"`
-	BssTransition            types.Bool   `tfsdk:"bss_transition"`
-	Uapsd                    types.Bool   `tfsdk:"uapsd"`
-	FastRoamingEnabled       types.Bool   `tfsdk:"fast_roaming_enabled"`
-	MinimumDataRate2GKbps    types.Int64  `tfsdk:"minimum_data_rate_2g_kbps"`
-	MinimumDataRate5GKbps    types.Int64  `tfsdk:"minimum_data_rate_5g_kbps"`
-	MinrateSettingPreference types.String `tfsdk:"minrate_setting_preference"`
+	ID                          types.String `tfsdk:"id"`
+	Site                        types.String `tfsdk:"site"`
+	Name                        types.String `tfsdk:"name"`
+	NetworkID                   types.String `tfsdk:"network_id"`
+	UserGroupID                 types.String `tfsdk:"user_group_id"`
+	Security                    types.String `tfsdk:"security"`
+	WPA3Support                 types.Bool   `tfsdk:"wpa3_support"`
+	WPA3Transition              types.Bool   `tfsdk:"wpa3_transition"`
+	PMFMode                     types.String `tfsdk:"pmf_mode"`
+	Passphrase                  types.String `tfsdk:"passphrase"`
+	PassphraseWO                types.String `tfsdk:"passphrase_wo"`
+	HideSSID                    types.Bool   `tfsdk:"hide_ssid"`
+	IsGuest                     types.Bool   `tfsdk:"is_guest"`
+	Enabled                     types.Bool   `tfsdk:"enabled"`
+	ApGroupIDs                  types.Set    `tfsdk:"ap_group_ids"`
+	ApGroupMode                 types.String `tfsdk:"ap_group_mode"`
+	VLANEnabled                 types.Bool   `tfsdk:"vlan_enabled"`
+	VLAN                        types.Int64  `tfsdk:"vlan"`
+	WLANBand                    types.String `tfsdk:"wlan_band"`
+	WLANBands                   types.Set    `tfsdk:"wlan_bands"`
+	MulticastEnhance            types.Bool   `tfsdk:"multicast_enhance"`
+	MacFilter                   types.Object `tfsdk:"mac_filter"`
+	PrivatePresharedKeysEnabled types.Bool   `tfsdk:"private_preshared_keys_enabled"`
+	PrivatePresharedKeys        types.List   `tfsdk:"private_preshared_keys"`
+	RadiusProfileID             types.String `tfsdk:"radius_profile_id"`
+	NasIDentifierType           types.String `tfsdk:"nas_identifier_type"`
+	Schedule                    types.List   `tfsdk:"schedule"`
+	No2GhzOui                   types.Bool   `tfsdk:"no2ghz_oui"`
+	L2Isolation                 types.Bool   `tfsdk:"l2_isolation"`
+	ProxyArp                    types.Bool   `tfsdk:"proxy_arp"`
+	BssTransition               types.Bool   `tfsdk:"bss_transition"`
+	Uapsd                       types.Bool   `tfsdk:"uapsd"`
+	FastRoamingEnabled          types.Bool   `tfsdk:"fast_roaming_enabled"`
+	MinimumDataRate2GKbps       types.Int64  `tfsdk:"minimum_data_rate_2g_kbps"`
+	MinimumDataRate5GKbps       types.Int64  `tfsdk:"minimum_data_rate_5g_kbps"`
+	MinrateSettingPreference    types.String `tfsdk:"minrate_setting_preference"`
 
 	// Security / encryption
 	WPAMode types.String `tfsdk:"wpa_mode"`
@@ -308,6 +324,38 @@ func (r *wlanFrameworkResource) Schema(
 						Default:             stringdefault.StaticString("deny"),
 						Validators: []validator.String{
 							stringvalidator.OneOf("allow", "deny"),
+						},
+					},
+				},
+			},
+			"private_preshared_keys_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether per-key (PPSK) passphrases are enabled for this WLAN. " +
+					"Requires `security = wpapsk`.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+			},
+			"private_preshared_keys": schema.ListNestedAttribute{
+				MarkdownDescription: "Private pre-shared keys (PPSK): a list of per-key passphrases, " +
+					"each optionally bound to its own network/VLAN. Only valid when " +
+					"`private_preshared_keys_enabled` is `true`.",
+				Optional: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"network_id": schema.StringAttribute{
+							MarkdownDescription: "ID of the network/VLAN this key is bound to. " +
+								"Leave unset to use the WLAN's default network.",
+							Optional: true,
+							Computed: true,
+							Default:  stringdefault.StaticString(""),
+						},
+						"password": schema.StringAttribute{
+							MarkdownDescription: "The passphrase for this key (8-255 characters).",
+							Required:            true,
+							Sensitive:           true,
+							Validators: []validator.String{
+								stringvalidator.LengthBetween(8, 255),
+							},
 						},
 					},
 				},
@@ -915,6 +963,13 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.MacFilter.IsNull() && !plan.MacFilter.IsUnknown() {
 		state.MacFilter = plan.MacFilter
 	}
+	if !plan.PrivatePresharedKeysEnabled.IsNull() &&
+		!plan.PrivatePresharedKeysEnabled.IsUnknown() {
+		state.PrivatePresharedKeysEnabled = plan.PrivatePresharedKeysEnabled
+	}
+	if !plan.PrivatePresharedKeys.IsNull() && !plan.PrivatePresharedKeys.IsUnknown() {
+		state.PrivatePresharedKeys = plan.PrivatePresharedKeys
+	}
 	if !plan.RadiusProfileID.IsNull() && !plan.RadiusProfileID.IsUnknown() {
 		state.RadiusProfileID = plan.RadiusProfileID
 	}
@@ -1150,6 +1205,26 @@ func (r *wlanFrameworkResource) planToWLAN(
 		}
 	}
 
+	// Handle private pre-shared keys (PPSK)
+	wlan.PrivatePresharedKeysEnabled = plan.PrivatePresharedKeysEnabled.ValueBool()
+	if !plan.PrivatePresharedKeys.IsNull() && !plan.PrivatePresharedKeys.IsUnknown() {
+		var ppskList []wlanPrivatePresharedKeyModel
+		diags.Append(plan.PrivatePresharedKeys.ElementsAs(ctx, &ppskList, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+
+		for _, ppsk := range ppskList {
+			wlan.PrivatePresharedKeys = append(
+				wlan.PrivatePresharedKeys,
+				unifi.WLANPrivatePresharedKeys{
+					NetworkID: ppsk.NetworkID.ValueString(),
+					Password:  ppsk.Password.ValueString(),
+				},
+			)
+		}
+	}
+
 	// Handle AP group IDs
 	if !plan.ApGroupIDs.IsNull() && !plan.ApGroupIDs.IsUnknown() {
 		var apGroupList []types.String
@@ -1314,6 +1389,33 @@ func (r *wlanFrameworkResource) wlanToModel(
 	)
 	diags.Append(d...)
 	model.MacFilter = macFilterObj
+
+	// Handle private pre-shared keys (PPSK). The per-key password is sensitive
+	// and not always echoed back by the controller; the plan value is preserved
+	// in applyPlanToState for create/update, so this read path mainly serves
+	// refresh and import.
+	model.PrivatePresharedKeysEnabled = types.BoolValue(wlan.PrivatePresharedKeysEnabled)
+
+	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
+	if len(wlan.PrivatePresharedKeys) > 0 {
+		ppskValues := make([]attr.Value, len(wlan.PrivatePresharedKeys))
+		for i, ppsk := range wlan.PrivatePresharedKeys {
+			obj, d := types.ObjectValue(
+				wlanPrivatePresharedKeyModel{}.AttributeTypes(),
+				map[string]attr.Value{
+					"network_id": types.StringValue(ppsk.NetworkID),
+					"password":   types.StringValue(ppsk.Password),
+				},
+			)
+			diags.Append(d...)
+			ppskValues[i] = obj
+		}
+		ppskList, d := types.ListValue(ppskType, ppskValues)
+		diags.Append(d...)
+		model.PrivatePresharedKeys = ppskList
+	} else {
+		model.PrivatePresharedKeys = types.ListNull(ppskType)
+	}
 
 	if wlan.RADIUSProfileID != "" {
 		model.RadiusProfileID = types.StringValue(wlan.RADIUSProfileID)
