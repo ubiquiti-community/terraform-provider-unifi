@@ -48,7 +48,11 @@ resource "unifi_network" "ipv6_pd" {
   ipv6_pd_interface             = "wan"
   ipv6_pd_prefixid              = "1"
   ipv6_pd_auto_prefixid_enabled = false
-  ipv6_ra                       = true
+  # ipv6_pd_start/stop are required for a prefix-delegation network — the
+  # controller rejects it with api.err.InvalidIpv6Addr otherwise.
+  ipv6_pd_start = "::2"
+  ipv6_pd_stop  = "::7d1"
+  ipv6_ra       = true
 }
 
 # Third-party gateway (VLAN-only) network
