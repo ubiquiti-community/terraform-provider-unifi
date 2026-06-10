@@ -1506,7 +1506,9 @@ func (r *networkResource) networkToModel(
 		model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
 		model.GatewayType = types.StringPointerValue(network.GatewayType)
 		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-		model.IPv6ClientAddressAssignment = types.StringPointerValue(network.IPV6ClientAddressAssignment)
+		model.IPv6ClientAddressAssignment = types.StringPointerValue(
+			network.IPV6ClientAddressAssignment,
+		)
 		model.IPv6StaticSubnet = types.StringPointerValue(network.IPV6Subnet)
 		model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
 		model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
