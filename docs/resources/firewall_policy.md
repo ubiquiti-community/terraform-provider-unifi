@@ -34,6 +34,9 @@ Manages a UniFi zone-based firewall policy (UniFi Network 8.x+). Zone-based fire
 
 ### Read-Only
 
+- `connection_state_type` (String) Connection-state matching mode (`ALL` or `RESPOND_ONLY`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
+- `icmp_typename` (String) ICMP type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
+- `icmp_v6_typename` (String) ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `id` (String) The ID of the firewall policy.
 
 <a id="nestedatt--destination"></a>
@@ -53,6 +56,10 @@ Optional:
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
 
+Read-Only:
+
+- `matching_target_type` (String) How the matching target is specified (`ANY`, `SPECIFIC`, `LIST`, `OBJECT`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
+
 
 <a id="nestedatt--source"></a>
 ### Nested Schema for `source`
@@ -70,3 +77,7 @@ Optional:
 - `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
+
+Read-Only:
+
+- `matching_target_type` (String) How the matching target is specified (`ANY`, `SPECIFIC`, `LIST`, `OBJECT`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
