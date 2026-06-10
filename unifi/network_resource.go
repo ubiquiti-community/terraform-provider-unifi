@@ -213,40 +213,41 @@ func (m dhcpV6ServerModel) AttributeTypes() map[string]attr.Type {
 
 // networkResourceModel describes the resource data model.
 type networkResourceModel struct {
-	ID                        types.String         `tfsdk:"id"`
-	Site                      types.String         `tfsdk:"site"`
-	Enabled                   types.Bool           `tfsdk:"enabled"`
-	Name                      types.String         `tfsdk:"name"`
-	NatOutboundIPAddresses    types.List           `tfsdk:"nat_outbound_ip_addresses"`
-	AutoScale                 types.Bool           `tfsdk:"auto_scale"`
-	Subnet                    cidrtypes.IPv4Prefix `tfsdk:"subnet"`
-	DomainName                types.String         `tfsdk:"domain_name"`
-	Vlan                      types.Int64          `tfsdk:"vlan"`
-	NetworkIsolation          types.Bool           `tfsdk:"network_isolation"`
-	SettingPreference         types.String         `tfsdk:"setting_preference"`
-	InternetAccess            types.Bool           `tfsdk:"internet_access"`
-	IgmpSnooping              types.Bool           `tfsdk:"igmp_snooping"`
-	MulticastDNS              types.Bool           `tfsdk:"multicast_dns"`
-	GatewayType               types.String         `tfsdk:"gateway_type"`
-	IPv6InterfaceType         types.String         `tfsdk:"ipv6_interface_type"`
-	IPv6StaticSubnet          types.String         `tfsdk:"ipv6_static_subnet"`
-	IPv6RA                    types.Bool           `tfsdk:"ipv6_ra"`
-	IPv6RAPriority            types.String         `tfsdk:"ipv6_ra_priority"`
-	IPv6RAPreferredLifetime   types.Int64          `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAValidLifetime       types.Int64          `tfsdk:"ipv6_ra_valid_lifetime"`
-	IPv6PDInterface           types.String         `tfsdk:"ipv6_pd_interface"`
-	IPv6PDPrefixID            types.String         `tfsdk:"ipv6_pd_prefixid"`
-	IPv6PDStart               types.String         `tfsdk:"ipv6_pd_start"`
-	IPv6PDStop                types.String         `tfsdk:"ipv6_pd_stop"`
-	IPv6PDAutoPrefixidEnabled types.Bool           `tfsdk:"ipv6_pd_auto_prefixid_enabled"`
-	LteLan                    types.Bool           `tfsdk:"lte_lan"`
-	IPAliases                 types.List           `tfsdk:"ip_aliases"`
-	IPv6Aliases               types.List           `tfsdk:"ipv6_aliases"`
-	ThirdPartyGateway         types.Bool           `tfsdk:"third_party_gateway"`
-	DhcpGuarding              types.Object         `tfsdk:"dhcp_guarding"`
-	DhcpServer                types.Object         `tfsdk:"dhcp_server"`
-	DhcpV6Server              types.Object         `tfsdk:"dhcp_v6_server"`
-	DhcpRelay                 types.Object         `tfsdk:"dhcp_relay"`
+	ID                          types.String         `tfsdk:"id"`
+	Site                        types.String         `tfsdk:"site"`
+	Enabled                     types.Bool           `tfsdk:"enabled"`
+	Name                        types.String         `tfsdk:"name"`
+	NatOutboundIPAddresses      types.List           `tfsdk:"nat_outbound_ip_addresses"`
+	AutoScale                   types.Bool           `tfsdk:"auto_scale"`
+	Subnet                      cidrtypes.IPv4Prefix `tfsdk:"subnet"`
+	DomainName                  types.String         `tfsdk:"domain_name"`
+	Vlan                        types.Int64          `tfsdk:"vlan"`
+	NetworkIsolation            types.Bool           `tfsdk:"network_isolation"`
+	SettingPreference           types.String         `tfsdk:"setting_preference"`
+	InternetAccess              types.Bool           `tfsdk:"internet_access"`
+	IgmpSnooping                types.Bool           `tfsdk:"igmp_snooping"`
+	MulticastDNS                types.Bool           `tfsdk:"multicast_dns"`
+	GatewayType                 types.String         `tfsdk:"gateway_type"`
+	IPv6InterfaceType           types.String         `tfsdk:"ipv6_interface_type"`
+	IPv6ClientAddressAssignment types.String         `tfsdk:"ipv6_client_address_assignment"`
+	IPv6StaticSubnet            types.String         `tfsdk:"ipv6_static_subnet"`
+	IPv6RA                      types.Bool           `tfsdk:"ipv6_ra"`
+	IPv6RAPriority              types.String         `tfsdk:"ipv6_ra_priority"`
+	IPv6RAPreferredLifetime     types.Int64          `tfsdk:"ipv6_ra_preferred_lifetime"`
+	IPv6RAValidLifetime         types.Int64          `tfsdk:"ipv6_ra_valid_lifetime"`
+	IPv6PDInterface             types.String         `tfsdk:"ipv6_pd_interface"`
+	IPv6PDPrefixID              types.String         `tfsdk:"ipv6_pd_prefixid"`
+	IPv6PDStart                 types.String         `tfsdk:"ipv6_pd_start"`
+	IPv6PDStop                  types.String         `tfsdk:"ipv6_pd_stop"`
+	IPv6PDAutoPrefixidEnabled   types.Bool           `tfsdk:"ipv6_pd_auto_prefixid_enabled"`
+	LteLan                      types.Bool           `tfsdk:"lte_lan"`
+	IPAliases                   types.List           `tfsdk:"ip_aliases"`
+	IPv6Aliases                 types.List           `tfsdk:"ipv6_aliases"`
+	ThirdPartyGateway           types.Bool           `tfsdk:"third_party_gateway"`
+	DhcpGuarding                types.Object         `tfsdk:"dhcp_guarding"`
+	DhcpServer                  types.Object         `tfsdk:"dhcp_server"`
+	DhcpV6Server                types.Object         `tfsdk:"dhcp_v6_server"`
+	DhcpRelay                   types.Object         `tfsdk:"dhcp_relay"`
 }
 
 func (r *networkResource) Metadata(
@@ -419,6 +420,17 @@ func (r *networkResource) Schema(
 				Default:             stringdefault.StaticString("none"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("none", "pd", "static"),
+				},
+			},
+			"ipv6_client_address_assignment": schema.StringAttribute{
+				MarkdownDescription: "How clients on this network obtain an IPv6 address (UI: Networks → IPv6 → Client Address Assignment). One of `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). Computed from the controller when not set.",
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("slaac", "dhcpv6", "slaac-dhcpv6"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_static_subnet": schema.StringAttribute{
@@ -1054,32 +1066,33 @@ func (r *networkResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Name:                      model.Name.ValueStringPointer(),
-		Purpose:                   unifi.PurposeCorporate,
-		NetworkGroup:              util.Ptr("LAN"),
-		AutoScaleEnabled:          model.AutoScale.ValueBool(),
-		IPSubnet:                  model.Subnet.ValueStringPointer(),
-		NetworkIsolationEnabled:   model.NetworkIsolation.ValueBool(),
-		SettingPreference:         model.SettingPreference.ValueStringPointer(),
-		InternetAccessEnabled:     model.InternetAccess.ValueBool(),
-		MdnsEnabled:               model.MulticastDNS.ValueBool(),
-		GatewayType:               model.GatewayType.ValueStringPointer(),
-		IPV6InterfaceType:         model.IPv6InterfaceType.ValueStringPointer(),
-		IPV6Subnet:                model.IPv6StaticSubnet.ValueStringPointer(),
-		IPV6RaEnabled:             model.IPv6RA.ValueBool(),
-		IPV6RaPriority:            model.IPv6RAPriority.ValueStringPointer(),
-		IPV6RaPreferredLifetime:   model.IPv6RAPreferredLifetime.ValueInt64Pointer(),
-		IPV6RaValidLifetime:       model.IPv6RAValidLifetime.ValueInt64Pointer(),
-		IPV6PDInterface:           model.IPv6PDInterface.ValueStringPointer(),
-		IPV6PDPrefixid:            model.IPv6PDPrefixID.ValueString(),
-		IPV6PDStart:               model.IPv6PDStart.ValueStringPointer(),
-		IPV6PDStop:                model.IPv6PDStop.ValueStringPointer(),
-		IPV6PDAutoPrefixidEnabled: model.IPv6PDAutoPrefixidEnabled.ValueBool(),
-		LteLanEnabled:             model.LteLan.ValueBool(),
-		VLANEnabled:               !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
-		Enabled:                   model.Enabled.ValueBool(),
-		IGMPSnooping:              model.IgmpSnooping.ValueBool(),
-		IPAliases:                 []string{},
+		Name:                        model.Name.ValueStringPointer(),
+		Purpose:                     unifi.PurposeCorporate,
+		NetworkGroup:                util.Ptr("LAN"),
+		AutoScaleEnabled:            model.AutoScale.ValueBool(),
+		IPSubnet:                    model.Subnet.ValueStringPointer(),
+		NetworkIsolationEnabled:     model.NetworkIsolation.ValueBool(),
+		SettingPreference:           model.SettingPreference.ValueStringPointer(),
+		InternetAccessEnabled:       model.InternetAccess.ValueBool(),
+		MdnsEnabled:                 model.MulticastDNS.ValueBool(),
+		GatewayType:                 model.GatewayType.ValueStringPointer(),
+		IPV6InterfaceType:           model.IPv6InterfaceType.ValueStringPointer(),
+		IPV6ClientAddressAssignment: model.IPv6ClientAddressAssignment.ValueStringPointer(),
+		IPV6Subnet:                  model.IPv6StaticSubnet.ValueStringPointer(),
+		IPV6RaEnabled:               model.IPv6RA.ValueBool(),
+		IPV6RaPriority:              model.IPv6RAPriority.ValueStringPointer(),
+		IPV6RaPreferredLifetime:     model.IPv6RAPreferredLifetime.ValueInt64Pointer(),
+		IPV6RaValidLifetime:         model.IPv6RAValidLifetime.ValueInt64Pointer(),
+		IPV6PDInterface:             model.IPv6PDInterface.ValueStringPointer(),
+		IPV6PDPrefixid:              model.IPv6PDPrefixID.ValueString(),
+		IPV6PDStart:                 model.IPv6PDStart.ValueStringPointer(),
+		IPV6PDStop:                  model.IPv6PDStop.ValueStringPointer(),
+		IPV6PDAutoPrefixidEnabled:   model.IPv6PDAutoPrefixidEnabled.ValueBool(),
+		LteLanEnabled:               model.LteLan.ValueBool(),
+		VLANEnabled:                 !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
+		Enabled:                     model.Enabled.ValueBool(),
+		IGMPSnooping:                model.IgmpSnooping.ValueBool(),
+		IPAliases:                   []string{},
 	}
 
 	// Handle third-party gateway mode
@@ -1462,6 +1475,7 @@ func (r *networkResource) networkToModel(
 		}
 		model.GatewayType = previousModel.GatewayType
 		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
+		model.IPv6ClientAddressAssignment = previousModel.IPv6ClientAddressAssignment
 		model.IPv6StaticSubnet = previousModel.IPv6StaticSubnet
 		model.IPv6RA = previousModel.IPv6RA
 		model.IPv6RAPriority = previousModel.IPv6RAPriority
@@ -1492,6 +1506,9 @@ func (r *networkResource) networkToModel(
 		model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
 		model.GatewayType = types.StringPointerValue(network.GatewayType)
 		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+		model.IPv6ClientAddressAssignment = types.StringPointerValue(
+			network.IPV6ClientAddressAssignment,
+		)
 		model.IPv6StaticSubnet = types.StringPointerValue(network.IPV6Subnet)
 		model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
 		model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
