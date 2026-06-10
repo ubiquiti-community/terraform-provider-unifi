@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.44.0] - 2026-06-10
+
+### ✨ Features
+
+- **Site-level IGMP snooping** — manage the `igmp_snooping` site setting (`enabled` + `network_ids`) through the `unifi_setting` resource. On UniFi Network 10.3.x+ the effective IGMP snooping toggle moved from the per-network object to this site setting; advanced querier/flood options configured in the UI are preserved across updates (#164)
+
+### 🐛 Bug Fixes
+
+- `unifi_firewall_policy`: round-trip `connection_states` so a policy whose `connection_state_type` is `CUSTOM` updates successfully — the provider previously sent an empty state list and the firmware rejected it with HTTP 400 (#227)
+
+---
+
 ## [v0.43.1] - 2026-06-10
 
 ### ✨ Features
