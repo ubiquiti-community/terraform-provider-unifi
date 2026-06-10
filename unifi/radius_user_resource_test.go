@@ -147,7 +147,11 @@ func TestAccRadiusUser_moveFromAccount(t *testing.T) {
 			{
 				Config: testAccRadiusUserConfig_radiusUserAfterMove(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_radius_user.move", "name", "move-account"),
+					resource.TestCheckResourceAttr(
+						"unifi_radius_user.move",
+						"name",
+						"move-account",
+					),
 					resource.TestCheckResourceAttrPtr("unifi_radius_user.move", "id", &accountID),
 				),
 			},
