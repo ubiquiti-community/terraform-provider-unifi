@@ -34,7 +34,8 @@ Manages a UniFi zone-based firewall policy (UniFi Network 8.x+). Zone-based fire
 
 ### Read-Only
 
-- `connection_state_type` (String) Connection-state matching mode (`ALL` or `RESPOND_ONLY`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
+- `connection_state_type` (String) Connection-state matching mode (`ALL`, `RESPOND_ONLY`, or `CUSTOM`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
+- `connection_states` (List of String) Connection states matched when `connection_state_type` is `CUSTOM` (e.g. `NEW`, `ESTABLISHED`, `RELATED`, `INVALID`). Managed by the UniFi controller; the provider round-trips it so a `CUSTOM` policy's states are not dropped on update (which the firmware rejects with HTTP 400).
 - `icmp_typename` (String) ICMP type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `icmp_v6_typename` (String) ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `id` (String) The ID of the firewall policy.
