@@ -55,6 +55,8 @@ All notable changes to this project will be documented in this file.
 - clarify what `lte_lan` does (#202)
 - document that `ipv6_pd_start`/`ipv6_pd_stop` are required for prefix-delegation networks (#215)
 
+---
+
 ## [v0.41.20] - 2026-03-08
 
 ### 💥 Breaking Changes
