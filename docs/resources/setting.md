@@ -69,6 +69,7 @@ resource "unifi_setting" "radius_only" {
 ### Optional
 
 - `doh` (Attributes) Encrypted DNS (DNS-over-HTTPS) settings. (see [below for nested schema](#nestedatt--doh))
+- `igmp_snooping` (Attributes) Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates. (see [below for nested schema](#nestedatt--igmp_snooping))
 - `ips` (Attributes) Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset. (see [below for nested schema](#nestedatt--ips))
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
@@ -100,6 +101,15 @@ Optional:
 
 - `enabled` (Boolean) Enable this custom server. Defaults to true.
 
+
+
+<a id="nestedatt--igmp_snooping"></a>
+### Nested Schema for `igmp_snooping`
+
+Optional:
+
+- `enabled` (Boolean) Whether IGMP snooping is enabled for the site.
+- `network_ids` (List of String) IDs of the networks IGMP snooping applies to.
 
 
 <a id="nestedatt--ips"></a>
