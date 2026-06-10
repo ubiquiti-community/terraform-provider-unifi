@@ -41,7 +41,10 @@ func portOverrideSetWith(t *testing.T, overrides map[string]attr.Value) types.Se
 	if d.HasError() {
 		t.Fatalf("building port override object: %v", d)
 	}
-	set, d := types.SetValue(types.ObjectType{AttrTypes: portOverrideAttrTypes()}, []attr.Value{obj})
+	set, d := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		[]attr.Value{obj},
+	)
 	if d.HasError() {
 		t.Fatalf("building port override set: %v", d)
 	}
@@ -81,7 +84,8 @@ func TestFrameworkToPortOverrides_AggregateOpMode(t *testing.T) {
 	if po.OpMode != "aggregate" {
 		t.Errorf("OpMode = %q, want aggregate (LAG would not engage)", po.OpMode)
 	}
-	if len(po.AggregateMembers) != 2 || po.AggregateMembers[0] != 9 || po.AggregateMembers[1] != 10 {
+	if len(po.AggregateMembers) != 2 || po.AggregateMembers[0] != 9 ||
+		po.AggregateMembers[1] != 10 {
 		t.Errorf("AggregateMembers = %v, want [9 10]", po.AggregateMembers)
 	}
 }
