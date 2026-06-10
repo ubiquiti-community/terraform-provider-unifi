@@ -645,10 +645,12 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 						},
 						"op_mode": schema.StringAttribute{
-							Description: "Operating mode of the port, valid values are `switch`, `mirror`, and `aggregate`.",
-							Optional:    true,
-							Computed:    true,
-							Default:     stringdefault.StaticString("switch"),
+							Description: "Operating mode of the port: `switch` (default), `mirror`, or `aggregate`. " +
+								"Set `aggregate` on the lead port of an SFP+/link-aggregation (LAG) group and list the member ports in `aggregate_members`. " +
+								"Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.",
+							Optional: true,
+							Computed: true,
+							Default:  stringdefault.StaticString("switch"),
 							Validators: []validator.String{
 								stringvalidator.OneOf("switch", "mirror", "aggregate"),
 							},
@@ -661,7 +663,8 @@ func (r *deviceResource) Schema(
 							},
 						},
 						"aggregate_members": schema.ListAttribute{
-							Description: "Number of ports in the aggregate.",
+							Description: "Port indices that make up this link-aggregation (LAG) group. " +
+								"Only takes effect when `op_mode` is `aggregate` on this port.",
 							Optional:    true,
 							ElementType: types.Int64Type,
 						},
@@ -2082,9 +2085,17 @@ func (r *deviceResource) frameworkToPortOverrides(
 			if !model.PortProfileID.IsNull() {
 				po.PortProfileID = model.PortProfileID.ValueString()
 			}
-			// op_mode is intentionally not written: the API returns it on GET
-			// but rejects it on PUT for gateway devices. Switches work fine
-			// without it as the controller preserves the existing value.
+			// op_mode is only written when the port runs in a non-default mode
+			// (aggregate/mirror). Sending op_mode on a PUT for gateway devices
+			// (UDM) is rejected — see #213 — but those ports never use
+			// aggregate/mirror, so they stay at the "switch" default and we skip
+			// it. Writing it for the non-default cases is required to form an
+			// SFP+ link aggregation (#177), which otherwise never engages because
+			// aggregate_members is sent without ever switching op_mode.
+			if !model.OpMode.IsNull() && !model.OpMode.IsUnknown() &&
+				model.OpMode.ValueString() != "" && model.OpMode.ValueString() != "switch" {
+				po.OpMode = model.OpMode.ValueString()
+			}
 			if !model.PoeMode.IsNull() {
 				po.PoeMode = model.PoeMode.ValueString()
 			}
