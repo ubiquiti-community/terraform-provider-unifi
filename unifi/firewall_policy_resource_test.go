@@ -144,8 +144,16 @@ func TestFirewallPolicyConnectionStatesRoundTrip(t *testing.T) {
 		Protocol:            "all",
 		ConnectionStateType: "CUSTOM",
 		ConnectionStates:    []string{"NEW", "ESTABLISHED"},
-		Source:              &unifi.FirewallPolicySource{ZoneID: "z1", MatchingTarget: "ANY", PortMatchingType: "ANY"},
-		Destination:         &unifi.FirewallPolicyDestination{ZoneID: "z2", MatchingTarget: "ANY", PortMatchingType: "ANY"},
+		Source: &unifi.FirewallPolicySource{
+			ZoneID:           "z1",
+			MatchingTarget:   "ANY",
+			PortMatchingType: "ANY",
+		},
+		Destination: &unifi.FirewallPolicyDestination{
+			ZoneID:           "z2",
+			MatchingTarget:   "ANY",
+			PortMatchingType: "ANY",
+		},
 	}
 
 	var model firewallPolicyModel
@@ -164,7 +172,8 @@ func TestFirewallPolicyConnectionStatesRoundTrip(t *testing.T) {
 	if d.HasError() {
 		t.Fatalf("modelToFirewallPolicy: %v", d)
 	}
-	if len(out.ConnectionStates) != 2 || out.ConnectionStates[0] != "NEW" || out.ConnectionStates[1] != "ESTABLISHED" {
+	if len(out.ConnectionStates) != 2 || out.ConnectionStates[0] != "NEW" ||
+		out.ConnectionStates[1] != "ESTABLISHED" {
 		t.Errorf("PUT dropped connection_states: %v, want [NEW ESTABLISHED]", out.ConnectionStates)
 	}
 }
