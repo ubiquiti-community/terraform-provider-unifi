@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -53,6 +54,7 @@ type firewallPolicyModel struct {
 	// not user-settable; the provider round-trips them so updates don't drop them
 	// (an omitted connection_state_type/icmp_typename makes the PUT fail HTTP 400).
 	ConnectionStateType types.String `tfsdk:"connection_state_type"`
+	ConnectionStates    types.List   `tfsdk:"connection_states"`
 	ICMPTypename        types.String `tfsdk:"icmp_typename"`
 	ICMPV6Typename      types.String `tfsdk:"icmp_v6_typename"`
 	Source              types.Object `tfsdk:"source"`
@@ -249,10 +251,18 @@ func (r *firewallPolicyResource) Schema(
 				},
 			},
 			"connection_state_type": schema.StringAttribute{
-				MarkdownDescription: "Connection-state matching mode (`ALL` or `RESPOND_ONLY`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+				MarkdownDescription: "Connection-state matching mode (`ALL`, `RESPOND_ONLY`, or `CUSTOM`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"connection_states": schema.ListAttribute{
+				MarkdownDescription: "Connection states matched when `connection_state_type` is `CUSTOM` (e.g. `NEW`, `ESTABLISHED`, `RELATED`, `INVALID`). Managed by the UniFi controller; the provider round-trips it so a `CUSTOM` policy's states are not dropped on update (which the firmware rejects with HTTP 400).",
+				ElementType:         types.StringType,
+				Computed:            true,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"icmp_typename": schema.StringAttribute{
@@ -491,6 +501,12 @@ func modelToFirewallPolicy(
 		},
 	}
 
+	// Round-trip the connection states (e.g. ["NEW"]) the controller reported.
+	// Omitting them makes a CUSTOM-state policy's PUT fail with HTTP 400 (#227).
+	if !model.ConnectionStates.IsNull() && !model.ConnectionStates.IsUnknown() {
+		diags.Append(model.ConnectionStates.ElementsAs(ctx, &fp.ConnectionStates, false)...)
+	}
+
 	if !model.Index.IsNull() && !model.Index.IsUnknown() {
 		idx := model.Index.ValueInt64()
 		fp.Index = &idx
@@ -566,6 +582,9 @@ func firewallPolicyToModel(
 	model.CreateAllowRespond = types.BoolValue(fp.CreateAllowRespond)
 	model.IPVersion = types.StringValue(fp.Version)
 	model.ConnectionStateType = types.StringValue(fp.ConnectionStateType)
+	connStates, csDiags := types.ListValueFrom(ctx, types.StringType, fp.ConnectionStates)
+	diags.Append(csDiags...)
+	model.ConnectionStates = connStates
 	model.ICMPTypename = types.StringValue(fp.ICMPTypename)
 	model.ICMPV6Typename = types.StringValue(fp.ICMPV6Typename)
 

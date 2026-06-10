@@ -130,3 +130,50 @@ func TestFirewallPolicyPreservesFirmwareFields(t *testing.T) {
 		t.Errorf("PUT destination Port not preserved: %+v", out.Destination)
 	}
 }
+
+// TestFirewallPolicyConnectionStatesRoundTrip guards #227: a policy whose
+// connection_state_type is CUSTOM must round-trip its connection_states. The
+// model->API conversion previously hard-coded an empty slice, so updates sent
+// "connection_states": [] and the firmware rejected CUSTOM policies (HTTP 400).
+func TestFirewallPolicyConnectionStatesRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	fp := &unifi.FirewallPolicy{
+		ID:                  "p1",
+		Name:                "deny-vpn-to-lan",
+		Action:              "BLOCK",
+		Protocol:            "all",
+		ConnectionStateType: "CUSTOM",
+		ConnectionStates:    []string{"NEW", "ESTABLISHED"},
+		Source: &unifi.FirewallPolicySource{
+			ZoneID:           "z1",
+			MatchingTarget:   "ANY",
+			PortMatchingType: "ANY",
+		},
+		Destination: &unifi.FirewallPolicyDestination{
+			ZoneID:           "z2",
+			MatchingTarget:   "ANY",
+			PortMatchingType: "ANY",
+		},
+	}
+
+	var model firewallPolicyModel
+	if d := firewallPolicyToModel(ctx, fp, &model); d.HasError() {
+		t.Fatalf("firewallPolicyToModel: %v", d)
+	}
+	var states []string
+	if d := model.ConnectionStates.ElementsAs(ctx, &states, false); d.HasError() {
+		t.Fatalf("reading connection_states: %v", d)
+	}
+	if len(states) != 2 || states[0] != "NEW" || states[1] != "ESTABLISHED" {
+		t.Errorf("read connection_states = %v, want [NEW ESTABLISHED]", states)
+	}
+
+	out, d := modelToFirewallPolicy(ctx, model)
+	if d.HasError() {
+		t.Fatalf("modelToFirewallPolicy: %v", d)
+	}
+	if len(out.ConnectionStates) != 2 || out.ConnectionStates[0] != "NEW" ||
+		out.ConnectionStates[1] != "ESTABLISHED" {
+		t.Errorf("PUT dropped connection_states: %v, want [NEW ESTABLISHED]", out.ConnectionStates)
+	}
+}
