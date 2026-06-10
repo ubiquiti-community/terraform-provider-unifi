@@ -144,7 +144,7 @@ Required:
 
 Optional:
 
-- `aggregate_members` (List of Number) Number of ports in the aggregate.
+- `aggregate_members` (List of Number) Port indices that make up this link-aggregation (LAG) group. Only takes effect when `op_mode` is `aggregate` on this port.
 - `autoneg` (Boolean) Enable auto-negotiation for port speed.
 - `dot1x_ctrl` (String) 802.1X control mode.
 - `dot1x_idle_timeout` (Number) 802.1X idle timeout in seconds.
@@ -162,7 +162,7 @@ Optional:
 - `multicast_router_networkconf_ids` (List of String) List of network IDs for multicast router.
 - `name` (String) Human-readable name of the port.
 - `native_networkconf_id` (String) Native network ID (VLAN).
-- `op_mode` (String) Operating mode of the port, valid values are `switch`, `mirror`, and `aggregate`.
+- `op_mode` (String) Operating mode of the port: `switch` (default), `mirror`, or `aggregate`. Set `aggregate` on the lead port of an SFP+/link-aggregation (LAG) group and list the member ports in `aggregate_members`. Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.
 - `poe_mode` (String) PoE mode of the port; valid values are `auto`, `pasv24`, `passthrough`, and `off`.
 - `port_keepalive_enabled` (Boolean) Enable port keepalive.
 - `port_profile_id` (String) ID of the Port Profile used on this port.
