@@ -104,6 +104,7 @@ resource "unifi_network" "third_party" {
 - `internet_access` (Boolean) Specifies whether internet access is enabled.
 - `ip_aliases` (List of String) List of IP aliases for the network.
 - `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
+- `ipv6_client_address_assignment` (String) How clients on this network obtain an IPv6 address (UI: Networks → IPv6 → Client Address Assignment). One of `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). Computed from the controller when not set.
 - `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.
 - `ipv6_pd_auto_prefixid_enabled` (Boolean) Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.
 - `ipv6_pd_interface` (String) The IPv6 Prefix Delegation WAN interface (e.g., `wan`, `wan2`).
