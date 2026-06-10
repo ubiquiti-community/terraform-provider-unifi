@@ -2,6 +2,73 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.44.0] - 2026-06-10
+
+### ✨ Features
+
+- **Site-level IGMP snooping** — manage the `igmp_snooping` site setting (`enabled` + `network_ids`) through the `unifi_setting` resource. On UniFi Network 10.3.x+ the effective IGMP snooping toggle moved from the per-network object to this site setting; advanced querier/flood options configured in the UI are preserved across updates (#164)
+
+### 🐛 Bug Fixes
+
+- `unifi_firewall_policy`: round-trip `connection_states` so a policy whose `connection_state_type` is `CUSTOM` updates successfully — the provider previously sent an empty state list and the firmware rejected it with HTTP 400 (#227)
+
+---
+
+## [v0.43.1] - 2026-06-10
+
+### ✨ Features
+
+- `unifi_radius_user`: derive the assigned VLAN from `network_id`, so MAC-based authentication (MAB) hands out the correct VLAN without hand-setting the tunnel attributes (#226)
+- `unifi_radius_user`: support moving a deprecated `unifi_account` in place via a `moved` block — no more destroy/recreate or hand-edited state when migrating, since both are backed by the same RADIUS account (#222, #224)
+
+### 🐛 Bug Fixes
+
+- `unifi_firewall_policy`: round-trip the firmware-required fields (`connection_state_type`, `icmp_typename`, `icmp_v6_typename`, and the source/destination `matching_target_type`) so a zone-based UPDATE no longer fails with HTTP 400 on UniFi OS 5.1.x / Network 10.x (#220, #221, #223)
+- `unifi_device`: write `op_mode` for non-default ports so SFP+ link aggregation (LAG) actually forms, while still skipping it on gateways (UDM) that reject `op_mode` on a PUT (#213, #225)
+
+---
+
+## [v0.43.0] - 2026-06-09
+
+### ✨ Features
+
+- **New `unifi_wireguard_peer` resource** — manage WireGuard VPN peers (the "clients" of a WireGuard server network), with full CRUD and import (#194)
+- **New `unifi_firewall_zone` resource** — create and manage zone-based firewall zones (UniFi OS 8.x+) and their network membership, alongside the existing data source (#214, #218)
+- **IPv6 network configuration** on `unifi_network` — static IPv6 subnet, Router Advertisement (`ipv6_ra*`), Prefix Delegation (`ipv6_pd_*`) and a DHCPv6 server block (#158)
+- **WLAN private pre-shared keys (PPSK)** — per-key passphrases each optionally bound to a network/VLAN (#47, #212)
+- **WLAN write-only passphrase** `passphrase_wo` (Terraform 1.11+) so the secret is used at apply time but never persisted to state (#201)
+
+### 🐛 Bug Fixes
+
+- `unifi_device`: read `radio_table` `channel`/`tx_power` returned as numbers by UniFi 10.x controllers — previously broke device read/import with an unmarshal error (#112)
+- `unifi_device`: stop resetting `state`/`adopted` in the update payload, fixing writes on UDM / Dream Machine gateways (#177)
+- `unifi_network`: keep `dhcp_relay` enabled by pinning a manual `setting_preference` (#208)
+- `unifi_network`: stop forcing `multicast_dns = true` at create, which caused an "inconsistent result after apply" on UniFi OS gateways (#209)
+- `unifi_network`: make `subnet` optional for vlan-only networks (#124)
+- `unifi_network`: tolerate string-encoded boolean flags such as `dhcpd_enabled` from some controllers (#65)
+- `unifi_network`: send `vlan_enabled` so create/update with a VLAN no longer fails with `api.err.VlanUsed` (#76, #85)
+- `unifi_port_forward`: stop perpetual drift when the `source_limiting` block is omitted (#187)
+- `unifi_firewall_policy`: support SPECIFIC port matching via a `port` attribute (#207)
+- `unifi_wlan`: stop `mac_filter` drift, populate `wlangroup_id`, and stabilize `minimum_data_rate` (#200, #203)
+- `unifi_dns_record`: make `record_type` required (#197)
+- `unifi_port_profile`: expose forward/native/tagged VLANs in the data source schema (#196)
+- `unifi_radius_user`: allow `tunnel_type` 13 (VLAN) (#193)
+- `unifi_client`: zero-diff import/create for `blocked`/groups/`qos_rate` (#174)
+- `unifi_client_info`: don't fail with 404 on controllers where the active-clients endpoint is unavailable (#121)
+- structured logging via a dedicated subsystem (#168)
+
+### 🔧 Build & CI
+
+- run `gosec` on dependabot PRs and on `go.mod`/`go.sum` changes so dependency bumps can satisfy the code-scanning gate (#204, #205)
+- dependency updates: testcontainers/compose, terraform-plugin-testing, grouped go modules, and GitHub Actions (#206, #166)
+
+### 📄 Documentation
+
+- clarify what `lte_lan` does (#202)
+- document that `ipv6_pd_start`/`ipv6_pd_stop` are required for prefix-delegation networks (#215)
+
+---
+
 ## [v0.41.20] - 2026-03-08
 
 ### 💥 Breaking Changes

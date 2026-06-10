@@ -24,6 +24,51 @@ resource "unifi_network" "vlan" {
   }
 }
 
+# Dual-stack network with IPv6 static subnet, RA, and DHCPv6
+resource "unifi_network" "dual_stack" {
+  name   = "dual-stack-vlan"
+  subnet = "10.0.1.1/24"
+  vlan   = 11
+
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.1.6"
+    stop    = "10.0.1.254"
+  }
+
+  ipv6_interface_type        = "static"
+  ipv6_static_subnet         = "fd00:1::1/64"
+  ipv6_ra                    = true
+  ipv6_ra_priority           = "high"
+  ipv6_ra_valid_lifetime     = 86400
+  ipv6_ra_preferred_lifetime = 14400
+
+  dhcp_v6_server = {
+    enabled  = true
+    dns_auto = true
+    start    = "::2"
+    stop     = "::7d1"
+    lease    = 86400
+  }
+}
+
+# Network with IPv6 Prefix Delegation from WAN
+resource "unifi_network" "ipv6_pd" {
+  name   = "ipv6-pd-vlan"
+  subnet = "10.0.2.1/24"
+  vlan   = 12
+
+  ipv6_interface_type           = "pd"
+  ipv6_pd_interface             = "wan"
+  ipv6_pd_prefixid              = "1"
+  ipv6_pd_auto_prefixid_enabled = false
+  # ipv6_pd_start/stop are required for a prefix-delegation network — the
+  # controller rejects it with api.err.InvalidIpv6Addr otherwise.
+  ipv6_pd_start = "::2"
+  ipv6_pd_stop  = "::7d1"
+  ipv6_ra       = true
+}
+
 # Third-party gateway (VLAN-only) network
 resource "unifi_network" "third_party" {
   name                = "third-party-vlan"
@@ -44,7 +89,6 @@ resource "unifi_network" "third_party" {
 ### Required
 
 - `name` (String) The name of the network.
-- `subnet` (String) The IP subnet of the network in CIDR notation.
 
 ### Optional
 
@@ -52,6 +96,7 @@ resource "unifi_network" "third_party" {
 - `dhcp_guarding` (Attributes) DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network. (see [below for nested schema](#nestedatt--dhcp_guarding))
 - `dhcp_relay` (Attributes) DHCP relay configuration. (see [below for nested schema](#nestedatt--dhcp_relay))
 - `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
+- `dhcp_v6_server` (Attributes) DHCPv6 server configuration. (see [below for nested schema](#nestedatt--dhcp_v6_server))
 - `domain_name` (String) The domain name for the network.
 - `enabled` (Boolean) Specifies whether the network is enabled.
 - `gateway_type` (String) The gateway type. Must be one of `default` or `switch`.
@@ -60,12 +105,23 @@ resource "unifi_network" "third_party" {
 - `ip_aliases` (List of String) List of IP aliases for the network.
 - `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
 - `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.
-- `lte_lan` (Boolean) Specifies whether LTE LAN is enabled.
-- `multicast_dns` (Boolean) Specifies whether mDNS is enabled.
+- `ipv6_pd_auto_prefixid_enabled` (Boolean) Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.
+- `ipv6_pd_interface` (String) The IPv6 Prefix Delegation WAN interface (e.g., `wan`, `wan2`).
+- `ipv6_pd_prefixid` (String) The IPv6 Prefix Delegation prefix ID (hex string, e.g., `0`, `1a`).
+- `ipv6_pd_start` (String) The start of the IPv6 Prefix Delegation range (e.g. `::2`). Required together with `ipv6_pd_stop` when `ipv6_interface_type` is `pd`, otherwise the controller rejects the network with `api.err.InvalidIpv6Addr`.
+- `ipv6_pd_stop` (String) The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.
+- `ipv6_ra` (Boolean) Specifies whether IPv6 Router Advertisement (RA) is enabled.
+- `ipv6_ra_preferred_lifetime` (Number) The IPv6 Router Advertisement preferred lifetime in seconds (0-31536000).
+- `ipv6_ra_priority` (String) The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.
+- `ipv6_ra_valid_lifetime` (Number) The IPv6 Router Advertisement valid lifetime in seconds (0-31536000).
+- `ipv6_static_subnet` (String) The IPv6 static subnet of the network. Only used when `ipv6_interface_type` is `static`.
+- `lte_lan` (Boolean) Whether this network/VLAN stays active when the gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to the controller's `lte_lan_enabled` flag and only matters when a UniFi LTE failover device is in use; otherwise it is cosmetic. Defaults to `true` (network stays available during LTE failover); set to `false` to disable it while on the LTE backup link. The controller may set this automatically, which is why existing networks can show differing values.
+- `multicast_dns` (Boolean) Specifies whether mDNS is enabled. This is read back from the controller rather than defaulted: some controllers (notably UniFi OS gateways) ignore `mdns_enabled` at create/update time and always store `false`, so forcing a `true` default produced a "provider produced inconsistent result after apply" error.
 - `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
 - `network_isolation` (Boolean) Specifies whether network isolation is enabled.
 - `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the network with.
+- `subnet` (String) The IPv4 subnet of the network in CIDR notation. Optional: it is not required for `vlan_only` networks (`third_party_gateway = true`), where the UniFi controller does not manage the subnet.
 - `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.
 - `vlan` (Number) The VLAN ID for the network.
 
@@ -130,6 +186,19 @@ Optional:
 - `addresses` (List of String) List of WINS server addresses (maximum 2).
 - `enabled` (Boolean) Specifies whether DHCP WINS is enabled.
 
+
+
+<a id="nestedatt--dhcp_v6_server"></a>
+### Nested Schema for `dhcp_v6_server`
+
+Optional:
+
+- `dns_auto` (Boolean) Specifies whether DNS auto-discovery is enabled for DHCPv6.
+- `dns_servers` (List of String) List of DNS server addresses for DHCPv6 clients (maximum 4).
+- `enabled` (Boolean) Specifies whether the DHCPv6 server is enabled.
+- `lease` (Number) The lease time for DHCPv6 addresses in seconds.
+- `start` (String) The start of the DHCPv6 address range.
+- `stop` (String) The end of the DHCPv6 address range.
 
 
 <a id="nestedatt--nat_outbound_ip_addresses"></a>

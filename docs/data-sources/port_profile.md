@@ -29,4 +29,7 @@ data "unifi_port_profile" "all" {
 
 ### Read-Only
 
+- `forward` (String) The forwarding mode of the port profile. One of `all`, `native`, `customize` or `disabled`.
 - `id` (String) The ID of this port profile.
+- `native_networkconf_id` (String) The ID of the native (untagged) network for the port profile.
+- `tagged_networkconf_ids` (Set of String) The IDs of the tagged (VLAN) networks for the port profile.

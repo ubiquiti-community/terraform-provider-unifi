@@ -645,10 +645,12 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 						},
 						"op_mode": schema.StringAttribute{
-							Description: "Operating mode of the port, valid values are `switch`, `mirror`, and `aggregate`.",
-							Optional:    true,
-							Computed:    true,
-							Default:     stringdefault.StaticString("switch"),
+							Description: "Operating mode of the port: `switch` (default), `mirror`, or `aggregate`. " +
+								"Set `aggregate` on the lead port of an SFP+/link-aggregation (LAG) group and list the member ports in `aggregate_members`. " +
+								"Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.",
+							Optional: true,
+							Computed: true,
+							Default:  stringdefault.StaticString("switch"),
 							Validators: []validator.String{
 								stringvalidator.OneOf("switch", "mirror", "aggregate"),
 							},
@@ -661,7 +663,8 @@ func (r *deviceResource) Schema(
 							},
 						},
 						"aggregate_members": schema.ListAttribute{
-							Description: "Number of ports in the aggregate.",
+							Description: "Port indices that make up this link-aggregation (LAG) group. " +
+								"Only takes effect when `op_mode` is `aggregate` on this port.",
 							Optional:    true,
 							ElementType: types.Int64Type,
 						},
@@ -1347,22 +1350,26 @@ func (r *deviceResource) updateDevice(
 
 	deviceReq.ID = model.ID.ValueString()
 
-	// Fill in required fields from the current device state if not set in the model.
-	// The API requires 'type' in the PUT body, but it's a computed field not set by users.
-	// Fill type from API. Prefer MAC lookup (works through cloud connector).
-	// Fall back to ID lookup (works locally).
-	if deviceReq.Type == "" {
-		var currentDevice *unifi.Device
-		if deviceReq.MAC != "" {
-			currentDevice, _ = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
-		}
-		if currentDevice == nil && deviceReq.ID != "" {
-			currentDevice, _ = r.client.GetDevice(ctx, site, deviceReq.ID)
-		}
-		if currentDevice != nil {
-			deviceReq.Type = currentDevice.Type
-		}
+	// Fetch the current device once. We need it for two reasons:
+	//   1. 'type' is a computed field the API requires in the PUT body.
+	//   2. UpdateDevice sends a diff against the existing device. The Device
+	//      struct marshals `state` and `adopted` without omitempty, so leaving
+	//      them at their Go zero-values makes the diff try to reset state to 0
+	//      and adopted to false — which UDM/Dream Machine gateways reject with
+	//      api.err.Invalid (issue #177). Echo the current values so they don't
+	//      appear in the diff.
+	// Prefer MAC lookup (works through cloud connector); fall back to ID (local).
+	var currentDevice *unifi.Device
+	if deviceReq.MAC != "" {
+		currentDevice, _ = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
 	}
+	if currentDevice == nil && deviceReq.ID != "" {
+		currentDevice, _ = r.client.GetDevice(ctx, site, deviceReq.ID)
+	}
+	if currentDevice != nil && deviceReq.Type == "" {
+		deviceReq.Type = currentDevice.Type
+	}
+
 	// Build a minimal Device for the PUT request. The full Device struct includes
 	// computed fields (adopted, state, etc.) with Go zero-values that the API rejects.
 	// Only send fields that the user configured or that the API requires.
@@ -1372,6 +1379,10 @@ func (r *deviceResource) updateDevice(
 		MAC:           deviceReq.MAC,
 		Name:          deviceReq.Name,
 		PortOverrides: deviceReq.PortOverrides,
+	}
+	if currentDevice != nil {
+		minimalDevice.State = currentDevice.State
+		minimalDevice.Adopted = currentDevice.Adopted
 	}
 
 	if reqJSON, jsonErr := json.Marshal(minimalDevice); jsonErr == nil {
@@ -2074,9 +2085,17 @@ func (r *deviceResource) frameworkToPortOverrides(
 			if !model.PortProfileID.IsNull() {
 				po.PortProfileID = model.PortProfileID.ValueString()
 			}
-			// op_mode is intentionally not written: the API returns it on GET
-			// but rejects it on PUT for gateway devices. Switches work fine
-			// without it as the controller preserves the existing value.
+			// op_mode is only written when the port runs in a non-default mode
+			// (aggregate/mirror). Sending op_mode on a PUT for gateway devices
+			// (UDM) is rejected — see #213 — but those ports never use
+			// aggregate/mirror, so they stay at the "switch" default and we skip
+			// it. Writing it for the non-default cases is required to form an
+			// SFP+ link aggregation (#177), which otherwise never engages because
+			// aggregate_members is sent without ever switching op_mode.
+			if !model.OpMode.IsNull() && !model.OpMode.IsUnknown() &&
+				model.OpMode.ValueString() != "" && model.OpMode.ValueString() != "switch" {
+				po.OpMode = model.OpMode.ValueString()
+			}
 			if !model.PoeMode.IsNull() {
 				po.PoeMode = model.PoeMode.ValueString()
 			}

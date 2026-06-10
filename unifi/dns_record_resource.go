@@ -108,8 +108,8 @@ func (r *dnsRecordFrameworkResource) Schema(
 				},
 			},
 			"record_type": schema.StringAttribute{
-				MarkdownDescription: "The type of the DNS record.",
-				Optional:            true,
+				MarkdownDescription: "The type of the DNS record. One of `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV` or `PTR`.",
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("A", "AAAA", "CNAME", "MX", "TXT", "SRV", "PTR"),
 				},

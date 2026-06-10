@@ -6,15 +6,17 @@ on:
       - main
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
       - "vendor/**"
       - ".github/workflows/**"
 
   pull_request:
     types: ["opened", "synchronize"]
-    branches-ignore:
-      - "dependabot/**"
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
       - "vendor/**"
       - ".github/workflows/**"
 

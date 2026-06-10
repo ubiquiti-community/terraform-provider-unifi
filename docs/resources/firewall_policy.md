@@ -34,6 +34,10 @@ Manages a UniFi zone-based firewall policy (UniFi Network 8.x+). Zone-based fire
 
 ### Read-Only
 
+- `connection_state_type` (String) Connection-state matching mode (`ALL`, `RESPOND_ONLY`, or `CUSTOM`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
+- `connection_states` (List of String) Connection states matched when `connection_state_type` is `CUSTOM` (e.g. `NEW`, `ESTABLISHED`, `RELATED`, `INVALID`). Managed by the UniFi controller; the provider round-trips it so a `CUSTOM` policy's states are not dropped on update (which the firmware rejects with HTTP 400).
+- `icmp_typename` (String) ICMP type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
+- `icmp_v6_typename` (String) ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `id` (String) The ID of the firewall policy.
 
 <a id="nestedatt--destination"></a>
@@ -49,8 +53,13 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
+- `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
+
+Read-Only:
+
+- `matching_target_type` (String) How the matching target is specified (`ANY`, `SPECIFIC`, `LIST`, `OBJECT`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 
 
 <a id="nestedatt--source"></a>
@@ -66,5 +75,10 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
+- `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
+
+Read-Only:
+
+- `matching_target_type` (String) How the matching target is specified (`ANY`, `SPECIFIC`, `LIST`, `OBJECT`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.

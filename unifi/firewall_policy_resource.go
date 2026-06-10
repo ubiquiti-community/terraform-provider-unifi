@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -48,8 +50,15 @@ type firewallPolicyModel struct {
 	Index              types.Int64  `tfsdk:"index"`
 	CreateAllowRespond types.Bool   `tfsdk:"create_allow_respond"`
 	IPVersion          types.String `tfsdk:"ip_version"`
-	Source             types.Object `tfsdk:"source"`
-	Destination        types.Object `tfsdk:"destination"`
+	// Firmware-managed fields the controller requires back on every PUT. They are
+	// not user-settable; the provider round-trips them so updates don't drop them
+	// (an omitted connection_state_type/icmp_typename makes the PUT fail HTTP 400).
+	ConnectionStateType types.String `tfsdk:"connection_state_type"`
+	ConnectionStates    types.List   `tfsdk:"connection_states"`
+	ICMPTypename        types.String `tfsdk:"icmp_typename"`
+	ICMPV6Typename      types.String `tfsdk:"icmp_v6_typename"`
+	Source              types.Object `tfsdk:"source"`
+	Destination         types.Object `tfsdk:"destination"`
 }
 
 // firewallPolicyEndpointModel is the nested source/destination block model.
@@ -59,19 +68,25 @@ type firewallPolicyEndpointModel struct {
 	NetworkIDs       types.List   `tfsdk:"network_ids"`
 	ClientMACs       types.List   `tfsdk:"client_macs"`
 	IPs              types.List   `tfsdk:"ips"`
+	Port             types.Int64  `tfsdk:"port"`
 	PortGroupID      types.String `tfsdk:"port_group_id"`
 	PortMatchingType types.String `tfsdk:"port_matching_type"`
+	// Firmware-managed; round-tripped so updates keep it (a PUT that omits
+	// source/destination matching_target_type is rejected with HTTP 400).
+	MatchingTargetType types.String `tfsdk:"matching_target_type"`
 }
 
 func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"zone_id":            types.StringType,
-		"matching_target":    types.StringType,
-		"network_ids":        types.ListType{ElemType: types.StringType},
-		"client_macs":        types.ListType{ElemType: types.StringType},
-		"ips":                types.ListType{ElemType: types.StringType},
-		"port_group_id":      types.StringType,
-		"port_matching_type": types.StringType,
+		"zone_id":              types.StringType,
+		"matching_target":      types.StringType,
+		"network_ids":          types.ListType{ElemType: types.StringType},
+		"client_macs":          types.ListType{ElemType: types.StringType},
+		"ips":                  types.ListType{ElemType: types.StringType},
+		"port":                 types.Int64Type,
+		"port_group_id":        types.StringType,
+		"port_matching_type":   types.StringType,
+		"matching_target_type": types.StringType,
 	}
 }
 
@@ -118,6 +133,17 @@ func (r *firewallPolicyResource) Schema(
 			Computed:            true,
 			ElementType:         types.StringType,
 		},
+		"port": schema.Int64Attribute{
+			MarkdownDescription: "Specific port to match. Used when `port_matching_type` is `SPECIFIC`.",
+			Optional:            true,
+			Computed:            true,
+			Validators: []validator.Int64{
+				int64validator.Between(1, 65535),
+			},
+			PlanModifiers: []planmodifier.Int64{
+				int64planmodifier.UseStateForUnknown(),
+			},
+		},
 		"port_group_id": schema.StringAttribute{
 			MarkdownDescription: "ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.",
 			Optional:            true,
@@ -131,6 +157,13 @@ func (r *firewallPolicyResource) Schema(
 			Default:             stringdefault.StaticString("ANY"),
 			Validators: []validator.String{
 				stringvalidator.OneOf("ANY", "SPECIFIC", "OBJECT"),
+			},
+		},
+		"matching_target_type": schema.StringAttribute{
+			MarkdownDescription: "How the matching target is specified (`ANY`, `SPECIFIC`, `LIST`, `OBJECT`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+			Computed:            true,
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.UseStateForUnknown(),
 			},
 		},
 	}
@@ -215,6 +248,35 @@ func (r *firewallPolicyResource) Schema(
 				Default:             stringdefault.StaticString("IPV4"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("BOTH", "IPV4", "IPV6"),
+				},
+			},
+			"connection_state_type": schema.StringAttribute{
+				MarkdownDescription: "Connection-state matching mode (`ALL`, `RESPOND_ONLY`, or `CUSTOM`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"connection_states": schema.ListAttribute{
+				MarkdownDescription: "Connection states matched when `connection_state_type` is `CUSTOM` (e.g. `NEW`, `ESTABLISHED`, `RELATED`, `INVALID`). Managed by the UniFi controller; the provider round-trips it so a `CUSTOM` policy's states are not dropped on update (which the firmware rejects with HTTP 400).",
+				ElementType:         types.StringType,
+				Computed:            true,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"icmp_typename": schema.StringAttribute{
+				MarkdownDescription: "ICMP type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"icmp_v6_typename": schema.StringAttribute{
+				MarkdownDescription: "ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"source": schema.SingleNestedAttribute{
@@ -421,19 +483,28 @@ func modelToFirewallPolicy(
 	var diags diag.Diagnostics
 
 	fp := &unifi.FirewallPolicy{
-		ID:                 model.ID.ValueString(),
-		Name:               model.Name.ValueString(),
-		Action:             model.Action.ValueString(),
-		Enabled:            model.Enabled.ValueBool(),
-		Protocol:           model.Protocol.ValueString(),
-		Description:        model.Description.ValueString(),
-		Logging:            model.Logging.ValueBool(),
-		CreateAllowRespond: model.CreateAllowRespond.ValueBool(),
-		Version:            model.IPVersion.ValueString(),
-		ConnectionStates:   []string{},
+		ID:                  model.ID.ValueString(),
+		Name:                model.Name.ValueString(),
+		Action:              model.Action.ValueString(),
+		Enabled:             model.Enabled.ValueBool(),
+		Protocol:            model.Protocol.ValueString(),
+		Description:         model.Description.ValueString(),
+		Logging:             model.Logging.ValueBool(),
+		CreateAllowRespond:  model.CreateAllowRespond.ValueBool(),
+		Version:             model.IPVersion.ValueString(),
+		ConnectionStateType: model.ConnectionStateType.ValueString(),
+		ICMPTypename:        model.ICMPTypename.ValueString(),
+		ICMPV6Typename:      model.ICMPV6Typename.ValueString(),
+		ConnectionStates:    []string{},
 		Schedule: &unifi.FirewallPolicySchedule{
 			Mode: "ALWAYS",
 		},
+	}
+
+	// Round-trip the connection states (e.g. ["NEW"]) the controller reported.
+	// Omitting them makes a CUSTOM-state policy's PUT fail with HTTP 400 (#227).
+	if !model.ConnectionStates.IsNull() && !model.ConnectionStates.IsUnknown() {
+		diags.Append(model.ConnectionStates.ElementsAs(ctx, &fp.ConnectionStates, false)...)
 	}
 
 	if !model.Index.IsNull() && !model.Index.IsUnknown() {
@@ -462,10 +533,12 @@ func endpointModelToSource(
 	diags *diag.Diagnostics,
 ) *unifi.FirewallPolicySource {
 	ep := &unifi.FirewallPolicySource{
-		ZoneID:           m.ZoneID.ValueString(),
-		MatchingTarget:   m.MatchingTarget.ValueString(),
-		PortGroupID:      m.PortGroupID.ValueString(),
-		PortMatchingType: m.PortMatchingType.ValueString(),
+		ZoneID:             m.ZoneID.ValueString(),
+		MatchingTarget:     m.MatchingTarget.ValueString(),
+		MatchingTargetType: m.MatchingTargetType.ValueString(),
+		Port:               m.Port.ValueInt64Pointer(),
+		PortGroupID:        m.PortGroupID.ValueString(),
+		PortMatchingType:   m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -479,10 +552,12 @@ func endpointModelToDestination(
 	diags *diag.Diagnostics,
 ) *unifi.FirewallPolicyDestination {
 	ep := &unifi.FirewallPolicyDestination{
-		ZoneID:           m.ZoneID.ValueString(),
-		MatchingTarget:   m.MatchingTarget.ValueString(),
-		PortGroupID:      m.PortGroupID.ValueString(),
-		PortMatchingType: m.PortMatchingType.ValueString(),
+		ZoneID:             m.ZoneID.ValueString(),
+		MatchingTarget:     m.MatchingTarget.ValueString(),
+		MatchingTargetType: m.MatchingTargetType.ValueString(),
+		Port:               m.Port.ValueInt64Pointer(),
+		PortGroupID:        m.PortGroupID.ValueString(),
+		PortMatchingType:   m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -506,6 +581,12 @@ func firewallPolicyToModel(
 	model.Logging = types.BoolValue(fp.Logging)
 	model.CreateAllowRespond = types.BoolValue(fp.CreateAllowRespond)
 	model.IPVersion = types.StringValue(fp.Version)
+	model.ConnectionStateType = types.StringValue(fp.ConnectionStateType)
+	connStates, csDiags := types.ListValueFrom(ctx, types.StringType, fp.ConnectionStates)
+	diags.Append(csDiags...)
+	model.ConnectionStates = connStates
+	model.ICMPTypename = types.StringValue(fp.ICMPTypename)
+	model.ICMPV6Typename = types.StringValue(fp.ICMPV6Typename)
 
 	if fp.Index != nil {
 		model.Index = types.Int64Value(*fp.Index)
@@ -542,10 +623,12 @@ func apiSourceToEndpointModel(
 	diags *diag.Diagnostics,
 ) firewallPolicyEndpointModel {
 	m := firewallPolicyEndpointModel{
-		ZoneID:           types.StringValue(src.ZoneID),
-		MatchingTarget:   types.StringValue(src.MatchingTarget),
-		PortGroupID:      types.StringValue(src.PortGroupID),
-		PortMatchingType: types.StringValue(src.PortMatchingType),
+		ZoneID:             types.StringValue(src.ZoneID),
+		MatchingTarget:     types.StringValue(src.MatchingTarget),
+		MatchingTargetType: types.StringValue(src.MatchingTargetType),
+		Port:               types.Int64PointerValue(src.Port),
+		PortGroupID:        types.StringValue(src.PortGroupID),
+		PortMatchingType:   types.StringValue(src.PortMatchingType),
 	}
 	m.NetworkIDs = types.ListNull(types.StringType)
 	m.ClientMACs = types.ListNull(types.StringType)
@@ -563,10 +646,12 @@ func apiDestinationToEndpointModel(
 	diags *diag.Diagnostics,
 ) firewallPolicyEndpointModel {
 	m := firewallPolicyEndpointModel{
-		ZoneID:           types.StringValue(dst.ZoneID),
-		MatchingTarget:   types.StringValue(dst.MatchingTarget),
-		PortGroupID:      types.StringValue(dst.PortGroupID),
-		PortMatchingType: types.StringValue(dst.PortMatchingType),
+		ZoneID:             types.StringValue(dst.ZoneID),
+		MatchingTarget:     types.StringValue(dst.MatchingTarget),
+		MatchingTargetType: types.StringValue(dst.MatchingTargetType),
+		Port:               types.Int64PointerValue(dst.Port),
+		PortGroupID:        types.StringValue(dst.PortGroupID),
+		PortMatchingType:   types.StringValue(dst.PortMatchingType),
 	}
 	m.NetworkIDs = types.ListNull(types.StringType)
 	m.ClientMACs = types.ListNull(types.StringType)

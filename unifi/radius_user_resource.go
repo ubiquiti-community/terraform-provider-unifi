@@ -7,10 +7,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -115,14 +117,18 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 				},
 			},
 			"network_id": schema.StringAttribute{
-				MarkdownDescription: "ID of the network for this account",
+				MarkdownDescription: "ID of the network for this account. When set and `vlan` is omitted, the account inherits that network's VLAN (so RADIUS/MAB VLAN assignment is applied).",
 				Optional:            true,
 			},
 			"vlan": schema.Int64Attribute{
-				MarkdownDescription: "VLAN assigned to the account. If unset, the client falls back to the untagged VLAN.",
+				MarkdownDescription: "VLAN assigned to the account. If omitted but `network_id` is set, it is derived from that network's VLAN. If neither is set, the client falls back to the untagged VLAN.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(2, 4009),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"tunnel_config_type": schema.StringAttribute{
@@ -180,6 +186,14 @@ func (r *radiusUserResource) Create(
 	if site == "" {
 		site = r.client.Site
 	}
+
+	// Derive the VLAN from network_id when not set explicitly (#67).
+	vlan, vlanDiags := r.resolveVLAN(ctx, &data, site)
+	resp.Diagnostics.Append(vlanDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	account.VLAN = vlan
 
 	// Create the account
 	createdAccount, err := r.client.CreateAccount(ctx, site, account)
@@ -268,6 +282,14 @@ func (r *radiusUserResource) Update(
 	// Step 3: Convert the updated state to API format
 	account := r.modelToRadiusUser(ctx, &state)
 	account.ID = state.ID.ValueString()
+
+	// Derive the VLAN from network_id when not set explicitly (#67).
+	vlan, vlanDiags := r.resolveVLAN(ctx, &state, site)
+	resp.Diagnostics.Append(vlanDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	account.VLAN = vlan
 
 	// Step 4: Send to API
 	updatedAccount, err := r.client.UpdateAccount(ctx, site, account)
@@ -400,6 +422,44 @@ func (r *radiusUserResource) modelToRadiusUser(
 	}
 
 	return account
+}
+
+// resolveVLAN determines the VLAN to assign to the account. An explicit `vlan`
+// always wins. Otherwise, when `network_id` is set, the account inherits that
+// network's VLAN — the controller leaves the account `vlan` blank when only
+// networkconf_id is sent, so RADIUS/MAB VLAN assignment never applies (#67).
+// Returns nil when neither yields a VLAN (client falls back to the untagged VLAN).
+//
+// Note: because `vlan` is computed and stable, changing `network_id` later does
+// not re-derive the VLAN on its own; set `vlan` explicitly (or clear it) to
+// force a refresh.
+func (r *radiusUserResource) resolveVLAN(
+	ctx context.Context,
+	model *radiusUserResourceModel,
+	site string,
+) (*int64, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if !model.VLAN.IsNull() && !model.VLAN.IsUnknown() {
+		return model.VLAN.ValueInt64Pointer(), diags
+	}
+
+	networkID := model.NetworkID.ValueString()
+	if model.NetworkID.IsNull() || networkID == "" {
+		return nil, diags
+	}
+
+	network, err := r.client.GetNetwork(ctx, site, networkID)
+	if err != nil {
+		diags.AddError(
+			"Error Deriving VLAN from network_id",
+			"Could not look up network "+networkID+
+				" to derive the account VLAN: "+err.Error(),
+		)
+		return nil, diags
+	}
+
+	return network.VLAN, diags
 }
 
 // radiusUserToModel converts the API struct to the Terraform model.

@@ -16,11 +16,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -58,41 +60,58 @@ type wlanMacFilterModel struct {
 	Policy  types.String `tfsdk:"policy"`
 }
 
+// wlanPrivatePresharedKeyModel represents a single private pre-shared key (PPSK)
+// entry: a per-key password optionally bound to its own VLAN/network.
+type wlanPrivatePresharedKeyModel struct {
+	NetworkID types.String `tfsdk:"network_id"`
+	Password  types.String `tfsdk:"password"`
+}
+
+func (m wlanPrivatePresharedKeyModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"network_id": types.StringType,
+		"password":   types.StringType,
+	}
+}
+
 // wlanFrameworkResourceModel describes the resource data model.
 type wlanFrameworkResourceModel struct {
-	ID                       types.String `tfsdk:"id"`
-	Site                     types.String `tfsdk:"site"`
-	Name                     types.String `tfsdk:"name"`
-	NetworkID                types.String `tfsdk:"network_id"`
-	UserGroupID              types.String `tfsdk:"user_group_id"`
-	Security                 types.String `tfsdk:"security"`
-	WPA3Support              types.Bool   `tfsdk:"wpa3_support"`
-	WPA3Transition           types.Bool   `tfsdk:"wpa3_transition"`
-	PMFMode                  types.String `tfsdk:"pmf_mode"`
-	Passphrase               types.String `tfsdk:"passphrase"`
-	HideSSID                 types.Bool   `tfsdk:"hide_ssid"`
-	IsGuest                  types.Bool   `tfsdk:"is_guest"`
-	Enabled                  types.Bool   `tfsdk:"enabled"`
-	ApGroupIDs               types.Set    `tfsdk:"ap_group_ids"`
-	ApGroupMode              types.String `tfsdk:"ap_group_mode"`
-	VLANEnabled              types.Bool   `tfsdk:"vlan_enabled"`
-	VLAN                     types.Int64  `tfsdk:"vlan"`
-	WLANBand                 types.String `tfsdk:"wlan_band"`
-	WLANBands                types.Set    `tfsdk:"wlan_bands"`
-	MulticastEnhance         types.Bool   `tfsdk:"multicast_enhance"`
-	MacFilter                types.Object `tfsdk:"mac_filter"`
-	RadiusProfileID          types.String `tfsdk:"radius_profile_id"`
-	NasIDentifierType        types.String `tfsdk:"nas_identifier_type"`
-	Schedule                 types.List   `tfsdk:"schedule"`
-	No2GhzOui                types.Bool   `tfsdk:"no2ghz_oui"`
-	L2Isolation              types.Bool   `tfsdk:"l2_isolation"`
-	ProxyArp                 types.Bool   `tfsdk:"proxy_arp"`
-	BssTransition            types.Bool   `tfsdk:"bss_transition"`
-	Uapsd                    types.Bool   `tfsdk:"uapsd"`
-	FastRoamingEnabled       types.Bool   `tfsdk:"fast_roaming_enabled"`
-	MinimumDataRate2GKbps    types.Int64  `tfsdk:"minimum_data_rate_2g_kbps"`
-	MinimumDataRate5GKbps    types.Int64  `tfsdk:"minimum_data_rate_5g_kbps"`
-	MinrateSettingPreference types.String `tfsdk:"minrate_setting_preference"`
+	ID                          types.String `tfsdk:"id"`
+	Site                        types.String `tfsdk:"site"`
+	Name                        types.String `tfsdk:"name"`
+	NetworkID                   types.String `tfsdk:"network_id"`
+	UserGroupID                 types.String `tfsdk:"user_group_id"`
+	Security                    types.String `tfsdk:"security"`
+	WPA3Support                 types.Bool   `tfsdk:"wpa3_support"`
+	WPA3Transition              types.Bool   `tfsdk:"wpa3_transition"`
+	PMFMode                     types.String `tfsdk:"pmf_mode"`
+	Passphrase                  types.String `tfsdk:"passphrase"`
+	PassphraseWO                types.String `tfsdk:"passphrase_wo"`
+	HideSSID                    types.Bool   `tfsdk:"hide_ssid"`
+	IsGuest                     types.Bool   `tfsdk:"is_guest"`
+	Enabled                     types.Bool   `tfsdk:"enabled"`
+	ApGroupIDs                  types.Set    `tfsdk:"ap_group_ids"`
+	ApGroupMode                 types.String `tfsdk:"ap_group_mode"`
+	VLANEnabled                 types.Bool   `tfsdk:"vlan_enabled"`
+	VLAN                        types.Int64  `tfsdk:"vlan"`
+	WLANBand                    types.String `tfsdk:"wlan_band"`
+	WLANBands                   types.Set    `tfsdk:"wlan_bands"`
+	MulticastEnhance            types.Bool   `tfsdk:"multicast_enhance"`
+	MacFilter                   types.Object `tfsdk:"mac_filter"`
+	PrivatePresharedKeysEnabled types.Bool   `tfsdk:"private_preshared_keys_enabled"`
+	PrivatePresharedKeys        types.List   `tfsdk:"private_preshared_keys"`
+	RadiusProfileID             types.String `tfsdk:"radius_profile_id"`
+	NasIDentifierType           types.String `tfsdk:"nas_identifier_type"`
+	Schedule                    types.List   `tfsdk:"schedule"`
+	No2GhzOui                   types.Bool   `tfsdk:"no2ghz_oui"`
+	L2Isolation                 types.Bool   `tfsdk:"l2_isolation"`
+	ProxyArp                    types.Bool   `tfsdk:"proxy_arp"`
+	BssTransition               types.Bool   `tfsdk:"bss_transition"`
+	Uapsd                       types.Bool   `tfsdk:"uapsd"`
+	FastRoamingEnabled          types.Bool   `tfsdk:"fast_roaming_enabled"`
+	MinimumDataRate2GKbps       types.Int64  `tfsdk:"minimum_data_rate_2g_kbps"`
+	MinimumDataRate5GKbps       types.Int64  `tfsdk:"minimum_data_rate_5g_kbps"`
+	MinrateSettingPreference    types.String `tfsdk:"minrate_setting_preference"`
 
 	// Security / encryption
 	WPAMode types.String `tfsdk:"wpa_mode"`
@@ -190,9 +209,21 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"passphrase": schema.StringAttribute{
-				MarkdownDescription: "The passphrase for the network, this is only required if `security` is not set to `open`.",
+				MarkdownDescription: "The passphrase for the network, only required if `security` is not `open`. Stored in state — use `passphrase_wo` to avoid persisting the secret.",
 				Optional:            true,
 				Sensitive:           true,
+			},
+			"passphrase_wo": schema.StringAttribute{
+				MarkdownDescription: "Write-only equivalent of `passphrase` (Terraform 1.11+). " +
+					"Used at apply time but never written to state, so it can be sourced from " +
+					"an ephemeral resource (e.g. a Vault secret). Mutually exclusive with " +
+					"`passphrase`.",
+				Optional:  true,
+				Sensitive: true,
+				WriteOnly: true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("passphrase")),
+				},
 			},
 			"hide_ssid": schema.BoolAttribute{
 				MarkdownDescription: "Indicates whether or not to hide the SSID from broadcast.",
@@ -271,6 +302,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "MAC address filtering configuration.",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Indicates whether or not the MAC filter is turned on for the network.",
@@ -290,6 +324,38 @@ func (r *wlanFrameworkResource) Schema(
 						Default:             stringdefault.StaticString("deny"),
 						Validators: []validator.String{
 							stringvalidator.OneOf("allow", "deny"),
+						},
+					},
+				},
+			},
+			"private_preshared_keys_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether per-key (PPSK) passphrases are enabled for this WLAN. " +
+					"Requires `security = wpapsk`.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+			},
+			"private_preshared_keys": schema.ListNestedAttribute{
+				MarkdownDescription: "Private pre-shared keys (PPSK): a list of per-key passphrases, " +
+					"each optionally bound to its own network/VLAN. Only valid when " +
+					"`private_preshared_keys_enabled` is `true`.",
+				Optional: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"network_id": schema.StringAttribute{
+							MarkdownDescription: "ID of the network/VLAN this key is bound to. " +
+								"Leave unset to use the WLAN's default network.",
+							Optional: true,
+							Computed: true,
+							Default:  stringdefault.StaticString(""),
+						},
+						"password": schema.StringAttribute{
+							MarkdownDescription: "The passphrase for this key (8-255 characters).",
+							Required:            true,
+							Sensitive:           true,
+							Validators: []validator.String{
+								stringvalidator.LengthBetween(8, 255),
+							},
 						},
 					},
 				},
@@ -568,6 +634,37 @@ func (r *wlanFrameworkResource) Configure(
 	r.client = client
 }
 
+// setDefaultWLANGroupID populates wlan.WLANGroupID when it is empty. go-unifi
+// serializes WLANGroupID without `omitempty`, so leaving it blank sends
+// `"wlangroup_id":""` in every POST/PUT, which UniFi Network 10.x rejects with
+// api.err.InvalidPayload. Default to the site's default WLAN group (mirrors the
+// AP-group handling in Create).
+func (r *wlanFrameworkResource) setDefaultWLANGroupID(
+	ctx context.Context,
+	site string,
+	wlan *unifi.WLAN,
+) error {
+	if wlan.WLANGroupID != "" {
+		return nil
+	}
+	groups, err := r.client.ListWLANGroup(ctx, site)
+	if err != nil {
+		return err
+	}
+	// The default WLAN group reports attr_hidden_id "Default" (note the casing
+	// differs from AP groups, which use "default"); match case-insensitively.
+	for _, group := range groups {
+		if strings.EqualFold(group.HiddenID, "default") {
+			wlan.WLANGroupID = group.ID
+			return nil
+		}
+	}
+	if len(groups) > 0 {
+		wlan.WLANGroupID = groups[0].ID
+	}
+	return nil
+}
+
 func (r *wlanFrameworkResource) Create(
 	ctx context.Context,
 	req resource.CreateRequest,
@@ -591,6 +688,15 @@ func (r *wlanFrameworkResource) Create(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// Write-only passphrase: read from config, use at apply time, never persist.
+	passphraseWO := r.readPassphraseWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !passphraseWO.IsNull() && !passphraseWO.IsUnknown() {
+		wlan.Passphrase = passphraseWO.ValueString()
 	}
 
 	// UDM SE API requires ap_group_ids to be set even when ap_group_mode is "all".
@@ -617,6 +723,14 @@ func (r *wlanFrameworkResource) Create(
 		}
 	}
 
+	if err := r.setDefaultWLANGroupID(ctx, site, wlan); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Listing WLAN Groups",
+			"Could not list WLAN groups: "+err.Error(),
+		)
+		return
+	}
+
 	// Create the WLAN
 	createdWLAN, err := r.client.CreateWLAN(ctx, site, wlan)
 	if err != nil {
@@ -632,6 +746,12 @@ func (r *wlanFrameworkResource) Create(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// When the write-only passphrase is used, never persist the secret to state:
+	// keep `passphrase` null (matching the config) instead of the API echo.
+	if !passphraseWO.IsNull() {
+		plan.Passphrase = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, plan)
@@ -725,8 +845,24 @@ func (r *wlanFrameworkResource) Update(
 		return
 	}
 
+	// Write-only passphrase: read from config, use at apply time, never persist.
+	passphraseWO := r.readPassphraseWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !passphraseWO.IsNull() && !passphraseWO.IsUnknown() {
+		wlan.Passphrase = passphraseWO.ValueString()
+	}
+
 	// Step 4: Send to API
 	wlan.ID = state.ID.ValueString()
+	if err := r.setDefaultWLANGroupID(ctx, site, wlan); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Listing WLAN Groups",
+			"Could not list WLAN groups: "+err.Error(),
+		)
+		return
+	}
 	updatedWLAN, err := r.client.UpdateWLAN(ctx, site, wlan)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -743,7 +879,24 @@ func (r *wlanFrameworkResource) Update(
 		return
 	}
 
+	// When the write-only passphrase is used, never persist the secret to state.
+	if !passphraseWO.IsNull() {
+		state.Passphrase = types.StringNull()
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// readPassphraseWO reads the write-only passphrase_wo attribute from config.
+// Write-only values are only available via the request config (never plan/state).
+func (r *wlanFrameworkResource) readPassphraseWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var passphraseWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("passphrase_wo"), &passphraseWO)...)
+	return passphraseWO
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
@@ -809,6 +962,13 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	}
 	if !plan.MacFilter.IsNull() && !plan.MacFilter.IsUnknown() {
 		state.MacFilter = plan.MacFilter
+	}
+	if !plan.PrivatePresharedKeysEnabled.IsNull() &&
+		!plan.PrivatePresharedKeysEnabled.IsUnknown() {
+		state.PrivatePresharedKeysEnabled = plan.PrivatePresharedKeysEnabled
+	}
+	if !plan.PrivatePresharedKeys.IsNull() && !plan.PrivatePresharedKeys.IsUnknown() {
+		state.PrivatePresharedKeys = plan.PrivatePresharedKeys
 	}
 	if !plan.RadiusProfileID.IsNull() && !plan.RadiusProfileID.IsUnknown() {
 		state.RadiusProfileID = plan.RadiusProfileID
@@ -1045,6 +1205,26 @@ func (r *wlanFrameworkResource) planToWLAN(
 		}
 	}
 
+	// Handle private pre-shared keys (PPSK)
+	wlan.PrivatePresharedKeysEnabled = plan.PrivatePresharedKeysEnabled.ValueBool()
+	if !plan.PrivatePresharedKeys.IsNull() && !plan.PrivatePresharedKeys.IsUnknown() {
+		var ppskList []wlanPrivatePresharedKeyModel
+		diags.Append(plan.PrivatePresharedKeys.ElementsAs(ctx, &ppskList, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+
+		for _, ppsk := range ppskList {
+			wlan.PrivatePresharedKeys = append(
+				wlan.PrivatePresharedKeys,
+				unifi.WLANPrivatePresharedKeys{
+					NetworkID: ppsk.NetworkID.ValueString(),
+					Password:  ppsk.Password.ValueString(),
+				},
+			)
+		}
+	}
+
 	// Handle AP group IDs
 	if !plan.ApGroupIDs.IsNull() && !plan.ApGroupIDs.IsUnknown() {
 		var apGroupList []types.String
@@ -1108,6 +1288,13 @@ func (r *wlanFrameworkResource) planToWLAN(
 			)
 		}
 		wlan.ScheduleEnabled = len(wlan.ScheduleWithDuration) > 0
+	}
+
+	// The go-unifi schedule_with_duration field has no omitempty, so a nil slice
+	// marshals as `null`, which the controller rejects with api.err.InvalidPayload.
+	// Always send an empty list instead of null when there are no schedules.
+	if wlan.ScheduleWithDuration == nil {
+		wlan.ScheduleWithDuration = []unifi.WLANScheduleWithDuration{}
 	}
 
 	return wlan, diags
@@ -1203,6 +1390,33 @@ func (r *wlanFrameworkResource) wlanToModel(
 	diags.Append(d...)
 	model.MacFilter = macFilterObj
 
+	// Handle private pre-shared keys (PPSK). The per-key password is sensitive
+	// and not always echoed back by the controller; the plan value is preserved
+	// in applyPlanToState for create/update, so this read path mainly serves
+	// refresh and import.
+	model.PrivatePresharedKeysEnabled = types.BoolValue(wlan.PrivatePresharedKeysEnabled)
+
+	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
+	if len(wlan.PrivatePresharedKeys) > 0 {
+		ppskValues := make([]attr.Value, len(wlan.PrivatePresharedKeys))
+		for i, ppsk := range wlan.PrivatePresharedKeys {
+			obj, d := types.ObjectValue(
+				wlanPrivatePresharedKeyModel{}.AttributeTypes(),
+				map[string]attr.Value{
+					"network_id": types.StringValue(ppsk.NetworkID),
+					"password":   types.StringValue(ppsk.Password),
+				},
+			)
+			diags.Append(d...)
+			ppskValues[i] = obj
+		}
+		ppskList, d := types.ListValue(ppskType, ppskValues)
+		diags.Append(d...)
+		model.PrivatePresharedKeys = ppskList
+	} else {
+		model.PrivatePresharedKeys = types.ListNull(ppskType)
+	}
+
 	if wlan.RADIUSProfileID != "" {
 		model.RadiusProfileID = types.StringValue(wlan.RADIUSProfileID)
 	} else {
@@ -1228,8 +1442,19 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.MinrateSettingPreference = types.StringValue("auto")
 	}
 
-	model.MinimumDataRate2GKbps = types.Int64PointerValue(wlan.MinrateNgDataRateKbps)
-	model.MinimumDataRate5GKbps = types.Int64PointerValue(wlan.MinrateNaDataRateKbps)
+	// The API omits these fields from GET responses when unset; map the missing
+	// value to 0 (the schema default) instead of null to avoid perpetual
+	// null->0 plan drift after import.
+	if wlan.MinrateNgDataRateKbps != nil {
+		model.MinimumDataRate2GKbps = types.Int64Value(*wlan.MinrateNgDataRateKbps)
+	} else {
+		model.MinimumDataRate2GKbps = types.Int64Value(0)
+	}
+	if wlan.MinrateNaDataRateKbps != nil {
+		model.MinimumDataRate5GKbps = types.Int64Value(*wlan.MinrateNaDataRateKbps)
+	} else {
+		model.MinimumDataRate5GKbps = types.Int64Value(0)
+	}
 
 	if wlan.WPAMode != "" {
 		model.WPAMode = types.StringValue(wlan.WPAMode)

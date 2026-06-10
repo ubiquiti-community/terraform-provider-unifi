@@ -143,13 +143,23 @@ type settingIpsModel struct {
 }
 
 type settingResourceModel struct {
-	ID     types.String `tfsdk:"id"`
-	Site   types.String `tfsdk:"site"`
-	Doh    types.Object `tfsdk:"doh"`
-	Ips    types.Object `tfsdk:"ips"`
-	Mgmt   types.Object `tfsdk:"mgmt"`
-	Radius types.Object `tfsdk:"radius"`
-	USG    types.Object `tfsdk:"usg"`
+	ID           types.String `tfsdk:"id"`
+	Site         types.String `tfsdk:"site"`
+	Doh          types.Object `tfsdk:"doh"`
+	Ips          types.Object `tfsdk:"ips"`
+	Mgmt         types.Object `tfsdk:"mgmt"`
+	Radius       types.Object `tfsdk:"radius"`
+	USG          types.Object `tfsdk:"usg"`
+	IgmpSnooping types.Object `tfsdk:"igmp_snooping"`
+}
+
+// settingIgmpSnoopingModel is the nested igmp_snooping block. On UniFi 10.3.x the
+// effective IGMP snooping toggle moved from the per-network object to this site
+// setting (#164). Only the common fields are exposed; advanced querier/flood
+// fields are preserved across updates via a read-modify-write merge.
+type settingIgmpSnoopingModel struct {
+	Enabled    types.Bool `tfsdk:"enabled"`
+	NetworkIDs types.List `tfsdk:"network_ids"`
 }
 
 // Shared attribute-type maps for the doh/ips nested objects and lists. These
@@ -193,6 +203,10 @@ var (
 		"suppression_whitelist": types.ListType{
 			ElemType: types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
 		},
+	}
+	igmpSnoopingAttrTypes = map[string]attr.Type{
+		"enabled":     types.BoolType,
+		"network_ids": types.ListType{ElemType: types.StringType},
 	}
 )
 
@@ -695,6 +709,23 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"igmp_snooping": schema.SingleNestedAttribute{
+				MarkdownDescription: "Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether IGMP snooping is enabled for the site.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"network_ids": schema.ListAttribute{
+						MarkdownDescription: "IDs of the networks IGMP snooping applies to.",
+						ElementType:         types.StringType,
+						Optional:            true,
+						Computed:            true,
+					},
+				},
+			},
 		},
 	}
 }
@@ -824,6 +855,35 @@ func (r *settingResource) Create(
 		setting := r.usgModelToSetting(ctx, &usg)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating USG Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.IgmpSnooping.IsNull() && !data.IgmpSnooping.IsUnknown() {
+		var igmp settingIgmpSnoopingModel
+		resp.Diagnostics.Append(data.IgmpSnooping.As(ctx, &igmp, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		// Read current remote setting as the base so advanced querier/flood
+		// fields keep their remote values across the update.
+		_, currentIgmp, err := ui.GetSetting[*settings.IgmpSnooping](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading IGMP Snooping Setting", err.Error())
+				return
+			}
+			currentIgmp = &settings.IgmpSnooping{}
+		}
+
+		setting := r.igmpSnoopingModelToSetting(ctx, &igmp, currentIgmp, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating IGMP Snooping Setting", err.Error())
 			return
 		}
 	}
@@ -965,6 +1025,33 @@ func (r *settingResource) Update(
 		setting := r.usgModelToSetting(ctx, &usg)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating USG Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.IgmpSnooping.IsNull() && !plan.IgmpSnooping.IsUnknown() {
+		var igmp settingIgmpSnoopingModel
+		resp.Diagnostics.Append(plan.IgmpSnooping.As(ctx, &igmp, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		_, currentIgmp, err := ui.GetSetting[*settings.IgmpSnooping](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading IGMP Snooping Setting", err.Error())
+				return
+			}
+			currentIgmp = &settings.IgmpSnooping{}
+		}
+
+		setting := r.igmpSnoopingModelToSetting(ctx, &igmp, currentIgmp, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating IGMP Snooping Setting", err.Error())
 			return
 		}
 	}
@@ -1266,6 +1353,24 @@ func (r *settingResource) readSettings(
 			"upnp_secure_mode":                   types.BoolType,
 			"upnp_wan_interface":                 types.StringType,
 		})
+	}
+
+	// IGMP snooping (site-level)
+	if !data.IgmpSnooping.IsNull() && !data.IgmpSnooping.IsUnknown() {
+		_, igmpSetting, err := ui.GetSetting[*settings.IgmpSnooping](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading IGMP Snooping Setting", err.Error())
+			return
+		}
+		igmpModel := r.igmpSnoopingSettingToModel(ctx, igmpSetting, diags)
+		objValue, d := types.ObjectValueFrom(ctx, igmpSnoopingAttrTypes, igmpModel)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.IgmpSnooping = objValue
+	} else {
+		data.IgmpSnooping = types.ObjectNull(igmpSnoopingAttrTypes)
 	}
 }
 
@@ -1822,6 +1927,43 @@ func (r *settingResource) usgSettingToModel(
 		model.UPnPWANInterface = types.StringNull()
 	}
 
+	return model
+}
+
+// IGMP snooping conversion functions.
+
+// igmpSnoopingModelToSetting overlays the user-set fields (enabled, network_ids)
+// onto the current remote setting (base) so advanced querier/flood options are
+// preserved across updates.
+func (r *settingResource) igmpSnoopingModelToSetting(
+	ctx context.Context,
+	model *settingIgmpSnoopingModel,
+	base *settings.IgmpSnooping,
+	diags *diag.Diagnostics,
+) *settings.IgmpSnooping {
+	setting := base
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		setting.Enabled = model.Enabled.ValueBool()
+	}
+	if !model.NetworkIDs.IsNull() && !model.NetworkIDs.IsUnknown() {
+		var ids []string
+		diags.Append(model.NetworkIDs.ElementsAs(ctx, &ids, false)...)
+		setting.NetworkIDs = ids
+	}
+	return setting
+}
+
+func (r *settingResource) igmpSnoopingSettingToModel(
+	ctx context.Context,
+	setting *settings.IgmpSnooping,
+	diags *diag.Diagnostics,
+) *settingIgmpSnoopingModel {
+	model := &settingIgmpSnoopingModel{
+		Enabled: types.BoolValue(setting.Enabled),
+	}
+	ids, d := types.ListValueFrom(ctx, types.StringType, setting.NetworkIDs)
+	diags.Append(d...)
+	model.NetworkIDs = ids
 	return model
 }
 

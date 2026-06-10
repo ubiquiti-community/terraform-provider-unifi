@@ -47,6 +47,18 @@ resource "unifi_wlan" "wifi" {
   network_id    = unifi_network.vlan.id
   ap_group_ids  = [data.unifi_ap_group.default.id]
   user_group_id = data.unifi_client_qos_rate.default.id
+
+  # Per-key (PPSK) passphrases, each optionally bound to its own network/VLAN
+  private_preshared_keys_enabled = true
+  private_preshared_keys = [
+    {
+      password   = "guest-key-1234"
+      network_id = unifi_network.vlan.id
+    },
+    {
+      password = "iot-key-5678"
+    },
+  ]
 }
 ```
 
@@ -60,6 +72,8 @@ resource "unifi_wlan" "wifi" {
 - `user_group_id` (String) ID of the user group to use for this network.
 
 ### Optional
+
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
 - `ap_group_ids` (Set of String) List of AP group IDs to apply this WLAN to.
 - `ap_group_mode` (String) Access point group mode.
@@ -87,8 +101,11 @@ resource "unifi_wlan" "wifi" {
 - `nas_identifier_type` (String) NAS identifier type for RADIUS.
 - `network_id` (String) ID of the network for this WLAN.
 - `no2ghz_oui` (Boolean) Connect high performance clients to 5 GHz only.
-- `passphrase` (String, Sensitive) The passphrase for the network, this is only required if `security` is not set to `open`.
+- `passphrase` (String, Sensitive) The passphrase for the network, only required if `security` is not `open`. Stored in state — use `passphrase_wo` to avoid persisting the secret.
+- `passphrase_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `passphrase` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource (e.g. a Vault secret). Mutually exclusive with `passphrase`.
 - `pmf_mode` (String) Enable Protected Management Frames. This cannot be disabled if using WPA 3.
+- `private_preshared_keys` (Attributes List) Private pre-shared keys (PPSK): a list of per-key passphrases, each optionally bound to its own network/VLAN. Only valid when `private_preshared_keys_enabled` is `true`. (see [below for nested schema](#nestedatt--private_preshared_keys))
+- `private_preshared_keys_enabled` (Boolean) Whether per-key (PPSK) passphrases are enabled for this WLAN. Requires `security = wpapsk`.
 - `proxy_arp` (Boolean) Reduces airtime usage by allowing APs to "proxy" common broadcast frames as unicast.
 - `radius_mac_auth_enabled` (Boolean) Enable RADIUS MAC authentication.
 - `radius_profile_id` (String) ID of the RADIUS profile to use when security `wpaeap`.
@@ -118,6 +135,18 @@ Optional:
 - `enabled` (Boolean) Indicates whether or not the MAC filter is turned on for the network.
 - `list` (Set of String) List of MAC addresses to filter (only valid if `enabled` is `true`).
 - `policy` (String) MAC address filter policy (only valid if `enabled` is `true`).
+
+
+<a id="nestedatt--private_preshared_keys"></a>
+### Nested Schema for `private_preshared_keys`
+
+Required:
+
+- `password` (String, Sensitive) The passphrase for this key (8-255 characters).
+
+Optional:
+
+- `network_id` (String) ID of the network/VLAN this key is bound to. Leave unset to use the WLAN's default network.
 
 
 <a id="nestedblock--schedule"></a>

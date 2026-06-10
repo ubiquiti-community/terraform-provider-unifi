@@ -2,6 +2,7 @@ name: Copilot coding agent auto-approve
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
+    branches: 'copilot/**'
 
 permissions:
   pull-requests: write
