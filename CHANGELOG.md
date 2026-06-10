@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.43.1] - 2026-06-10
+
+### ✨ Features
+
+- `unifi_radius_user`: derive the assigned VLAN from `network_id`, so MAC-based authentication (MAB) hands out the correct VLAN without hand-setting the tunnel attributes (#226)
+- `unifi_radius_user`: support moving a deprecated `unifi_account` in place via a `moved` block — no more destroy/recreate or hand-edited state when migrating, since both are backed by the same RADIUS account (#222, #224)
+
+### 🐛 Bug Fixes
+
+- `unifi_firewall_policy`: round-trip the firmware-required fields (`connection_state_type`, `icmp_typename`, `icmp_v6_typename`, and the source/destination `matching_target_type`) so a zone-based UPDATE no longer fails with HTTP 400 on UniFi OS 5.1.x / Network 10.x (#220, #221, #223)
+- `unifi_device`: write `op_mode` for non-default ports so SFP+ link aggregation (LAG) actually forms, while still skipping it on gateways (UDM) that reject `op_mode` on a PUT (#213, #225)
+
+---
+
 ## [v0.43.0] - 2026-06-09
 
 ### ✨ Features
