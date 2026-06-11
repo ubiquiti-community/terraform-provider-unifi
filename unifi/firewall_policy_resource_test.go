@@ -187,7 +187,11 @@ func TestFirewallPolicyEndpointListFieldsRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	var diags diag.Diagnostics
 
-	webDomains, _ := types.ListValueFrom(ctx, types.StringType, []string{"example.com", "ads.example.net"})
+	webDomains, _ := types.ListValueFrom(
+		ctx,
+		types.StringType,
+		[]string{"example.com", "ads.example.net"},
+	)
 	networkIDs, _ := types.ListValueFrom(ctx, types.StringType, []string{"net-1", "net-2"})
 	clientMACs, _ := types.ListValueFrom(ctx, types.StringType, []string{"00:11:22:33:44:55"})
 
