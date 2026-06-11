@@ -1,6 +1,7 @@
 package unifi
 
 import (
+	"context"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -32,4 +33,16 @@ resource "unifi_site" "test" {
 	description = "tfacc-test"
 }
 `
+}
+
+// TestSiteToModelNilDoesNotPanic guards #261: siteToModel must return an error
+// for a nil site instead of dereferencing it (the read path used to fall
+// through to a nil siteToModel on a not-found, panicking the provider).
+func TestSiteToModelNilDoesNotPanic(t *testing.T) {
+	r := &siteFrameworkResource{}
+	var model siteFrameworkResourceModel
+	diags := r.siteToModel(context.Background(), nil, &model)
+	if !diags.HasError() {
+		t.Fatal("expected an error diagnostic for a nil site, got none")
+	}
 }
