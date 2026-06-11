@@ -181,10 +181,15 @@ func (r *siteFrameworkResource) Read(
 	} else {
 		site, err = r.client.GetSiteByName(ctx, state.Name.ValueString())
 		if err != nil {
+			if _, ok := err.(*unifi.NotFoundError); ok {
+				resp.State.RemoveResource(ctx)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading Site",
 				"Could not read site with Name "+state.Name.ValueString()+": "+err.Error(),
 			)
+			return
 		}
 	}
 
@@ -319,6 +324,19 @@ func (r *siteFrameworkResource) siteToModel(
 	model *siteFrameworkResourceModel,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
+
+	if site == nil {
+		// Defensive: the read paths now return before reaching here on a
+		// not-found, but never dereference a nil site (it previously panicked —
+		// #261, e.g. importing with an identifier that is neither a 24-hex id
+		// nor a known site name).
+		diags.AddError(
+			"Site Not Found",
+			"No site matched the given identifier. Import a site by its 24-hex "+
+				"id, or by name with 'name=<site-name>' (e.g. 'name=default').",
+		)
+		return diags
+	}
 
 	if site.ID == "" && site.Name == "" {
 		// If both ID and Name are empty, we can't import this site
