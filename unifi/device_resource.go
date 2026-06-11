@@ -2004,6 +2004,13 @@ func (r *deviceResource) portOverridesToFramework(
 			model.ExcludedNetworkIDs = listVal
 		}
 
+		// FIX (#235): the pinned go-unifi SDK has no TaggedNetworkIDs field, so
+		// nothing populates it below. Without this assignment the model field
+		// stays an untyped zero-value types.List, which makes ObjectValueFrom
+		// emit a "types.ListType[!!! MISSING TYPE !!!]" Value Conversion Error
+		// against the schema's ListAttribute{ElementType: types.StringType}.
+		model.TaggedNetworkIDs = types.ListNull(types.StringType)
+
 		if len(po.MulticastRouterNetworkIDs) == 0 {
 			model.MulticastRouterNetworkIDs = types.ListNull(types.StringType)
 		} else {
