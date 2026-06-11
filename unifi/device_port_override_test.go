@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 // nullPortOverrideAttrValues returns every port-override attribute set to its
@@ -111,5 +112,52 @@ func TestFrameworkToPortOverrides_SwitchOpModeOmitted(t *testing.T) {
 	}
 	if pos[0].OpMode != "" {
 		t.Errorf("OpMode = %q, want empty (omitted) for the switch default", pos[0].OpMode)
+	}
+}
+
+// TestPortOverridesToFramework_TaggedNetworkIDsTypedNull is a regression test
+// for #235. portOverridesToFramework must initialize the tagged_networkconf_ids
+// model field to a typed null list. Previously it was left as an untyped
+// zero-value types.List, which made types.ObjectValueFrom fail with a
+// "types.ListType[!!! MISSING TYPE !!!]" Value Conversion Error during the
+// Read/refresh (and import) of any unifi_device that has port overrides.
+func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
+	r := &deviceResource{}
+
+	set, diags := r.portOverridesToFramework(context.Background(), []unifi.DevicePortOverrides{
+		{Name: "Port 1"},
+	})
+
+	if diags.HasError() {
+		t.Fatalf("portOverridesToFramework returned diagnostics (regression #235): %v", diags.Errors())
+	}
+	if set.IsNull() {
+		t.Fatal("expected a non-null port_override set for a single override")
+	}
+
+	elems := set.Elements()
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 port_override element, got %d", len(elems))
+	}
+
+	obj, ok := elems[0].(types.Object)
+	if !ok {
+		t.Fatalf("expected port_override element to be types.Object, got %T", elems[0])
+	}
+
+	taggedAttr, ok := obj.Attributes()["tagged_networkconf_ids"]
+	if !ok {
+		t.Fatal("port_override is missing the tagged_networkconf_ids attribute")
+	}
+
+	list, ok := taggedAttr.(types.List)
+	if !ok {
+		t.Fatalf("expected tagged_networkconf_ids to be types.List, got %T", taggedAttr)
+	}
+	if !list.IsNull() {
+		t.Errorf("expected tagged_networkconf_ids to be a null list, got %v", list)
+	}
+	if et := list.ElementType(context.Background()); !et.Equal(types.StringType) {
+		t.Errorf("expected tagged_networkconf_ids element type to be string, got %v", et)
 	}
 }
