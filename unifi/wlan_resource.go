@@ -15,7 +15,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
@@ -478,24 +480,36 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"dtim_ng": schema.Int64Attribute{
-				MarkdownDescription: "DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				MarkdownDescription: "DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(1, 255),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"dtim_na": schema.Int64Attribute{
-				MarkdownDescription: "DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				MarkdownDescription: "DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(1, 255),
 				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"dtim_6e": schema.Int64Attribute{
-				MarkdownDescription: "DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				MarkdownDescription: "DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(1, 255),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"group_rekey": schema.Int64Attribute{
@@ -505,10 +519,12 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             int64default.StaticInt64(3600),
 			},
 			"iapp_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable Inter-Access Point Protocol (802.11f) for faster roaming.",
+				MarkdownDescription: "Enable Inter-Access Point Protocol (802.11f) for faster roaming. Computed from the controller when not set.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"wpa3_fast_roaming": schema.BoolAttribute{
 				MarkdownDescription: "Enable WPA3 fast roaming (802.11r).",

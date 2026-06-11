@@ -11,8 +11,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -349,8 +351,12 @@ func (r *portProfileResource) Schema(
 				},
 			},
 			"stp_port_mode": schema.BoolAttribute{
-				Description: "Enable Spanning Tree Protocol (STP) for the port profile.",
+				Description: "Enable Spanning Tree Protocol (STP) for the port profile. Computed from the controller when not set.",
 				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"tagged_networkconf_ids": schema.SetAttribute{
 				Description: "The IDs of networks to tag traffic with for the port profile.",
@@ -362,9 +368,13 @@ func (r *portProfileResource) Schema(
 				Optional:    true,
 			},
 			"excluded_networkconf_ids": schema.SetAttribute{
-				Description: "The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`).",
+				Description: "The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`). Computed from the controller when not set.",
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"multicast_router_networkconf_ids": schema.SetAttribute{
 				Description: "The IDs of networks designated as multicast routers for the port profile.",
@@ -707,6 +717,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 		portProfile.SettingPreference = model.SettingPreference.ValueString()
 	}
 	portProfile.PortKeepaliveEnabled = model.PortKeepaliveEnabled.ValueBool()
+	portProfile.StpPortMode = model.STPPortMode.ValueBool()
 
 	if !model.ExcludedNetworkConfIDs.IsNull() && !model.ExcludedNetworkConfIDs.IsUnknown() {
 		var ids []string
@@ -867,7 +878,7 @@ func (r *portProfileResource) setResourceData(
 	model.StormctrlUcastEnabled = types.BoolValue(false)
 	model.StormctrlUcastLevel = types.Int64Null()
 	model.StormctrlUcastRate = types.Int64Null()
-	model.STPPortMode = types.BoolNull()
+	model.STPPortMode = types.BoolValue(portProfile.StpPortMode)
 }
 
 func (r *portProfileResource) applyPlanToState(
@@ -950,6 +961,9 @@ func (r *portProfileResource) applyPlanToState(
 	}
 	if !plan.PortKeepaliveEnabled.IsNull() && !plan.PortKeepaliveEnabled.IsUnknown() {
 		state.PortKeepaliveEnabled = plan.PortKeepaliveEnabled
+	}
+	if !plan.STPPortMode.IsNull() && !plan.STPPortMode.IsUnknown() {
+		state.STPPortMode = plan.STPPortMode
 	}
 	// Apply other fields as needed...
 }

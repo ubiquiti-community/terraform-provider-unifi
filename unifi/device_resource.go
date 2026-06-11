@@ -17,6 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -263,12 +265,18 @@ func (r *deviceResource) Schema(
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"forget_on_destroy": schema.BoolAttribute{
 				Description: "Specifies whether this resource should tell the controller to forget the device on destroy.",
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Network configuration
@@ -331,16 +339,25 @@ func (r *deviceResource) Schema(
 				Validators: []validator.String{
 					stringvalidator.OneOf("default", "on", "off"),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"led_override_color": schema.StringAttribute{
 				Description: "LED color override (hex color code).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"led_override_color_brightness": schema.Int64Attribute{
 				Description: "LED brightness (0-100).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Device features
@@ -1077,9 +1094,20 @@ func (r *deviceResource) Read(
 		return
 	}
 
-	// Restore plan-only flags
-	state.AllowAdoption = allowAdoption
-	state.ForgetOnDestroy = forgetOnDestroy
+	// Restore plan-only flags. These are write-only and never returned by the
+	// API, so keep the prior value. After an import the prior value is null/unknown;
+	// normalize it to the schema default (true) so a later apply does not see a
+	// null and report an inconsistent result.
+	if allowAdoption.IsNull() || allowAdoption.IsUnknown() {
+		state.AllowAdoption = types.BoolValue(true)
+	} else {
+		state.AllowAdoption = allowAdoption
+	}
+	if forgetOnDestroy.IsNull() || forgetOnDestroy.IsUnknown() {
+		state.ForgetOnDestroy = types.BoolValue(true)
+	} else {
+		state.ForgetOnDestroy = forgetOnDestroy
+	}
 
 	// Reconcile port_override: the API returns all ports with all fields, but
 	// the user only configures a subset. Rebuild state from the API response
@@ -1160,9 +1188,16 @@ func (r *deviceResource) Update(
 	}
 	plan.ID = state.ID
 
-	// Preserve plan-only flags
-	plan.AllowAdoption = state.AllowAdoption
-	plan.ForgetOnDestroy = state.ForgetOnDestroy
+	// Preserve plan-only flags. They are write-only (config or default); keep the
+	// planned value and only fall back to prior state if the plan left them unset.
+	// Do NOT unconditionally overwrite with state — a null state (e.g. after an
+	// import) would clobber the planned `true` and produce an inconsistent result.
+	if plan.AllowAdoption.IsNull() || plan.AllowAdoption.IsUnknown() {
+		plan.AllowAdoption = state.AllowAdoption
+	}
+	if plan.ForgetOnDestroy.IsNull() || plan.ForgetOnDestroy.IsUnknown() {
+		plan.ForgetOnDestroy = state.ForgetOnDestroy
+	}
 
 	if plan.ConfigNetwork.IsNull() || plan.ConfigNetwork.IsUnknown() {
 		plan.ConfigNetwork = types.ObjectNull(configNetworkAttrTypes())
@@ -1192,8 +1227,15 @@ func (r *deviceResource) Update(
 
 	// Restore port_override from plan (API returns all ports, plan has subset)
 	plan.PortOverride = plannedPortOverride
-	plan.AllowAdoption = state.AllowAdoption
-	plan.ForgetOnDestroy = state.ForgetOnDestroy
+	// allow_adoption / forget_on_destroy were resolved before the update and are
+	// not touched by setResourceData; ensure a concrete value (default true)
+	// rather than overwriting the planned value with prior state.
+	if plan.AllowAdoption.IsNull() || plan.AllowAdoption.IsUnknown() {
+		plan.AllowAdoption = types.BoolValue(true)
+	}
+	if plan.ForgetOnDestroy.IsNull() || plan.ForgetOnDestroy.IsUnknown() {
+		plan.ForgetOnDestroy = types.BoolValue(true)
+	}
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -1464,22 +1506,29 @@ func (r *deviceResource) setResourceData(
 	// State is always present as int64
 	model.State = types.Int64Value(int64(device.State))
 
-	// LED settings
-	if device.LedOverride == "" {
-		model.LedOverride = types.StringNull()
-	} else {
+	// LED settings — write-only in practice: the controller frequently does not
+	// echo these back. When the API returns an empty value, preserve the
+	// configured/known value from the model instead of nulling it (which would
+	// trigger "inconsistent result after apply"). Only resolve unknowns to null.
+	if device.LedOverride != "" {
 		model.LedOverride = types.StringValue(device.LedOverride)
+	} else if model.LedOverride.IsUnknown() {
+		model.LedOverride = types.StringNull()
 	}
 
-	if device.LedOverrideColor == "" {
-		model.LedOverrideColor = types.StringNull()
-	} else {
+	if device.LedOverrideColor != "" {
 		model.LedOverrideColor = types.StringValue(device.LedOverrideColor)
+	} else if model.LedOverrideColor.IsUnknown() {
+		model.LedOverrideColor = types.StringNull()
 	}
 
-	model.LedOverrideColorBrightness = types.Int64PointerValue(
-		device.LedOverrideColorBrightness,
-	)
+	if device.LedOverrideColorBrightness != nil {
+		model.LedOverrideColorBrightness = types.Int64PointerValue(
+			device.LedOverrideColorBrightness,
+		)
+	} else if model.LedOverrideColorBrightness.IsUnknown() {
+		model.LedOverrideColorBrightness = types.Int64Null()
+	}
 
 	// Device features
 	if device.BandsteeringMode == "" {
