@@ -2041,14 +2041,6 @@ func (r *deviceResource) portOverridesToFramework(
 			model.PortSecurityMACAddress = listVal
 		}
 
-		// tagged_networkconf_ids is declared in the schema but go-unifi's
-		// DevicePortOverrides does not yet expose the field, so it cannot be
-		// read back from the API. Initialize it to a typed null list — leaving
-		// it as the zero-value types.List has no element type and makes the
-		// ObjectValueFrom below fail with "MISSING TYPE" during refresh/plan
-		// (ubiquiti-community/terraform-provider-unifi#235).
-		model.TaggedNetworkIDs = types.ListNull(types.StringType)
-
 		// Convert model to object
 		objVal, objDiags := types.ObjectValueFrom(ctx, model.AttributeTypes(), model)
 		diags.Append(objDiags...)
