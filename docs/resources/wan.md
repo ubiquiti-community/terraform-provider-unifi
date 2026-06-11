@@ -70,7 +70,7 @@ resource "unifi_wan" "default" {
 - `site` (String) The name of the site to associate the WAN network with
 - `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
 - `type` (String) The WAN type (dhcp, static, pppoe)
-- `type_v6` (String) The IPv6 WAN type (dhcpv6, static, disabled)
+- `type_v6` (String) The IPv6 WAN type. One of `dhcpv6`, `slaac`, `static`, or `disabled`. Note: the controller requires `slaac` when the IPv6 delegation type is `single_network` (`api.err.SingleNetworkMustBeSLAAC` otherwise) — common with ISPs that deliver IPv6 by Router Advertisement, e.g. Free/Freebox in bridge mode.
 - `upnp` (Attributes) UPnP configuration (see [below for nested schema](#nestedatt--upnp))
 - `vlan` (Attributes) VLAN configuration (see [below for nested schema](#nestedatt--vlan))
 - `wan_dslite_remote_host` (String) The DS-Lite AFTR remote host. Only used when `wan_dslite_remote_host_auto` is disabled.

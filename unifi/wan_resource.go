@@ -309,14 +309,18 @@ func (r *wanResource) Schema(
 				},
 			},
 			"type_v6": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "The IPv6 WAN type (dhcpv6, static, disabled)",
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "The IPv6 WAN type. One of `dhcpv6`, `slaac`, " +
+					"`static`, or `disabled`. Note: the controller requires `slaac` when " +
+					"the IPv6 delegation type is `single_network` " +
+					"(`api.err.SingleNetworkMustBeSLAAC` otherwise) — common with ISPs that " +
+					"deliver IPv6 by Router Advertisement, e.g. Free/Freebox in bridge mode.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 				Validators: []validator.String{
-					stringvalidator.OneOf("dhcpv6", "static", "disabled"),
+					stringvalidator.OneOf("dhcpv6", "slaac", "static", "disabled"),
 				},
 			},
 			"vlan": schema.SingleNestedAttribute{
