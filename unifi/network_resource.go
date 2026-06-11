@@ -1077,7 +1077,7 @@ func (r *networkResource) modelToNetwork(
 		MdnsEnabled:                 model.MulticastDNS.ValueBool(),
 		GatewayType:                 model.GatewayType.ValueStringPointer(),
 		IPV6InterfaceType:           model.IPv6InterfaceType.ValueStringPointer(),
-		IPV6ClientAddressAssignment: model.IPv6ClientAddressAssignment.ValueStringPointer(),
+		IPV6ClientAddressAssignment: optStr(model.IPv6ClientAddressAssignment),
 		IPV6Subnet:                  model.IPv6StaticSubnet.ValueStringPointer(),
 		IPV6RaEnabled:               model.IPv6RA.ValueBool(),
 		IPV6RaPriority:              model.IPv6RAPriority.ValueStringPointer(),
