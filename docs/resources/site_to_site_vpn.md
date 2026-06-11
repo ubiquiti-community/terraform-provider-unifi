@@ -52,6 +52,8 @@ resource "unifi_site_to_site_vpn" "branch" {
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `dynamic_routing` (Boolean) Whether IPsec dynamic routing is enabled.
 - `enabled` (Boolean) Whether the tunnel is enabled.
 - `esp_dh_group` (Number) ESP (phase 2) Diffie-Hellman group (PFS). Only used when `profile = customized`.
@@ -67,7 +69,7 @@ resource "unifi_site_to_site_vpn" "branch" {
 - `local_ip` (String) The local IP used for the tunnel. Defaults to the WAN address when omitted.
 - `pfs` (Boolean) Whether Perfect Forward Secrecy is enabled.
 - `pre_shared_key` (String, Sensitive) The IPsec pre-shared key. Stored in state — use `pre_shared_key_wo` to avoid persisting the secret.
-- `pre_shared_key_wo` (String, Sensitive) Write-only equivalent of `pre_shared_key` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource (e.g. a Vault secret). Mutually exclusive with `pre_shared_key`.
+- `pre_shared_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `pre_shared_key` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource (e.g. a Vault secret). Mutually exclusive with `pre_shared_key`.
 - `profile` (String) IPsec profile. One of `customized`, `azure_dynamic`, or `azure_static`. Set to `customized` to tune the IKE/ESP attributes below; the controller may derive the ESP values from the IKE ones.
 - `route_distance` (Number) The route distance (administrative metric) for tunnel routes (1-255).
 - `site` (String) The name of the site to associate the VPN with.
