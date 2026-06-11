@@ -79,17 +79,17 @@ resource "unifi_wlan" "wifi" {
 - `ap_group_mode` (String) Access point group mode.
 - `bc_filter_list` (Set of String) List of MAC addresses for the broadcast filter.
 - `bss_transition` (Boolean) Improves client roaming by providing connection details of nearby APs.
-- `dtim_6e` (Number) DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`.
+- `dtim_6e` (Number) DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
 - `dtim_mode` (String) DTIM mode. Can be one of `default` or `custom`. Use `custom` together with `dtim_ng`/`dtim_na`/`dtim_6e`.
-- `dtim_na` (Number) DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`.
-- `dtim_ng` (Number) DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`.
+- `dtim_na` (Number) DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
+- `dtim_ng` (Number) DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
 - `enabled` (Boolean) Enable or disable the WLAN.
 - `enhanced_iot` (Boolean) Enable enhanced IoT connectivity.
 - `fast_roaming_enabled` (Boolean) Enable fast roaming, aka 802.11r.
 - `group_rekey` (Number) Group rekey interval in seconds (0 to disable).
 - `hide_ssid` (Boolean) Indicates whether or not to hide the SSID from broadcast.
 - `hotspot2conf_enabled` (Boolean) Enable Hotspot 2.0 configuration.
-- `iapp_enabled` (Boolean) Enable Inter-Access Point Protocol (802.11f) for faster roaming.
+- `iapp_enabled` (Boolean) Enable Inter-Access Point Protocol (802.11f) for faster roaming. Computed from the controller when not set.
 - `is_guest` (Boolean) Indicates that this is a guest WLAN and should use guest behaviors.
 - `l2_isolation` (Boolean) Isolates stations on layer 2 (ethernet) level.
 - `mac_filter` (Attributes) MAC address filtering configuration. (see [below for nested schema](#nestedatt--mac_filter))
