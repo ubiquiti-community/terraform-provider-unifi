@@ -129,7 +129,10 @@ func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
 	})
 
 	if diags.HasError() {
-		t.Fatalf("portOverridesToFramework returned diagnostics (regression #235): %v", diags.Errors())
+		t.Fatalf(
+			"portOverridesToFramework returned diagnostics (regression #235): %v",
+			diags.Errors(),
+		)
 	}
 	if set.IsNull() {
 		t.Fatal("expected a non-null port_override set for a single override")
