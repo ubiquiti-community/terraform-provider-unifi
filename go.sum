@@ -528,8 +528,8 @@ github.com/transparency-dev/formats v0.0.0-20251017110053-404c0d5b696c h1:5a2XDQ
 github.com/transparency-dev/formats v0.0.0-20251017110053-404c0d5b696c/go.mod h1:g85IafeFJZLxlzZCDRu4JLpfS7HKzR+Hw9qRh3bVzDI=
 github.com/transparency-dev/merkle v0.0.2 h1:Q9nBoQcZcgPamMkGn7ghV8XiTZ/kRxn1yCG81+twTK4=
 github.com/transparency-dev/merkle v0.0.2/go.mod h1:pqSy+OXefQ1EDUVmAJ8MUhHB9TXGuzVAT58PqBoHz1A=
-github.com/ubiquiti-community/go-unifi v1.33.43-0.20260611144350-e11dbecb50df h1:DqzZqXKN9ec4xDcya0XaYt71dv1huMqNKVJaUO3tLSA=
-github.com/ubiquiti-community/go-unifi v1.33.43-0.20260611144350-e11dbecb50df/go.mod h1:QfZDUwKQmGJNNW4af3KHzb7f+VmiSvkyTqC4/D5aPWU=
+github.com/ubiquiti-community/go-unifi v1.33.43-0.20260611203827-00de68e7588e h1:t+nTBWNJkPl4WGFz8+ynI+RvGCEp6rmBBSpjVBqolWc=
+github.com/ubiquiti-community/go-unifi v1.33.43-0.20260611203827-00de68e7588e/go.mod h1:QfZDUwKQmGJNNW4af3KHzb7f+VmiSvkyTqC4/D5aPWU=
 github.com/vbatts/tar-split v0.12.2 h1:w/Y6tjxpeiFMR47yzZPlPj/FcPLpXbTUi/9H7d3CPa4=
 github.com/vbatts/tar-split v0.12.2/go.mod h1:eF6B6i6ftWQcDqEn3/iGFRFRo8cBIMSJVOpnNdfTMFA=
 github.com/vmihailenco/msgpack v3.3.3+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=

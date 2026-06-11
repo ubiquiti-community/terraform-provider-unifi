@@ -1,6 +1,7 @@
 package unifi
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -583,4 +584,29 @@ resource "unifi_vpn_server" "test" {
   }
 }
 `
+}
+
+// TestGenerateWireGuardPrivateKey verifies the provider generates a valid
+// base64 32-byte Curve25519 private key when the user omits one (#255).
+func TestGenerateWireGuardPrivateKey(t *testing.T) {
+	k1, err := generateWireGuardPrivateKey()
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(k1)
+	if err != nil {
+		t.Fatalf("key is not valid base64: %v", err)
+	}
+	if len(raw) != 32 {
+		t.Errorf("key length = %d bytes, want 32", len(raw))
+	}
+	// Curve25519 clamping must be applied.
+	if raw[0]&7 != 0 || raw[31]&128 != 0 || raw[31]&64 == 0 {
+		t.Errorf("key is not WireGuard-clamped: %x", raw)
+	}
+	// Keys must be unique per call.
+	k2, _ := generateWireGuardPrivateKey()
+	if k1 == k2 {
+		t.Error("two generated keys are identical")
+	}
 }
