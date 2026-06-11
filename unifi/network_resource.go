@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -441,27 +442,41 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "Specifies whether IPv6 Router Advertisement (RA) is enabled.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ipv6_ra_priority": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("high", "medium", "low"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_ra_preferred_lifetime": schema.Int64Attribute{
 				MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime in seconds (0-31536000).",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(0, 31536000),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_ra_valid_lifetime": schema.Int64Attribute{
 				MarkdownDescription: "The IPv6 Router Advertisement valid lifetime in seconds (0-31536000).",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(0, 31536000),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_pd_interface": schema.StringAttribute{
@@ -478,17 +493,27 @@ func (r *networkResource) Schema(
 					"`pd`, otherwise the controller rejects the network with " +
 					"`api.err.InvalidIpv6Addr`.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ipv6_pd_stop": schema.StringAttribute{
 				MarkdownDescription: "The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). " +
 					"Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ipv6_pd_auto_prefixid_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lte_lan": schema.BoolAttribute{
 				MarkdownDescription: "Whether this network/VLAN stays active when the " +
@@ -1080,13 +1105,13 @@ func (r *networkResource) modelToNetwork(
 		IPV6ClientAddressAssignment: optStr(model.IPv6ClientAddressAssignment),
 		IPV6Subnet:                  model.IPv6StaticSubnet.ValueStringPointer(),
 		IPV6RaEnabled:               model.IPv6RA.ValueBool(),
-		IPV6RaPriority:              model.IPv6RAPriority.ValueStringPointer(),
-		IPV6RaPreferredLifetime:     model.IPv6RAPreferredLifetime.ValueInt64Pointer(),
-		IPV6RaValidLifetime:         model.IPv6RAValidLifetime.ValueInt64Pointer(),
-		IPV6PDInterface:             model.IPv6PDInterface.ValueStringPointer(),
+		IPV6RaPriority:              optStr(model.IPv6RAPriority),
+		IPV6RaPreferredLifetime:     optInt64(model.IPv6RAPreferredLifetime),
+		IPV6RaValidLifetime:         optInt64(model.IPv6RAValidLifetime),
+		IPV6PDInterface:             optStr(model.IPv6PDInterface),
 		IPV6PDPrefixid:              model.IPv6PDPrefixID.ValueString(),
-		IPV6PDStart:                 model.IPv6PDStart.ValueStringPointer(),
-		IPV6PDStop:                  model.IPv6PDStop.ValueStringPointer(),
+		IPV6PDStart:                 optStr(model.IPv6PDStart),
+		IPV6PDStop:                  optStr(model.IPv6PDStop),
 		IPV6PDAutoPrefixidEnabled:   model.IPv6PDAutoPrefixidEnabled.ValueBool(),
 		LteLanEnabled:               model.LteLan.ValueBool(),
 		VLANEnabled:                 !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
