@@ -68,6 +68,7 @@ type firewallPolicyEndpointModel struct {
 	NetworkIDs       types.List   `tfsdk:"network_ids"`
 	ClientMACs       types.List   `tfsdk:"client_macs"`
 	IPs              types.List   `tfsdk:"ips"`
+	WebDomains       types.List   `tfsdk:"web_domains"`
 	Port             types.Int64  `tfsdk:"port"`
 	PortGroupID      types.String `tfsdk:"port_group_id"`
 	PortMatchingType types.String `tfsdk:"port_matching_type"`
@@ -83,6 +84,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"network_ids":          types.ListType{ElemType: types.StringType},
 		"client_macs":          types.ListType{ElemType: types.StringType},
 		"ips":                  types.ListType{ElemType: types.StringType},
+		"web_domains":          types.ListType{ElemType: types.StringType},
 		"port":                 types.Int64Type,
 		"port_group_id":        types.StringType,
 		"port_matching_type":   types.StringType,
@@ -109,10 +111,10 @@ func (r *firewallPolicyResource) Schema(
 			Required:            true,
 		},
 		"matching_target": schema.StringAttribute{
-			MarkdownDescription: "What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, `DEVICE`, or `MAC`.",
+			MarkdownDescription: "What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, `DEVICE`, `MAC`, or `WEB` (domains/FQDN).",
 			Required:            true,
 			Validators: []validator.String{
-				stringvalidator.OneOf("ANY", "NETWORK", "CLIENT", "IP", "DEVICE", "MAC"),
+				stringvalidator.OneOf("ANY", "NETWORK", "CLIENT", "IP", "DEVICE", "MAC", "WEB"),
 			},
 		},
 		"network_ids": schema.ListAttribute{
@@ -129,6 +131,12 @@ func (r *firewallPolicyResource) Schema(
 		},
 		"ips": schema.ListAttribute{
 			MarkdownDescription: "List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.",
+			Optional:            true,
+			Computed:            true,
+			ElementType:         types.StringType,
+		},
+		"web_domains": schema.ListAttribute{
+			MarkdownDescription: "List of domains/FQDNs to match. Used when `matching_target` is `WEB`.",
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
@@ -543,6 +551,15 @@ func endpointModelToSource(
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
 	}
+	if !m.NetworkIDs.IsNull() && !m.NetworkIDs.IsUnknown() {
+		diags.Append(m.NetworkIDs.ElementsAs(ctx, &ep.NetworkIDs, false)...)
+	}
+	if !m.ClientMACs.IsNull() && !m.ClientMACs.IsUnknown() {
+		diags.Append(m.ClientMACs.ElementsAs(ctx, &ep.ClientMACs, false)...)
+	}
+	if !m.WebDomains.IsNull() && !m.WebDomains.IsUnknown() {
+		diags.Append(m.WebDomains.ElementsAs(ctx, &ep.WebDomains, false)...)
+	}
 	return ep
 }
 
@@ -561,6 +578,15 @@ func endpointModelToDestination(
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
+	}
+	if !m.NetworkIDs.IsNull() && !m.NetworkIDs.IsUnknown() {
+		diags.Append(m.NetworkIDs.ElementsAs(ctx, &ep.NetworkIDs, false)...)
+	}
+	if !m.ClientMACs.IsNull() && !m.ClientMACs.IsUnknown() {
+		diags.Append(m.ClientMACs.ElementsAs(ctx, &ep.ClientMACs, false)...)
+	}
+	if !m.WebDomains.IsNull() && !m.WebDomains.IsUnknown() {
+		diags.Append(m.WebDomains.ElementsAs(ctx, &ep.WebDomains, false)...)
 	}
 	return ep
 }
@@ -630,12 +656,21 @@ func apiSourceToEndpointModel(
 		PortGroupID:        types.StringValue(src.PortGroupID),
 		PortMatchingType:   types.StringValue(src.PortMatchingType),
 	}
-	m.NetworkIDs = types.ListNull(types.StringType)
-	m.ClientMACs = types.ListNull(types.StringType)
+	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, src.NetworkIDs)
+	diags.Append(nd...)
+	m.NetworkIDs = networkIDs
+
+	clientMACs, cd := types.ListValueFrom(ctx, types.StringType, src.ClientMACs)
+	diags.Append(cd...)
+	m.ClientMACs = clientMACs
 
 	ips, d := types.ListValueFrom(ctx, types.StringType, src.IPs)
 	diags.Append(d...)
 	m.IPs = ips
+
+	webDomains, wd := types.ListValueFrom(ctx, types.StringType, src.WebDomains)
+	diags.Append(wd...)
+	m.WebDomains = webDomains
 
 	return m
 }
@@ -653,12 +688,21 @@ func apiDestinationToEndpointModel(
 		PortGroupID:        types.StringValue(dst.PortGroupID),
 		PortMatchingType:   types.StringValue(dst.PortMatchingType),
 	}
-	m.NetworkIDs = types.ListNull(types.StringType)
-	m.ClientMACs = types.ListNull(types.StringType)
+	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, dst.NetworkIDs)
+	diags.Append(nd...)
+	m.NetworkIDs = networkIDs
+
+	clientMACs, cd := types.ListValueFrom(ctx, types.StringType, dst.ClientMACs)
+	diags.Append(cd...)
+	m.ClientMACs = clientMACs
 
 	ips, d := types.ListValueFrom(ctx, types.StringType, dst.IPs)
 	diags.Append(d...)
 	m.IPs = ips
+
+	webDomains, wd := types.ListValueFrom(ctx, types.StringType, dst.WebDomains)
+	diags.Append(wd...)
+	m.WebDomains = webDomains
 
 	return m
 }

@@ -177,3 +177,82 @@ func TestFirewallPolicyConnectionStatesRoundTrip(t *testing.T) {
 		t.Errorf("PUT dropped connection_states: %v, want [NEW ESTABLISHED]", out.ConnectionStates)
 	}
 }
+
+// TestFirewallPolicyEndpointListFieldsRoundTrip guards #242 and the wiring of the
+// list-typed match fields. web_domains (FQDN matching, matching_target=WEB) is new;
+// network_ids and client_macs were declared in the schema but never mapped to/from
+// the API (model->API dropped them, API->model forced them to null). This asserts
+// all three survive both conversion directions.
+func TestFirewallPolicyEndpointListFieldsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+
+	webDomains, _ := types.ListValueFrom(
+		ctx,
+		types.StringType,
+		[]string{"example.com", "ads.example.net"},
+	)
+	networkIDs, _ := types.ListValueFrom(ctx, types.StringType, []string{"net-1", "net-2"})
+	clientMACs, _ := types.ListValueFrom(ctx, types.StringType, []string{"00:11:22:33:44:55"})
+
+	m := firewallPolicyEndpointModel{
+		ZoneID:           types.StringValue("zone-1"),
+		MatchingTarget:   types.StringValue("WEB"),
+		NetworkIDs:       networkIDs,
+		ClientMACs:       clientMACs,
+		IPs:              types.ListNull(types.StringType),
+		WebDomains:       webDomains,
+		Port:             types.Int64Null(),
+		PortGroupID:      types.StringNull(),
+		PortMatchingType: types.StringValue("ANY"),
+	}
+
+	// model -> API (PUT path)
+	src := endpointModelToSource(ctx, m, &diags)
+	if diags.HasError() {
+		t.Fatalf("source conversion errored: %v", diags)
+	}
+	if len(src.WebDomains) != 2 || src.WebDomains[0] != "example.com" {
+		t.Errorf("source WebDomains = %v, want [example.com ads.example.net]", src.WebDomains)
+	}
+	if len(src.NetworkIDs) != 2 || src.NetworkIDs[1] != "net-2" {
+		t.Errorf("source NetworkIDs = %v, want [net-1 net-2]", src.NetworkIDs)
+	}
+	if len(src.ClientMACs) != 1 || src.ClientMACs[0] != "00:11:22:33:44:55" {
+		t.Errorf("source ClientMACs = %v, want [00:11:22:33:44:55]", src.ClientMACs)
+	}
+
+	dst := endpointModelToDestination(ctx, m, &diags)
+	if diags.HasError() {
+		t.Fatalf("destination conversion errored: %v", diags)
+	}
+	if len(dst.WebDomains) != 2 || dst.WebDomains[1] != "ads.example.net" {
+		t.Errorf("destination WebDomains = %v, want [example.com ads.example.net]", dst.WebDomains)
+	}
+
+	// API -> model (read path)
+	apiSrc := &unifi.FirewallPolicySource{
+		ZoneID:         "zone-1",
+		MatchingTarget: "WEB",
+		WebDomains:     []string{"example.com"},
+		NetworkIDs:     []string{"net-9"},
+		ClientMACs:     []string{"aa:bb:cc:dd:ee:ff"},
+	}
+	got := apiSourceToEndpointModel(ctx, apiSrc, &diags)
+	if diags.HasError() {
+		t.Fatalf("apiSourceToEndpointModel errored: %v", diags)
+	}
+	var wd, nids, macs []string
+	got.WebDomains.ElementsAs(ctx, &wd, false)
+	got.NetworkIDs.ElementsAs(ctx, &nids, false)
+	got.ClientMACs.ElementsAs(ctx, &macs, false)
+	if len(wd) != 1 || wd[0] != "example.com" {
+		t.Errorf("read WebDomains = %v, want [example.com]", wd)
+	}
+	if len(nids) != 1 || nids[0] != "net-9" {
+		t.Errorf("read NetworkIDs = %v, want [net-9]", nids)
+	}
+	if len(macs) != 1 || macs[0] != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("read ClientMACs = %v, want [aa:bb:cc:dd:ee:ff]", macs)
+	}
+}

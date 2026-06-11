@@ -45,7 +45,7 @@ Manages a UniFi zone-based firewall policy (UniFi Network 8.x+). Zone-based fire
 
 Required:
 
-- `matching_target` (String) What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, `DEVICE`, or `MAC`.
+- `matching_target` (String) What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, `DEVICE`, `MAC`, or `WEB` (domains/FQDN).
 - `zone_id` (String) The ID of the firewall zone this endpoint belongs to. Use the `unifi_firewall_zone` data source to look up zone IDs by name.
 
 Optional:
@@ -56,6 +56,7 @@ Optional:
 - `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
+- `web_domains` (List of String) List of domains/FQDNs to match. Used when `matching_target` is `WEB`.
 
 Read-Only:
 
@@ -67,7 +68,7 @@ Read-Only:
 
 Required:
 
-- `matching_target` (String) What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, `DEVICE`, or `MAC`.
+- `matching_target` (String) What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, `DEVICE`, `MAC`, or `WEB` (domains/FQDN).
 - `zone_id` (String) The ID of the firewall zone this endpoint belongs to. Use the `unifi_firewall_zone` data source to look up zone IDs by name.
 
 Optional:
@@ -78,6 +79,7 @@ Optional:
 - `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
+- `web_domains` (List of String) List of domains/FQDNs to match. Used when `matching_target` is `WEB`.
 
 Read-Only:
 
