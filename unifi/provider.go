@@ -296,6 +296,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewRadiusProfileResource,
 		NewSettingResource,
 		NewSiteFrameworkResource,
+		NewSiteToSiteVPNResource,
 		NewStaticRouteFrameworkResource,
 		NewClientResource,
 		NewWANResource,
