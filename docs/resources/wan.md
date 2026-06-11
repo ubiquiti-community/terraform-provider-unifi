@@ -63,7 +63,7 @@ resource "unifi_wan" "default" {
 - `ipv6_setting_preference` (String) Whether WAN IPv6 settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `load_balance` (Attributes) Load balance configuration (see [below for nested schema](#nestedatt--load_balance))
 - `mac_override_enabled` (Boolean) Whether the WAN interface MAC address is overridden.
-- `provider_capabilities` (Attributes) WAN provider capabilities (see [below for nested schema](#nestedatt--provider_capabilities))
+- `provider_capabilities` (Attributes) WAN provider capabilities (line rate). Detected/populated by the controller; preserved when not set in config. (see [below for nested schema](#nestedatt--provider_capabilities))
 - `report_wan_event` (Boolean) Whether to report WAN events
 - `setting_preference` (String) Whether WAN settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `single_network_lan` (String) The LAN network used for IPv6 single-network prefix delegation (used when the IPv6 delegation type is `single_network`).
@@ -163,7 +163,7 @@ Optional:
 <a id="nestedatt--provider_capabilities"></a>
 ### Nested Schema for `provider_capabilities`
 
-Required:
+Optional:
 
 - `download_kilobits_per_second` (Number) Download speed in kilobits per second
 - `upload_kilobits_per_second` (Number) Upload speed in kilobits per second

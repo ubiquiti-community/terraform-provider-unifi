@@ -742,16 +742,29 @@ func (r *wanResource) Schema(
 				},
 			},
 			"provider_capabilities": schema.SingleNestedAttribute{
-				Optional:            true,
-				MarkdownDescription: "WAN provider capabilities",
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "WAN provider capabilities (line rate). Detected/" +
+					"populated by the controller; preserved when not set in config.",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"download_kilobits_per_second": schema.Int64Attribute{
-						Required:            true,
+						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "Download speed in kilobits per second",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 					},
 					"upload_kilobits_per_second": schema.Int64Attribute{
-						Required:            true,
+						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "Upload speed in kilobits per second",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 					},
 				},
 			},
@@ -1456,10 +1469,16 @@ func (r *wanResource) networkToModel(
 		model.TypeV6 = types.StringValue(*network.WANTypeV6)
 	}
 
-	// VLAN Settings
+	// VLAN Settings. The controller omits the VLAN id when no WAN VLAN is set;
+	// map it to the schema default (0) rather than null so an imported WAN plans
+	// clean without needing an apply (#262).
+	vlanID := int64(0)
+	if network.WANVLAN != nil {
+		vlanID = *network.WANVLAN
+	}
 	vlanValue := vlanModel{
 		Enabled: types.BoolValue(network.WANVLANEnabled),
-		ID:      types.Int64PointerValue(network.WANVLAN),
+		ID:      types.Int64Value(vlanID),
 	}
 	vlanObj, d := types.ObjectValueFrom(ctx, vlanValue.AttributeTypes(), vlanValue)
 	diags.Append(d...)
