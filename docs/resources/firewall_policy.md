@@ -29,7 +29,7 @@ Manages a UniFi zone-based firewall policy (UniFi Network 8.x+). Zone-based fire
 - `index` (Number) The ordering index of the policy. UniFi auto-assigns this if not set.
 - `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.
 - `logging` (Boolean) Whether to log packets matching this policy. Defaults to `false`.
-- `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, or `tcp_udp`. Defaults to `all`.
+- `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, `icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` policies the controller rejects `create_allow_respond = true` (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy if you need the reply.
 - `site` (String) The name of the UniFi site. Defaults to the site configured in the provider.
 
 ### Read-Only
