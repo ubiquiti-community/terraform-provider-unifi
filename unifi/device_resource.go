@@ -646,7 +646,13 @@ func (r *deviceResource) Schema(
 
 		Blocks: map[string]schema.Block{
 			"port_override": schema.SetNestedBlock{
-				Description: "Settings overrides for specific switch ports.",
+				Description: "Per-port settings overrides, applied only to the ports you " +
+					"declare. Ports without a `port_override` block keep their existing " +
+					"controller-side configuration — the provider merges your declared " +
+					"ports (by `index`) into the device's current overrides rather than " +
+					"replacing the whole set. Removing a block stops managing that port " +
+					"but does not reset it; clear a port by overriding it back to the " +
+					"defaults instead.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"index": schema.Int64Attribute{
@@ -1412,6 +1418,20 @@ func (r *deviceResource) updateDevice(
 		deviceReq.Type = currentDevice.Type
 	}
 
+	// The UniFi PUT treats port_overrides as a full-replace array. Sending only the
+	// user-declared subset would wipe every other port's override (#266). When the
+	// user declared at least one port_override, merge the declared blocks (by
+	// port_idx) onto the device's current overrides so undeclared ports keep their
+	// existing controller-side config — i.e. partial management of just the declared
+	// ports. With no override declared we leave the field untouched as before.
+	portOverrides := deviceReq.PortOverrides
+	if currentDevice != nil && len(deviceReq.PortOverrides) > 0 {
+		portOverrides = mergePortOverridesByIndex(
+			currentDevice.PortOverrides,
+			deviceReq.PortOverrides,
+		)
+	}
+
 	// Build a minimal Device for the PUT request. The full Device struct includes
 	// computed fields (adopted, state, etc.) with Go zero-values that the API rejects.
 	// Only send fields that the user configured or that the API requires.
@@ -1420,7 +1440,7 @@ func (r *deviceResource) updateDevice(
 		Type:          deviceReq.Type,
 		MAC:           deviceReq.MAC,
 		Name:          deviceReq.Name,
-		PortOverrides: deviceReq.PortOverrides,
+		PortOverrides: portOverrides,
 	}
 	if currentDevice != nil {
 		minimalDevice.State = currentDevice.State
@@ -1767,6 +1787,49 @@ func (r *deviceResource) modelToAPIDevice(
 	}
 
 	return device, diags
+}
+
+// mergePortOverridesByIndex overlays the user-declared port overrides onto the
+// device's current overrides, keyed by port_idx. The UniFi PUT replaces the whole
+// port_overrides array, so to manage only a subset of ports without clobbering the
+// rest (#266) we start from what the controller already has and replace just the
+// declared ports. Ports present only in the current set are preserved; ports
+// declared but not yet present are appended. Declared order is preserved for the
+// appended entries so the result is deterministic.
+func mergePortOverridesByIndex(
+	current, declared []unifi.DevicePortOverrides,
+) []unifi.DevicePortOverrides {
+	if len(declared) == 0 {
+		return current
+	}
+
+	declaredByIdx := make(map[int64]int, len(declared))
+	for i, po := range declared {
+		if po.PortIDX != nil {
+			declaredByIdx[*po.PortIDX] = i
+		}
+	}
+
+	merged := make([]unifi.DevicePortOverrides, 0, len(current)+len(declared))
+	used := make([]bool, len(declared))
+	for _, po := range current {
+		if po.PortIDX != nil {
+			if i, ok := declaredByIdx[*po.PortIDX]; ok {
+				merged = append(merged, declared[i])
+				used[i] = true
+				continue
+			}
+		}
+		merged = append(merged, po)
+	}
+	// Append declared ports not already merged: newly-managed ports, or any entry
+	// without a port_idx (which we cannot key on).
+	for i, po := range declared {
+		if !used[i] {
+			merged = append(merged, po)
+		}
+	}
+	return merged
 }
 
 // reconcilePortOverrides rebuilds the port_override Set from the API response,
