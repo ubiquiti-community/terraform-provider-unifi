@@ -256,3 +256,45 @@ func TestFirewallPolicyEndpointListFieldsRoundTrip(t *testing.T) {
 		t.Errorf("read ClientMACs = %v, want [aa:bb:cc:dd:ee:ff]", macs)
 	}
 }
+
+// TestFirewallPolicyICMPProtocolRoundTrip guards #259: zone-based firewall ICMP
+// policies (protocol "icmp"/"icmpv6") were rejected by the schema's OneOf
+// validator even though the controller accepts and returns them. This asserts
+// the protocol survives both conversion directions once the validator allows it.
+func TestFirewallPolicyICMPProtocolRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	for _, proto := range []string{"icmp", "icmpv6"} {
+		fp := &unifi.FirewallPolicy{
+			ID:       "p-icmp",
+			Name:     "allow-internal-ping",
+			Action:   "ALLOW",
+			Protocol: proto,
+			Source: &unifi.FirewallPolicySource{
+				ZoneID:           "z1",
+				MatchingTarget:   "IP",
+				PortMatchingType: "ANY",
+			},
+			Destination: &unifi.FirewallPolicyDestination{
+				ZoneID:           "z2",
+				MatchingTarget:   "IP",
+				PortMatchingType: "ANY",
+			},
+		}
+
+		var model firewallPolicyModel
+		if d := firewallPolicyToModel(ctx, fp, &model); d.HasError() {
+			t.Fatalf("[%s] firewallPolicyToModel: %v", proto, d)
+		}
+		if model.Protocol.ValueString() != proto {
+			t.Errorf("[%s] read Protocol = %q, want %q", proto, model.Protocol.ValueString(), proto)
+		}
+
+		out, d := modelToFirewallPolicy(ctx, model)
+		if d.HasError() {
+			t.Fatalf("[%s] modelToFirewallPolicy: %v", proto, d)
+		}
+		if out.Protocol != proto {
+			t.Errorf("[%s] PUT dropped Protocol = %q, want %q", proto, out.Protocol, proto)
+		}
+	}
+}

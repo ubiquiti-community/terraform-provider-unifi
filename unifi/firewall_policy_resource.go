@@ -215,12 +215,16 @@ func (r *firewallPolicyResource) Schema(
 				Default:             booldefault.StaticBool(true),
 			},
 			"protocol": schema.StringAttribute{
-				MarkdownDescription: "The protocol to match: `all`, `tcp`, `udp`, or `tcp_udp`. Defaults to `all`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("all"),
+				MarkdownDescription: "The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, " +
+					"`icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` " +
+					"policies the controller rejects `create_allow_respond = true` " +
+					"(`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it " +
+					"`false` and add an explicit reverse policy if you need the reply.",
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("all"),
 				Validators: []validator.String{
-					stringvalidator.OneOf("all", "tcp", "udp", "tcp_udp"),
+					stringvalidator.OneOf("all", "tcp", "udp", "tcp_udp", "icmp", "icmpv6"),
 				},
 			},
 			"description": schema.StringAttribute{
