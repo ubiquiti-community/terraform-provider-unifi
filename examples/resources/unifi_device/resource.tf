@@ -23,21 +23,22 @@ resource "unifi_device" "us_24_poe" {
   name = "Switch with POE"
 
   port_override {
-    number          = 1
+    index           = 1
     name            = "port w/ poe"
     port_profile_id = unifi_port_profile.poe.id
+    poe_mode        = "auto" # auto, pasv24, passthrough, off
   }
 
   port_override {
-    number          = 2
+    index           = 2
     name            = "disabled"
     port_profile_id = data.unifi_port_profile.disabled.id
   }
 
-  # port aggregation for ports 11 and 12
+  # Link aggregation: port 11 is the aggregate lead, bonding member port 12.
   port_override {
-    number              = 11
-    op_mode             = "aggregate"
-    aggregate_num_ports = 2
+    index             = 11
+    op_mode           = "aggregate" # switch, mirror, aggregate
+    aggregate_members = [12]
   }
 }

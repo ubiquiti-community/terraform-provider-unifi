@@ -48,7 +48,15 @@ resource "unifi_setting" "combined" {
   }
 
   usg = {
-    multicast_dns_enabled = true
+    broadcast_ping = false
+    upnp_enabled   = true
+    ftp_module     = false
+
+    # DNS verification is a nested object on the USG/gateway settings.
+    dns_verification = {
+      domain             = "example.com"
+      primary_dns_server = "1.1.1.1"
+    }
   }
 }
 
