@@ -11,8 +11,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -35,9 +38,20 @@ import (
 var (
 	_ resource.Resource                = &wlanFrameworkResource{}
 	_ resource.ResourceWithImportState = &wlanFrameworkResource{}
+	_ resource.ResourceWithIdentity    = &wlanFrameworkResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &wlanFrameworkResource{}
+	_ list.ListResourceWithConfigure = &wlanFrameworkResource{}
 )
 
 func NewWLANFrameworkResource() resource.Resource {
+	return &wlanFrameworkResource{}
+}
+
+func NewWLANListResource() list.ListResource {
 	return &wlanFrameworkResource{}
 }
 
@@ -137,12 +151,43 @@ type wlanFrameworkResourceModel struct {
 	BroadcastFilterList  types.Set   `tfsdk:"bc_filter_list"`
 }
 
+type wlanIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// wlanListConfigModel describes the list configuration model.
+type wlanListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// wlanListFilterModel represents a single name/value filter entry.
+type wlanListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *wlanFrameworkResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_wlan"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *wlanFrameworkResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *wlanFrameworkResource) Schema(
@@ -770,6 +815,7 @@ func (r *wlanFrameworkResource) Create(
 		plan.Passphrase = types.StringNull()
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -822,6 +868,7 @@ func (r *wlanFrameworkResource) Read(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -900,6 +947,7 @@ func (r *wlanFrameworkResource) Update(
 		state.Passphrase = types.StringNull()
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1590,4 +1638,118 @@ func (r *wlanFrameworkResource) wlanToModel(
 	}
 
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *wlanFrameworkResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List WLANs in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list WLANs from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *wlanFrameworkResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config wlanListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []wlanListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	wlans, err := r.client.ListWLAN(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing WLANs", "Could not list WLANs: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, wlan := range wlans {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if wlan.Name != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", wlan.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+			result.DisplayName = wlan.Name
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(wlan.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model wlanFrameworkResourceModel
+			result.Diagnostics.Append(r.wlanToModel(ctx, &wlan, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

@@ -8,8 +8,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -24,9 +27,20 @@ import (
 var (
 	_ resource.Resource                = &radiusUserResource{}
 	_ resource.ResourceWithImportState = &radiusUserResource{}
+	_ resource.ResourceWithIdentity    = &radiusUserResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &radiusUserResource{}
+	_ list.ListResourceWithConfigure = &radiusUserResource{}
 )
 
 func NewRadiusUserResource() resource.Resource {
+	return &radiusUserResource{}
+}
+
+func NewRadiusUserListResource() list.ListResource {
 	return &radiusUserResource{}
 }
 
@@ -48,12 +62,39 @@ type radiusUserResourceModel struct {
 	TunnelConfigType types.String `tfsdk:"tunnel_config_type"`
 }
 
+// radiusUserListConfigModel describes the list configuration model.
+type radiusUserListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// radiusUserListFilterModel represents a single name/value filter entry.
+type radiusUserListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *radiusUserResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_radius_user"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *radiusUserResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *radiusUserResource) Schema(
@@ -209,6 +250,7 @@ func (r *radiusUserResource) Create(
 	r.radiusUserToModel(ctx, createdAccount, &data, site)
 
 	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -248,6 +290,7 @@ func (r *radiusUserResource) Read(
 	r.radiusUserToModel(ctx, account, &data, site)
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -305,6 +348,7 @@ func (r *radiusUserResource) Update(
 	r.radiusUserToModel(ctx, updatedAccount, &state, site)
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -488,5 +532,115 @@ func (r *radiusUserResource) radiusUserToModel(
 		model.TunnelConfigType = types.StringValue(account.TunnelConfigType)
 	} else {
 		model.TunnelConfigType = types.StringNull()
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *radiusUserResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List RADIUS user accounts in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list RADIUS users from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *radiusUserResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config radiusUserListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []radiusUserListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	accounts, err := r.client.ListAccount(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing Radius Users", "Could not list radius users: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, account := range accounts {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if account.Name != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if account.Name != "" {
+				result.DisplayName = account.Name
+			} else {
+				result.DisplayName = account.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(account.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model radiusUserResourceModel
+			r.radiusUserToModel(ctx, &account, &model, site)
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

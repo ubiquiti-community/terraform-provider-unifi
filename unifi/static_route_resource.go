@@ -8,8 +8,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -26,15 +30,43 @@ var (
 	_ resource.Resource                     = &staticRouteFrameworkResource{}
 	_ resource.ResourceWithImportState      = &staticRouteFrameworkResource{}
 	_ resource.ResourceWithConfigValidators = &staticRouteFrameworkResource{}
+	_ resource.ResourceWithIdentity         = &staticRouteFrameworkResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &staticRouteFrameworkResource{}
+	_ list.ListResourceWithConfigure = &staticRouteFrameworkResource{}
 )
 
 func NewStaticRouteFrameworkResource() resource.Resource {
 	return &staticRouteFrameworkResource{}
 }
 
+func NewStaticRouteListResource() list.ListResource {
+	return &staticRouteFrameworkResource{}
+}
+
 // staticRouteFrameworkResource defines the resource implementation.
 type staticRouteFrameworkResource struct {
 	client *Client
+}
+
+// staticRouteIdentityModel describes the identity model.
+type staticRouteIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// staticRouteListConfigModel describes the list configuration model.
+type staticRouteListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// staticRouteListFilterModel represents a single name/value filter entry.
+type staticRouteListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 // staticRouteFrameworkResourceModel describes the resource data model.
@@ -58,6 +90,21 @@ func (r *staticRouteFrameworkResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_static_route"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *staticRouteFrameworkResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *staticRouteFrameworkResource) Schema(
@@ -206,6 +253,7 @@ func (r *staticRouteFrameworkResource) Create(
 	r.routingToModel(ctx, createdRouting, &data, site)
 
 	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -245,6 +293,7 @@ func (r *staticRouteFrameworkResource) Read(
 	r.routingToModel(ctx, routing, &data, site)
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -294,6 +343,7 @@ func (r *staticRouteFrameworkResource) Update(
 	r.routingToModel(ctx, updatedRouting, &state, site)
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -542,5 +592,128 @@ func (r *staticRouteFrameworkResource) routingToModel(
 		model.GatewayType = types.StringValue(routing.GatewayType)
 	} else {
 		model.GatewayType = types.StringValue("default")
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *staticRouteFrameworkResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List static routes in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list static routes from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `type`. The `type` filter matches the static route type (`interface-route`, `nexthop-route`, `blackhole`).",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *staticRouteFrameworkResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config staticRouteListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []staticRouteListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	routings, err := r.client.ListRouting(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing Static Routes", "Could not list static routes: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, routing := range routings {
+			// Only surface static routes.
+			if routing.Type != "static-route" {
+				continue
+			}
+
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if routing.Name != val {
+					continue
+				}
+			}
+
+			// Apply type filter (static route type).
+			if val, ok := postFilters["type"]; ok {
+				if routing.StaticRouteType != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if routing.Name != "" {
+				result.DisplayName = routing.Name
+			} else {
+				result.DisplayName = routing.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(routing.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model staticRouteFrameworkResourceModel
+			routingCopy := routing
+			r.routingToModel(ctx, &routingCopy, &model, site)
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

@@ -7,8 +7,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -22,9 +26,20 @@ import (
 var (
 	_ resource.Resource                = &dnsRecordFrameworkResource{}
 	_ resource.ResourceWithImportState = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithIdentity    = &dnsRecordFrameworkResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &dnsRecordFrameworkResource{}
+	_ list.ListResourceWithConfigure = &dnsRecordFrameworkResource{}
 )
 
 func NewDNSRecordFrameworkResource() resource.Resource {
+	return &dnsRecordFrameworkResource{}
+}
+
+func NewDNSRecordListResource() list.ListResource {
 	return &dnsRecordFrameworkResource{}
 }
 
@@ -47,12 +62,39 @@ type dnsRecordFrameworkResourceModel struct {
 	Weight     types.Int64  `tfsdk:"weight"`
 }
 
+// dnsRecordFrameworkListConfigModel describes the list configuration model.
+type dnsRecordFrameworkListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// dnsRecordFrameworkListFilterModel represents a single name/value filter entry.
+type dnsRecordFrameworkListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *dnsRecordFrameworkResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_dns_record"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *dnsRecordFrameworkResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *dnsRecordFrameworkResource) Schema(
@@ -195,6 +237,7 @@ func (r *dnsRecordFrameworkResource) Create(
 	r.dnsRecordToModel(ctx, createdDNSRecord, &data, site)
 
 	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -234,6 +277,7 @@ func (r *dnsRecordFrameworkResource) Read(
 	r.dnsRecordToModel(ctx, dnsRecord, &data, site)
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -283,6 +327,7 @@ func (r *dnsRecordFrameworkResource) Update(
 	r.dnsRecordToModel(ctx, updatedDNSRecord, &state, site)
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -455,5 +500,130 @@ func (r *dnsRecordFrameworkResource) dnsRecordToModel(
 		model.Weight = types.Int64Value(dnsRecord.Weight)
 	} else {
 		model.Weight = types.Int64Null()
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *dnsRecordFrameworkResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List DNS records in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list DNS records from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `record_type`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *dnsRecordFrameworkResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config dnsRecordFrameworkListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []dnsRecordFrameworkListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	records, err := r.client.ListDNSRecord(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing Dns Records", "Could not list DNS records: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, record := range records {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if record.Key != val {
+					continue
+				}
+			}
+
+			// Apply record_type filter.
+			if val, ok := postFilters["record_type"]; ok {
+				if record.RecordType != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", record.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer key, fall back to ID.
+			if record.Key != "" {
+				result.DisplayName = record.Key
+			} else {
+				result.DisplayName = record.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(record.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model dnsRecordFrameworkResourceModel
+			r.dnsRecordToModel(ctx, &record, &model, site)
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

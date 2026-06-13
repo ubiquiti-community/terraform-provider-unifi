@@ -7,8 +7,11 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -20,9 +23,20 @@ import (
 var (
 	_ resource.Resource                = &siteFrameworkResource{}
 	_ resource.ResourceWithImportState = &siteFrameworkResource{}
+	_ resource.ResourceWithIdentity    = &siteFrameworkResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &siteFrameworkResource{}
+	_ list.ListResourceWithConfigure = &siteFrameworkResource{}
 )
 
 func NewSiteFrameworkResource() resource.Resource {
+	return &siteFrameworkResource{}
+}
+
+func NewSiteListResource() list.ListResource {
 	return &siteFrameworkResource{}
 }
 
@@ -38,12 +52,43 @@ type siteFrameworkResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
+type siteIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// siteListConfigModel describes the list configuration model. Sites are global
+// (not site-scoped), so there is no `site` attribute.
+type siteListConfigModel struct {
+	Filter types.List `tfsdk:"filter"`
+}
+
+// siteListFilterModel represents a single name/value filter entry.
+type siteListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *siteFrameworkResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_site"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *siteFrameworkResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *siteFrameworkResource) Schema(
@@ -143,6 +188,7 @@ func (r *siteFrameworkResource) Create(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -200,6 +246,7 @@ func (r *siteFrameworkResource) Read(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -260,6 +307,7 @@ func (r *siteFrameworkResource) Update(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -352,4 +400,122 @@ func (r *siteFrameworkResource) siteToModel(
 	model.Description = types.StringValue(site.Description)
 
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource]. Sites are global, so
+// the config has no `site` attribute.
+func (r *siteFrameworkResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List sites in the UniFi controller.",
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `description`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *siteFrameworkResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config siteListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	// Process filter blocks.
+	var filters []siteListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	// Sites are global; ListSites takes no site argument.
+	sites, err := r.client.ListSites(ctx)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Sites",
+			"Could not list sites: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for i := range sites {
+			site := sites[i]
+
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if site.Name != val {
+					continue
+				}
+			}
+
+			// Apply description filter.
+			if val, ok := postFilters["description"]; ok {
+				if site.Description != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer description, fall back to name then ID.
+			switch {
+			case site.Description != "":
+				result.DisplayName = site.Description
+			case site.Name != "":
+				result.DisplayName = site.Name
+			default:
+				result.DisplayName = site.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(site.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model siteFrameworkResourceModel
+			result.Diagnostics.Append(r.siteToModel(ctx, &site, &model)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

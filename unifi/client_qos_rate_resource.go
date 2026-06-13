@@ -7,8 +7,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -22,9 +25,20 @@ import (
 var (
 	_ resource.Resource                = &clientQosRateResource{}
 	_ resource.ResourceWithImportState = &clientQosRateResource{}
+	_ resource.ResourceWithIdentity    = &clientQosRateResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &clientQosRateResource{}
+	_ list.ListResourceWithConfigure = &clientQosRateResource{}
 )
 
 func NewClientQosRateResource() resource.Resource {
+	return &clientQosRateResource{}
+}
+
+func NewClientQosRateListResource() list.ListResource {
 	return &clientQosRateResource{}
 }
 
@@ -42,12 +56,43 @@ type clientQosRateResourceModel struct {
 	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
+type clientQosRateIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// clientQosRateListConfigModel describes the list configuration model.
+type clientQosRateListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// clientQosRateListFilterModel represents a single name/value filter entry.
+type clientQosRateListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *clientQosRateResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_client_qos_rate"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *clientQosRateResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *clientQosRateResource) Schema(
@@ -167,6 +212,7 @@ func (r *clientQosRateResource) Create(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -212,6 +258,7 @@ func (r *clientQosRateResource) Read(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -272,6 +319,7 @@ func (r *clientQosRateResource) Update(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -389,4 +437,123 @@ func (r *clientQosRateResource) clientQosRateToModel(
 	model.QOSRateMaxUp = types.Int64PointerValue(clientGroup.QOSRateMaxUp)
 
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *clientQosRateResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List client QOS rates in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list client QOS rates from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *clientQosRateResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config clientQosRateListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []clientQosRateListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	clientGroups, err := r.client.ListClientGroup(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Client QOS Rates",
+			"Could not list client QOS rates: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for i := range clientGroups {
+			clientGroup := clientGroups[i]
+
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if clientGroup.Name != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if clientGroup.Name != "" {
+				result.DisplayName = clientGroup.Name
+			} else {
+				result.DisplayName = clientGroup.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(clientGroup.ID),
+				)...,
+			)
+
+			// Convert to model. Pre-populate the identifier so the converter's
+			// ID/Name guard is satisfied.
+			var model clientQosRateResourceModel
+			model.ID = types.StringValue(clientGroup.ID)
+			result.Diagnostics.Append(r.clientQosRateToModel(ctx, &clientGroup, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

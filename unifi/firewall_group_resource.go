@@ -5,8 +5,12 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -20,9 +24,20 @@ import (
 var (
 	_ resource.Resource                = &firewallGroupResource{}
 	_ resource.ResourceWithImportState = &firewallGroupResource{}
+	_ resource.ResourceWithIdentity    = &firewallGroupResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &firewallGroupResource{}
+	_ list.ListResourceWithConfigure = &firewallGroupResource{}
 )
 
 func NewFirewallGroupFrameworkResource() resource.Resource {
+	return &firewallGroupResource{}
+}
+
+func NewFirewallGroupListResource() list.ListResource {
 	return &firewallGroupResource{}
 }
 
@@ -40,12 +55,39 @@ type firewallGroupResourceModel struct {
 	Members types.Set    `tfsdk:"members"`
 }
 
+// firewallGroupListConfigModel describes the list configuration model.
+type firewallGroupListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// firewallGroupListFilterModel represents a single name/value filter entry.
+type firewallGroupListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *firewallGroupResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_firewall_group"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *firewallGroupResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *firewallGroupResource) Schema(
@@ -158,6 +200,7 @@ func (r *firewallGroupResource) Create(
 	plan.Site = types.StringValue(site)
 	r.setResourceData(ctx, apiFirewallGroup, &plan, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -196,6 +239,7 @@ func (r *firewallGroupResource) Read(
 	// Update state from API response
 	r.setResourceData(ctx, firewallGroup, &state, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -275,6 +319,7 @@ func (r *firewallGroupResource) Update(
 	// Update state from API response
 	r.setResourceData(ctx, apiFirewallGroup, &state, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -357,28 +402,173 @@ func (r *firewallGroupResource) setResourceData(
 	model *firewallGroupResourceModel,
 	site string,
 ) {
+	r.firewallGroupToModel(ctx, firewallGroup, model, site)
+}
+
+// firewallGroupToModel populates the resource model from the API struct,
+// setting every schema field. It is the reusable API->model converter shared
+// by Read and List.
+func (r *firewallGroupResource) firewallGroupToModel(
+	ctx context.Context,
+	api *unifi.FirewallGroup,
+	model *firewallGroupResourceModel,
+	site string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	if api.ID != "" {
+		model.ID = types.StringValue(api.ID)
+	}
+
 	model.Site = types.StringValue(site)
 
-	if firewallGroup.Name == "" {
+	if api.Name == "" {
 		model.Name = types.StringNull()
 	} else {
-		model.Name = types.StringValue(firewallGroup.Name)
+		model.Name = types.StringValue(api.Name)
 	}
 
-	if firewallGroup.GroupType == "" {
+	if api.GroupType == "" {
 		model.Type = types.StringNull()
 	} else {
-		model.Type = types.StringValue(firewallGroup.GroupType)
+		model.Type = types.StringValue(api.GroupType)
 	}
 
-	if len(firewallGroup.GroupMembers) == 0 {
+	if len(api.GroupMembers) == 0 {
 		model.Members = types.SetNull(types.StringType)
 	} else {
-		membersList := make([]types.String, len(firewallGroup.GroupMembers))
-		for i, member := range firewallGroup.GroupMembers {
+		membersList := make([]types.String, len(api.GroupMembers))
+		for i, member := range api.GroupMembers {
 			membersList[i] = types.StringValue(member)
 		}
-		membersSet, _ := types.SetValueFrom(ctx, types.StringType, membersList)
+		membersSet, d := types.SetValueFrom(ctx, types.StringType, membersList)
+		diags.Append(d...)
 		model.Members = membersSet
+	}
+
+	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *firewallGroupResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List firewall groups in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list firewall groups from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `type`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *firewallGroupResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config firewallGroupListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []firewallGroupListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	groups, err := r.client.ListFirewallGroup(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Firewall Groups",
+			"Could not list firewall groups: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, group := range groups {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if group.Name != val {
+					continue
+				}
+			}
+
+			// Apply type filter.
+			if val, ok := postFilters["type"]; ok {
+				if group.GroupType != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if group.Name != "" {
+				result.DisplayName = group.Name
+			} else {
+				result.DisplayName = group.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(group.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model firewallGroupResourceModel
+			result.Diagnostics.Append(
+				r.firewallGroupToModel(ctx, &group, &model, site)...,
+			)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

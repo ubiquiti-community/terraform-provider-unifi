@@ -9,8 +9,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -27,10 +30,33 @@ import (
 var (
 	_ resource.Resource                = &firewallPolicyResource{}
 	_ resource.ResourceWithImportState = &firewallPolicyResource{}
+	_ resource.ResourceWithIdentity    = &firewallPolicyResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &firewallPolicyResource{}
+	_ list.ListResourceWithConfigure = &firewallPolicyResource{}
 )
 
 func NewFirewallPolicyResource() resource.Resource {
 	return &firewallPolicyResource{}
+}
+
+func NewFirewallPolicyListResource() list.ListResource {
+	return &firewallPolicyResource{}
+}
+
+// firewallPolicyListConfigModel describes the list configuration model.
+type firewallPolicyListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// firewallPolicyListFilterModel represents a single name/value filter entry.
+type firewallPolicyListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 type firewallPolicyResource struct {
@@ -98,6 +124,21 @@ func (r *firewallPolicyResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_firewall_policy"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *firewallPolicyResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *firewallPolicyResource) Schema(
@@ -362,6 +403,7 @@ func (r *firewallPolicyResource) Create(
 
 	resp.Diagnostics.Append(firewallPolicyToModel(ctx, created, &plan)...)
 	plan.Site = types.StringValue(site)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -396,6 +438,7 @@ func (r *firewallPolicyResource) Read(
 
 	resp.Diagnostics.Append(firewallPolicyToModel(ctx, fp, &state)...)
 	state.Site = types.StringValue(site)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -440,6 +483,7 @@ func (r *firewallPolicyResource) Update(
 
 	resp.Diagnostics.Append(firewallPolicyToModel(ctx, updated, &plan)...)
 	plan.Site = types.StringValue(site)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -709,4 +753,155 @@ func apiDestinationToEndpointModel(
 	m.WebDomains = webDomains
 
 	return m
+}
+
+// ---------------------------------------------------------------------------
+// List resource
+// ---------------------------------------------------------------------------
+
+// firewallPolicyListToModel populates the model's schema fields directly from
+// the API struct for listing. It reuses the nil-safe firewallPolicyToModel
+// flatten helper (which faithfully maps the source/destination nested objects)
+// and sets the site so the listed resource is self-contained.
+func (r *firewallPolicyResource) firewallPolicyListToModel(
+	ctx context.Context,
+	api *unifi.FirewallPolicy,
+	model *firewallPolicyModel,
+	site string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+	diags.Append(firewallPolicyToModel(ctx, api, model)...)
+	model.Site = types.StringValue(site)
+	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *firewallPolicyResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List firewall policies in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list firewall policies from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `action`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *firewallPolicyResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config firewallPolicyListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []firewallPolicyListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	policies, err := r.client.ListFirewallPolicy(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Firewall Policies",
+			"Could not list firewall policies: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, policy := range policies {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if policy.Name != val {
+					continue
+				}
+			}
+
+			// Apply action filter.
+			if val, ok := postFilters["action"]; ok {
+				if policy.Action != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", policy.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if policy.Name != "" {
+				result.DisplayName = policy.Name
+			} else {
+				result.DisplayName = policy.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(policy.ID),
+				)...,
+			)
+
+			// Convert to model.
+			p := policy
+			var model firewallPolicyModel
+			result.Diagnostics.Append(r.firewallPolicyListToModel(ctx, &p, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

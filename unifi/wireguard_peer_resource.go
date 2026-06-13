@@ -8,8 +8,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -24,9 +27,20 @@ import (
 var (
 	_ resource.Resource                = &wireguardPeerResource{}
 	_ resource.ResourceWithImportState = &wireguardPeerResource{}
+	_ resource.ResourceWithIdentity    = &wireguardPeerResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &wireguardPeerResource{}
+	_ list.ListResourceWithConfigure = &wireguardPeerResource{}
 )
 
 func NewWireguardPeerResource() resource.Resource {
+	return &wireguardPeerResource{}
+}
+
+func NewWireguardPeerListResource() list.ListResource {
 	return &wireguardPeerResource{}
 }
 
@@ -46,12 +60,45 @@ type wireguardPeerResourceModel struct {
 	AllowedIPs  types.List   `tfsdk:"allowed_ips"`
 }
 
+type wireguardPeerIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// wireguardPeerListConfigModel describes the list configuration model. Peers
+// belong to a WireGuard server network, so `network_id` is required.
+type wireguardPeerListConfigModel struct {
+	Site      types.String `tfsdk:"site"`
+	NetworkID types.String `tfsdk:"network_id"`
+	Filter    types.List   `tfsdk:"filter"`
+}
+
+// wireguardPeerListFilterModel represents a single name/value filter entry.
+type wireguardPeerListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *wireguardPeerResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_wireguard_peer"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *wireguardPeerResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *wireguardPeerResource) Schema(
@@ -177,6 +224,7 @@ func (r *wireguardPeerResource) Create(
 	}
 
 	resp.Diagnostics.Append(r.peerToModel(ctx, createdPeer, &data, site)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -216,6 +264,7 @@ func (r *wireguardPeerResource) Read(
 	}
 
 	resp.Diagnostics.Append(r.peerToModel(ctx, peer, &data, site)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -253,6 +302,7 @@ func (r *wireguardPeerResource) Update(
 	}
 
 	resp.Diagnostics.Append(r.peerToModel(ctx, updatedPeer, &data, site)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -350,4 +400,127 @@ func (r *wireguardPeerResource) peerToModel(
 	allowedIPs, diags := types.ListValueFrom(ctx, types.StringType, peer.AllowedIPs)
 	model.AllowedIPs = allowedIPs
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource]. Peers belong to a
+// WireGuard server network, so `network_id` is required.
+func (r *wireguardPeerResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List WireGuard peers of a WireGuard server network.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site the WireGuard server belongs to.",
+				Optional:            true,
+			},
+			"network_id": listschema.StringAttribute{
+				MarkdownDescription: "The ID of the WireGuard server network to list peers from.",
+				Required:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *wireguardPeerResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config wireguardPeerListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []wireguardPeerListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	// Peers belong to a VPN-server network; network_id is required.
+	peers, err := r.client.ListWireGuardPeers(ctx, site, config.NetworkID.ValueString())
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing WireGuard Peers",
+			"Could not list WireGuard peers: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for i := range peers {
+			peer := peers[i]
+
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if peer.Name != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if peer.Name != "" {
+				result.DisplayName = peer.Name
+			} else {
+				result.DisplayName = peer.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(peer.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model wireguardPeerResourceModel
+			result.Diagnostics.Append(r.peerToModel(ctx, &peer, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }
