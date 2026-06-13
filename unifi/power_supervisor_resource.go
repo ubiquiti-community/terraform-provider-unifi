@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -54,15 +55,15 @@ type powerSupervisorResource struct {
 
 // powerSupervisorResourceModel describes the resource data model.
 type powerSupervisorResourceModel struct {
-	ID                  types.String `tfsdk:"id"`
-	Site                types.String `tfsdk:"site"`
-	DeviceMAC           types.String `tfsdk:"device_mac"`
-	Enabled             types.Bool   `tfsdk:"enabled"`
-	HeartbeatInterval   types.Int64  `tfsdk:"heartbeat_interval"`
-	SilenceThreshold    types.Int64  `tfsdk:"silence_threshold"`
-	PowerOffDuration    types.Int64  `tfsdk:"power_off_duration"`
-	ConsecutiveFailures types.Int64  `tfsdk:"consecutive_failures"`
-	PowerSources        types.List   `tfsdk:"power_sources"`
+	ID                  types.String       `tfsdk:"id"`
+	Site                types.String       `tfsdk:"site"`
+	DeviceMAC           hwtypes.MACAddress `tfsdk:"device_mac"`
+	Enabled             types.Bool         `tfsdk:"enabled"`
+	HeartbeatInterval   types.Int64        `tfsdk:"heartbeat_interval"`
+	SilenceThreshold    types.Int64        `tfsdk:"silence_threshold"`
+	PowerOffDuration    types.Int64        `tfsdk:"power_off_duration"`
+	ConsecutiveFailures types.Int64        `tfsdk:"consecutive_failures"`
+	PowerSources        types.List         `tfsdk:"power_sources"`
 }
 
 type powerSupervisorIdentityModel struct {
@@ -145,7 +146,8 @@ func (r *powerSupervisorResource) Schema(
 			"device_mac": schema.StringAttribute{
 				MarkdownDescription: "MAC address of the supervised device (the controller keys " +
 					"supervisors per device). Changing it replaces the supervisor.",
-				Required: true,
+				CustomType: hwtypes.MACAddressType{},
+				Required:   true,
 				Validators: []validator.String{
 					validators.MACAddressValidator(),
 				},
@@ -428,7 +430,7 @@ func (r *powerSupervisorResource) powerSupervisorToModel(
 
 	model.ID = types.StringValue(supervisor.ID)
 	model.Site = types.StringValue(site)
-	model.DeviceMAC = types.StringValue(supervisor.ClientMAC)
+	model.DeviceMAC = hwtypes.NewMACAddressValue(supervisor.ClientMAC)
 	model.Enabled = types.BoolValue(supervisor.Enabled)
 	model.HeartbeatInterval = types.Int64Value(int64(supervisor.Settings.HeartbeatInterval))
 	model.SilenceThreshold = types.Int64Value(int64(supervisor.Settings.SilenceThreshold))

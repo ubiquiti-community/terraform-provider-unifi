@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -59,29 +60,29 @@ type siteToSiteVPNResource struct {
 // purpose="site-vpn", vpn_type="ipsec-vpn" network — the UniFi manual
 // site-to-site IPsec VPN.
 type siteToSiteVPNResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	Name           types.String `tfsdk:"name"`
-	Enabled        types.Bool   `tfsdk:"enabled"`
-	Interface      types.String `tfsdk:"interface"`
-	PeerIP         types.String `tfsdk:"peer_ip"`
-	LocalIP        types.String `tfsdk:"local_ip"`
-	KeyExchange    types.String `tfsdk:"key_exchange"`
-	PreSharedKey   types.String `tfsdk:"pre_shared_key"`
-	PreSharedKeyWO types.String `tfsdk:"pre_shared_key_wo"`
-	RemoteSubnets  types.List   `tfsdk:"remote_subnets"`
-	Profile        types.String `tfsdk:"profile"`
-	IKEEncryption  types.String `tfsdk:"ike_encryption"`
-	IKEHash        types.String `tfsdk:"ike_hash"`
-	IKEDhGroup     types.Int64  `tfsdk:"ike_dh_group"`
-	IKELifetime    types.Int64  `tfsdk:"ike_lifetime"`
-	ESPEncryption  types.String `tfsdk:"esp_encryption"`
-	ESPHash        types.String `tfsdk:"esp_hash"`
-	ESPDhGroup     types.Int64  `tfsdk:"esp_dh_group"`
-	ESPLifetime    types.Int64  `tfsdk:"esp_lifetime"`
-	PFS            types.Bool   `tfsdk:"pfs"`
-	DynamicRouting types.Bool   `tfsdk:"dynamic_routing"`
-	RouteDistance  types.Int64  `tfsdk:"route_distance"`
+	ID             types.String        `tfsdk:"id"`
+	Site           types.String        `tfsdk:"site"`
+	Name           types.String        `tfsdk:"name"`
+	Enabled        types.Bool          `tfsdk:"enabled"`
+	Interface      types.String        `tfsdk:"interface"`
+	PeerIP         iptypes.IPv4Address `tfsdk:"peer_ip"`
+	LocalIP        iptypes.IPv4Address `tfsdk:"local_ip"`
+	KeyExchange    types.String        `tfsdk:"key_exchange"`
+	PreSharedKey   types.String        `tfsdk:"pre_shared_key"`
+	PreSharedKeyWO types.String        `tfsdk:"pre_shared_key_wo"`
+	RemoteSubnets  types.List          `tfsdk:"remote_subnets"`
+	Profile        types.String        `tfsdk:"profile"`
+	IKEEncryption  types.String        `tfsdk:"ike_encryption"`
+	IKEHash        types.String        `tfsdk:"ike_hash"`
+	IKEDhGroup     types.Int64         `tfsdk:"ike_dh_group"`
+	IKELifetime    types.Int64         `tfsdk:"ike_lifetime"`
+	ESPEncryption  types.String        `tfsdk:"esp_encryption"`
+	ESPHash        types.String        `tfsdk:"esp_hash"`
+	ESPDhGroup     types.Int64         `tfsdk:"esp_dh_group"`
+	ESPLifetime    types.Int64         `tfsdk:"esp_lifetime"`
+	PFS            types.Bool          `tfsdk:"pfs"`
+	DynamicRouting types.Bool          `tfsdk:"dynamic_routing"`
+	RouteDistance  types.Int64         `tfsdk:"route_distance"`
 }
 
 type siteToSiteVPNIdentityModel struct {
@@ -175,6 +176,7 @@ func (r *siteToSiteVPNResource) Schema(
 			},
 			"peer_ip": schema.StringAttribute{
 				MarkdownDescription: "The public IP address of the remote VPN gateway (peer).",
+				CustomType:          iptypes.IPv4AddressType{},
 				Required:            true,
 				Validators: []validator.String{
 					validators.IPv4Validator(),
@@ -182,6 +184,7 @@ func (r *siteToSiteVPNResource) Schema(
 			},
 			"local_ip": schema.StringAttribute{
 				MarkdownDescription: "The local IP used for the tunnel. Defaults to the WAN address when omitted.",
+				CustomType:          iptypes.IPv4AddressType{},
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -586,8 +589,8 @@ func (r *siteToSiteVPNResource) networkToModel(
 	}
 	model.Enabled = types.BoolValue(network.Enabled)
 	model.Interface = stringPtrOrNull(network.IPSecInterface)
-	model.PeerIP = stringPtrOrNull(network.IPSecPeerIP)
-	model.LocalIP = stringPtrOrNull(network.IPSecLocalIP)
+	model.PeerIP = util.IPv4PtrValueOrNull(network.IPSecPeerIP)
+	model.LocalIP = util.IPv4PtrValueOrNull(network.IPSecLocalIP)
 	model.KeyExchange = stringPtrOrNull(network.IPSecKeyExchange)
 	model.Profile = stringPtrOrNull(network.IPSecProfile)
 	model.IKEEncryption = stringPtrOrNull(network.IPSecEncryption)
@@ -612,11 +615,19 @@ func (r *siteToSiteVPNResource) networkToModel(
 // optStr returns the string pointer for an optional attribute, or nil when the
 // value is null, unknown, or empty — so the marshaler omits it rather than
 // sending "" (which the controller rejects for IP/enum fields).
-func optStr(s types.String) *string {
+// optStr accepts any framework string-backed value (types.String or the custom
+// nettypes values, which all embed basetypes.StringValue) and returns nil for
+// null/unknown/empty.
+func optStr(s interface {
+	IsNull() bool
+	IsUnknown() bool
+	ValueString() string
+}) *string {
 	if s.IsNull() || s.IsUnknown() || s.ValueString() == "" {
 		return nil
 	}
-	return s.ValueStringPointer()
+	v := s.ValueString()
+	return &v
 }
 
 // optInt64 returns the int64 pointer for an optional attribute, or nil when the

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -29,7 +30,7 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 		Name:          types.StringValue("HQ-to-Branch"),
 		Enabled:       types.BoolValue(true),
 		Interface:     types.StringValue("wan"),
-		PeerIP:        types.StringValue("203.0.113.9"),
+		PeerIP:        iptypes.NewIPv4AddressValue("203.0.113.9"),
 		KeyExchange:   types.StringValue("ikev2"),
 		PreSharedKey:  types.StringValue("s3cret-psk"),
 		RemoteSubnets: subnets,

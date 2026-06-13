@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -17,7 +18,7 @@ func TestPowerSupervisorModelRoundTrip(t *testing.T) {
 	r := &powerSupervisorResource{}
 
 	model := powerSupervisorResourceModel{
-		DeviceMAC:         types.StringValue("94:2a:6f:d6:ce:fd"),
+		DeviceMAC:         hwtypes.NewMACAddressValue("94:2a:6f:d6:ce:fd"),
 		Enabled:           types.BoolValue(true),
 		HeartbeatInterval: types.Int64Value(30),
 		SilenceThreshold:  types.Int64Value(600),

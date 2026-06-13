@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -26,20 +29,20 @@ type clientDataSource struct {
 
 // clientDataSourceModel describes the data source data model.
 type clientDataSourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	MAC            types.String `tfsdk:"mac"`
-	Name           types.String `tfsdk:"name"`
-	DisplayName    types.String `tfsdk:"display_name"`
-	QOSRate        types.Object `tfsdk:"qos_rate"`
-	Note           types.String `tfsdk:"note"`
-	FixedIP        types.String `tfsdk:"fixed_ip"`
-	FixedApMAC     types.String `tfsdk:"fixed_ap_mac"`
-	NetworkID      types.String `tfsdk:"network_id"`
-	Groups         types.List   `tfsdk:"groups"`
-	Blocked        types.Bool   `tfsdk:"blocked"`
-	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
-	Hostname       types.String `tfsdk:"hostname"`
+	ID             types.String        `tfsdk:"id"`
+	Site           types.String        `tfsdk:"site"`
+	MAC            hwtypes.MACAddress  `tfsdk:"mac"`
+	Name           types.String        `tfsdk:"name"`
+	DisplayName    types.String        `tfsdk:"display_name"`
+	QOSRate        types.Object        `tfsdk:"qos_rate"`
+	Note           types.String        `tfsdk:"note"`
+	FixedIP        iptypes.IPv4Address `tfsdk:"fixed_ip"`
+	FixedApMAC     hwtypes.MACAddress  `tfsdk:"fixed_ap_mac"`
+	NetworkID      types.String        `tfsdk:"network_id"`
+	Groups         types.List          `tfsdk:"groups"`
+	Blocked        types.Bool          `tfsdk:"blocked"`
+	LocalDNSRecord types.String        `tfsdk:"local_dns_record"`
+	Hostname       types.String        `tfsdk:"hostname"`
 }
 
 func (d *clientDataSource) Metadata(
@@ -66,6 +69,7 @@ func (d *clientDataSource) Schema(
 			},
 			"mac": schema.StringAttribute{
 				MarkdownDescription: "The MAC address of the client.",
+				CustomType:          hwtypes.MACAddressType{},
 				Required:            true,
 			},
 			"id": schema.StringAttribute{
@@ -108,10 +112,12 @@ func (d *clientDataSource) Schema(
 			},
 			"fixed_ip": schema.StringAttribute{
 				MarkdownDescription: "A fixed IPv4 address for this client.",
+				CustomType:          iptypes.IPv4AddressType{},
 				Computed:            true,
 			},
 			"fixed_ap_mac": schema.StringAttribute{
 				MarkdownDescription: "The MAC address of the access point to which this client should be fixed.",
+				CustomType:          hwtypes.MACAddressType{},
 				Computed:            true,
 			},
 			"network_id": schema.StringAttribute{
@@ -211,7 +217,7 @@ func (d *clientDataSource) Read(
 
 	state.ID = types.StringValue(client.ID)
 	state.Site = types.StringValue(site)
-	state.MAC = types.StringValue(client.MAC)
+	state.MAC = util.MACValueOrNull(client.MAC)
 
 	if client.Name != "" {
 		state.Name = types.StringValue(client.Name)
@@ -253,17 +259,9 @@ func (d *clientDataSource) Read(
 		state.Note = types.StringNull()
 	}
 
-	if client.FixedIP != "" {
-		state.FixedIP = types.StringValue(client.FixedIP)
-	} else {
-		state.FixedIP = types.StringNull()
-	}
+	state.FixedIP = util.IPv4ValueOrNull(client.FixedIP)
 
-	if client.FixedApMAC != "" {
-		state.FixedApMAC = types.StringValue(client.FixedApMAC)
-	} else {
-		state.FixedApMAC = types.StringNull()
-	}
+	state.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
 
 	if client.VirtualNetworkOverrideID != "" {
 		state.NetworkID = types.StringValue(client.VirtualNetworkOverrideID)

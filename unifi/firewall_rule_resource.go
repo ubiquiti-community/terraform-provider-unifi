@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -21,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var (
@@ -65,38 +67,38 @@ type firewallRuleListFilterModel struct {
 }
 
 type firewallRuleResourceModel struct {
-	ID                  types.String `tfsdk:"id"`
-	Site                types.String `tfsdk:"site"`
-	Name                types.String `tfsdk:"name"`
-	Action              types.String `tfsdk:"action"`
-	Ruleset             types.String `tfsdk:"ruleset"`
-	RuleIndex           types.Int64  `tfsdk:"rule_index"`
-	Protocol            types.String `tfsdk:"protocol"`
-	ProtocolV6          types.String `tfsdk:"protocol_v6"`
-	ICMPTypename        types.String `tfsdk:"icmp_typename"`
-	ICMPV6Typename      types.String `tfsdk:"icmp_v6_typename"`
-	Enabled             types.Bool   `tfsdk:"enabled"`
-	SrcNetworkID        types.String `tfsdk:"src_network_id"`
-	SrcNetworkType      types.String `tfsdk:"src_network_type"`
-	SrcFirewallGroupIDs types.Set    `tfsdk:"src_firewall_group_ids"`
-	SrcAddress          types.String `tfsdk:"src_address"`
-	SrcAddressIPv6      types.String `tfsdk:"src_address_ipv6"`
-	SrcPort             types.String `tfsdk:"src_port"`
-	SrcMac              types.String `tfsdk:"src_mac"`
-	DstNetworkID        types.String `tfsdk:"dst_network_id"`
-	DstNetworkType      types.String `tfsdk:"dst_network_type"`
-	DstFirewallGroupIDs types.Set    `tfsdk:"dst_firewall_group_ids"`
-	DstAddress          types.String `tfsdk:"dst_address"`
-	DstAddressIPv6      types.String `tfsdk:"dst_address_ipv6"`
-	DstPort             types.String `tfsdk:"dst_port"`
-	Logging             types.Bool   `tfsdk:"logging"`
-	StateEstablished    types.Bool   `tfsdk:"state_established"`
-	StateInvalid        types.Bool   `tfsdk:"state_invalid"`
-	StateNew            types.Bool   `tfsdk:"state_new"`
-	StateRelated        types.Bool   `tfsdk:"state_related"`
-	IPSec               types.String `tfsdk:"ip_sec"`
-	SettingPreference   types.String `tfsdk:"setting_preference"`
-	ProtocolMatchExcept types.Bool   `tfsdk:"protocol_match_excepted"`
+	ID                  types.String       `tfsdk:"id"`
+	Site                types.String       `tfsdk:"site"`
+	Name                types.String       `tfsdk:"name"`
+	Action              types.String       `tfsdk:"action"`
+	Ruleset             types.String       `tfsdk:"ruleset"`
+	RuleIndex           types.Int64        `tfsdk:"rule_index"`
+	Protocol            types.String       `tfsdk:"protocol"`
+	ProtocolV6          types.String       `tfsdk:"protocol_v6"`
+	ICMPTypename        types.String       `tfsdk:"icmp_typename"`
+	ICMPV6Typename      types.String       `tfsdk:"icmp_v6_typename"`
+	Enabled             types.Bool         `tfsdk:"enabled"`
+	SrcNetworkID        types.String       `tfsdk:"src_network_id"`
+	SrcNetworkType      types.String       `tfsdk:"src_network_type"`
+	SrcFirewallGroupIDs types.Set          `tfsdk:"src_firewall_group_ids"`
+	SrcAddress          types.String       `tfsdk:"src_address"`
+	SrcAddressIPv6      types.String       `tfsdk:"src_address_ipv6"`
+	SrcPort             types.String       `tfsdk:"src_port"`
+	SrcMac              hwtypes.MACAddress `tfsdk:"src_mac"`
+	DstNetworkID        types.String       `tfsdk:"dst_network_id"`
+	DstNetworkType      types.String       `tfsdk:"dst_network_type"`
+	DstFirewallGroupIDs types.Set          `tfsdk:"dst_firewall_group_ids"`
+	DstAddress          types.String       `tfsdk:"dst_address"`
+	DstAddressIPv6      types.String       `tfsdk:"dst_address_ipv6"`
+	DstPort             types.String       `tfsdk:"dst_port"`
+	Logging             types.Bool         `tfsdk:"logging"`
+	StateEstablished    types.Bool         `tfsdk:"state_established"`
+	StateInvalid        types.Bool         `tfsdk:"state_invalid"`
+	StateNew            types.Bool         `tfsdk:"state_new"`
+	StateRelated        types.Bool         `tfsdk:"state_related"`
+	IPSec               types.String       `tfsdk:"ip_sec"`
+	SettingPreference   types.String       `tfsdk:"setting_preference"`
+	ProtocolMatchExcept types.Bool         `tfsdk:"protocol_match_excepted"`
 }
 
 func (r *firewallRuleResource) Metadata(
@@ -242,6 +244,7 @@ func (r *firewallRuleResource) Schema(
 			},
 			"src_mac": schema.StringAttribute{
 				MarkdownDescription: "The source MAC address of the firewall rule.",
+				CustomType:          hwtypes.MACAddressType{},
 				Optional:            true,
 			},
 			"dst_network_id": schema.StringAttribute{
@@ -791,11 +794,7 @@ func (r *firewallRuleResource) firewallRuleToModel(
 		model.SrcPort = types.StringNull()
 	}
 
-	if firewallRule.SrcMACAddress != "" {
-		model.SrcMac = types.StringValue(firewallRule.SrcMACAddress)
-	} else {
-		model.SrcMac = types.StringNull()
-	}
+	model.SrcMac = util.MACValueOrNull(firewallRule.SrcMACAddress)
 
 	if firewallRule.DstNetworkID != "" {
 		model.DstNetworkID = types.StringValue(firewallRule.DstNetworkID)

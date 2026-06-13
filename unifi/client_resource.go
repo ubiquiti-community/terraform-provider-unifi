@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -84,19 +86,19 @@ func (m qosRateModel) AttributeTypes() map[string]attr.Type {
 
 // clientResourceModel describes the resource data model.
 type clientResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	MAC            types.String `tfsdk:"mac"`
-	Name           types.String `tfsdk:"name"`
-	DisplayName    types.String `tfsdk:"display_name"`
-	QOSRate        types.Object `tfsdk:"qos_rate"`
-	Note           types.String `tfsdk:"note"`
-	FixedIP        types.String `tfsdk:"fixed_ip"`
-	FixedApMAC     types.String `tfsdk:"fixed_ap_mac"`
-	NetworkID      types.String `tfsdk:"network_id"`
-	Groups         types.List   `tfsdk:"groups"`
-	Blocked        types.Bool   `tfsdk:"blocked"`
-	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
+	ID             types.String        `tfsdk:"id"`
+	Site           types.String        `tfsdk:"site"`
+	MAC            hwtypes.MACAddress  `tfsdk:"mac"`
+	Name           types.String        `tfsdk:"name"`
+	DisplayName    types.String        `tfsdk:"display_name"`
+	QOSRate        types.Object        `tfsdk:"qos_rate"`
+	Note           types.String        `tfsdk:"note"`
+	FixedIP        iptypes.IPv4Address `tfsdk:"fixed_ip"`
+	FixedApMAC     hwtypes.MACAddress  `tfsdk:"fixed_ap_mac"`
+	NetworkID      types.String        `tfsdk:"network_id"`
+	Groups         types.List          `tfsdk:"groups"`
+	Blocked        types.Bool          `tfsdk:"blocked"`
+	LocalDNSRecord types.String        `tfsdk:"local_dns_record"`
 
 	// These control import and create behavior to allow the resource to take over existing clients instead of erroring, and to allow it to just be removed from Terraform management without deleting in UniFi.
 	AllowExisting       types.Bool `tfsdk:"allow_existing"`
@@ -107,7 +109,7 @@ type clientResourceModel struct {
 }
 
 type clientIdentityModel struct {
-	MAC types.String `tfsdk:"mac"`
+	MAC hwtypes.MACAddress `tfsdk:"mac"`
 }
 
 // clientListConfigModel describes the list configuration model.
@@ -140,6 +142,7 @@ func (r *clientResource) IdentitySchema(
 	resp.IdentitySchema = identityschema.Schema{
 		Attributes: map[string]identityschema.Attribute{
 			"mac": identityschema.StringAttribute{
+				CustomType:        hwtypes.MACAddressType{},
 				RequiredForImport: true,
 			},
 		},
@@ -175,6 +178,7 @@ Clients are created in the controller when observed on the network, so the resou
 			},
 			"mac": schema.StringAttribute{
 				MarkdownDescription: "The MAC address of the client.",
+				CustomType:          hwtypes.MACAddressType{},
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -236,6 +240,7 @@ Clients are created in the controller when observed on the network, so the resou
 			},
 			"fixed_ip": schema.StringAttribute{
 				MarkdownDescription: "A fixed IPv4 address for this client.",
+				CustomType:          iptypes.IPv4AddressType{},
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -244,6 +249,7 @@ Clients are created in the controller when observed on the network, so the resou
 			},
 			"fixed_ap_mac": schema.StringAttribute{
 				MarkdownDescription: "The MAC address of the access point to which this client should be fixed.",
+				CustomType:          hwtypes.MACAddressType{},
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -806,7 +812,7 @@ func (r *clientResource) ImportState(
 			)
 		}
 		// Set identity with the MAC
-		idModel := clientIdentityModel{MAC: types.StringValue(req.ID)}
+		idModel := clientIdentityModel{MAC: hwtypes.NewMACAddressValue(req.ID)}
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -986,12 +992,12 @@ func (r *clientResource) clientToModel(
 
 	model.ID = util.StringValueOrNull(client.ID)
 	model.Site = util.StringValueOrNull(site)
-	model.MAC = util.StringValueOrNull(client.MAC)
+	model.MAC = util.MACValueOrNull(client.MAC)
 	model.Name = util.StringValueOrNull(client.Name)
 	model.DisplayName = util.StringValueOrNull(client.DisplayName)
 	model.Note = util.StringValueOrNull(client.Note)
-	model.FixedIP = util.StringValueOrNull(client.FixedIP)
-	model.FixedApMAC = util.StringValueOrNull(client.FixedApMAC)
+	model.FixedIP = util.IPv4ValueOrNull(client.FixedIP)
+	model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
 	model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
 
 	// Populate qos_rate from the client's UserGroupID by looking up the client group.
