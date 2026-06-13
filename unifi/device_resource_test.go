@@ -93,7 +93,7 @@ func TestAccDeviceFramework_basic(t *testing.T) {
 func testAccDeviceFrameworkConfig_basic() string {
 	return `
 resource "unifi_device" "test" {
-	mac  = "00:27:22:00:00:01"
+	mac  = "00:27:22:00:00:02"
 	name = "Test Device"
 	allow_adoption = true
 	forget_on_destroy = false

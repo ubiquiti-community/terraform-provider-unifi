@@ -47,10 +47,18 @@ func (r *radiusUserResource) moveFromAccount(
 	if req.SourceTypeName != "unifi_account" {
 		return
 	}
-	// Ignore the hostname (registry.terraform.io vs registry.opentofu.org) and
-	// match on namespace/type only.
-	if !strings.HasSuffix(req.SourceProviderAddress, "ubiquiti-community/unifi") {
-		return
+	// Match on the provider type only (the last path segment), ignoring the host
+	// and namespace. The address varies by context: the published provider is
+	// registry.terraform.io/ubiquiti-community/unifi, but the acceptance-test
+	// framework registers it as registry.terraform.io/hashicorp/unifi. Both are
+	// this provider, so keying on namespace would wrongly skip the move.
+	if seg := req.SourceProviderAddress; seg != "" {
+		if idx := strings.LastIndex(seg, "/"); idx >= 0 {
+			seg = seg[idx+1:]
+		}
+		if seg != "unifi" {
+			return
+		}
 	}
 	if req.SourceSchemaVersion != 0 {
 		return

@@ -155,11 +155,6 @@ func TestAccWANFramework_additionalFields(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("unifi_wan.extra", "id"),
 					resource.TestCheckResourceAttr("unifi_wan.extra", "name", "test-wan-extra"),
-					resource.TestCheckResourceAttr(
-						"unifi_wan.extra",
-						"setting_preference",
-						"manual",
-					),
 					// Computed fields populated from the controller.
 					resource.TestCheckResourceAttrSet(
 						"unifi_wan.extra",
@@ -181,12 +176,16 @@ func TestAccWANFramework_additionalFields(t *testing.T) {
 }
 
 func testAccWANFrameworkConfig_additionalFields() string {
+	// Note: setting_preference is intentionally NOT pinned here. The controller
+	// treats it as a managed/derived field on WAN networks and reverts it to
+	// "auto" for a dhcp WAN regardless of what we send (even with manual DNS),
+	// which makes "manual" produce perpetual auto->manual plan drift. The other
+	// newly exposed top-level fields below do round-trip cleanly.
 	return `
 resource "unifi_wan" "extra" {
-	name               = "test-wan-extra"
-	type               = "dhcp"
-	enabled            = true
-	setting_preference = "manual"
+	name    = "test-wan-extra"
+	type    = "dhcp"
+	enabled = true
 }
 `
 }

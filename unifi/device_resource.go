@@ -1314,24 +1314,34 @@ func (r *deviceResource) ImportState(
 	var getErr, listErr error
 	var deviceCount int
 
-	// First try the full GetDeviceByMAC (deserializes the entire device).
+	// The import identifier may be either a MAC address or the controller's
+	// internal device ID (the value of the `id` attribute, which is what
+	// ImportStateVerify replays). Try a MAC lookup first, then fall back to an
+	// ID lookup, then to scanning the device list matching on either.
 	device, getErr = r.client.GetDeviceByMAC(ctx, site, mac)
+	if (getErr != nil || device == nil || device.ID == "") && importID != "" {
+		if d, idErr := r.client.GetDevice(ctx, site, importID); idErr == nil && d != nil &&
+			d.ID != "" {
+			device = d
+			getErr = nil
+		}
+	}
 	if getErr != nil || device == nil || device.ID == "" {
 		if getErr != nil {
 			tflog.Warn(ctx, "GetDeviceByMAC failed, falling back to device list",
 				map[string]any{"mac": mac, "error": getErr.Error()})
 		}
 
-		// Fallback: list all devices and match by MAC to get the internal ID.
-		// This avoids the full JSON deserialization that can fail on some device types.
+		// Fallback: list all devices and match by MAC or internal ID. This also
+		// avoids the full JSON deserialization that can fail on some device types.
 		devices, err := r.client.ListDevice(ctx, site)
 		listErr = err
 		if listErr != nil {
 			resp.Diagnostics.AddError(
 				"Error Listing Devices",
 				fmt.Sprintf(
-					"Could not list devices to find MAC %s: %s (original error: %v)",
-					mac,
+					"Could not list devices to find %s: %s (original error: %v)",
+					importID,
 					listErr,
 					getErr,
 				),
@@ -1342,7 +1352,7 @@ func (r *deviceResource) ImportState(
 		deviceCount = len(devices)
 		normalizedImport := normalizeMAC(mac)
 		for _, d := range devices {
-			if normalizeMAC(d.MAC) == normalizedImport {
+			if normalizeMAC(d.MAC) == normalizedImport || d.ID == importID {
 				device = &d
 				break
 			}
@@ -1360,8 +1370,8 @@ func (r *deviceResource) ImportState(
 		resp.Diagnostics.AddError(
 			"Device Not Found",
 			fmt.Sprintf(
-				"No device found with MAC %s on site %s. GetDeviceByMAC error: %v. ListDevice found %d device(s): %v",
-				mac,
+				"No device found matching %q (tried MAC and internal ID) on site %s. GetDeviceByMAC error: %v. ListDevice found %d device(s): %v",
+				importID,
 				site,
 				getErr,
 				deviceCount,

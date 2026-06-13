@@ -9,12 +9,17 @@
             "type": "go",
             "request": "launch",
             "mode": "test",
-            // this assumes your workspace is the root of the repo
-            "program": "${fileDirname}",
+            // the acceptance tests live in the unifi package, not the repo root
+            "program": "${workspaceFolder}/unifi",
             "env": {
                 "TF_ACC": "1",
             },
-            "args": [],
+            "args": [
+                "-test.v",
+                // these tests spin up a UniFi container, so override the default 10m go test timeout
+                "-test.timeout",
+                "30m",
+            ],
         },
         // You could pair this configuration with an exec configuration that runs Terraform as
         // a compound launch configuration:

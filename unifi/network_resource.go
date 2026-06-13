@@ -1500,18 +1500,58 @@ func (r *networkResource) networkToModel(
 		}
 		model.GatewayType = previousModel.GatewayType
 		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
-		model.IPv6ClientAddressAssignment = previousModel.IPv6ClientAddressAssignment
 		model.IPv6StaticSubnet = previousModel.IPv6StaticSubnet
-		model.IPv6RA = previousModel.IPv6RA
-		model.IPv6RAPriority = previousModel.IPv6RAPriority
-		model.IPv6RAPreferredLifetime = previousModel.IPv6RAPreferredLifetime
-		model.IPv6RAValidLifetime = previousModel.IPv6RAValidLifetime
 		model.IPv6PDInterface = previousModel.IPv6PDInterface
 		model.IPv6PDPrefixID = previousModel.IPv6PDPrefixID
-		model.IPv6PDStart = previousModel.IPv6PDStart
-		model.IPv6PDStop = previousModel.IPv6PDStop
-		model.IPv6PDAutoPrefixidEnabled = previousModel.IPv6PDAutoPrefixidEnabled
 		model.LteLan = previousModel.LteLan
+		// The IPv6 attributes below are Computed + UseStateForUnknown. On Create
+		// there is no prior state, so the plan carries them as unknown; copying
+		// the plan value verbatim would leave them unknown in the result and
+		// trip "invalid result object after apply". Resolve unknowns from the
+		// API value (vlan-only networks have no meaningful IPv6 config, so this
+		// is effectively the controller's zero value).
+		if previousModel.IPv6ClientAddressAssignment.IsUnknown() {
+			model.IPv6ClientAddressAssignment = types.StringPointerValue(
+				network.IPV6ClientAddressAssignment,
+			)
+		} else {
+			model.IPv6ClientAddressAssignment = previousModel.IPv6ClientAddressAssignment
+		}
+		if previousModel.IPv6RA.IsUnknown() {
+			model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
+		} else {
+			model.IPv6RA = previousModel.IPv6RA
+		}
+		if previousModel.IPv6RAPriority.IsUnknown() {
+			model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
+		} else {
+			model.IPv6RAPriority = previousModel.IPv6RAPriority
+		}
+		if previousModel.IPv6RAPreferredLifetime.IsUnknown() {
+			model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
+		} else {
+			model.IPv6RAPreferredLifetime = previousModel.IPv6RAPreferredLifetime
+		}
+		if previousModel.IPv6RAValidLifetime.IsUnknown() {
+			model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
+		} else {
+			model.IPv6RAValidLifetime = previousModel.IPv6RAValidLifetime
+		}
+		if previousModel.IPv6PDStart.IsUnknown() {
+			model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
+		} else {
+			model.IPv6PDStart = previousModel.IPv6PDStart
+		}
+		if previousModel.IPv6PDStop.IsUnknown() {
+			model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
+		} else {
+			model.IPv6PDStop = previousModel.IPv6PDStop
+		}
+		if previousModel.IPv6PDAutoPrefixidEnabled.IsUnknown() {
+			model.IPv6PDAutoPrefixidEnabled = types.BoolValue(network.IPV6PDAutoPrefixidEnabled)
+		} else {
+			model.IPv6PDAutoPrefixidEnabled = previousModel.IPv6PDAutoPrefixidEnabled
+		}
 		// domain_name uses UseStateForUnknown, so it may be unknown during Create.
 		// Resolve unknown to null since the API doesn't return it for vlan-only.
 		if previousModel.DomainName.IsUnknown() {

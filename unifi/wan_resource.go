@@ -955,6 +955,16 @@ func (r *wanResource) overlayConfig(
 	if !config.ProviderCapabilities.IsNull() {
 		state.ProviderCapabilities = plan.ProviderCapabilities
 	}
+	// setting_preference / ipv6_setting_preference are Computed: the controller
+	// may echo back "auto" in the create response even when the user asked for
+	// "manual". When the user explicitly set them, keep their value so the result
+	// stays consistent with the plan (mirrors applyPlanToState on the Update path).
+	if !config.SettingPreference.IsNull() {
+		state.SettingPreference = plan.SettingPreference
+	}
+	if !config.IPv6SettingPreference.IsNull() {
+		state.IPv6SettingPreference = plan.IPv6SettingPreference
+	}
 }
 
 func (r *wanResource) Read(
