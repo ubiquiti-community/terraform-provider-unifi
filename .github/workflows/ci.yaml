@@ -1,5 +1,5 @@
 # Terraform Provider testing workflow.
-name: Tests
+name: CI/CD
 
 # This GitHub action runs your tests for each pull request and push.
 # Optionally, you can turn it on using a schedule for regular testing.
@@ -25,7 +25,20 @@ permissions:
   id-token: write
 
 jobs:
-  # Ensure project builds before running testing matrix
+  lint:
+    name: GolangCI Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
   build:
     name: Build
     runs-on: ubuntu-latest

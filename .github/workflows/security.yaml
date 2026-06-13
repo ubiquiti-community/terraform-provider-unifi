@@ -1,26 +1,26 @@
-# For most projects, this workflow file will not need changing; you simply need
-# to commit it to your repository.
+name: Code Scanning
+
+# Unified code scanning for terraform-provider-unifi.
 #
-# You may wish to alter this file to override the set of languages analyzed,
-# or to provide custom queries or build logic.
+# Combines two analyses into one workflow:
+#   codeql - GitHub CodeQL advanced analysis (actions + go)
+#   gosec  - Go security scanner (gosec) with SARIF upload
 #
-# ******** NOTE ********
-# We have attempted to detect the languages in your repository. Please check
-# the `language` matrix defined below to confirm you have the correct set of
-# supported CodeQL languages.
-#
-name: "CodeQL Advanced"
+# Both jobs run on pushes/PRs to main and on their own weekly schedules.
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   schedule:
-    - cron: '23 20 * * 2'
+    # CodeQL weekly run — Tuesdays at 20:23 UTC
+    - cron: "23 20 * * 2"
+    # gosec weekly run — Sundays at 00:00 UTC
+    - cron: "0 0 * * 0"
 
 jobs:
-  analyze:
+  codeql:
     name: Analyze (${{ matrix.language }})
     # Runner size impacts CodeQL analysis time. To learn more, please see:
     #   - https://gh.io/recommended-hardware-resources-for-running-codeql
@@ -99,3 +99,22 @@ jobs:
       uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@9e6a9843d7a4a6e3e9a8539b02612c8a4aa3f889 # v2.27.1
+        with:
+          args: "-no-fail -fmt sarif -out results.sarif ./..."
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@cdefb33c0f6224e58673d9004f47f7cb3e328b89 # v4.31.10
+        with:
+          sarif_file: results.sarif
