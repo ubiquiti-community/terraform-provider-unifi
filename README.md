@@ -1,8 +1,8 @@
-![Acceptance Tests](https://github.com/ubiquiti-community/terraform-provider-unifi/workflows/Acceptance%20Tests/badge.svg?event=push)
-
 # Unifi Terraform Provider (terraform-provider-unifi)
 
-**Note** You can't (for obvious reasons) configure your network while connected to something that may disconnect (like the WiFi). Use a hard-wired connection to your controller to use this provider.
+[![Acceptance Tests](https://github.com/ubiquiti-community/terraform-provider-unifi/actions/workflows/acctest.yaml/badge.svg)](https://github.com/ubiquiti-community/terraform-provider-unifi/actions/workflows/acctest.yaml) [![codecov](https://codecov.io/github/ubiquiti-community/terraform-provider-unifi/graph/badge.svg?token=KVP7FS41IG)](https://codecov.io/github/ubiquiti-community/terraform-provider-unifi)
+
+> **Note**: You can't (for obvious reasons) configure your network while connected to something that may disconnect (like the WiFi). Use a hard-wired connection to your controller to use this provider.
 
 Functionality first needs to be added to the [go-unifi](https://github.com/ubiquiti-community/go-unifi) SDK.
 
