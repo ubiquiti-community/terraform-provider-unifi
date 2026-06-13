@@ -1,0 +1,39 @@
+# Codecov configuration.
+# Coverage is split into two flags/components so unit and acceptance test
+# results can be tracked independently. Unit tests run on every PR/push
+# (ci.yaml) while acceptance tests run on a schedule/release (acctest.yaml),
+# so carryforward keeps the most recent coverage for whichever flag did not
+# run in a given upload.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: unit
+      carryforward: true
+    - name: acceptance
+      carryforward: true
+
+component_management:
+  individual_components:
+    - component_id: unit
+      name: Unit Tests
+      flag_regexes:
+        - unit
+    - component_id: acceptance
+      name: Acceptance Tests
+      flag_regexes:
+        - acceptance
+
+comment:
+  layout: "header, diff, flags, components, files"

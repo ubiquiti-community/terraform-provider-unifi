@@ -88,8 +88,10 @@ jobs:
       uses: codecov/test-results-action@v1
       with:
         use_oidc: true
+        flags: unit
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
         use_oidc: true
+        flags: unit
