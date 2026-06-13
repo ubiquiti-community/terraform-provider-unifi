@@ -214,4 +214,15 @@ require (
 	tags.cncf.io/container-device-interface v1.1.0 // indirect
 )
 
-tool github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+// gotestsum dependencies
+require (
+	github.com/bitfield/gotestdox v0.2.2 // indirect
+	github.com/dnephin/pflag v1.0.7 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	gotest.tools/gotestsum v1.13.0 // indirect
+)
+
+tool (
+	github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+	gotest.tools/gotestsum
+)
