@@ -70,6 +70,10 @@ type powerSupervisorResourceModel struct {
 	PowerSources        types.List           `tfsdk:"power_sources"`
 }
 
+type powerSupervisorIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
 // powerSupervisorListConfigModel describes the list configuration model.
 type powerSupervisorListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
