@@ -569,7 +569,7 @@ func (r *dnsRecordFrameworkResource) List(
 	records, err := r.client.ListDNSRecord(ctx, site)
 	if err != nil {
 		var d diag.Diagnostics
-		d.AddError("Error Listing Dns Records", "Could not list DNS records: "+err.Error())
+		d.AddError("Error Listing DNS Records", "Could not list DNS records: "+err.Error())
 		stream.Results = list.ListResultsStreamDiagnostics(d)
 		return
 	}

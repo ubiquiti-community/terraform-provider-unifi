@@ -198,7 +198,7 @@ func (r *firewallGroupResource) Create(
 	// Set state
 	plan.ID = types.StringValue(apiFirewallGroup.ID)
 	plan.Site = types.StringValue(site)
-	r.setResourceData(ctx, apiFirewallGroup, &plan, site)
+	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, apiFirewallGroup, &plan, site)...)
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
@@ -237,7 +237,7 @@ func (r *firewallGroupResource) Read(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, firewallGroup, &state, site)
+	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, firewallGroup, &state, site)...)
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
@@ -317,7 +317,7 @@ func (r *firewallGroupResource) Update(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, apiFirewallGroup, &state, site)
+	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, apiFirewallGroup, &state, site)...)
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)

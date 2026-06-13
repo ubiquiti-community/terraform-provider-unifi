@@ -515,7 +515,7 @@ func (r *portProfileResource) Create(
 	// Set state
 	plan.ID = types.StringValue(apiPortProfile.ID)
 	plan.Site = types.StringValue(site)
-	r.setResourceData(ctx, apiPortProfile, &plan, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &plan, site)...)
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
@@ -554,7 +554,7 @@ func (r *portProfileResource) Read(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, portProfile, &state, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, portProfile, &state, site)...)
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
@@ -623,7 +623,7 @@ func (r *portProfileResource) Update(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, apiPortProfile, &state, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &state, site)...)
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)

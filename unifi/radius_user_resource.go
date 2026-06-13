@@ -601,7 +601,7 @@ func (r *radiusUserResource) List(
 	accounts, err := r.client.ListAccount(ctx, site)
 	if err != nil {
 		var d diag.Diagnostics
-		d.AddError("Error Listing Radius Users", "Could not list radius users: "+err.Error())
+		d.AddError("Error Listing RADIUS Users", "Could not list radius users: "+err.Error())
 		stream.Results = list.ListResultsStreamDiagnostics(d)
 		return
 	}
