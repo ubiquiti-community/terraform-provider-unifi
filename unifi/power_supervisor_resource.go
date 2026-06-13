@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -16,22 +18,24 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &powerSupervisorResource{}
-	_ resource.ResourceWithImportState = &powerSupervisorResource{}
-	_ resource.ResourceWithIdentity    = &powerSupervisorResource{}
+	_ resource.Resource                 = &powerSupervisorResource{}
+	_ resource.ResourceWithImportState  = &powerSupervisorResource{}
+	_ resource.ResourceWithIdentity     = &powerSupervisorResource{}
+	_ resource.ResourceWithUpgradeState = &powerSupervisorResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -55,15 +59,15 @@ type powerSupervisorResource struct {
 
 // powerSupervisorResourceModel describes the resource data model.
 type powerSupervisorResourceModel struct {
-	ID                  types.String       `tfsdk:"id"`
-	Site                types.String       `tfsdk:"site"`
-	DeviceMAC           hwtypes.MACAddress `tfsdk:"device_mac"`
-	Enabled             types.Bool         `tfsdk:"enabled"`
-	HeartbeatInterval   types.Int64        `tfsdk:"heartbeat_interval"`
-	SilenceThreshold    types.Int64        `tfsdk:"silence_threshold"`
-	PowerOffDuration    types.Int64        `tfsdk:"power_off_duration"`
-	ConsecutiveFailures types.Int64        `tfsdk:"consecutive_failures"`
-	PowerSources        types.List         `tfsdk:"power_sources"`
+	ID                  types.String         `tfsdk:"id"`
+	Site                types.String         `tfsdk:"site"`
+	DeviceMAC           hwtypes.MACAddress   `tfsdk:"device_mac"`
+	Enabled             types.Bool           `tfsdk:"enabled"`
+	HeartbeatInterval   timetypes.GoDuration `tfsdk:"heartbeat_interval"`
+	SilenceThreshold    timetypes.GoDuration `tfsdk:"silence_threshold"`
+	PowerOffDuration    timetypes.GoDuration `tfsdk:"power_off_duration"`
+	ConsecutiveFailures types.Int64          `tfsdk:"consecutive_failures"`
+	PowerSources        types.List           `tfsdk:"power_sources"`
 }
 
 type powerSupervisorIdentityModel struct {
@@ -121,6 +125,9 @@ func (r *powerSupervisorResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: heartbeat_interval/silence_threshold/power_off_duration changed
+		// from Int64 (seconds) to GoDuration strings. See UpgradeState.
+		Version: 1,
 		MarkdownDescription: "Manages a UniFi **Device Supervisor** (UniFi Network 10.2+): " +
 			"heartbeat monitoring of a device plus automatic power-cycling of its upstream " +
 			"PoE source after a silence threshold. The supervised device is referenced by " +
@@ -161,26 +168,30 @@ func (r *powerSupervisorResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 			},
-			"heartbeat_interval": schema.Int64Attribute{
-				MarkdownDescription: "How often (seconds) the controller probes the device. " +
-					"Defaults to `60`.",
-				Optional: true,
-				Computed: true,
-				Default:  int64default.StaticInt64(60),
+			"heartbeat_interval": schema.StringAttribute{
+				MarkdownDescription: "How often the controller probes the device, as a Go " +
+					"duration string (e.g. `60s`, `1m`). Defaults to `1m0s`.",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Default:    stringdefault.StaticString("1m0s"),
 			},
-			"silence_threshold": schema.Int64Attribute{
-				MarkdownDescription: "How long (seconds) the device may be silent before the " +
-					"controller power-cycles its upstream PoE source. Defaults to `900` (15 min).",
-				Optional: true,
-				Computed: true,
-				Default:  int64default.StaticInt64(900),
+			"silence_threshold": schema.StringAttribute{
+				MarkdownDescription: "How long the device may be silent before the controller " +
+					"power-cycles its upstream PoE source, as a Go duration string (e.g. `15m`). " +
+					"Defaults to `15m0s`.",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Default:    stringdefault.StaticString("15m0s"),
 			},
-			"power_off_duration": schema.Int64Attribute{
-				MarkdownDescription: "How long (seconds) the upstream PoE source stays off during " +
-					"a power-cycle. Defaults to `120` (2 min).",
-				Optional: true,
-				Computed: true,
-				Default:  int64default.StaticInt64(120),
+			"power_off_duration": schema.StringAttribute{
+				MarkdownDescription: "How long the upstream PoE source stays off during a " +
+					"power-cycle, as a Go duration string (e.g. `2m`). Defaults to `2m0s`.",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Default:    stringdefault.StaticString("2m0s"),
 			},
 			"consecutive_failures": schema.Int64Attribute{
 				MarkdownDescription: "Number of consecutive heartbeat failures observed by the " +
@@ -217,6 +228,47 @@ func (r *powerSupervisorResource) Schema(
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (heartbeat_interval/silence_threshold/
+// power_off_duration stored as integer seconds) to v1 (GoDuration strings).
+func (r *powerSupervisorResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "heartbeat_interval", time.Second)
+						util.SetDurationField(state, "silence_threshold", time.Second)
+						util.SetDurationField(state, "power_off_duration", time.Second)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Failed to upgrade power supervisor state",
+						err.Error(),
+					)
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -412,9 +464,9 @@ func (r *powerSupervisorResource) modelToPowerSupervisor(
 		ClientMAC: model.DeviceMAC.ValueString(),
 		Enabled:   model.Enabled.ValueBool(),
 		Settings: unifi.PowerSupervisorSettings{
-			HeartbeatInterval: int(model.HeartbeatInterval.ValueInt64()),
-			SilenceThreshold:  int(model.SilenceThreshold.ValueInt64()),
-			PowerOffDuration:  int(model.PowerOffDuration.ValueInt64()),
+			HeartbeatInterval: int(util.DurationUnits(model.HeartbeatInterval, time.Second)),
+			SilenceThreshold:  int(util.DurationUnits(model.SilenceThreshold, time.Second)),
+			PowerOffDuration:  int(util.DurationUnits(model.PowerOffDuration, time.Second)),
 		},
 		PowerSources: []unifi.PowerSupervisorSource{},
 	}
@@ -432,9 +484,18 @@ func (r *powerSupervisorResource) powerSupervisorToModel(
 	model.Site = types.StringValue(site)
 	model.DeviceMAC = hwtypes.NewMACAddressValue(supervisor.ClientMAC)
 	model.Enabled = types.BoolValue(supervisor.Enabled)
-	model.HeartbeatInterval = types.Int64Value(int64(supervisor.Settings.HeartbeatInterval))
-	model.SilenceThreshold = types.Int64Value(int64(supervisor.Settings.SilenceThreshold))
-	model.PowerOffDuration = types.Int64Value(int64(supervisor.Settings.PowerOffDuration))
+	model.HeartbeatInterval = util.DurationValue(
+		int64(supervisor.Settings.HeartbeatInterval),
+		time.Second,
+	)
+	model.SilenceThreshold = util.DurationValue(
+		int64(supervisor.Settings.SilenceThreshold),
+		time.Second,
+	)
+	model.PowerOffDuration = util.DurationValue(
+		int64(supervisor.Settings.PowerOffDuration),
+		time.Second,
+	)
 	model.ConsecutiveFailures = types.Int64Value(int64(supervisor.ConsecutiveFailures))
 
 	elements := make([]attr.Value, 0, len(supervisor.PowerSources))

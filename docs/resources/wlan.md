@@ -155,7 +155,7 @@ Optional:
 Required:
 
 - `day_of_week` (String) Day of week for the block.
-- `duration` (Number) Length of the block in minutes.
+- `duration` (String) Length of the block, as a Go duration string (e.g. `30m`, `2h`).
 - `start_hour` (Number) Start hour for the block (0-23).
 
 Optional:

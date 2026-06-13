@@ -112,9 +112,9 @@ resource "unifi_network" "third_party" {
 - `ipv6_pd_start` (String) The start of the IPv6 Prefix Delegation range (e.g. `::2`). Required together with `ipv6_pd_stop` when `ipv6_interface_type` is `pd`, otherwise the controller rejects the network with `api.err.InvalidIpv6Addr`.
 - `ipv6_pd_stop` (String) The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.
 - `ipv6_ra` (Boolean) Specifies whether IPv6 Router Advertisement (RA) is enabled.
-- `ipv6_ra_preferred_lifetime` (Number) The IPv6 Router Advertisement preferred lifetime in seconds (0-31536000).
+- `ipv6_ra_preferred_lifetime` (String) The IPv6 Router Advertisement preferred lifetime, as a Go duration string (e.g. `14400s`, `4h`).
 - `ipv6_ra_priority` (String) The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.
-- `ipv6_ra_valid_lifetime` (Number) The IPv6 Router Advertisement valid lifetime in seconds (0-31536000).
+- `ipv6_ra_valid_lifetime` (String) The IPv6 Router Advertisement valid lifetime, as a Go duration string (e.g. `86400s`, `24h`).
 - `ipv6_static_subnet` (String) The IPv6 static subnet of the network. Only used when `ipv6_interface_type` is `static`.
 - `lte_lan` (Boolean) Whether this network/VLAN stays active when the gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to the controller's `lte_lan_enabled` flag and only matters when a UniFi LTE failover device is in use; otherwise it is cosmetic. Defaults to `true` (network stays available during LTE failover); set to `false` to disable it while on the LTE backup link. The controller may set this automatically, which is why existing networks can show differing values.
 - `multicast_dns` (Boolean) Specifies whether mDNS is enabled. This is read back from the controller rather than defaulted: some controllers (notably UniFi OS gateways) ignore `mdns_enabled` at create/update time and always store `false`, so forcing a `true` default produced a "provider produced inconsistent result after apply" error.
@@ -159,7 +159,7 @@ Optional:
 - `dns_servers` (List of String) List of DNS server addresses for DHCP clients.
 - `enabled` (Boolean) Specifies whether DHCP server is enabled.
 - `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
-- `leasetime` (Number) Specifies the lease time for DHCP addresses in seconds.
+- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string (e.g. `24h`, `86400s`). Defaults to `24h0m0s`.
 - `ntp_enabled` (Boolean) Specifies whether DHCP NTP is enabled.
 - `start` (String) The IPv4 address where the DHCP range starts.
 - `stop` (String) The IPv4 address where the DHCP range stops.

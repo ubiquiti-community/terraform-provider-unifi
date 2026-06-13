@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -20,13 +22,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &dnsRecordFrameworkResource{}
-	_ resource.ResourceWithImportState = &dnsRecordFrameworkResource{}
-	_ resource.ResourceWithIdentity    = &dnsRecordFrameworkResource{}
+	_ resource.Resource                 = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithImportState  = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithIdentity     = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithUpgradeState = &dnsRecordFrameworkResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -50,16 +54,16 @@ type dnsRecordFrameworkResource struct {
 
 // dnsRecordFrameworkResourceModel describes the resource data model.
 type dnsRecordFrameworkResourceModel struct {
-	ID         types.String `tfsdk:"id"`
-	Site       types.String `tfsdk:"site"`
-	Name       types.String `tfsdk:"name"`
-	Enabled    types.Bool   `tfsdk:"enabled"`
-	Port       types.Int64  `tfsdk:"port"`
-	Priority   types.Int64  `tfsdk:"priority"`
-	RecordType types.String `tfsdk:"record_type"`
-	TTL        types.Int64  `tfsdk:"ttl"`
-	Value      types.String `tfsdk:"value"`
-	Weight     types.Int64  `tfsdk:"weight"`
+	ID         types.String         `tfsdk:"id"`
+	Site       types.String         `tfsdk:"site"`
+	Name       types.String         `tfsdk:"name"`
+	Enabled    types.Bool           `tfsdk:"enabled"`
+	Port       types.Int64          `tfsdk:"port"`
+	Priority   types.Int64          `tfsdk:"priority"`
+	RecordType types.String         `tfsdk:"record_type"`
+	TTL        timetypes.GoDuration `tfsdk:"ttl"`
+	Value      types.String         `tfsdk:"value"`
+	Weight     types.Int64          `tfsdk:"weight"`
 }
 
 // dnsRecordFrameworkListConfigModel describes the list configuration model.
@@ -103,6 +107,8 @@ func (r *dnsRecordFrameworkResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: ttl changed from Int64 (seconds) to a GoDuration string.
+		Version:             1,
 		MarkdownDescription: "Manages DNS record settings for different providers.",
 
 		Attributes: map[string]schema.Attribute{
@@ -156,12 +162,11 @@ func (r *dnsRecordFrameworkResource) Schema(
 					stringvalidator.OneOf("A", "AAAA", "CNAME", "MX", "TXT", "SRV", "PTR"),
 				},
 			},
-			"ttl": schema.Int64Attribute{
-				MarkdownDescription: "The TTL of the DNS record.",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.AtMost(65535),
-				},
+			"ttl": schema.StringAttribute{
+				MarkdownDescription: "The TTL of the DNS record, as a Go duration string " +
+					"(e.g. `1h`, `300s`).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
 			},
 			"value": schema.StringAttribute{
 				MarkdownDescription: "The value of the DNS record.",
@@ -173,6 +178,42 @@ func (r *dnsRecordFrameworkResource) Schema(
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (ttl stored as integer seconds) to v1
+// (a GoDuration string).
+func (r *dnsRecordFrameworkResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "ttl", time.Second)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade DNS record state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -448,7 +489,7 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(
 	}
 
 	if !model.TTL.IsNull() {
-		dnsRecord.Ttl = model.TTL.ValueInt64()
+		dnsRecord.Ttl = util.DurationUnits(model.TTL, time.Second)
 	}
 
 	if !model.Weight.IsNull() {
@@ -491,9 +532,9 @@ func (r *dnsRecordFrameworkResource) dnsRecordToModel(
 	}
 
 	if dnsRecord.Ttl != 0 {
-		model.TTL = types.Int64Value(dnsRecord.Ttl)
+		model.TTL = util.DurationValue(dnsRecord.Ttl, time.Second)
 	} else {
-		model.TTL = types.Int64Null()
+		model.TTL = timetypes.NewGoDurationNull()
 	}
 
 	if dnsRecord.Weight != 0 {

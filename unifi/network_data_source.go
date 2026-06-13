@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -12,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -60,15 +63,15 @@ type networkDataSourceModel struct {
 	NetworkGroup types.String `tfsdk:"network_group"`
 
 	// IPv6 detail fields (DS-only)
-	IPv6StaticSubnet        types.String `tfsdk:"ipv6_static_subnet"`
-	IPv6PDInterface         types.String `tfsdk:"ipv6_pd_interface"`
-	IPv6PDPrefixID          types.String `tfsdk:"ipv6_pd_prefixid"`
-	IPv6PDStart             types.String `tfsdk:"ipv6_pd_start"`
-	IPv6PDStop              types.String `tfsdk:"ipv6_pd_stop"`
-	IPv6RA                  types.Bool   `tfsdk:"ipv6_ra"`
-	IPv6RAPreferredLifetime types.Int64  `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAPriority          types.String `tfsdk:"ipv6_ra_priority"`
-	IPv6RAValidLifetime     types.Int64  `tfsdk:"ipv6_ra_valid_lifetime"`
+	IPv6StaticSubnet        types.String         `tfsdk:"ipv6_static_subnet"`
+	IPv6PDInterface         types.String         `tfsdk:"ipv6_pd_interface"`
+	IPv6PDPrefixID          types.String         `tfsdk:"ipv6_pd_prefixid"`
+	IPv6PDStart             types.String         `tfsdk:"ipv6_pd_start"`
+	IPv6PDStop              types.String         `tfsdk:"ipv6_pd_stop"`
+	IPv6RA                  types.Bool           `tfsdk:"ipv6_ra"`
+	IPv6RAPreferredLifetime timetypes.GoDuration `tfsdk:"ipv6_ra_preferred_lifetime"`
+	IPv6RAPriority          types.String         `tfsdk:"ipv6_ra_priority"`
+	IPv6RAValidLifetime     timetypes.GoDuration `tfsdk:"ipv6_ra_valid_lifetime"`
 
 	// DHCPv6 server (DS-only)
 	DhcpV6Server types.Object `tfsdk:"dhcp_v6_server"`
@@ -289,8 +292,9 @@ func (d *networkDataSource) Schema(
 						MarkdownDescription: "Specifies whether DHCP DNS is enabled.",
 						Computed:            true,
 					},
-					"leasetime": schema.Int64Attribute{
-						MarkdownDescription: "Specifies the lease time for DHCP addresses in seconds.",
+					"leasetime": schema.StringAttribute{
+						MarkdownDescription: "Specifies the DHCP lease time, as a Go duration string.",
+						CustomType:          timetypes.GoDurationType{},
 						Computed:            true,
 					},
 					"wins": schema.SingleNestedAttribute{
@@ -375,16 +379,18 @@ func (d *networkDataSource) Schema(
 				MarkdownDescription: "Specifies whether to enable IPv6 router advertisements.",
 				Computed:            true,
 			},
-			"ipv6_ra_preferred_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "Preferred lifetime for IPv6 RA in which the address can be used.",
+			"ipv6_ra_preferred_lifetime": schema.StringAttribute{
+				MarkdownDescription: "Preferred lifetime for IPv6 RA, as a Go duration string.",
+				CustomType:          timetypes.GoDurationType{},
 				Computed:            true,
 			},
 			"ipv6_ra_priority": schema.StringAttribute{
 				MarkdownDescription: "IPv6 router advertisement priority. One of `high`, `medium`, or `low`.",
 				Computed:            true,
 			},
-			"ipv6_ra_valid_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "Total lifetime in which the IPv6 RA address can be used.",
+			"ipv6_ra_valid_lifetime": schema.StringAttribute{
+				MarkdownDescription: "Total lifetime for the IPv6 RA address, as a Go duration string.",
+				CustomType:          timetypes.GoDurationType{},
 				Computed:            true,
 			},
 			"dhcp_v6_server": schema.SingleNestedAttribute{
@@ -692,7 +698,7 @@ func (d *networkDataSource) setDataSourceData(
 			NtpEnabled:        types.BoolValue(network.DHCPDNtpEnabled),
 			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
 			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
-			Leasetime:         types.Int64PointerValue(network.DHCPDLeaseTime),
+			Leasetime:         util.DurationPtrValue(network.DHCPDLeaseTime, time.Second),
 			Wins:              winsObj,
 			WpadUrl:           strPtrToType(network.DHCPDWPAdUrl),
 			TftpServer:        strPtrToType(network.DHCPDTFTPServer),
@@ -742,9 +748,12 @@ func (d *networkDataSource) setDataSourceData(
 	model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
 	model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
 	model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
-	model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
+	model.IPv6RAPreferredLifetime = util.DurationPtrValue(
+		network.IPV6RaPreferredLifetime,
+		time.Second,
+	)
 	model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
-	model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
+	model.IPv6RAValidLifetime = util.DurationPtrValue(network.IPV6RaValidLifetime, time.Second)
 
 	// dhcp_v6_server
 	{

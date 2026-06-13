@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -22,13 +24,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 var (
-	_ resource.Resource                = &radiusProfileResource{}
-	_ resource.ResourceWithImportState = &radiusProfileResource{}
-	_ resource.ResourceWithIdentity    = &radiusProfileResource{}
+	_ resource.Resource                 = &radiusProfileResource{}
+	_ resource.ResourceWithImportState  = &radiusProfileResource{}
+	_ resource.ResourceWithIdentity     = &radiusProfileResource{}
+	_ resource.ResourceWithUpgradeState = &radiusProfileResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -56,18 +60,18 @@ type radiusServerModel struct {
 }
 
 type radiusProfileResourceModel struct {
-	ID                    types.String        `tfsdk:"id"`
-	Site                  types.String        `tfsdk:"site"`
-	Name                  types.String        `tfsdk:"name"`
-	AccountingEnabled     types.Bool          `tfsdk:"accounting_enabled"`
-	InterimUpdateEnabled  types.Bool          `tfsdk:"interim_update_enabled"`
-	InterimUpdateInterval types.Int64         `tfsdk:"interim_update_interval"`
-	UseUSGAcctServer      types.Bool          `tfsdk:"use_usg_acct_server"`
-	UseUSGAuthServer      types.Bool          `tfsdk:"use_usg_auth_server"`
-	VlanEnabled           types.Bool          `tfsdk:"vlan_enabled"`
-	VlanWlanMode          types.String        `tfsdk:"vlan_wlan_mode"`
-	AuthServer            []radiusServerModel `tfsdk:"auth_server"`
-	AcctServer            []radiusServerModel `tfsdk:"acct_server"`
+	ID                    types.String         `tfsdk:"id"`
+	Site                  types.String         `tfsdk:"site"`
+	Name                  types.String         `tfsdk:"name"`
+	AccountingEnabled     types.Bool           `tfsdk:"accounting_enabled"`
+	InterimUpdateEnabled  types.Bool           `tfsdk:"interim_update_enabled"`
+	InterimUpdateInterval timetypes.GoDuration `tfsdk:"interim_update_interval"`
+	UseUSGAcctServer      types.Bool           `tfsdk:"use_usg_acct_server"`
+	UseUSGAuthServer      types.Bool           `tfsdk:"use_usg_auth_server"`
+	VlanEnabled           types.Bool           `tfsdk:"vlan_enabled"`
+	VlanWlanMode          types.String         `tfsdk:"vlan_wlan_mode"`
+	AuthServer            []radiusServerModel  `tfsdk:"auth_server"`
+	AcctServer            []radiusServerModel  `tfsdk:"acct_server"`
 }
 
 // radiusProfileListConfigModel describes the list configuration model.
@@ -111,6 +115,8 @@ func (r *radiusProfileResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: interim_update_interval changed from Int64 (seconds) to GoDuration.
+		Version:             1,
 		MarkdownDescription: "Manages RADIUS profiles.",
 
 		Attributes: map[string]schema.Attribute{
@@ -146,11 +152,13 @@ func (r *radiusProfileResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
-			"interim_update_interval": schema.Int64Attribute{
-				MarkdownDescription: "Specifies interim_update interval.",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(3600),
+			"interim_update_interval": schema.StringAttribute{
+				MarkdownDescription: "Specifies the RADIUS interim update interval, as a Go " +
+					"duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s`.",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Default:    stringdefault.StaticString("1h0m0s"),
 			},
 			"use_usg_acct_server": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether to use usg as a RADIUS accounting server.",
@@ -236,6 +244,42 @@ func (r *radiusProfileResource) Schema(
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (interim_update_interval stored as integer
+// seconds) to v1 (a GoDuration string).
+func (r *radiusProfileResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "interim_update_interval", time.Second)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade RADIUS profile state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -480,7 +524,7 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 		Name:                  model.Name.ValueString(),
 		AccountingEnabled:     model.AccountingEnabled.ValueBool(),
 		InterimUpdateEnabled:  model.InterimUpdateEnabled.ValueBool(),
-		InterimUpdateInterval: model.InterimUpdateInterval.ValueInt64Pointer(),
+		InterimUpdateInterval: util.DurationUnitsPtr(model.InterimUpdateInterval, time.Second),
 		UseUsgAcctServer:      model.UseUSGAcctServer.ValueBool(),
 		UseUsgAuthServer:      model.UseUSGAuthServer.ValueBool(),
 		VLANEnabled:           model.VlanEnabled.ValueBool(),
@@ -523,7 +567,10 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	model.Name = types.StringValue(radiusProfile.Name)
 	model.AccountingEnabled = types.BoolValue(radiusProfile.AccountingEnabled)
 	model.InterimUpdateEnabled = types.BoolValue(radiusProfile.InterimUpdateEnabled)
-	model.InterimUpdateInterval = types.Int64PointerValue(radiusProfile.InterimUpdateInterval)
+	model.InterimUpdateInterval = util.DurationPtrValue(
+		radiusProfile.InterimUpdateInterval,
+		time.Second,
+	)
 	model.UseUSGAcctServer = types.BoolValue(radiusProfile.UseUsgAcctServer)
 	model.UseUSGAuthServer = types.BoolValue(radiusProfile.UseUsgAuthServer)
 	model.VlanEnabled = types.BoolValue(radiusProfile.VLANEnabled)

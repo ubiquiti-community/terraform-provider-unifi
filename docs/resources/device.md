@@ -75,7 +75,7 @@ resource "unifi_device" "us_24_poe" {
 - `jumboframe_enabled` (Boolean) Enable jumbo frames.
 - `lcm_brightness` (Number) LCM brightness (1-100).
 - `lcm_brightness_override` (Boolean) Override LCM brightness.
-- `lcm_idle_timeout` (Number) LCM idle timeout in seconds (10-3600).
+- `lcm_idle_timeout` (String) LCM idle timeout, as a Go duration string (e.g. `10m`, `600s`).
 - `lcm_idle_timeout_override` (Boolean) Override LCM idle timeout.
 - `lcm_night_mode_begins` (String) LCM night mode begin time (HH:MM format).
 - `lcm_night_mode_ends` (String) LCM night mode end time (HH:MM format).
@@ -148,7 +148,7 @@ Optional:
 - `aggregate_members` (List of Number) Port indices that make up this link-aggregation (LAG) group. Only takes effect when `op_mode` is `aggregate` on this port.
 - `autoneg` (Boolean) Enable auto-negotiation for port speed.
 - `dot1x_ctrl` (String) 802.1X control mode.
-- `dot1x_idle_timeout` (Number) 802.1X idle timeout in seconds.
+- `dot1x_idle_timeout` (String) 802.1X idle timeout, as a Go duration string (e.g. `5m`, `300s`).
 - `egress_rate_limit_kbps` (Number) Egress rate limit in kbps.
 - `egress_rate_limit_kbps_enabled` (Boolean) Enable egress rate limiting.
 - `excluded_networkconf_ids` (List of String) List of network IDs to exclude from this port.
