@@ -3,7 +3,7 @@ package unifi
 import (
 	"context"
 	"fmt"
-	"net"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -470,7 +470,10 @@ func (v *staticRouteIPVersionValidator) ValidateResource(
 	req resource.ValidateConfigRequest,
 	resp *resource.ValidateConfigResponse,
 ) {
-	var network, nextHop types.String
+	// next_hop uses the iptypes.IPAddress custom type, so it must be read into a
+	// matching value — reading it into types.String fails config conversion.
+	var network types.String
+	var nextHop iptypes.IPAddress
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("network"), &network)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("next_hop"), &nextHop)...)
 	if resp.Diagnostics.HasError() {
@@ -482,30 +485,52 @@ func (v *staticRouteIPVersionValidator) ValidateResource(
 		return
 	}
 
-	if err := validateIPVersionMatch(network.ValueString(), nextHop.ValueString()); err != nil {
+	// Convert next_hop via the custom type's built-in netip.Addr conversion
+	// rather than re-parsing the raw string.
+	hopAddr, diags := nextHop.ValueIPAddress()
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// network is a CIDR string (already shape-validated by CIDRValidator); parse
+	// it to a netip.Prefix so both sides are compared as netip values.
+	prefix, err := netip.ParsePrefix(network.ValueString())
+	if err != nil {
+		return // malformed CIDR is already reported by the network attribute validator
+	}
+
+	if !ipVersionsMatch(prefix, hopAddr) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("next_hop"),
 			"IP Version Mismatch",
-			err.Error(),
+			fmt.Sprintf(
+				"network %q and next_hop %q must use the same IP version (both IPv4 or both IPv6)",
+				network.ValueString(),
+				hopAddr.String(),
+			),
 		)
 	}
 }
 
+// ipVersionsMatch reports whether a CIDR prefix and an address use the same IP
+// family. Unmap collapses IPv4-mapped IPv6 addresses (::ffff:a.b.c.d) to IPv4 so
+// they compare as the v4 family.
+func ipVersionsMatch(prefix netip.Prefix, hop netip.Addr) bool {
+	return prefix.Addr().Unmap().Is4() == hop.Unmap().Is4()
+}
+
 // validateIPVersionMatch returns an error if network (CIDR) and nextHop (IP) use different IP versions.
 func validateIPVersionMatch(network, nextHop string) error {
-	_, ipNet, _ := net.ParseCIDR(network)
-	if ipNet == nil {
-		return nil // already caught by the field validator
-	}
-	hop := net.ParseIP(nextHop)
-	if hop == nil {
-		return nil // already caught by the field validator
+	// Invalid network/next_hop are already reported by their field validators;
+	// an invalid (zero) value here just means "nothing to compare".
+	prefix, _ := netip.ParsePrefix(network)
+	hop, _ := netip.ParseAddr(nextHop)
+	if !prefix.IsValid() || !hop.IsValid() {
+		return nil
 	}
 
-	networkIsIPv4 := ipNet.IP.To4() != nil
-	hopIsIPv4 := hop.To4() != nil
-
-	if networkIsIPv4 != hopIsIPv4 {
+	if !ipVersionsMatch(prefix, hop) {
 		return fmt.Errorf(
 			"network %q and next_hop %q must use the same IP version",
 			network,
