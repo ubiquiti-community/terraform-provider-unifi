@@ -157,7 +157,11 @@ func (d *dnsRecordDataSource) Read(
 	data.Name = types.StringValue(dnsRecord.Key)
 	data.Type = types.StringValue(dnsRecord.RecordType)
 	data.Value = types.StringValue(dnsRecord.Value)
-	data.TTL = util.DurationValue(dnsRecord.Ttl, time.Second)
+	if dnsRecord.Ttl != 0 {
+		data.TTL = util.DurationValue(dnsRecord.Ttl, time.Second)
+	} else {
+		data.TTL = timetypes.NewGoDurationNull()
+	}
 	data.Enabled = types.BoolValue(dnsRecord.Enabled)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

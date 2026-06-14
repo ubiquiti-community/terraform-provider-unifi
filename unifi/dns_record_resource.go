@@ -480,25 +480,25 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(
 		Value: model.Value.ValueString(),
 	}
 
-	if !model.Enabled.IsNull() {
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
 		dnsRecord.Enabled = model.Enabled.ValueBool()
 	}
 
 	dnsRecord.Port = model.Port.ValueInt64Pointer()
 
-	if !model.Priority.IsNull() {
+	if !model.Priority.IsNull() && !model.Priority.IsUnknown() {
 		dnsRecord.Priority = model.Priority.ValueInt64()
 	}
 
-	if !model.RecordType.IsNull() {
+	if !model.RecordType.IsNull() && !model.RecordType.IsUnknown() {
 		dnsRecord.RecordType = model.RecordType.ValueString()
 	}
 
-	if !model.TTL.IsNull() {
+	if !model.TTL.IsNull() && !model.TTL.IsUnknown() {
 		dnsRecord.Ttl = util.DurationUnits(model.TTL, time.Second)
 	}
 
-	if !model.Weight.IsNull() {
+	if !model.Weight.IsNull() && !model.Weight.IsUnknown() {
 		dnsRecord.Weight = model.Weight.ValueInt64()
 	}
 

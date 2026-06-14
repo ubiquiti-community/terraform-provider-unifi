@@ -125,7 +125,8 @@ func TestUpgradeDurationRawState(t *testing.T) {
 		t.Fatal("stale_field should have been dropped")
 	}
 
-	// sanity: the produced JSON should be valid and have string durations
-	out, _ := json.Marshal(map[string]any{"ok": true})
-	_ = out
+	// sanity: the prior raw state we upgraded from is itself valid JSON.
+	if !json.Valid(prior) {
+		t.Fatal("prior state is not valid JSON")
+	}
 }

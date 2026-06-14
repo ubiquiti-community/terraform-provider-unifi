@@ -171,6 +171,9 @@ func (r *powerSupervisorResource) Schema(
 				Optional:   true,
 				Computed:   true,
 				Default:    stringdefault.StaticString("1m0s"),
+				Validators: []validator.String{
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"silence_threshold": schema.StringAttribute{
 				MarkdownDescription: "How long the device may be silent before the controller " +
@@ -180,6 +183,9 @@ func (r *powerSupervisorResource) Schema(
 				Optional:   true,
 				Computed:   true,
 				Default:    stringdefault.StaticString("15m0s"),
+				Validators: []validator.String{
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"power_off_duration": schema.StringAttribute{
 				MarkdownDescription: "How long the upstream PoE source stays off during a " +
@@ -188,6 +194,9 @@ func (r *powerSupervisorResource) Schema(
 				Optional:   true,
 				Computed:   true,
 				Default:    stringdefault.StaticString("2m0s"),
+				Validators: []validator.String{
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"consecutive_failures": schema.Int64Attribute{
 				MarkdownDescription: "Number of consecutive heartbeat failures observed by the " +

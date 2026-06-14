@@ -33,6 +33,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util/retry"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -506,6 +507,10 @@ func (r *deviceResource) Schema(
 				CustomType:  timetypes.GoDurationType{},
 				Optional:    true,
 				Computed:    true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(10*time.Second, 3600*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"lcm_idle_timeout_override": schema.BoolAttribute{
 				Description: "Override LCM idle timeout.",
@@ -752,6 +757,10 @@ func (r *deviceResource) Schema(
 							Description: "802.1X idle timeout, as a Go duration string (e.g. `5m`, `300s`).",
 							CustomType:  timetypes.GoDurationType{},
 							Optional:    true,
+							Validators: []validator.String{
+								validators.GoDurationBetween(0, 65535*time.Second),
+								validators.GoDurationMultipleOf(time.Second),
+							},
 						},
 						"egress_rate_limit_kbps": schema.Int64Attribute{
 							Description: "Egress rate limit in kbps.",

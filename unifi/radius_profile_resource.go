@@ -159,6 +159,9 @@ func (r *radiusProfileResource) Schema(
 				Optional:   true,
 				Computed:   true,
 				Default:    stringdefault.StaticString("1h0m0s"),
+				Validators: []validator.String{
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"use_usg_acct_server": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether to use usg as a RADIUS accounting server.",

@@ -25,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -190,6 +191,10 @@ func (r *portProfileResource) Schema(
 				Optional:   true,
 				Computed:   true,
 				Default:    stringdefault.StaticString("5m0s"),
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 65535*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"egress_rate_limit_kbps": schema.Int64Attribute{
 				Description: "The egress rate limit, in kpbs, for the port profile. Can be between `64` and `9999999`.",

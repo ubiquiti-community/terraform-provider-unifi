@@ -1637,7 +1637,7 @@ func (r *settingResource) usgModelToSetting(
 	if !model.H323Module.IsNull() {
 		setting.H323Module = model.H323Module.ValueBool()
 	}
-	if !model.ICMPTimeout.IsNull() {
+	if !model.ICMPTimeout.IsNull() && !model.ICMPTimeout.IsUnknown() {
 		setting.ICMPTimeout = util.DurationUnits(model.ICMPTimeout, time.Second)
 	}
 	if !model.MssClamp.IsNull() {
@@ -1652,7 +1652,7 @@ func (r *settingResource) usgModelToSetting(
 	if !model.OffloadSch.IsNull() {
 		setting.OffloadSch = model.OffloadSch.ValueBool()
 	}
-	if !model.OtherTimeout.IsNull() {
+	if !model.OtherTimeout.IsNull() && !model.OtherTimeout.IsUnknown() {
 		setting.OtherTimeout = util.DurationUnits(model.OtherTimeout, time.Second)
 	}
 	if !model.PptpModule.IsNull() {
@@ -1670,28 +1670,28 @@ func (r *settingResource) usgModelToSetting(
 	if !model.SynCookies.IsNull() {
 		setting.SynCookies = model.SynCookies.ValueBool()
 	}
-	if !model.TCPCloseTimeout.IsNull() {
+	if !model.TCPCloseTimeout.IsNull() && !model.TCPCloseTimeout.IsUnknown() {
 		setting.TCPCloseTimeout = util.DurationUnits(model.TCPCloseTimeout, time.Second)
 	}
-	if !model.TCPCloseWaitTimeout.IsNull() {
+	if !model.TCPCloseWaitTimeout.IsNull() && !model.TCPCloseWaitTimeout.IsUnknown() {
 		setting.TCPCloseWaitTimeout = util.DurationUnits(model.TCPCloseWaitTimeout, time.Second)
 	}
-	if !model.TCPEstablishedTimeout.IsNull() {
+	if !model.TCPEstablishedTimeout.IsNull() && !model.TCPEstablishedTimeout.IsUnknown() {
 		setting.TCPEstablishedTimeout = util.DurationUnits(model.TCPEstablishedTimeout, time.Second)
 	}
-	if !model.TCPFinWaitTimeout.IsNull() {
+	if !model.TCPFinWaitTimeout.IsNull() && !model.TCPFinWaitTimeout.IsUnknown() {
 		setting.TCPFinWaitTimeout = util.DurationUnits(model.TCPFinWaitTimeout, time.Second)
 	}
-	if !model.TCPLastAckTimeout.IsNull() {
+	if !model.TCPLastAckTimeout.IsNull() && !model.TCPLastAckTimeout.IsUnknown() {
 		setting.TCPLastAckTimeout = util.DurationUnits(model.TCPLastAckTimeout, time.Second)
 	}
-	if !model.TCPSynRecvTimeout.IsNull() {
+	if !model.TCPSynRecvTimeout.IsNull() && !model.TCPSynRecvTimeout.IsUnknown() {
 		setting.TCPSynRecvTimeout = util.DurationUnits(model.TCPSynRecvTimeout, time.Second)
 	}
-	if !model.TCPSynSentTimeout.IsNull() {
+	if !model.TCPSynSentTimeout.IsNull() && !model.TCPSynSentTimeout.IsUnknown() {
 		setting.TCPSynSentTimeout = util.DurationUnits(model.TCPSynSentTimeout, time.Second)
 	}
-	if !model.TCPTimeWaitTimeout.IsNull() {
+	if !model.TCPTimeWaitTimeout.IsNull() && !model.TCPTimeWaitTimeout.IsUnknown() {
 		setting.TCPTimeWaitTimeout = util.DurationUnits(model.TCPTimeWaitTimeout, time.Second)
 	}
 	if !model.TFTPModule.IsNull() {
@@ -1700,10 +1700,10 @@ func (r *settingResource) usgModelToSetting(
 	if !model.TimeoutSettingPreference.IsNull() {
 		setting.TimeoutSettingPreference = model.TimeoutSettingPreference.ValueString()
 	}
-	if !model.UDPOtherTimeout.IsNull() {
+	if !model.UDPOtherTimeout.IsNull() && !model.UDPOtherTimeout.IsUnknown() {
 		setting.UDPOtherTimeout = util.DurationUnits(model.UDPOtherTimeout, time.Second)
 	}
-	if !model.UDPStreamTimeout.IsNull() {
+	if !model.UDPStreamTimeout.IsNull() && !model.UDPStreamTimeout.IsUnknown() {
 		setting.UDPStreamTimeout = util.DurationUnits(model.UDPStreamTimeout, time.Second)
 	}
 	if !model.UnbindWANMonitors.IsNull() {
