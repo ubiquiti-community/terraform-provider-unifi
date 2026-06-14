@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -20,8 +22,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -37,10 +37,11 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &networkResource{}
-	_ resource.ResourceWithImportState = &networkResource{}
-	_ resource.ResourceWithIdentity    = &networkResource{}
-	_ resource.ResourceWithModifyPlan  = &networkResource{}
+	_ resource.Resource                 = &networkResource{}
+	_ resource.ResourceWithImportState  = &networkResource{}
+	_ resource.ResourceWithIdentity     = &networkResource{}
+	_ resource.ResourceWithModifyPlan   = &networkResource{}
+	_ resource.ResourceWithUpgradeState = &networkResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -108,21 +109,21 @@ func (m winsModel) AttributeTypes() map[string]attr.Type {
 
 // dhcpServerModel describes the DHCP server configuration.
 type dhcpServerModel struct {
-	Boot              types.Object `tfsdk:"boot"`
-	Enabled           types.Bool   `tfsdk:"enabled"`
-	Start             types.String `tfsdk:"start"`
-	Stop              types.String `tfsdk:"stop"`
-	GatewayEnabled    types.Bool   `tfsdk:"gateway_enabled"`
-	ConflictChecking  types.Bool   `tfsdk:"conflict_checking"`
-	NtpEnabled        types.Bool   `tfsdk:"ntp_enabled"`
-	TimeOffsetEnabled types.Bool   `tfsdk:"time_offset_enabled"`
-	DnsEnabled        types.Bool   `tfsdk:"dns_enabled"`
-	Leasetime         types.Int64  `tfsdk:"leasetime"`
-	Wins              types.Object `tfsdk:"wins"`
-	WpadUrl           types.String `tfsdk:"wpad_url"`
-	TftpServer        types.String `tfsdk:"tftp_server"`
-	UnifiController   types.String `tfsdk:"unifi_controller"`
-	DnsServers        types.List   `tfsdk:"dns_servers"`
+	Boot              types.Object         `tfsdk:"boot"`
+	Enabled           types.Bool           `tfsdk:"enabled"`
+	Start             types.String         `tfsdk:"start"`
+	Stop              types.String         `tfsdk:"stop"`
+	GatewayEnabled    types.Bool           `tfsdk:"gateway_enabled"`
+	ConflictChecking  types.Bool           `tfsdk:"conflict_checking"`
+	NtpEnabled        types.Bool           `tfsdk:"ntp_enabled"`
+	TimeOffsetEnabled types.Bool           `tfsdk:"time_offset_enabled"`
+	DnsEnabled        types.Bool           `tfsdk:"dns_enabled"`
+	Leasetime         timetypes.GoDuration `tfsdk:"leasetime"`
+	Wins              types.Object         `tfsdk:"wins"`
+	WpadUrl           types.String         `tfsdk:"wpad_url"`
+	TftpServer        types.String         `tfsdk:"tftp_server"`
+	UnifiController   types.String         `tfsdk:"unifi_controller"`
+	DnsServers        types.List           `tfsdk:"dns_servers"`
 }
 
 func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
@@ -136,7 +137,7 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 		"ntp_enabled":         types.BoolType,
 		"time_offset_enabled": types.BoolType,
 		"dns_enabled":         types.BoolType,
-		"leasetime":           types.Int64Type,
+		"leasetime":           timetypes.GoDurationType{},
 		"wins":                types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
 		"wpad_url":            types.StringType,
 		"tftp_server":         types.StringType,
@@ -234,8 +235,8 @@ type networkResourceModel struct {
 	IPv6StaticSubnet            types.String         `tfsdk:"ipv6_static_subnet"`
 	IPv6RA                      types.Bool           `tfsdk:"ipv6_ra"`
 	IPv6RAPriority              types.String         `tfsdk:"ipv6_ra_priority"`
-	IPv6RAPreferredLifetime     types.Int64          `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAValidLifetime         types.Int64          `tfsdk:"ipv6_ra_valid_lifetime"`
+	IPv6RAPreferredLifetime     timetypes.GoDuration `tfsdk:"ipv6_ra_preferred_lifetime"`
+	IPv6RAValidLifetime         timetypes.GoDuration `tfsdk:"ipv6_ra_valid_lifetime"`
 	IPv6PDInterface             types.String         `tfsdk:"ipv6_pd_interface"`
 	IPv6PDPrefixID              types.String         `tfsdk:"ipv6_pd_prefixid"`
 	IPv6PDStart                 types.String         `tfsdk:"ipv6_pd_start"`
@@ -280,6 +281,9 @@ func (r *networkResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: leasetime, ipv6_ra_preferred_lifetime and ipv6_ra_valid_lifetime
+		// changed from Int64 (seconds) to GoDuration strings. See UpgradeState.
+		Version:             1,
 		MarkdownDescription: "`unifi_network` manages networks (VLANs) in the UniFi controller.",
 
 		Attributes: map[string]schema.Attribute{
@@ -457,26 +461,34 @@ func (r *networkResource) Schema(
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"ipv6_ra_preferred_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime in seconds (0-31536000).",
-				Optional:            true,
-				Computed:            true,
-				Validators: []validator.Int64{
-					int64validator.Between(0, 31536000),
+			"ipv6_ra_preferred_lifetime": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime, as a Go " +
+					"duration string (e.g. `14400s`, `4h`). Must be a whole number of seconds " +
+					"between `0s` and `31536000s` (1 year).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 31536000*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
 				},
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"ipv6_ra_valid_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "The IPv6 Router Advertisement valid lifetime in seconds (0-31536000).",
-				Optional:            true,
-				Computed:            true,
-				Validators: []validator.Int64{
-					int64validator.Between(0, 31536000),
+			"ipv6_ra_valid_lifetime": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 Router Advertisement valid lifetime, as a Go " +
+					"duration string (e.g. `86400s`, `24h`). Must be a whole number of seconds " +
+					"between `0s` and `31536000s` (1 year).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 31536000*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
 				},
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_pd_interface": schema.StringAttribute{
@@ -658,11 +670,13 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
-					"leasetime": schema.Int64Attribute{
-						MarkdownDescription: "Specifies the lease time for DHCP addresses in seconds.",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(86400),
+					"leasetime": schema.StringAttribute{
+						MarkdownDescription: "Specifies the DHCP lease time, as a Go duration " +
+							"string (e.g. `24h`, `86400s`). Defaults to `24h0m0s`.",
+						CustomType: timetypes.GoDurationType{},
+						Optional:   true,
+						Computed:   true,
+						Default:    stringdefault.StaticString("24h0m0s"),
 					},
 					"wins": schema.SingleNestedAttribute{
 						MarkdownDescription: "WINS server configuration.",
@@ -776,6 +790,47 @@ func (r *networkResource) Schema(
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state to v1: leasetime (nested in dhcp_server),
+// ipv6_ra_preferred_lifetime and ipv6_ra_valid_lifetime changed from integer
+// seconds to GoDuration strings.
+func (r *networkResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "ipv6_ra_preferred_lifetime", time.Second)
+						util.SetDurationField(state, "ipv6_ra_valid_lifetime", time.Second)
+						if dhcp, ok := state["dhcp_server"].(map[string]any); ok {
+							util.SetDurationField(dhcp, "leasetime", time.Second)
+						}
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade network state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -1106,18 +1161,21 @@ func (r *networkResource) modelToNetwork(
 		IPV6Subnet:                  model.IPv6StaticSubnet.ValueStringPointer(),
 		IPV6RaEnabled:               model.IPv6RA.ValueBool(),
 		IPV6RaPriority:              optStr(model.IPv6RAPriority),
-		IPV6RaPreferredLifetime:     optInt64(model.IPv6RAPreferredLifetime),
-		IPV6RaValidLifetime:         optInt64(model.IPv6RAValidLifetime),
-		IPV6PDInterface:             optStr(model.IPv6PDInterface),
-		IPV6PDPrefixid:              model.IPv6PDPrefixID.ValueString(),
-		IPV6PDStart:                 optStr(model.IPv6PDStart),
-		IPV6PDStop:                  optStr(model.IPv6PDStop),
-		IPV6PDAutoPrefixidEnabled:   model.IPv6PDAutoPrefixidEnabled.ValueBool(),
-		LteLanEnabled:               model.LteLan.ValueBool(),
-		VLANEnabled:                 !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
-		Enabled:                     model.Enabled.ValueBool(),
-		IGMPSnooping:                model.IgmpSnooping.ValueBool(),
-		IPAliases:                   []string{},
+		IPV6RaPreferredLifetime: util.DurationUnitsPtr(
+			model.IPv6RAPreferredLifetime,
+			time.Second,
+		),
+		IPV6RaValidLifetime:       util.DurationUnitsPtr(model.IPv6RAValidLifetime, time.Second),
+		IPV6PDInterface:           optStr(model.IPv6PDInterface),
+		IPV6PDPrefixid:            model.IPv6PDPrefixID.ValueString(),
+		IPV6PDStart:               optStr(model.IPv6PDStart),
+		IPV6PDStop:                optStr(model.IPv6PDStop),
+		IPV6PDAutoPrefixidEnabled: model.IPv6PDAutoPrefixidEnabled.ValueBool(),
+		LteLanEnabled:             model.LteLan.ValueBool(),
+		VLANEnabled:               !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
+		Enabled:                   model.Enabled.ValueBool(),
+		IGMPSnooping:              model.IgmpSnooping.ValueBool(),
+		IPAliases:                 []string{},
 	}
 
 	// Handle third-party gateway mode
@@ -1246,7 +1304,7 @@ func (r *networkResource) modelToNetwork(
 			network.DHCPDNtpEnabled = dhcpServer.NtpEnabled.ValueBool()
 			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
 			network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
-			network.DHCPDLeaseTime = dhcpServer.Leasetime.ValueInt64Pointer()
+			network.DHCPDLeaseTime = util.DurationUnitsPtr(dhcpServer.Leasetime, time.Second)
 
 			// Handle WINS configuration
 			if !dhcpServer.Wins.IsNull() && !dhcpServer.Wins.IsUnknown() {
@@ -1528,12 +1586,18 @@ func (r *networkResource) networkToModel(
 			model.IPv6RAPriority = previousModel.IPv6RAPriority
 		}
 		if previousModel.IPv6RAPreferredLifetime.IsUnknown() {
-			model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
+			model.IPv6RAPreferredLifetime = util.DurationPtrValue(
+				network.IPV6RaPreferredLifetime,
+				time.Second,
+			)
 		} else {
 			model.IPv6RAPreferredLifetime = previousModel.IPv6RAPreferredLifetime
 		}
 		if previousModel.IPv6RAValidLifetime.IsUnknown() {
-			model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
+			model.IPv6RAValidLifetime = util.DurationPtrValue(
+				network.IPV6RaValidLifetime,
+				time.Second,
+			)
 		} else {
 			model.IPv6RAValidLifetime = previousModel.IPv6RAValidLifetime
 		}
@@ -1577,8 +1641,11 @@ func (r *networkResource) networkToModel(
 		model.IPv6StaticSubnet = types.StringPointerValue(network.IPV6Subnet)
 		model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
 		model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
-		model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
-		model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
+		model.IPv6RAPreferredLifetime = util.DurationPtrValue(
+			network.IPV6RaPreferredLifetime,
+			time.Second,
+		)
+		model.IPv6RAValidLifetime = util.DurationPtrValue(network.IPV6RaValidLifetime, time.Second)
 		model.IPv6PDInterface = types.StringPointerValue(network.IPV6PDInterface)
 		if network.IPV6PDPrefixid == "" {
 			model.IPv6PDPrefixID = types.StringNull()
@@ -1733,7 +1800,7 @@ func (r *networkResource) networkToModel(
 			NtpEnabled:        types.BoolValue(network.DHCPDNtpEnabled),
 			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
 			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
-			Leasetime:         types.Int64PointerValue(network.DHCPDLeaseTime),
+			Leasetime:         util.DurationPtrValue(network.DHCPDLeaseTime, time.Second),
 			Wins:              winsObj,
 			WpadUrl:           strPtrToType(network.DHCPDWPAdUrl),
 			Start:             types.StringPointerValue(network.DHCPDStart),

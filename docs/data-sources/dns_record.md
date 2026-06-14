@@ -57,6 +57,6 @@ data "unifi_dns_record" "site_specific" {
 
 - `enabled` (Boolean) Whether the DNS record is enabled.
 - `id` (String) The ID of this DNS record.
-- `ttl` (Number) The TTL of the DNS record.
+- `ttl` (String) The TTL of the DNS record, as a Go duration string.
 - `type` (String) The type of the DNS record.
 - `value` (String) The value of the DNS record.

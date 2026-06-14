@@ -236,12 +236,12 @@ func TestAccNetworkFrameworkDataSource_ipv6(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
 						"ipv6_ra_preferred_lifetime",
-						"14400",
+						"4h0m0s",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
 						"ipv6_ra_valid_lifetime",
-						"86400",
+						"24h0m0s",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
@@ -284,8 +284,8 @@ resource "unifi_network" "test_ipv6_ds" {
 	ipv6_static_subnet      = "fd02::1/64"
 	ipv6_ra                 = true
 	ipv6_ra_priority        = "medium"
-	ipv6_ra_preferred_lifetime = 14400
-	ipv6_ra_valid_lifetime  = 86400
+	ipv6_ra_preferred_lifetime = "4h0m0s"
+	ipv6_ra_valid_lifetime  = "24h0m0s"
 
 	dhcp_v6_server = {
 		enabled     = true

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -30,14 +31,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util/retry"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &deviceResource{}
-	_ resource.ResourceWithImportState = &deviceResource{}
-	_ resource.ResourceWithIdentity    = &deviceResource{}
+	_ resource.Resource                 = &deviceResource{}
+	_ resource.ResourceWithImportState  = &deviceResource{}
+	_ resource.ResourceWithIdentity     = &deviceResource{}
+	_ resource.ResourceWithUpgradeState = &deviceResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -113,12 +117,12 @@ type deviceResourceModel struct {
 	BaresipPassword     types.String `tfsdk:"x_baresip_password"`
 
 	// LCD/LCM settings
-	LcmBrightness          types.Int64  `tfsdk:"lcm_brightness"`
-	LcmBrightnessOverride  types.Bool   `tfsdk:"lcm_brightness_override"`
-	LcmIDleTimeout         types.Int64  `tfsdk:"lcm_idle_timeout"`
-	LcmIDleTimeoutOverride types.Bool   `tfsdk:"lcm_idle_timeout_override"`
-	LcmNightModeBegins     types.String `tfsdk:"lcm_night_mode_begins"`
-	LcmNightModeEnds       types.String `tfsdk:"lcm_night_mode_ends"`
+	LcmBrightness          types.Int64          `tfsdk:"lcm_brightness"`
+	LcmBrightnessOverride  types.Bool           `tfsdk:"lcm_brightness_override"`
+	LcmIDleTimeout         timetypes.GoDuration `tfsdk:"lcm_idle_timeout"`
+	LcmIDleTimeoutOverride types.Bool           `tfsdk:"lcm_idle_timeout_override"`
+	LcmNightModeBegins     types.String         `tfsdk:"lcm_night_mode_begins"`
+	LcmNightModeEnds       types.String         `tfsdk:"lcm_night_mode_ends"`
 
 	// Outlet settings
 	OutletOverrides types.List `tfsdk:"outlet_overrides"`
@@ -136,51 +140,51 @@ type deviceResourceModel struct {
 
 // portOverrideModel describes the port override data model.
 type portOverrideModel struct {
-	Index                      types.Int64  `tfsdk:"index"`
-	Name                       types.String `tfsdk:"name"`
-	PortProfileID              types.String `tfsdk:"port_profile_id"`
-	OpMode                     types.String `tfsdk:"op_mode"`
-	PoeMode                    types.String `tfsdk:"poe_mode"`
-	AggregateMembers           types.List   `tfsdk:"aggregate_members"`
-	Autoneg                    types.Bool   `tfsdk:"autoneg"`
-	Dot1XCtrl                  types.String `tfsdk:"dot1x_ctrl"`
-	Dot1XIDleTimeout           types.Int64  `tfsdk:"dot1x_idle_timeout"`
-	EgressRateLimitKbps        types.Int64  `tfsdk:"egress_rate_limit_kbps"`
-	EgressRateLimitKbpsEnabled types.Bool   `tfsdk:"egress_rate_limit_kbps_enabled"`
-	ExcludedNetworkIDs         types.List   `tfsdk:"excluded_networkconf_ids"`
-	FecMode                    types.String `tfsdk:"fec_mode"`
-	FlowControlEnabled         types.Bool   `tfsdk:"flow_control_enabled"`
-	Forward                    types.String `tfsdk:"forward"`
-	FullDuplex                 types.Bool   `tfsdk:"full_duplex"`
-	Isolation                  types.Bool   `tfsdk:"isolation"`
-	LldpmedEnabled             types.Bool   `tfsdk:"lldpmed_enabled"`
-	LldpmedNotifyEnabled       types.Bool   `tfsdk:"lldpmed_notify_enabled"`
-	MirrorPortIDX              types.Int64  `tfsdk:"mirror_port_idx"`
-	MulticastRouterNetworkIDs  types.List   `tfsdk:"multicast_router_networkconf_ids"`
-	NativeNetworkID            types.String `tfsdk:"native_networkconf_id"`
-	PortKeepaliveEnabled       types.Bool   `tfsdk:"port_keepalive_enabled"`
-	PortSecurityEnabled        types.Bool   `tfsdk:"port_security_enabled"`
-	PortSecurityMACAddress     types.List   `tfsdk:"port_security_mac_address"`
-	PriorityQueue1Level        types.Int64  `tfsdk:"priority_queue1_level"`
-	PriorityQueue2Level        types.Int64  `tfsdk:"priority_queue2_level"`
-	PriorityQueue3Level        types.Int64  `tfsdk:"priority_queue3_level"`
-	PriorityQueue4Level        types.Int64  `tfsdk:"priority_queue4_level"`
-	SettingPreference          types.String `tfsdk:"setting_preference"`
-	Speed                      types.Int64  `tfsdk:"speed"`
-	StormctrlBroadcastEnabled  types.Bool   `tfsdk:"stormctrl_bcast_enabled"`
-	StormctrlBroadcastLevel    types.Int64  `tfsdk:"stormctrl_bcast_level"`
-	StormctrlBroadcastRate     types.Int64  `tfsdk:"stormctrl_bcast_rate"`
-	StormctrlMcastEnabled      types.Bool   `tfsdk:"stormctrl_mcast_enabled"`
-	StormctrlMcastLevel        types.Int64  `tfsdk:"stormctrl_mcast_level"`
-	StormctrlMcastRate         types.Int64  `tfsdk:"stormctrl_mcast_rate"`
-	StormctrlType              types.String `tfsdk:"stormctrl_type"`
-	StormctrlUcastEnabled      types.Bool   `tfsdk:"stormctrl_ucast_enabled"`
-	StormctrlUcastLevel        types.Int64  `tfsdk:"stormctrl_ucast_level"`
-	StormctrlUcastRate         types.Int64  `tfsdk:"stormctrl_ucast_rate"`
-	StpPortMode                types.Bool   `tfsdk:"stp_port_mode"`
-	TaggedNetworkIDs           types.List   `tfsdk:"tagged_networkconf_ids"`
-	TaggedVLANMgmt             types.String `tfsdk:"tagged_vlan_mgmt"`
-	VoiceNetworkID             types.String `tfsdk:"voice_networkconf_id"`
+	Index                      types.Int64          `tfsdk:"index"`
+	Name                       types.String         `tfsdk:"name"`
+	PortProfileID              types.String         `tfsdk:"port_profile_id"`
+	OpMode                     types.String         `tfsdk:"op_mode"`
+	PoeMode                    types.String         `tfsdk:"poe_mode"`
+	AggregateMembers           types.List           `tfsdk:"aggregate_members"`
+	Autoneg                    types.Bool           `tfsdk:"autoneg"`
+	Dot1XCtrl                  types.String         `tfsdk:"dot1x_ctrl"`
+	Dot1XIDleTimeout           timetypes.GoDuration `tfsdk:"dot1x_idle_timeout"`
+	EgressRateLimitKbps        types.Int64          `tfsdk:"egress_rate_limit_kbps"`
+	EgressRateLimitKbpsEnabled types.Bool           `tfsdk:"egress_rate_limit_kbps_enabled"`
+	ExcludedNetworkIDs         types.List           `tfsdk:"excluded_networkconf_ids"`
+	FecMode                    types.String         `tfsdk:"fec_mode"`
+	FlowControlEnabled         types.Bool           `tfsdk:"flow_control_enabled"`
+	Forward                    types.String         `tfsdk:"forward"`
+	FullDuplex                 types.Bool           `tfsdk:"full_duplex"`
+	Isolation                  types.Bool           `tfsdk:"isolation"`
+	LldpmedEnabled             types.Bool           `tfsdk:"lldpmed_enabled"`
+	LldpmedNotifyEnabled       types.Bool           `tfsdk:"lldpmed_notify_enabled"`
+	MirrorPortIDX              types.Int64          `tfsdk:"mirror_port_idx"`
+	MulticastRouterNetworkIDs  types.List           `tfsdk:"multicast_router_networkconf_ids"`
+	NativeNetworkID            types.String         `tfsdk:"native_networkconf_id"`
+	PortKeepaliveEnabled       types.Bool           `tfsdk:"port_keepalive_enabled"`
+	PortSecurityEnabled        types.Bool           `tfsdk:"port_security_enabled"`
+	PortSecurityMACAddress     types.List           `tfsdk:"port_security_mac_address"`
+	PriorityQueue1Level        types.Int64          `tfsdk:"priority_queue1_level"`
+	PriorityQueue2Level        types.Int64          `tfsdk:"priority_queue2_level"`
+	PriorityQueue3Level        types.Int64          `tfsdk:"priority_queue3_level"`
+	PriorityQueue4Level        types.Int64          `tfsdk:"priority_queue4_level"`
+	SettingPreference          types.String         `tfsdk:"setting_preference"`
+	Speed                      types.Int64          `tfsdk:"speed"`
+	StormctrlBroadcastEnabled  types.Bool           `tfsdk:"stormctrl_bcast_enabled"`
+	StormctrlBroadcastLevel    types.Int64          `tfsdk:"stormctrl_bcast_level"`
+	StormctrlBroadcastRate     types.Int64          `tfsdk:"stormctrl_bcast_rate"`
+	StormctrlMcastEnabled      types.Bool           `tfsdk:"stormctrl_mcast_enabled"`
+	StormctrlMcastLevel        types.Int64          `tfsdk:"stormctrl_mcast_level"`
+	StormctrlMcastRate         types.Int64          `tfsdk:"stormctrl_mcast_rate"`
+	StormctrlType              types.String         `tfsdk:"stormctrl_type"`
+	StormctrlUcastEnabled      types.Bool           `tfsdk:"stormctrl_ucast_enabled"`
+	StormctrlUcastLevel        types.Int64          `tfsdk:"stormctrl_ucast_level"`
+	StormctrlUcastRate         types.Int64          `tfsdk:"stormctrl_ucast_rate"`
+	StpPortMode                types.Bool           `tfsdk:"stp_port_mode"`
+	TaggedNetworkIDs           types.List           `tfsdk:"tagged_networkconf_ids"`
+	TaggedVLANMgmt             types.String         `tfsdk:"tagged_vlan_mgmt"`
+	VoiceNetworkID             types.String         `tfsdk:"voice_networkconf_id"`
 }
 
 func (m portOverrideModel) AttributeTypes() map[string]attr.Type {
@@ -259,6 +263,9 @@ func (r *deviceResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: lcm_idle_timeout and port_override.dot1x_idle_timeout changed from
+		// Int64 (seconds) to GoDuration strings. See UpgradeState.
+		Version: 1,
 		Description: "`unifi_device` manages a device of the network.\n\n" +
 			"Devices are adopted by the controller, so it is not possible for this resource to be created through " +
 			"Terraform, the create operation instead will simply start managing the device specified by MAC address. " +
@@ -495,10 +502,15 @@ func (r *deviceResource) Schema(
 				Optional:    true,
 				Computed:    true,
 			},
-			"lcm_idle_timeout": schema.Int64Attribute{
-				Description: "LCM idle timeout in seconds (10-3600).",
+			"lcm_idle_timeout": schema.StringAttribute{
+				Description: "LCM idle timeout, as a Go duration string (e.g. `10m`, `600s`).",
+				CustomType:  timetypes.GoDurationType{},
 				Optional:    true,
 				Computed:    true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(10*time.Second, 3600*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"lcm_idle_timeout_override": schema.BoolAttribute{
 				Description: "Override LCM idle timeout.",
@@ -741,9 +753,14 @@ func (r *deviceResource) Schema(
 							Description: "802.1X control mode.",
 							Optional:    true,
 						},
-						"dot1x_idle_timeout": schema.Int64Attribute{
-							Description: "802.1X idle timeout in seconds.",
+						"dot1x_idle_timeout": schema.StringAttribute{
+							Description: "802.1X idle timeout, as a Go duration string (e.g. `5m`, `300s`).",
+							CustomType:  timetypes.GoDurationType{},
 							Optional:    true,
+							Validators: []validator.String{
+								validators.GoDurationBetween(0, 65535*time.Second),
+								validators.GoDurationMultipleOf(time.Second),
+							},
 						},
 						"egress_rate_limit_kbps": schema.Int64Attribute{
 							Description: "Egress rate limit in kbps.",
@@ -907,6 +924,50 @@ func (r *deviceResource) Schema(
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state to v1: lcm_idle_timeout and each
+// port_override.dot1x_idle_timeout changed from integer seconds to GoDuration
+// strings.
+func (r *deviceResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "lcm_idle_timeout", time.Second)
+						if pos, ok := state["port_override"].([]any); ok {
+							for _, p := range pos {
+								if pm, ok := p.(map[string]any); ok {
+									util.SetDurationField(pm, "dot1x_idle_timeout", time.Second)
+								}
+							}
+						}
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade device state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -1654,7 +1715,7 @@ func (r *deviceResource) setResourceData(
 
 	model.LcmBrightnessOverride = types.BoolValue(device.LcmBrightnessOverride)
 
-	model.LcmIDleTimeout = types.Int64PointerValue(device.LcmIDleTimeout)
+	model.LcmIDleTimeout = util.DurationPtrValue(device.LcmIDleTimeout, time.Second)
 
 	model.LcmIDleTimeoutOverride = types.BoolValue(device.LcmIDleTimeoutOverride)
 
@@ -1782,7 +1843,7 @@ func (r *deviceResource) modelToAPIDevice(
 	}
 	device.LcmBrightnessOverride = model.LcmBrightnessOverride.ValueBool()
 	if !model.LcmIDleTimeout.IsNull() && !model.LcmIDleTimeout.IsUnknown() {
-		device.LcmIDleTimeout = model.LcmIDleTimeout.ValueInt64Pointer()
+		device.LcmIDleTimeout = util.DurationUnitsPtr(model.LcmIDleTimeout, time.Second)
 	}
 	device.LcmIDleTimeoutOverride = model.LcmIDleTimeoutOverride.ValueBool()
 	if !model.LcmNightModeBegins.IsNull() {
@@ -2111,7 +2172,7 @@ func (r *deviceResource) portOverridesToFramework(
 		model.StpPortMode = types.BoolValue(po.StpPortMode)
 
 		// Int64 attributes
-		model.Dot1XIDleTimeout = types.Int64PointerValue(po.Dot1XIDleTimeout)
+		model.Dot1XIDleTimeout = util.DurationPtrValue(po.Dot1XIDleTimeout, time.Second)
 
 		model.EgressRateLimitKbps = types.Int64PointerValue(po.EgressRateLimitKbps)
 
@@ -2314,7 +2375,7 @@ func (r *deviceResource) frameworkToPortOverrides(
 
 			// Int64 attributes
 			if !model.Dot1XIDleTimeout.IsNull() {
-				po.Dot1XIDleTimeout = model.Dot1XIDleTimeout.ValueInt64Pointer()
+				po.Dot1XIDleTimeout = util.DurationUnitsPtr(model.Dot1XIDleTimeout, time.Second)
 			}
 			if !model.EgressRateLimitKbps.IsNull() {
 				po.EgressRateLimitKbps = model.EgressRateLimitKbps.ValueInt64Pointer()
@@ -2486,7 +2547,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"aggregate_members":                types.ListType{ElemType: types.Int64Type},
 		"autoneg":                          types.BoolType,
 		"dot1x_ctrl":                       types.StringType,
-		"dot1x_idle_timeout":               types.Int64Type,
+		"dot1x_idle_timeout":               timetypes.GoDurationType{},
 		"egress_rate_limit_kbps":           types.Int64Type,
 		"egress_rate_limit_kbps_enabled":   types.BoolType,
 		"excluded_networkconf_ids":         types.ListType{ElemType: types.StringType},

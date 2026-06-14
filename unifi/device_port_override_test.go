@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -25,6 +26,8 @@ func nullPortOverrideAttrValues() map[string]attr.Value {
 			vals[name] = types.BoolNull()
 		case basetypes.ListType:
 			vals[name] = types.ListNull(tt.ElemType)
+		case timetypes.GoDurationType:
+			vals[name] = timetypes.NewGoDurationNull()
 		}
 		// Any unhandled attr type is intentionally left out so ObjectValue fails
 		// loudly (signalling the helper needs updating) rather than silently.

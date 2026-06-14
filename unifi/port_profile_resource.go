@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -24,13 +25,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &portProfileResource{}
-	_ resource.ResourceWithImportState = &portProfileResource{}
-	_ resource.ResourceWithIdentity    = &portProfileResource{}
+	_ resource.Resource                 = &portProfileResource{}
+	_ resource.ResourceWithImportState  = &portProfileResource{}
+	_ resource.ResourceWithIdentity     = &portProfileResource{}
+	_ resource.ResourceWithUpgradeState = &portProfileResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -66,48 +69,48 @@ type portProfileListFilterModel struct {
 
 // portProfileResourceModel describes the resource data model.
 type portProfileResourceModel struct {
-	ID                         types.String `tfsdk:"id"`
-	Site                       types.String `tfsdk:"site"`
-	Autoneg                    types.Bool   `tfsdk:"autoneg"`
-	Dot1XCtrl                  types.String `tfsdk:"dot1x_ctrl"`
-	Dot1XIdleTimeout           types.Int64  `tfsdk:"dot1x_idle_timeout"`
-	EgressRateLimitKbps        types.Int64  `tfsdk:"egress_rate_limit_kbps"`
-	EgressRateLimitKbpsEnabled types.Bool   `tfsdk:"egress_rate_limit_kbps_enabled"`
-	Forward                    types.String `tfsdk:"forward"`
-	FullDuplex                 types.Bool   `tfsdk:"full_duplex"`
-	Isolation                  types.Bool   `tfsdk:"isolation"`
-	LLDPMedEnabled             types.Bool   `tfsdk:"lldpmed_enabled"`
-	LLDPMedNotifyEnabled       types.Bool   `tfsdk:"lldpmed_notify_enabled"`
-	NativeNetworkConfID        types.String `tfsdk:"native_networkconf_id"`
-	Name                       types.String `tfsdk:"name"`
-	OpMode                     types.String `tfsdk:"op_mode"`
-	PoeMode                    types.String `tfsdk:"poe_mode"`
-	PortSecurityEnabled        types.Bool   `tfsdk:"port_security_enabled"`
-	PortSecurityMacAddress     types.Set    `tfsdk:"port_security_mac_address"`
-	PriorityQueue1Level        types.Int64  `tfsdk:"priority_queue1_level"`
-	PriorityQueue2Level        types.Int64  `tfsdk:"priority_queue2_level"`
-	PriorityQueue3Level        types.Int64  `tfsdk:"priority_queue3_level"`
-	PriorityQueue4Level        types.Int64  `tfsdk:"priority_queue4_level"`
-	Speed                      types.Int64  `tfsdk:"speed"`
-	StormctrlBcastEnabled      types.Bool   `tfsdk:"stormctrl_bcast_enabled"`
-	StormctrlBcastLevel        types.Int64  `tfsdk:"stormctrl_bcast_level"`
-	StormctrlBcastRate         types.Int64  `tfsdk:"stormctrl_bcast_rate"`
-	StormctrlMcastEnabled      types.Bool   `tfsdk:"stormctrl_mcast_enabled"`
-	StormctrlMcastLevel        types.Int64  `tfsdk:"stormctrl_mcast_level"`
-	StormctrlMcastRate         types.Int64  `tfsdk:"stormctrl_mcast_rate"`
-	StormctrlType              types.String `tfsdk:"stormctrl_type"`
-	StormctrlUcastEnabled      types.Bool   `tfsdk:"stormctrl_ucast_enabled"`
-	StormctrlUcastLevel        types.Int64  `tfsdk:"stormctrl_ucast_level"`
-	StormctrlUcastRate         types.Int64  `tfsdk:"stormctrl_ucast_rate"`
-	STPPortMode                types.Bool   `tfsdk:"stp_port_mode"`
-	TaggedNetworkConfIDs       types.Set    `tfsdk:"tagged_networkconf_ids"`
-	VoiceNetworkConfID         types.String `tfsdk:"voice_networkconf_id"`
-	ExcludedNetworkConfIDs     types.Set    `tfsdk:"excluded_networkconf_ids"`
-	MulticastRouterNetworkIDs  types.Set    `tfsdk:"multicast_router_networkconf_ids"`
-	TaggedVLANMgmt             types.String `tfsdk:"tagged_vlan_mgmt"`
-	FecMode                    types.String `tfsdk:"fec_mode"`
-	SettingPreference          types.String `tfsdk:"setting_preference"`
-	PortKeepaliveEnabled       types.Bool   `tfsdk:"port_keepalive_enabled"`
+	ID                         types.String         `tfsdk:"id"`
+	Site                       types.String         `tfsdk:"site"`
+	Autoneg                    types.Bool           `tfsdk:"autoneg"`
+	Dot1XCtrl                  types.String         `tfsdk:"dot1x_ctrl"`
+	Dot1XIdleTimeout           timetypes.GoDuration `tfsdk:"dot1x_idle_timeout"`
+	EgressRateLimitKbps        types.Int64          `tfsdk:"egress_rate_limit_kbps"`
+	EgressRateLimitKbpsEnabled types.Bool           `tfsdk:"egress_rate_limit_kbps_enabled"`
+	Forward                    types.String         `tfsdk:"forward"`
+	FullDuplex                 types.Bool           `tfsdk:"full_duplex"`
+	Isolation                  types.Bool           `tfsdk:"isolation"`
+	LLDPMedEnabled             types.Bool           `tfsdk:"lldpmed_enabled"`
+	LLDPMedNotifyEnabled       types.Bool           `tfsdk:"lldpmed_notify_enabled"`
+	NativeNetworkConfID        types.String         `tfsdk:"native_networkconf_id"`
+	Name                       types.String         `tfsdk:"name"`
+	OpMode                     types.String         `tfsdk:"op_mode"`
+	PoeMode                    types.String         `tfsdk:"poe_mode"`
+	PortSecurityEnabled        types.Bool           `tfsdk:"port_security_enabled"`
+	PortSecurityMacAddress     types.Set            `tfsdk:"port_security_mac_address"`
+	PriorityQueue1Level        types.Int64          `tfsdk:"priority_queue1_level"`
+	PriorityQueue2Level        types.Int64          `tfsdk:"priority_queue2_level"`
+	PriorityQueue3Level        types.Int64          `tfsdk:"priority_queue3_level"`
+	PriorityQueue4Level        types.Int64          `tfsdk:"priority_queue4_level"`
+	Speed                      types.Int64          `tfsdk:"speed"`
+	StormctrlBcastEnabled      types.Bool           `tfsdk:"stormctrl_bcast_enabled"`
+	StormctrlBcastLevel        types.Int64          `tfsdk:"stormctrl_bcast_level"`
+	StormctrlBcastRate         types.Int64          `tfsdk:"stormctrl_bcast_rate"`
+	StormctrlMcastEnabled      types.Bool           `tfsdk:"stormctrl_mcast_enabled"`
+	StormctrlMcastLevel        types.Int64          `tfsdk:"stormctrl_mcast_level"`
+	StormctrlMcastRate         types.Int64          `tfsdk:"stormctrl_mcast_rate"`
+	StormctrlType              types.String         `tfsdk:"stormctrl_type"`
+	StormctrlUcastEnabled      types.Bool           `tfsdk:"stormctrl_ucast_enabled"`
+	StormctrlUcastLevel        types.Int64          `tfsdk:"stormctrl_ucast_level"`
+	StormctrlUcastRate         types.Int64          `tfsdk:"stormctrl_ucast_rate"`
+	STPPortMode                types.Bool           `tfsdk:"stp_port_mode"`
+	TaggedNetworkConfIDs       types.Set            `tfsdk:"tagged_networkconf_ids"`
+	VoiceNetworkConfID         types.String         `tfsdk:"voice_networkconf_id"`
+	ExcludedNetworkConfIDs     types.Set            `tfsdk:"excluded_networkconf_ids"`
+	MulticastRouterNetworkIDs  types.Set            `tfsdk:"multicast_router_networkconf_ids"`
+	TaggedVLANMgmt             types.String         `tfsdk:"tagged_vlan_mgmt"`
+	FecMode                    types.String         `tfsdk:"fec_mode"`
+	SettingPreference          types.String         `tfsdk:"setting_preference"`
+	PortKeepaliveEnabled       types.Bool           `tfsdk:"port_keepalive_enabled"`
 }
 
 func (r *portProfileResource) Metadata(
@@ -139,6 +142,8 @@ func (r *portProfileResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: dot1x_idle_timeout changed from Int64 (seconds) to a GoDuration string.
+		Version:     1,
 		Description: "`unifi_port_profile` manages a port profile for use on network switches.",
 
 		Attributes: map[string]schema.Attribute{
@@ -179,13 +184,16 @@ func (r *portProfileResource) Schema(
 					),
 				},
 			},
-			"dot1x_idle_timeout": schema.Int64Attribute{
-				Description: "The timeout, in seconds, to use when using the MAC Based 802.1X control. Can be between 0 and 65535",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(300),
-				Validators: []validator.Int64{
-					int64validator.Between(0, 65535),
+			"dot1x_idle_timeout": schema.StringAttribute{
+				Description: "The idle timeout to use when using MAC Based 802.1X control, as a " +
+					"Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s`.",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Default:    stringdefault.StaticString("5m0s"),
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 65535*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
 				},
 			},
 			"egress_rate_limit_kbps": schema.Int64Attribute{
@@ -455,6 +463,42 @@ func (r *portProfileResource) Schema(
 	}
 }
 
+// UpgradeState migrates v0 state (dot1x_idle_timeout stored as integer seconds)
+// to v1 (a GoDuration string).
+func (r *portProfileResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "dot1x_idle_timeout", time.Second)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade port profile state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		},
+	}
+}
+
 func (r *portProfileResource) Configure(
 	ctx context.Context,
 	req resource.ConfigureRequest,
@@ -710,7 +754,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 		portProfile.Dot1XCtrl = model.Dot1XCtrl.ValueString()
 	}
 
-	portProfile.Dot1XIDleTimeout = model.Dot1XIdleTimeout.ValueInt64Pointer()
+	portProfile.Dot1XIDleTimeout = util.DurationUnitsPtr(model.Dot1XIdleTimeout, time.Second)
 
 	if !model.Forward.IsNull() && !model.Forward.IsUnknown() {
 		portProfile.Forward = model.Forward.ValueString()
@@ -826,7 +870,7 @@ func (r *portProfileResource) portProfileToModel(
 		model.Dot1XCtrl = types.StringValue(portProfile.Dot1XCtrl)
 	}
 
-	model.Dot1XIdleTimeout = types.Int64PointerValue(portProfile.Dot1XIDleTimeout)
+	model.Dot1XIdleTimeout = util.DurationPtrValue(portProfile.Dot1XIDleTimeout, time.Second)
 
 	if portProfile.Forward == "" {
 		model.Forward = types.StringValue("native")
@@ -875,7 +919,8 @@ func (r *portProfileResource) portProfileToModel(
 		for i, mac := range portProfile.PortSecurityMACAddress {
 			macAddressList[i] = types.StringValue(mac)
 		}
-		macAddressSet, _ := types.SetValueFrom(ctx, types.StringType, macAddressList)
+		macAddressSet, d := types.SetValueFrom(ctx, types.StringType, macAddressList)
+		diags.Append(d...)
 		model.PortSecurityMacAddress = macAddressSet
 	}
 
@@ -913,14 +958,16 @@ func (r *portProfileResource) portProfileToModel(
 	model.PortKeepaliveEnabled = types.BoolValue(portProfile.PortKeepaliveEnabled)
 
 	if len(portProfile.ExcludedNetworkIDs) > 0 {
-		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		diags.Append(d...)
 		model.ExcludedNetworkConfIDs = s
 	} else {
 		model.ExcludedNetworkConfIDs = types.SetNull(types.StringType)
 	}
 
 	if len(portProfile.MulticastRouterNetworkIDs) > 0 {
-		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		diags.Append(d...)
 		model.MulticastRouterNetworkIDs = s
 	} else {
 		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)

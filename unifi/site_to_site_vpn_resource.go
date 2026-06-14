@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -31,9 +34,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &siteToSiteVPNResource{}
-	_ resource.ResourceWithImportState = &siteToSiteVPNResource{}
-	_ resource.ResourceWithIdentity    = &siteToSiteVPNResource{}
+	_ resource.Resource                 = &siteToSiteVPNResource{}
+	_ resource.ResourceWithImportState  = &siteToSiteVPNResource{}
+	_ resource.ResourceWithIdentity     = &siteToSiteVPNResource{}
+	_ resource.ResourceWithUpgradeState = &siteToSiteVPNResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -59,33 +63,29 @@ type siteToSiteVPNResource struct {
 // purpose="site-vpn", vpn_type="ipsec-vpn" network — the UniFi manual
 // site-to-site IPsec VPN.
 type siteToSiteVPNResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	Name           types.String `tfsdk:"name"`
-	Enabled        types.Bool   `tfsdk:"enabled"`
-	Interface      types.String `tfsdk:"interface"`
-	PeerIP         types.String `tfsdk:"peer_ip"`
-	LocalIP        types.String `tfsdk:"local_ip"`
-	KeyExchange    types.String `tfsdk:"key_exchange"`
-	PreSharedKey   types.String `tfsdk:"pre_shared_key"`
-	PreSharedKeyWO types.String `tfsdk:"pre_shared_key_wo"`
-	RemoteSubnets  types.List   `tfsdk:"remote_subnets"`
-	Profile        types.String `tfsdk:"profile"`
-	IKEEncryption  types.String `tfsdk:"ike_encryption"`
-	IKEHash        types.String `tfsdk:"ike_hash"`
-	IKEDhGroup     types.Int64  `tfsdk:"ike_dh_group"`
-	IKELifetime    types.Int64  `tfsdk:"ike_lifetime"`
-	ESPEncryption  types.String `tfsdk:"esp_encryption"`
-	ESPHash        types.String `tfsdk:"esp_hash"`
-	ESPDhGroup     types.Int64  `tfsdk:"esp_dh_group"`
-	ESPLifetime    types.Int64  `tfsdk:"esp_lifetime"`
-	PFS            types.Bool   `tfsdk:"pfs"`
-	DynamicRouting types.Bool   `tfsdk:"dynamic_routing"`
-	RouteDistance  types.Int64  `tfsdk:"route_distance"`
-}
-
-type siteToSiteVPNIdentityModel struct {
-	ID types.String `tfsdk:"id"`
+	ID             types.String         `tfsdk:"id"`
+	Site           types.String         `tfsdk:"site"`
+	Name           types.String         `tfsdk:"name"`
+	Enabled        types.Bool           `tfsdk:"enabled"`
+	Interface      types.String         `tfsdk:"interface"`
+	PeerIP         iptypes.IPv4Address  `tfsdk:"peer_ip"`
+	LocalIP        iptypes.IPv4Address  `tfsdk:"local_ip"`
+	KeyExchange    types.String         `tfsdk:"key_exchange"`
+	PreSharedKey   types.String         `tfsdk:"pre_shared_key"`
+	PreSharedKeyWO types.String         `tfsdk:"pre_shared_key_wo"`
+	RemoteSubnets  types.List           `tfsdk:"remote_subnets"`
+	Profile        types.String         `tfsdk:"profile"`
+	IKEEncryption  types.String         `tfsdk:"ike_encryption"`
+	IKEHash        types.String         `tfsdk:"ike_hash"`
+	IKEDhGroup     types.Int64          `tfsdk:"ike_dh_group"`
+	IKELifetime    timetypes.GoDuration `tfsdk:"ike_lifetime"`
+	ESPEncryption  types.String         `tfsdk:"esp_encryption"`
+	ESPHash        types.String         `tfsdk:"esp_hash"`
+	ESPDhGroup     types.Int64          `tfsdk:"esp_dh_group"`
+	ESPLifetime    timetypes.GoDuration `tfsdk:"esp_lifetime"`
+	PFS            types.Bool           `tfsdk:"pfs"`
+	DynamicRouting types.Bool           `tfsdk:"dynamic_routing"`
+	RouteDistance  types.Int64          `tfsdk:"route_distance"`
 }
 
 // siteToSiteVPNListConfigModel describes the list configuration model.
@@ -132,6 +132,8 @@ func (r *siteToSiteVPNResource) Schema(
 	hashValues := []string{"sha1", "md5", "sha256", "sha384", "sha512"}
 
 	resp.Schema = schema.Schema{
+		// v1: ike_lifetime/esp_lifetime changed from Int64 (seconds) to GoDuration.
+		Version: 1,
 		MarkdownDescription: "Manages a manual site-to-site IPsec VPN (the UniFi " +
 			"`Settings → VPN → Site-to-Site` network, `purpose = site-vpn`, " +
 			"`vpn_type = ipsec-vpn`). The advanced IKE/ESP attributes only apply " +
@@ -175,6 +177,7 @@ func (r *siteToSiteVPNResource) Schema(
 			},
 			"peer_ip": schema.StringAttribute{
 				MarkdownDescription: "The public IP address of the remote VPN gateway (peer).",
+				CustomType:          iptypes.IPv4AddressType{},
 				Required:            true,
 				Validators: []validator.String{
 					validators.IPv4Validator(),
@@ -182,6 +185,7 @@ func (r *siteToSiteVPNResource) Schema(
 			},
 			"local_ip": schema.StringAttribute{
 				MarkdownDescription: "The local IP used for the tunnel. Defaults to the WAN address when omitted.",
+				CustomType:          iptypes.IPv4AddressType{},
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -255,12 +259,18 @@ func (r *siteToSiteVPNResource) Schema(
 				Computed:            true,
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
-			"ike_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "IKE (phase 1) security-association lifetime in seconds (30-86400).",
-				Optional:            true,
-				Computed:            true,
-				Validators:          []validator.Int64{int64validator.Between(30, 86400)},
-				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			"ike_lifetime": schema.StringAttribute{
+				MarkdownDescription: "IKE (phase 1) security-association lifetime, as a Go " +
+					"duration string (e.g. `8h`, `28800s`). Must be a whole number of seconds " +
+					"between `30s` and `86400s` (24h).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(30*time.Second, 86400*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"esp_encryption": schema.StringAttribute{
 				MarkdownDescription: "ESP (phase 2) encryption. Only used when `profile = customized`.",
@@ -282,12 +292,18 @@ func (r *siteToSiteVPNResource) Schema(
 				Computed:            true,
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
-			"esp_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "ESP (phase 2) security-association lifetime in seconds (30-86400).",
-				Optional:            true,
-				Computed:            true,
-				Validators:          []validator.Int64{int64validator.Between(30, 86400)},
-				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			"esp_lifetime": schema.StringAttribute{
+				MarkdownDescription: "ESP (phase 2) security-association lifetime, as a Go " +
+					"duration string (e.g. `1h`, `3600s`). Must be a whole number of seconds " +
+					"between `30s` and `86400s` (24h).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(30*time.Second, 86400*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"pfs": schema.BoolAttribute{
 				MarkdownDescription: "Whether Perfect Forward Secrecy is enabled.",
@@ -307,6 +323,46 @@ func (r *siteToSiteVPNResource) Schema(
 				Computed:            true,
 				Validators:          []validator.Int64{int64validator.Between(1, 255)},
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (ike_lifetime/esp_lifetime stored as integer
+// seconds) to v1 (GoDuration strings).
+func (r *siteToSiteVPNResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "ike_lifetime", time.Second)
+						util.SetDurationField(state, "esp_lifetime", time.Second)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Failed to upgrade site-to-site VPN state",
+						err.Error(),
+					)
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -546,11 +602,11 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		IPSecEncryption:     optStr(model.IKEEncryption),
 		IPSecHash:           optStr(model.IKEHash),
 		IPSecDhGroup:        optInt64(model.IKEDhGroup),
-		IPSecIkeLifetime:    optInt64(model.IKELifetime),
+		IPSecIkeLifetime:    util.DurationUnitsPtr(model.IKELifetime, time.Second),
 		IPSecEspEncryption:  optStr(model.ESPEncryption),
 		IPSecEspHash:        optStr(model.ESPHash),
 		IPSecEspDhGroup:     optInt64(model.ESPDhGroup),
-		IPSecEspLifetime:    optInt64(model.ESPLifetime),
+		IPSecEspLifetime:    util.DurationUnitsPtr(model.ESPLifetime, time.Second),
 		IPSecPfs:            model.PFS.ValueBool(),
 		IPSecDynamicRouting: model.DynamicRouting.ValueBool(),
 		RouteDistance:       optInt64(model.RouteDistance),
@@ -586,18 +642,18 @@ func (r *siteToSiteVPNResource) networkToModel(
 	}
 	model.Enabled = types.BoolValue(network.Enabled)
 	model.Interface = stringPtrOrNull(network.IPSecInterface)
-	model.PeerIP = stringPtrOrNull(network.IPSecPeerIP)
-	model.LocalIP = stringPtrOrNull(network.IPSecLocalIP)
+	model.PeerIP = util.IPv4PtrValueOrNull(network.IPSecPeerIP)
+	model.LocalIP = util.IPv4PtrValueOrNull(network.IPSecLocalIP)
 	model.KeyExchange = stringPtrOrNull(network.IPSecKeyExchange)
 	model.Profile = stringPtrOrNull(network.IPSecProfile)
 	model.IKEEncryption = stringPtrOrNull(network.IPSecEncryption)
 	model.IKEHash = stringPtrOrNull(network.IPSecHash)
 	model.IKEDhGroup = types.Int64PointerValue(network.IPSecDhGroup)
-	model.IKELifetime = types.Int64PointerValue(network.IPSecIkeLifetime)
+	model.IKELifetime = util.DurationPtrValue(network.IPSecIkeLifetime, time.Second)
 	model.ESPEncryption = stringPtrOrNull(network.IPSecEspEncryption)
 	model.ESPHash = stringPtrOrNull(network.IPSecEspHash)
 	model.ESPDhGroup = types.Int64PointerValue(network.IPSecEspDhGroup)
-	model.ESPLifetime = types.Int64PointerValue(network.IPSecEspLifetime)
+	model.ESPLifetime = util.DurationPtrValue(network.IPSecEspLifetime, time.Second)
 	model.PFS = types.BoolValue(network.IPSecPfs)
 	model.DynamicRouting = types.BoolValue(network.IPSecDynamicRouting)
 	model.RouteDistance = types.Int64PointerValue(network.RouteDistance)
@@ -612,11 +668,20 @@ func (r *siteToSiteVPNResource) networkToModel(
 // optStr returns the string pointer for an optional attribute, or nil when the
 // value is null, unknown, or empty — so the marshaler omits it rather than
 // sending "" (which the controller rejects for IP/enum fields).
-func optStr(s types.String) *string {
+// optStr accepts any framework string-backed value (types.String or the custom
+// nettypes values, which all embed basetypes.StringValue) and returns nil for
+// null/unknown/empty.
+func optStr(s interface {
+	IsNull() bool
+	IsUnknown() bool
+	ValueString() string
+},
+) *string {
 	if s.IsNull() || s.IsUnknown() || s.ValueString() == "" {
 		return nil
 	}
-	return s.ValueStringPointer()
+	v := s.ValueString()
+	return &v
 }
 
 // optInt64 returns the int64 pointer for an optional attribute, or nil when the

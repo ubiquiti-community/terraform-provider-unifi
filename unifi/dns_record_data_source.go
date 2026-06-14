@@ -3,11 +3,14 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var _ datasource.DataSource = &dnsRecordDataSource{}
@@ -21,13 +24,13 @@ type dnsRecordDataSource struct {
 }
 
 type dnsRecordDataSourceModel struct {
-	ID      types.String `tfsdk:"id"`
-	Site    types.String `tfsdk:"site"`
-	Name    types.String `tfsdk:"name"`
-	Type    types.String `tfsdk:"type"`
-	Value   types.String `tfsdk:"value"`
-	TTL     types.Int64  `tfsdk:"ttl"`
-	Enabled types.Bool   `tfsdk:"enabled"`
+	ID      types.String         `tfsdk:"id"`
+	Site    types.String         `tfsdk:"site"`
+	Name    types.String         `tfsdk:"name"`
+	Type    types.String         `tfsdk:"type"`
+	Value   types.String         `tfsdk:"value"`
+	TTL     timetypes.GoDuration `tfsdk:"ttl"`
+	Enabled types.Bool           `tfsdk:"enabled"`
 }
 
 func (d *dnsRecordDataSource) Metadata(
@@ -68,8 +71,9 @@ func (d *dnsRecordDataSource) Schema(
 				MarkdownDescription: "The value of the DNS record.",
 				Computed:            true,
 			},
-			"ttl": schema.Int64Attribute{
-				MarkdownDescription: "The TTL of the DNS record.",
+			"ttl": schema.StringAttribute{
+				MarkdownDescription: "The TTL of the DNS record, as a Go duration string.",
+				CustomType:          timetypes.GoDurationType{},
 				Computed:            true,
 			},
 			"enabled": schema.BoolAttribute{
@@ -153,7 +157,11 @@ func (d *dnsRecordDataSource) Read(
 	data.Name = types.StringValue(dnsRecord.Key)
 	data.Type = types.StringValue(dnsRecord.RecordType)
 	data.Value = types.StringValue(dnsRecord.Value)
-	data.TTL = types.Int64Value(dnsRecord.Ttl)
+	if dnsRecord.Ttl != 0 {
+		data.TTL = util.DurationValue(dnsRecord.Ttl, time.Second)
+	} else {
+		data.TTL = timetypes.NewGoDurationNull()
+	}
 	data.Enabled = types.BoolValue(dnsRecord.Enabled)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -22,11 +24,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/go-unifi/unifi/settings"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var (
-	_ resource.Resource                = &settingResource{}
-	_ resource.ResourceWithImportState = &settingResource{}
+	_ resource.Resource                 = &settingResource{}
+	_ resource.ResourceWithImportState  = &settingResource{}
+	_ resource.ResourceWithUpgradeState = &settingResource{}
 )
 
 func NewSettingResource() resource.Resource {
@@ -51,11 +55,11 @@ type settingMgmtModel struct {
 }
 
 type settingRadiusModel struct {
-	AccountingEnabled     types.Bool   `tfsdk:"accounting_enabled"`
-	AcctPort              types.Int64  `tfsdk:"acct_port"`
-	AuthPort              types.Int64  `tfsdk:"auth_port"`
-	InterimUpdateInterval types.Int64  `tfsdk:"interim_update_interval"`
-	Secret                types.String `tfsdk:"secret"`
+	AccountingEnabled     types.Bool           `tfsdk:"accounting_enabled"`
+	AcctPort              types.Int64          `tfsdk:"acct_port"`
+	AuthPort              types.Int64          `tfsdk:"auth_port"`
+	InterimUpdateInterval timetypes.GoDuration `tfsdk:"interim_update_interval"`
+	Secret                types.String         `tfsdk:"secret"`
 }
 
 type dnsVerificationModel struct {
@@ -66,43 +70,43 @@ type dnsVerificationModel struct {
 }
 
 type settingUSGModel struct {
-	BroadcastPing                  types.Bool   `tfsdk:"broadcast_ping"`
-	DNSVerification                types.Object `tfsdk:"dns_verification"`
-	FtpModule                      types.Bool   `tfsdk:"ftp_module"`
-	GeoIPFilteringBlock            types.String `tfsdk:"geo_ip_filtering_block"`
-	GeoIPFilteringCountries        types.String `tfsdk:"geo_ip_filtering_countries"`
-	GeoIPFilteringEnabled          types.Bool   `tfsdk:"geo_ip_filtering_enabled"`
-	GeoIPFilteringTrafficDirection types.String `tfsdk:"geo_ip_filtering_traffic_direction"`
-	GreModule                      types.Bool   `tfsdk:"gre_module"`
-	H323Module                     types.Bool   `tfsdk:"h323_module"`
-	ICMPTimeout                    types.Int64  `tfsdk:"icmp_timeout"`
-	MssClamp                       types.String `tfsdk:"mss_clamp"`
-	OffloadAccounting              types.Bool   `tfsdk:"offload_accounting"`
-	OffloadL2Blocking              types.Bool   `tfsdk:"offload_l2_blocking"`
-	OffloadSch                     types.Bool   `tfsdk:"offload_sch"`
-	OtherTimeout                   types.Int64  `tfsdk:"other_timeout"`
-	PptpModule                     types.Bool   `tfsdk:"pptp_module"`
-	ReceiveRedirects               types.Bool   `tfsdk:"receive_redirects"`
-	SendRedirects                  types.Bool   `tfsdk:"send_redirects"`
-	SipModule                      types.Bool   `tfsdk:"sip_module"`
-	SynCookies                     types.Bool   `tfsdk:"syn_cookies"`
-	TCPCloseTimeout                types.Int64  `tfsdk:"tcp_close_timeout"`
-	TCPCloseWaitTimeout            types.Int64  `tfsdk:"tcp_close_wait_timeout"`
-	TCPEstablishedTimeout          types.Int64  `tfsdk:"tcp_established_timeout"`
-	TCPFinWaitTimeout              types.Int64  `tfsdk:"tcp_fin_wait_timeout"`
-	TCPLastAckTimeout              types.Int64  `tfsdk:"tcp_last_ack_timeout"`
-	TCPSynRecvTimeout              types.Int64  `tfsdk:"tcp_syn_recv_timeout"`
-	TCPSynSentTimeout              types.Int64  `tfsdk:"tcp_syn_sent_timeout"`
-	TCPTimeWaitTimeout             types.Int64  `tfsdk:"tcp_time_wait_timeout"`
-	TFTPModule                     types.Bool   `tfsdk:"tftp_module"`
-	TimeoutSettingPreference       types.String `tfsdk:"timeout_setting_preference"`
-	UDPOtherTimeout                types.Int64  `tfsdk:"udp_other_timeout"`
-	UDPStreamTimeout               types.Int64  `tfsdk:"udp_stream_timeout"`
-	UnbindWANMonitors              types.Bool   `tfsdk:"unbind_wan_monitors"`
-	UPnPEnabled                    types.Bool   `tfsdk:"upnp_enabled"`
-	UPnPNATPmpEnabled              types.Bool   `tfsdk:"upnp_nat_pmp_enabled"`
-	UPnPSecureMode                 types.Bool   `tfsdk:"upnp_secure_mode"`
-	UPnPWANInterface               types.String `tfsdk:"upnp_wan_interface"`
+	BroadcastPing                  types.Bool           `tfsdk:"broadcast_ping"`
+	DNSVerification                types.Object         `tfsdk:"dns_verification"`
+	FtpModule                      types.Bool           `tfsdk:"ftp_module"`
+	GeoIPFilteringBlock            types.String         `tfsdk:"geo_ip_filtering_block"`
+	GeoIPFilteringCountries        types.String         `tfsdk:"geo_ip_filtering_countries"`
+	GeoIPFilteringEnabled          types.Bool           `tfsdk:"geo_ip_filtering_enabled"`
+	GeoIPFilteringTrafficDirection types.String         `tfsdk:"geo_ip_filtering_traffic_direction"`
+	GreModule                      types.Bool           `tfsdk:"gre_module"`
+	H323Module                     types.Bool           `tfsdk:"h323_module"`
+	ICMPTimeout                    timetypes.GoDuration `tfsdk:"icmp_timeout"`
+	MssClamp                       types.String         `tfsdk:"mss_clamp"`
+	OffloadAccounting              types.Bool           `tfsdk:"offload_accounting"`
+	OffloadL2Blocking              types.Bool           `tfsdk:"offload_l2_blocking"`
+	OffloadSch                     types.Bool           `tfsdk:"offload_sch"`
+	OtherTimeout                   timetypes.GoDuration `tfsdk:"other_timeout"`
+	PptpModule                     types.Bool           `tfsdk:"pptp_module"`
+	ReceiveRedirects               types.Bool           `tfsdk:"receive_redirects"`
+	SendRedirects                  types.Bool           `tfsdk:"send_redirects"`
+	SipModule                      types.Bool           `tfsdk:"sip_module"`
+	SynCookies                     types.Bool           `tfsdk:"syn_cookies"`
+	TCPCloseTimeout                timetypes.GoDuration `tfsdk:"tcp_close_timeout"`
+	TCPCloseWaitTimeout            timetypes.GoDuration `tfsdk:"tcp_close_wait_timeout"`
+	TCPEstablishedTimeout          timetypes.GoDuration `tfsdk:"tcp_established_timeout"`
+	TCPFinWaitTimeout              timetypes.GoDuration `tfsdk:"tcp_fin_wait_timeout"`
+	TCPLastAckTimeout              timetypes.GoDuration `tfsdk:"tcp_last_ack_timeout"`
+	TCPSynRecvTimeout              timetypes.GoDuration `tfsdk:"tcp_syn_recv_timeout"`
+	TCPSynSentTimeout              timetypes.GoDuration `tfsdk:"tcp_syn_sent_timeout"`
+	TCPTimeWaitTimeout             timetypes.GoDuration `tfsdk:"tcp_time_wait_timeout"`
+	TFTPModule                     types.Bool           `tfsdk:"tftp_module"`
+	TimeoutSettingPreference       types.String         `tfsdk:"timeout_setting_preference"`
+	UDPOtherTimeout                timetypes.GoDuration `tfsdk:"udp_other_timeout"`
+	UDPStreamTimeout               timetypes.GoDuration `tfsdk:"udp_stream_timeout"`
+	UnbindWANMonitors              types.Bool           `tfsdk:"unbind_wan_monitors"`
+	UPnPEnabled                    types.Bool           `tfsdk:"upnp_enabled"`
+	UPnPNATPmpEnabled              types.Bool           `tfsdk:"upnp_nat_pmp_enabled"`
+	UPnPSecureMode                 types.Bool           `tfsdk:"upnp_secure_mode"`
+	UPnPWANInterface               types.String         `tfsdk:"upnp_wan_interface"`
 }
 
 type settingDohCustomServerModel struct {
@@ -224,6 +228,9 @@ func (r *settingResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: radius.interim_update_interval and the usg conntrack timeouts
+		// changed from Int64 (seconds) to GoDuration strings. See UpgradeState.
+		Version:             1,
 		MarkdownDescription: "Manages settings for a UniFi site. Configure only the settings you need by providing the corresponding nested object.",
 
 		Attributes: map[string]schema.Attribute{
@@ -472,13 +479,12 @@ func (r *settingResource) Schema(
 							int64validator.Between(1, 65535),
 						},
 					},
-					"interim_update_interval": schema.Int64Attribute{
-						MarkdownDescription: "Interim update interval in seconds.",
-						Optional:            true,
-						Computed:            true,
-						Validators: []validator.Int64{
-							int64validator.Between(60, 86400),
-						},
+					"interim_update_interval": schema.StringAttribute{
+						MarkdownDescription: "Interim update interval, as a Go duration string " +
+							"(e.g. `1h`, `3600s`).",
+						CustomType: timetypes.GoDurationType{},
+						Optional:   true,
+						Computed:   true,
 					},
 					"secret": schema.StringAttribute{
 						MarkdownDescription: "RADIUS shared secret.",
@@ -567,8 +573,9 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"icmp_timeout": schema.Int64Attribute{
-						MarkdownDescription: "ICMP connection timeout in seconds.",
+					"icmp_timeout": schema.StringAttribute{
+						MarkdownDescription: "ICMP connection timeout, as a Go duration string (e.g. `30s`, `1m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
@@ -592,8 +599,9 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"other_timeout": schema.Int64Attribute{
-						MarkdownDescription: "Other connections timeout in seconds.",
+					"other_timeout": schema.StringAttribute{
+						MarkdownDescription: "Other connections timeout, as a Go duration string (e.g. `600s`, `10m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
@@ -622,43 +630,51 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_close_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP close timeout in seconds.",
+					"tcp_close_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP close timeout, as a Go duration string (e.g. `10s`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_close_wait_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP close wait timeout in seconds.",
+					"tcp_close_wait_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP close wait timeout, as a Go duration string (e.g. `60s`, `1m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_established_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP established connection timeout in seconds.",
+					"tcp_established_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP established connection timeout, as a Go duration string (e.g. `7440s`, `2h4m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_fin_wait_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP fin wait timeout in seconds.",
+					"tcp_fin_wait_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP fin wait timeout, as a Go duration string (e.g. `120s`, `2m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_last_ack_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP last ACK timeout in seconds.",
+					"tcp_last_ack_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP last ACK timeout, as a Go duration string (e.g. `30s`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_syn_recv_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP SYN received timeout in seconds.",
+					"tcp_syn_recv_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP SYN received timeout, as a Go duration string (e.g. `60s`, `1m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_syn_sent_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP SYN sent timeout in seconds.",
+					"tcp_syn_sent_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP SYN sent timeout, as a Go duration string (e.g. `120s`, `2m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_time_wait_timeout": schema.Int64Attribute{
-						MarkdownDescription: "TCP time wait timeout in seconds.",
+					"tcp_time_wait_timeout": schema.StringAttribute{
+						MarkdownDescription: "TCP time wait timeout, as a Go duration string (e.g. `120s`, `2m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
@@ -672,13 +688,15 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"udp_other_timeout": schema.Int64Attribute{
-						MarkdownDescription: "UDP other timeout in seconds.",
+					"udp_other_timeout": schema.StringAttribute{
+						MarkdownDescription: "UDP other timeout, as a Go duration string (e.g. `30s`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
-					"udp_stream_timeout": schema.Int64Attribute{
-						MarkdownDescription: "UDP stream timeout in seconds.",
+					"udp_stream_timeout": schema.StringAttribute{
+						MarkdownDescription: "UDP stream timeout, as a Go duration string (e.g. `180s`, `3m`).",
+						CustomType:          timetypes.GoDurationType{},
 						Optional:            true,
 						Computed:            true,
 					},
@@ -725,6 +743,57 @@ func (r *settingResource) Schema(
 						Computed:            true,
 					},
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state to v1: radius.interim_update_interval and the
+// usg conntrack timeouts changed from integer seconds to GoDuration strings.
+func (r *settingResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	conntrack := []string{
+		"icmp_timeout", "other_timeout",
+		"tcp_close_timeout", "tcp_close_wait_timeout", "tcp_established_timeout",
+		"tcp_fin_wait_timeout", "tcp_last_ack_timeout", "tcp_syn_recv_timeout",
+		"tcp_syn_sent_timeout", "tcp_time_wait_timeout",
+		"udp_other_timeout", "udp_stream_timeout",
+	}
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						if radius, ok := state["radius"].(map[string]any); ok {
+							util.SetDurationField(radius, "interim_update_interval", time.Second)
+						}
+						if usg, ok := state["usg"].(map[string]any); ok {
+							for _, n := range conntrack {
+								util.SetDurationField(usg, n, time.Second)
+							}
+						}
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade settings state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -1221,7 +1290,7 @@ func (r *settingResource) readSettings(
 			"accounting_enabled":      types.BoolType,
 			"acct_port":               types.Int64Type,
 			"auth_port":               types.Int64Type,
-			"interim_update_interval": types.Int64Type,
+			"interim_update_interval": timetypes.GoDurationType{},
 			"secret":                  types.StringType,
 		}, radiusModel)
 		diags.Append(d...)
@@ -1234,7 +1303,7 @@ func (r *settingResource) readSettings(
 			"accounting_enabled":      types.BoolType,
 			"acct_port":               types.Int64Type,
 			"auth_port":               types.Int64Type,
-			"interim_update_interval": types.Int64Type,
+			"interim_update_interval": timetypes.GoDurationType{},
 			"secret":                  types.StringType,
 		})
 	}
@@ -1272,29 +1341,29 @@ func (r *settingResource) readSettings(
 			"geo_ip_filtering_traffic_direction": types.StringType,
 			"gre_module":                         types.BoolType,
 			"h323_module":                        types.BoolType,
-			"icmp_timeout":                       types.Int64Type,
+			"icmp_timeout":                       timetypes.GoDurationType{},
 			"mss_clamp":                          types.StringType,
 			"offload_accounting":                 types.BoolType,
 			"offload_l2_blocking":                types.BoolType,
 			"offload_sch":                        types.BoolType,
-			"other_timeout":                      types.Int64Type,
+			"other_timeout":                      timetypes.GoDurationType{},
 			"pptp_module":                        types.BoolType,
 			"receive_redirects":                  types.BoolType,
 			"send_redirects":                     types.BoolType,
 			"sip_module":                         types.BoolType,
 			"syn_cookies":                        types.BoolType,
-			"tcp_close_timeout":                  types.Int64Type,
-			"tcp_close_wait_timeout":             types.Int64Type,
-			"tcp_established_timeout":            types.Int64Type,
-			"tcp_fin_wait_timeout":               types.Int64Type,
-			"tcp_last_ack_timeout":               types.Int64Type,
-			"tcp_syn_recv_timeout":               types.Int64Type,
-			"tcp_syn_sent_timeout":               types.Int64Type,
-			"tcp_time_wait_timeout":              types.Int64Type,
+			"tcp_close_timeout":                  timetypes.GoDurationType{},
+			"tcp_close_wait_timeout":             timetypes.GoDurationType{},
+			"tcp_established_timeout":            timetypes.GoDurationType{},
+			"tcp_fin_wait_timeout":               timetypes.GoDurationType{},
+			"tcp_last_ack_timeout":               timetypes.GoDurationType{},
+			"tcp_syn_recv_timeout":               timetypes.GoDurationType{},
+			"tcp_syn_sent_timeout":               timetypes.GoDurationType{},
+			"tcp_time_wait_timeout":              timetypes.GoDurationType{},
 			"tftp_module":                        types.BoolType,
 			"timeout_setting_preference":         types.StringType,
-			"udp_other_timeout":                  types.Int64Type,
-			"udp_stream_timeout":                 types.Int64Type,
+			"udp_other_timeout":                  timetypes.GoDurationType{},
+			"udp_stream_timeout":                 timetypes.GoDurationType{},
 			"unbind_wan_monitors":                types.BoolType,
 			"upnp_enabled":                       types.BoolType,
 			"upnp_nat_pmp_enabled":               types.BoolType,
@@ -1324,29 +1393,29 @@ func (r *settingResource) readSettings(
 			"geo_ip_filtering_traffic_direction": types.StringType,
 			"gre_module":                         types.BoolType,
 			"h323_module":                        types.BoolType,
-			"icmp_timeout":                       types.Int64Type,
+			"icmp_timeout":                       timetypes.GoDurationType{},
 			"mss_clamp":                          types.StringType,
 			"offload_accounting":                 types.BoolType,
 			"offload_l2_blocking":                types.BoolType,
 			"offload_sch":                        types.BoolType,
-			"other_timeout":                      types.Int64Type,
+			"other_timeout":                      timetypes.GoDurationType{},
 			"pptp_module":                        types.BoolType,
 			"receive_redirects":                  types.BoolType,
 			"send_redirects":                     types.BoolType,
 			"sip_module":                         types.BoolType,
 			"syn_cookies":                        types.BoolType,
-			"tcp_close_timeout":                  types.Int64Type,
-			"tcp_close_wait_timeout":             types.Int64Type,
-			"tcp_established_timeout":            types.Int64Type,
-			"tcp_fin_wait_timeout":               types.Int64Type,
-			"tcp_last_ack_timeout":               types.Int64Type,
-			"tcp_syn_recv_timeout":               types.Int64Type,
-			"tcp_syn_sent_timeout":               types.Int64Type,
-			"tcp_time_wait_timeout":              types.Int64Type,
+			"tcp_close_timeout":                  timetypes.GoDurationType{},
+			"tcp_close_wait_timeout":             timetypes.GoDurationType{},
+			"tcp_established_timeout":            timetypes.GoDurationType{},
+			"tcp_fin_wait_timeout":               timetypes.GoDurationType{},
+			"tcp_last_ack_timeout":               timetypes.GoDurationType{},
+			"tcp_syn_recv_timeout":               timetypes.GoDurationType{},
+			"tcp_syn_sent_timeout":               timetypes.GoDurationType{},
+			"tcp_time_wait_timeout":              timetypes.GoDurationType{},
 			"tftp_module":                        types.BoolType,
 			"timeout_setting_preference":         types.StringType,
-			"udp_other_timeout":                  types.Int64Type,
-			"udp_stream_timeout":                 types.Int64Type,
+			"udp_other_timeout":                  timetypes.GoDurationType{},
+			"udp_stream_timeout":                 timetypes.GoDurationType{},
 			"unbind_wan_monitors":                types.BoolType,
 			"upnp_enabled":                       types.BoolType,
 			"upnp_nat_pmp_enabled":               types.BoolType,
@@ -1486,7 +1555,10 @@ func (r *settingResource) radiusModelToSetting(
 		setting.AuthPort = model.AuthPort.ValueInt64Pointer()
 	}
 	if !model.InterimUpdateInterval.IsNull() && !model.InterimUpdateInterval.IsUnknown() {
-		setting.InterimUpdateInterval = model.InterimUpdateInterval.ValueInt64Pointer()
+		setting.InterimUpdateInterval = util.DurationUnitsPtr(
+			model.InterimUpdateInterval,
+			time.Second,
+		)
 	}
 	if !model.Secret.IsNull() && !model.Secret.IsUnknown() {
 		setting.Secret = model.Secret.ValueString()
@@ -1509,7 +1581,7 @@ func (r *settingResource) radiusSettingToModel(
 
 	model.AuthPort = types.Int64PointerValue(setting.AuthPort)
 
-	model.InterimUpdateInterval = types.Int64PointerValue(setting.InterimUpdateInterval)
+	model.InterimUpdateInterval = util.DurationPtrValue(setting.InterimUpdateInterval, time.Second)
 
 	if !plan.Secret.IsNull() && !plan.Secret.IsUnknown() {
 		if setting.Secret != "" {
@@ -1565,8 +1637,8 @@ func (r *settingResource) usgModelToSetting(
 	if !model.H323Module.IsNull() {
 		setting.H323Module = model.H323Module.ValueBool()
 	}
-	if !model.ICMPTimeout.IsNull() {
-		setting.ICMPTimeout = model.ICMPTimeout.ValueInt64()
+	if !model.ICMPTimeout.IsNull() && !model.ICMPTimeout.IsUnknown() {
+		setting.ICMPTimeout = util.DurationUnits(model.ICMPTimeout, time.Second)
 	}
 	if !model.MssClamp.IsNull() {
 		setting.MssClamp = model.MssClamp.ValueString()
@@ -1580,8 +1652,8 @@ func (r *settingResource) usgModelToSetting(
 	if !model.OffloadSch.IsNull() {
 		setting.OffloadSch = model.OffloadSch.ValueBool()
 	}
-	if !model.OtherTimeout.IsNull() {
-		setting.OtherTimeout = model.OtherTimeout.ValueInt64()
+	if !model.OtherTimeout.IsNull() && !model.OtherTimeout.IsUnknown() {
+		setting.OtherTimeout = util.DurationUnits(model.OtherTimeout, time.Second)
 	}
 	if !model.PptpModule.IsNull() {
 		setting.PptpModule = model.PptpModule.ValueBool()
@@ -1598,29 +1670,29 @@ func (r *settingResource) usgModelToSetting(
 	if !model.SynCookies.IsNull() {
 		setting.SynCookies = model.SynCookies.ValueBool()
 	}
-	if !model.TCPCloseTimeout.IsNull() {
-		setting.TCPCloseTimeout = model.TCPCloseTimeout.ValueInt64()
+	if !model.TCPCloseTimeout.IsNull() && !model.TCPCloseTimeout.IsUnknown() {
+		setting.TCPCloseTimeout = util.DurationUnits(model.TCPCloseTimeout, time.Second)
 	}
-	if !model.TCPCloseWaitTimeout.IsNull() {
-		setting.TCPCloseWaitTimeout = model.TCPCloseWaitTimeout.ValueInt64()
+	if !model.TCPCloseWaitTimeout.IsNull() && !model.TCPCloseWaitTimeout.IsUnknown() {
+		setting.TCPCloseWaitTimeout = util.DurationUnits(model.TCPCloseWaitTimeout, time.Second)
 	}
-	if !model.TCPEstablishedTimeout.IsNull() {
-		setting.TCPEstablishedTimeout = model.TCPEstablishedTimeout.ValueInt64()
+	if !model.TCPEstablishedTimeout.IsNull() && !model.TCPEstablishedTimeout.IsUnknown() {
+		setting.TCPEstablishedTimeout = util.DurationUnits(model.TCPEstablishedTimeout, time.Second)
 	}
-	if !model.TCPFinWaitTimeout.IsNull() {
-		setting.TCPFinWaitTimeout = model.TCPFinWaitTimeout.ValueInt64()
+	if !model.TCPFinWaitTimeout.IsNull() && !model.TCPFinWaitTimeout.IsUnknown() {
+		setting.TCPFinWaitTimeout = util.DurationUnits(model.TCPFinWaitTimeout, time.Second)
 	}
-	if !model.TCPLastAckTimeout.IsNull() {
-		setting.TCPLastAckTimeout = model.TCPLastAckTimeout.ValueInt64()
+	if !model.TCPLastAckTimeout.IsNull() && !model.TCPLastAckTimeout.IsUnknown() {
+		setting.TCPLastAckTimeout = util.DurationUnits(model.TCPLastAckTimeout, time.Second)
 	}
-	if !model.TCPSynRecvTimeout.IsNull() {
-		setting.TCPSynRecvTimeout = model.TCPSynRecvTimeout.ValueInt64()
+	if !model.TCPSynRecvTimeout.IsNull() && !model.TCPSynRecvTimeout.IsUnknown() {
+		setting.TCPSynRecvTimeout = util.DurationUnits(model.TCPSynRecvTimeout, time.Second)
 	}
-	if !model.TCPSynSentTimeout.IsNull() {
-		setting.TCPSynSentTimeout = model.TCPSynSentTimeout.ValueInt64()
+	if !model.TCPSynSentTimeout.IsNull() && !model.TCPSynSentTimeout.IsUnknown() {
+		setting.TCPSynSentTimeout = util.DurationUnits(model.TCPSynSentTimeout, time.Second)
 	}
-	if !model.TCPTimeWaitTimeout.IsNull() {
-		setting.TCPTimeWaitTimeout = model.TCPTimeWaitTimeout.ValueInt64()
+	if !model.TCPTimeWaitTimeout.IsNull() && !model.TCPTimeWaitTimeout.IsUnknown() {
+		setting.TCPTimeWaitTimeout = util.DurationUnits(model.TCPTimeWaitTimeout, time.Second)
 	}
 	if !model.TFTPModule.IsNull() {
 		setting.TFTPModule = model.TFTPModule.ValueBool()
@@ -1628,11 +1700,11 @@ func (r *settingResource) usgModelToSetting(
 	if !model.TimeoutSettingPreference.IsNull() {
 		setting.TimeoutSettingPreference = model.TimeoutSettingPreference.ValueString()
 	}
-	if !model.UDPOtherTimeout.IsNull() {
-		setting.UDPOtherTimeout = model.UDPOtherTimeout.ValueInt64()
+	if !model.UDPOtherTimeout.IsNull() && !model.UDPOtherTimeout.IsUnknown() {
+		setting.UDPOtherTimeout = util.DurationUnits(model.UDPOtherTimeout, time.Second)
 	}
-	if !model.UDPStreamTimeout.IsNull() {
-		setting.UDPStreamTimeout = model.UDPStreamTimeout.ValueInt64()
+	if !model.UDPStreamTimeout.IsNull() && !model.UDPStreamTimeout.IsUnknown() {
+		setting.UDPStreamTimeout = util.DurationUnits(model.UDPStreamTimeout, time.Second)
 	}
 	if !model.UnbindWANMonitors.IsNull() {
 		setting.UnbindWANMonitors = model.UnbindWANMonitors.ValueBool()
@@ -1748,9 +1820,9 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.ICMPTimeout.IsNull() && !plan.ICMPTimeout.IsUnknown() {
-		model.ICMPTimeout = types.Int64Value(setting.ICMPTimeout)
+		model.ICMPTimeout = util.DurationValue(setting.ICMPTimeout, time.Second)
 	} else {
-		model.ICMPTimeout = types.Int64Null()
+		model.ICMPTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.MssClamp.IsNull() && !plan.MssClamp.IsUnknown() {
@@ -1782,9 +1854,9 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.OtherTimeout.IsNull() && !plan.OtherTimeout.IsUnknown() {
-		model.OtherTimeout = types.Int64Value(setting.OtherTimeout)
+		model.OtherTimeout = util.DurationValue(setting.OtherTimeout, time.Second)
 	} else {
-		model.OtherTimeout = types.Int64Null()
+		model.OtherTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.PptpModule.IsNull() && !plan.PptpModule.IsUnknown() {
@@ -1818,51 +1890,51 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.TCPCloseTimeout.IsNull() && !plan.TCPCloseTimeout.IsUnknown() {
-		model.TCPCloseTimeout = types.Int64Value(setting.TCPCloseTimeout)
+		model.TCPCloseTimeout = util.DurationValue(setting.TCPCloseTimeout, time.Second)
 	} else {
-		model.TCPCloseTimeout = types.Int64Null()
+		model.TCPCloseTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TCPCloseWaitTimeout.IsNull() && !plan.TCPCloseWaitTimeout.IsUnknown() {
-		model.TCPCloseWaitTimeout = types.Int64Value(setting.TCPCloseWaitTimeout)
+		model.TCPCloseWaitTimeout = util.DurationValue(setting.TCPCloseWaitTimeout, time.Second)
 	} else {
-		model.TCPCloseWaitTimeout = types.Int64Null()
+		model.TCPCloseWaitTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TCPEstablishedTimeout.IsNull() && !plan.TCPEstablishedTimeout.IsUnknown() {
-		model.TCPEstablishedTimeout = types.Int64Value(setting.TCPEstablishedTimeout)
+		model.TCPEstablishedTimeout = util.DurationValue(setting.TCPEstablishedTimeout, time.Second)
 	} else {
-		model.TCPEstablishedTimeout = types.Int64Null()
+		model.TCPEstablishedTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TCPFinWaitTimeout.IsNull() && !plan.TCPFinWaitTimeout.IsUnknown() {
-		model.TCPFinWaitTimeout = types.Int64Value(setting.TCPFinWaitTimeout)
+		model.TCPFinWaitTimeout = util.DurationValue(setting.TCPFinWaitTimeout, time.Second)
 	} else {
-		model.TCPFinWaitTimeout = types.Int64Null()
+		model.TCPFinWaitTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TCPLastAckTimeout.IsNull() && !plan.TCPLastAckTimeout.IsUnknown() {
-		model.TCPLastAckTimeout = types.Int64Value(setting.TCPLastAckTimeout)
+		model.TCPLastAckTimeout = util.DurationValue(setting.TCPLastAckTimeout, time.Second)
 	} else {
-		model.TCPLastAckTimeout = types.Int64Null()
+		model.TCPLastAckTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TCPSynRecvTimeout.IsNull() && !plan.TCPSynRecvTimeout.IsUnknown() {
-		model.TCPSynRecvTimeout = types.Int64Value(setting.TCPSynRecvTimeout)
+		model.TCPSynRecvTimeout = util.DurationValue(setting.TCPSynRecvTimeout, time.Second)
 	} else {
-		model.TCPSynRecvTimeout = types.Int64Null()
+		model.TCPSynRecvTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TCPSynSentTimeout.IsNull() && !plan.TCPSynSentTimeout.IsUnknown() {
-		model.TCPSynSentTimeout = types.Int64Value(setting.TCPSynSentTimeout)
+		model.TCPSynSentTimeout = util.DurationValue(setting.TCPSynSentTimeout, time.Second)
 	} else {
-		model.TCPSynSentTimeout = types.Int64Null()
+		model.TCPSynSentTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TCPTimeWaitTimeout.IsNull() && !plan.TCPTimeWaitTimeout.IsUnknown() {
-		model.TCPTimeWaitTimeout = types.Int64Value(setting.TCPTimeWaitTimeout)
+		model.TCPTimeWaitTimeout = util.DurationValue(setting.TCPTimeWaitTimeout, time.Second)
 	} else {
-		model.TCPTimeWaitTimeout = types.Int64Null()
+		model.TCPTimeWaitTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.TFTPModule.IsNull() && !plan.TFTPModule.IsUnknown() {
@@ -1882,15 +1954,15 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.UDPOtherTimeout.IsNull() && !plan.UDPOtherTimeout.IsUnknown() {
-		model.UDPOtherTimeout = types.Int64Value(setting.UDPOtherTimeout)
+		model.UDPOtherTimeout = util.DurationValue(setting.UDPOtherTimeout, time.Second)
 	} else {
-		model.UDPOtherTimeout = types.Int64Null()
+		model.UDPOtherTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.UDPStreamTimeout.IsNull() && !plan.UDPStreamTimeout.IsUnknown() {
-		model.UDPStreamTimeout = types.Int64Value(setting.UDPStreamTimeout)
+		model.UDPStreamTimeout = util.DurationValue(setting.UDPStreamTimeout, time.Second)
 	} else {
-		model.UDPStreamTimeout = types.Int64Null()
+		model.UDPStreamTimeout = timetypes.NewGoDurationNull()
 	}
 
 	if !plan.UnbindWANMonitors.IsNull() && !plan.UnbindWANMonitors.IsUnknown() {

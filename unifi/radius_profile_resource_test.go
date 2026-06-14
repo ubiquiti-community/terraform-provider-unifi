@@ -33,7 +33,7 @@ func TestAccRadiusProfile_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
 						"interim_update_interval",
-						"3600",
+						"1h0m0s",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
@@ -244,7 +244,7 @@ func TestAccRadiusProfile_withInterimUpdate(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
 						"interim_update_interval",
-						"1800",
+						"30m0s",
 					),
 				),
 			},
@@ -307,7 +307,7 @@ func TestAccRadiusProfile_update(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
 						"interim_update_interval",
-						"3600",
+						"1h0m0s",
 					),
 				),
 			},
@@ -332,7 +332,7 @@ func TestAccRadiusProfile_update(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
 						"interim_update_interval",
-						"1800",
+						"30m0s",
 					),
 				),
 			},
@@ -436,7 +436,7 @@ resource "unifi_radius_profile" "test" {
   name                    = "tfacc-radius-profile-interim"
   accounting_enabled      = true
   interim_update_enabled  = true
-  interim_update_interval = 1800
+  interim_update_interval = "30m0s"
 }
 `
 }
@@ -457,7 +457,7 @@ resource "unifi_radius_profile" "test" {
   name                    = "tfacc-radius-profile-updated"
   accounting_enabled      = true
   interim_update_enabled  = true
-  interim_update_interval = 1800
+  interim_update_interval = "30m0s"
 }
 `
 }

@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -52,11 +53,6 @@ type staticRouteFrameworkResource struct {
 	client *Client
 }
 
-// staticRouteIdentityModel describes the identity model.
-type staticRouteIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // staticRouteListConfigModel describes the list configuration model.
 type staticRouteListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -71,17 +67,17 @@ type staticRouteListFilterModel struct {
 
 // staticRouteFrameworkResourceModel describes the resource data model.
 type staticRouteFrameworkResourceModel struct {
-	ID            types.String `tfsdk:"id"`
-	Site          types.String `tfsdk:"site"`
-	Name          types.String `tfsdk:"name"`
-	Network       types.String `tfsdk:"network"`
-	Type          types.String `tfsdk:"type"`
-	Distance      types.Int64  `tfsdk:"distance"`
-	NextHop       types.String `tfsdk:"next_hop"`
-	Interface     types.String `tfsdk:"interface"`
-	Enabled       types.Bool   `tfsdk:"enabled"`
-	GatewayDevice types.String `tfsdk:"gateway_device"`
-	GatewayType   types.String `tfsdk:"gateway_type"`
+	ID            types.String      `tfsdk:"id"`
+	Site          types.String      `tfsdk:"site"`
+	Name          types.String      `tfsdk:"name"`
+	Network       types.String      `tfsdk:"network"`
+	Type          types.String      `tfsdk:"type"`
+	Distance      types.Int64       `tfsdk:"distance"`
+	NextHop       iptypes.IPAddress `tfsdk:"next_hop"`
+	Interface     types.String      `tfsdk:"interface"`
+	Enabled       types.Bool        `tfsdk:"enabled"`
+	GatewayDevice types.String      `tfsdk:"gateway_device"`
+	GatewayType   types.String      `tfsdk:"gateway_type"`
 }
 
 func (r *staticRouteFrameworkResource) Metadata(
@@ -159,6 +155,7 @@ func (r *staticRouteFrameworkResource) Schema(
 			},
 			"next_hop": schema.StringAttribute{
 				MarkdownDescription: "The next hop of the static route (only valid for `nexthop-route` type). Accepts IPv4 or IPv6 addresses.",
+				CustomType:          iptypes.IPAddressType{},
 				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.Any(validators.IPv4Validator(), validators.IPv6Validator()),
@@ -568,10 +565,9 @@ func (r *staticRouteFrameworkResource) routingToModel(
 	model.Type = types.StringValue(routing.StaticRouteType)
 	model.Distance = types.Int64PointerValue(routing.StaticRouteDistance)
 
+	model.NextHop = iptypes.NewIPAddressNull()
 	if routing.StaticRouteNexthop != "" {
-		model.NextHop = types.StringValue(routing.StaticRouteNexthop)
-	} else {
-		model.NextHop = types.StringNull()
+		model.NextHop = iptypes.NewIPAddressValue(routing.StaticRouteNexthop)
 	}
 
 	if routing.StaticRouteInterface != "" {

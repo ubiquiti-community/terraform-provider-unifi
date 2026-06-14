@@ -60,10 +60,6 @@ type wireguardPeerResourceModel struct {
 	AllowedIPs  types.List   `tfsdk:"allowed_ips"`
 }
 
-type wireguardPeerIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // wireguardPeerListConfigModel describes the list configuration model. Peers
 // belong to a WireGuard server network, so `network_id` is required.
 type wireguardPeerListConfigModel struct {

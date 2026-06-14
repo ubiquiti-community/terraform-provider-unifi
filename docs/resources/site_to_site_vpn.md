@@ -59,11 +59,11 @@ resource "unifi_site_to_site_vpn" "branch" {
 - `esp_dh_group` (Number) ESP (phase 2) Diffie-Hellman group (PFS). Only used when `profile = customized`.
 - `esp_encryption` (String) ESP (phase 2) encryption. Only used when `profile = customized`.
 - `esp_hash` (String) ESP (phase 2) hash. Only used when `profile = customized`.
-- `esp_lifetime` (Number) ESP (phase 2) security-association lifetime in seconds (30-86400).
+- `esp_lifetime` (String) ESP (phase 2) security-association lifetime, as a Go duration string (e.g. `1h`, `3600s`). Must be a whole number of seconds between `30s` and `86400s` (24h).
 - `ike_dh_group` (Number) IKE (phase 1) Diffie-Hellman group. Only used when `profile = customized`.
 - `ike_encryption` (String) IKE (phase 1) encryption. Only used when `profile = customized`.
 - `ike_hash` (String) IKE (phase 1) hash. Only used when `profile = customized`.
-- `ike_lifetime` (Number) IKE (phase 1) security-association lifetime in seconds (30-86400).
+- `ike_lifetime` (String) IKE (phase 1) security-association lifetime, as a Go duration string (e.g. `8h`, `28800s`). Must be a whole number of seconds between `30s` and `86400s` (24h).
 - `interface` (String) The local WAN interface the tunnel binds to (e.g. `wan`, `wan2`).
 - `key_exchange` (String) IKE key-exchange version. One of `ikev1` or `ikev2`.
 - `local_ip` (String) The local IP used for the tunnel. Defaults to the WAN address when omitted.

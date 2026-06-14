@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -31,14 +33,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &wlanFrameworkResource{}
-	_ resource.ResourceWithImportState = &wlanFrameworkResource{}
-	_ resource.ResourceWithIdentity    = &wlanFrameworkResource{}
+	_ resource.Resource                 = &wlanFrameworkResource{}
+	_ resource.ResourceWithImportState  = &wlanFrameworkResource{}
+	_ resource.ResourceWithIdentity     = &wlanFrameworkResource{}
+	_ resource.ResourceWithUpgradeState = &wlanFrameworkResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -62,11 +66,11 @@ type wlanFrameworkResource struct {
 
 // wlanScheduleModel represents a schedule block for WLAN.
 type wlanScheduleModel struct {
-	DayOfWeek   types.String `tfsdk:"day_of_week"`
-	StartHour   types.Int64  `tfsdk:"start_hour"`
-	StartMinute types.Int64  `tfsdk:"start_minute"`
-	Duration    types.Int64  `tfsdk:"duration"`
-	Name        types.String `tfsdk:"name"`
+	DayOfWeek   types.String         `tfsdk:"day_of_week"`
+	StartHour   types.Int64          `tfsdk:"start_hour"`
+	StartMinute types.Int64          `tfsdk:"start_minute"`
+	Duration    timetypes.GoDuration `tfsdk:"duration"`
+	Name        types.String         `tfsdk:"name"`
 }
 
 // wlanMacFilterModel represents the MAC filter configuration for WLAN.
@@ -151,10 +155,6 @@ type wlanFrameworkResourceModel struct {
 	BroadcastFilterList  types.Set   `tfsdk:"bc_filter_list"`
 }
 
-type wlanIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // wlanListConfigModel describes the list configuration model.
 type wlanListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -196,6 +196,8 @@ func (r *wlanFrameworkResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: schedule[].duration changed from Int64 (minutes) to a GoDuration string.
+		Version:             1,
 		MarkdownDescription: "Manages a WiFi network / SSID in UniFi Controller",
 
 		Attributes: map[string]schema.Attribute{
@@ -653,11 +655,16 @@ func (r *wlanFrameworkResource) Schema(
 								int64validator.Between(0, 59),
 							},
 						},
-						"duration": schema.Int64Attribute{
-							MarkdownDescription: "Length of the block in minutes.",
-							Required:            true,
-							Validators: []validator.Int64{
-								int64validator.AtLeast(1),
+						"duration": schema.StringAttribute{
+							MarkdownDescription: "Length of the block, as a Go duration string. " +
+								"The controller stores this value with one-minute resolution, so the " +
+								"duration must be at least `1m` and a whole multiple of one minute " +
+								"(e.g. `30m`, `2h`).",
+							CustomType: timetypes.GoDurationType{},
+							Required:   true,
+							Validators: []validator.String{
+								validators.GoDurationBetween(time.Minute, 7*24*time.Hour),
+								validators.GoDurationMultipleOf(time.Minute),
 							},
 						},
 						"name": schema.StringAttribute{
@@ -666,6 +673,48 @@ func (r *wlanFrameworkResource) Schema(
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (schedule[].duration stored as integer minutes)
+// to v1 (GoDuration strings).
+func (r *wlanFrameworkResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						if scheds, ok := state["schedule"].([]any); ok {
+							for _, s := range scheds {
+								if sm, ok := s.(map[string]any); ok {
+									util.SetDurationField(sm, "duration", time.Minute)
+								}
+							}
+						}
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade WLAN state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -1346,7 +1395,7 @@ func (r *wlanFrameworkResource) planToWLAN(
 					StartDaysOfWeek: []string{sched.DayOfWeek.ValueString()},
 					StartHour:       sched.StartHour.ValueInt64Pointer(),
 					StartMinute:     sched.StartMinute.ValueInt64Pointer(),
-					DurationMinutes: sched.Duration.ValueInt64Pointer(),
+					DurationMinutes: util.DurationUnitsPtr(sched.Duration, time.Minute),
 					Name:            sched.Name.ValueString(),
 				},
 			)
@@ -1596,14 +1645,14 @@ func (r *wlanFrameworkResource) wlanToModel(
 						"day_of_week":  types.StringType,
 						"start_hour":   types.Int64Type,
 						"start_minute": types.Int64Type,
-						"duration":     types.Int64Type,
+						"duration":     timetypes.GoDurationType{},
 						"name":         types.StringType,
 					},
 					map[string]attr.Value{
 						"day_of_week":  types.StringValue(dow),
 						"start_hour":   types.Int64PointerValue(sched.StartHour),
 						"start_minute": types.Int64PointerValue(sched.StartMinute),
-						"duration":     types.Int64PointerValue(sched.DurationMinutes),
+						"duration":     util.DurationPtrValue(sched.DurationMinutes, time.Minute),
 						"name":         types.StringValue(sched.Name),
 					},
 				)
@@ -1617,7 +1666,7 @@ func (r *wlanFrameworkResource) wlanToModel(
 					"day_of_week":  types.StringType,
 					"start_hour":   types.Int64Type,
 					"start_minute": types.Int64Type,
-					"duration":     types.Int64Type,
+					"duration":     timetypes.GoDurationType{},
 					"name":         types.StringType,
 				},
 			},
@@ -1631,7 +1680,7 @@ func (r *wlanFrameworkResource) wlanToModel(
 				"day_of_week":  types.StringType,
 				"start_hour":   types.Int64Type,
 				"start_minute": types.Int64Type,
-				"duration":     types.Int64Type,
+				"duration":     timetypes.GoDurationType{},
 				"name":         types.StringType,
 			},
 		})

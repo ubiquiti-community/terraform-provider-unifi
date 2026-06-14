@@ -55,9 +55,9 @@ data "unifi_network" "my_network" {
 - `ipv6_pd_start` (String) Start address of the DHCPv6 range when `ipv6_interface_type` is `pd`.
 - `ipv6_pd_stop` (String) End address of the DHCPv6 range when `ipv6_interface_type` is `pd`.
 - `ipv6_ra` (Boolean) Specifies whether to enable IPv6 router advertisements.
-- `ipv6_ra_preferred_lifetime` (Number) Preferred lifetime for IPv6 RA in which the address can be used.
+- `ipv6_ra_preferred_lifetime` (String) Preferred lifetime for IPv6 RA, as a Go duration string.
 - `ipv6_ra_priority` (String) IPv6 router advertisement priority. One of `high`, `medium`, or `low`.
-- `ipv6_ra_valid_lifetime` (Number) Total lifetime in which the IPv6 RA address can be used.
+- `ipv6_ra_valid_lifetime` (String) Total lifetime for the IPv6 RA address, as a Go duration string.
 - `ipv6_static_subnet` (String) The static IPv6 subnet (when `ipv6_interface_type` is `static`).
 - `lte_lan` (Boolean) Specifies whether LTE LAN is enabled.
 - `multicast_dns` (Boolean) Specifies whether mDNS is enabled.
@@ -109,7 +109,7 @@ Read-Only:
 - `dns_servers` (List of String) List of DNS server addresses for DHCP clients.
 - `enabled` (Boolean) Specifies whether DHCP server is enabled.
 - `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
-- `leasetime` (Number) Specifies the lease time for DHCP addresses in seconds.
+- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string.
 - `ntp_enabled` (Boolean) Specifies whether DHCP NTP is enabled.
 - `start` (String) The IPv4 address where the DHCP range starts.
 - `stop` (String) The IPv4 address where the DHCP range stops.

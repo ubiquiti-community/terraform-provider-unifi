@@ -3,9 +3,12 @@ package unifi
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // TestPowerSupervisorModelRoundTrip covers the model ⇄ go-unifi conversion for
@@ -17,11 +20,11 @@ func TestPowerSupervisorModelRoundTrip(t *testing.T) {
 	r := &powerSupervisorResource{}
 
 	model := powerSupervisorResourceModel{
-		DeviceMAC:         types.StringValue("94:2a:6f:d6:ce:fd"),
+		DeviceMAC:         hwtypes.NewMACAddressValue("94:2a:6f:d6:ce:fd"),
 		Enabled:           types.BoolValue(true),
-		HeartbeatInterval: types.Int64Value(30),
-		SilenceThreshold:  types.Int64Value(600),
-		PowerOffDuration:  types.Int64Value(90),
+		HeartbeatInterval: util.DurationValue(30, time.Second),
+		SilenceThreshold:  util.DurationValue(600, time.Second),
+		PowerOffDuration:  util.DurationValue(90, time.Second),
 	}
 
 	api := r.modelToPowerSupervisor(&model)

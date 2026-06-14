@@ -60,7 +60,7 @@ data "unifi_radius_profile" "site_specific" {
 - `accounting_enabled` (Boolean) Whether RADIUS accounting is enabled.
 - `id` (String) The ID of this RADIUS profile.
 - `interim_update_enabled` (Boolean) Whether interim updates are enabled.
-- `interim_update_interval` (Number) The interim update interval.
+- `interim_update_interval` (String) The interim update interval, as a Go duration string.
 - `use_usg_acct_server` (Boolean) Whether to use USG as accounting server.
 - `use_usg_auth_server` (Boolean) Whether to use USG as authentication server.
 - `vlan_enabled` (Boolean) Whether VLAN is enabled.

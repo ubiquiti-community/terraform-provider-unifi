@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,9 +29,9 @@ type portAction struct {
 
 // portActionModel describes the action request and response data model.
 type portActionModel struct {
-	DeviceMAC  types.String `tfsdk:"device_mac"`
-	PortNumber types.Int64  `tfsdk:"port_number"`
-	PoeMode    types.String `tfsdk:"poe_mode"`
+	DeviceMAC  hwtypes.MACAddress `tfsdk:"device_mac"`
+	PortNumber types.Int64        `tfsdk:"port_number"`
+	PoeMode    types.String       `tfsdk:"poe_mode"`
 }
 
 func (a *portAction) Metadata(
@@ -52,6 +53,7 @@ func (a *portAction) Schema(
 		Attributes: map[string]schema.Attribute{
 			"device_mac": schema.StringAttribute{
 				MarkdownDescription: "MAC address of the device containing the port to configure.",
+				CustomType:          hwtypes.MACAddressType{},
 				Required:            true,
 			},
 			"port_number": schema.Int64Attribute{

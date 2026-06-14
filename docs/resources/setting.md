@@ -189,7 +189,7 @@ Optional:
 - `accounting_enabled` (Boolean) Enable RADIUS accounting.
 - `acct_port` (Number) RADIUS accounting port.
 - `auth_port` (Number) RADIUS authentication port.
-- `interim_update_interval` (Number) Interim update interval in seconds.
+- `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
 - `secret` (String, Sensitive) RADIUS shared secret.
 
 
@@ -207,29 +207,29 @@ Optional:
 - `geo_ip_filtering_traffic_direction` (String) Geo IP filtering traffic direction: both, ingress, or egress.
 - `gre_module` (Boolean) Enable GRE module.
 - `h323_module` (Boolean) Enable H.323 module.
-- `icmp_timeout` (Number) ICMP connection timeout in seconds.
+- `icmp_timeout` (String) ICMP connection timeout, as a Go duration string (e.g. `30s`, `1m`).
 - `mss_clamp` (String) MSS clamping mode: auto, custom, or disabled.
 - `offload_accounting` (Boolean) Enable hardware offload for accounting.
 - `offload_l2_blocking` (Boolean) Enable hardware offload for L2 blocking.
 - `offload_sch` (Boolean) Enable hardware offload for scheduling.
-- `other_timeout` (Number) Other connections timeout in seconds.
+- `other_timeout` (String) Other connections timeout, as a Go duration string (e.g. `600s`, `10m`).
 - `pptp_module` (Boolean) Enable PPTP module.
 - `receive_redirects` (Boolean) Accept ICMP redirects.
 - `send_redirects` (Boolean) Send ICMP redirects.
 - `sip_module` (Boolean) Enable SIP module.
 - `syn_cookies` (Boolean) Enable SYN cookies.
-- `tcp_close_timeout` (Number) TCP close timeout in seconds.
-- `tcp_close_wait_timeout` (Number) TCP close wait timeout in seconds.
-- `tcp_established_timeout` (Number) TCP established connection timeout in seconds.
-- `tcp_fin_wait_timeout` (Number) TCP fin wait timeout in seconds.
-- `tcp_last_ack_timeout` (Number) TCP last ACK timeout in seconds.
-- `tcp_syn_recv_timeout` (Number) TCP SYN received timeout in seconds.
-- `tcp_syn_sent_timeout` (Number) TCP SYN sent timeout in seconds.
-- `tcp_time_wait_timeout` (Number) TCP time wait timeout in seconds.
+- `tcp_close_timeout` (String) TCP close timeout, as a Go duration string (e.g. `10s`).
+- `tcp_close_wait_timeout` (String) TCP close wait timeout, as a Go duration string (e.g. `60s`, `1m`).
+- `tcp_established_timeout` (String) TCP established connection timeout, as a Go duration string (e.g. `7440s`, `2h4m`).
+- `tcp_fin_wait_timeout` (String) TCP fin wait timeout, as a Go duration string (e.g. `120s`, `2m`).
+- `tcp_last_ack_timeout` (String) TCP last ACK timeout, as a Go duration string (e.g. `30s`).
+- `tcp_syn_recv_timeout` (String) TCP SYN received timeout, as a Go duration string (e.g. `60s`, `1m`).
+- `tcp_syn_sent_timeout` (String) TCP SYN sent timeout, as a Go duration string (e.g. `120s`, `2m`).
+- `tcp_time_wait_timeout` (String) TCP time wait timeout, as a Go duration string (e.g. `120s`, `2m`).
 - `tftp_module` (Boolean) Enable TFTP module.
 - `timeout_setting_preference` (String) Timeout setting preference: auto or manual.
-- `udp_other_timeout` (Number) UDP other timeout in seconds.
-- `udp_stream_timeout` (Number) UDP stream timeout in seconds.
+- `udp_other_timeout` (String) UDP other timeout, as a Go duration string (e.g. `30s`).
+- `udp_stream_timeout` (String) UDP stream timeout, as a Go duration string (e.g. `180s`, `3m`).
 - `unbind_wan_monitors` (Boolean) Unbind WAN monitors.
 - `upnp_enabled` (Boolean) Enable UPnP.
 - `upnp_nat_pmp_enabled` (Boolean) Enable UPnP NAT-PMP.

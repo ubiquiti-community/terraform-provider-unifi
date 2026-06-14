@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -22,49 +24,49 @@ type clientInfoDataSource struct {
 }
 
 type clientInfoDataSourceModel struct {
-	ID                        types.String `tfsdk:"id"`
-	Site                      types.String `tfsdk:"site"`
-	MAC                       types.String `tfsdk:"mac"`
-	Name                      types.String `tfsdk:"name"`
-	DisplayName               types.String `tfsdk:"display_name"`
-	Hostname                  types.String `tfsdk:"hostname"`
-	IP                        types.String `tfsdk:"ip"`
-	FixedIP                   types.String `tfsdk:"fixed_ip"`
-	NetworkID                 types.String `tfsdk:"network_id"`
-	NetworkName               types.String `tfsdk:"network_name"`
-	UsergroupID               types.String `tfsdk:"usergroup_id"`
-	Blocked                   types.Bool   `tfsdk:"blocked"`
-	IsGuest                   types.Bool   `tfsdk:"is_guest"`
-	IsWired                   types.Bool   `tfsdk:"is_wired"`
-	Authorized                types.Bool   `tfsdk:"authorized"`
-	Status                    types.String `tfsdk:"status"`
-	Uptime                    types.Int64  `tfsdk:"uptime"`
-	FirstSeen                 types.Int64  `tfsdk:"first_seen"`
-	LastSeen                  types.Int64  `tfsdk:"last_seen"`
-	Oui                       types.String `tfsdk:"oui"`
-	LocalDNSRecord            types.String `tfsdk:"local_dns_record"`
-	LocalDNSRecordEnabled     types.Bool   `tfsdk:"local_dns_record_enabled"`
-	UseFixedIP                types.Bool   `tfsdk:"use_fixedip"`
-	APMAC                     types.String `tfsdk:"ap_mac"`
-	Channel                   types.Int64  `tfsdk:"channel"`
-	Radio                     types.String `tfsdk:"radio"`
-	RadioName                 types.String `tfsdk:"radio_name"`
-	Essid                     types.String `tfsdk:"essid"`
-	BSSID                     types.String `tfsdk:"bssid"`
-	Signal                    types.Int64  `tfsdk:"signal"`
-	RSSI                      types.Int64  `tfsdk:"rssi"`
-	Noise                     types.Int64  `tfsdk:"noise"`
-	TxRate                    types.Int64  `tfsdk:"tx_rate"`
-	RxRate                    types.Int64  `tfsdk:"rx_rate"`
-	TxBytes                   types.Int64  `tfsdk:"tx_bytes"`
-	RxBytes                   types.Int64  `tfsdk:"rx_bytes"`
-	WiredRateMbps             types.Int64  `tfsdk:"wired_rate_mbps"`
-	SwPort                    types.Int64  `tfsdk:"sw_port"`
-	LastUplinkMAC             types.String `tfsdk:"last_uplink_mac"`
-	LastUplinkName            types.String `tfsdk:"last_uplink_name"`
-	LastUplinkRemotePort      types.Int64  `tfsdk:"last_uplink_remote_port"`
-	LastConnectionNetworkID   types.String `tfsdk:"last_connection_network_id"`
-	LastConnectionNetworkName types.String `tfsdk:"last_connection_network_name"`
+	ID                        types.String         `tfsdk:"id"`
+	Site                      types.String         `tfsdk:"site"`
+	MAC                       types.String         `tfsdk:"mac"`
+	Name                      types.String         `tfsdk:"name"`
+	DisplayName               types.String         `tfsdk:"display_name"`
+	Hostname                  types.String         `tfsdk:"hostname"`
+	IP                        types.String         `tfsdk:"ip"`
+	FixedIP                   types.String         `tfsdk:"fixed_ip"`
+	NetworkID                 types.String         `tfsdk:"network_id"`
+	NetworkName               types.String         `tfsdk:"network_name"`
+	UsergroupID               types.String         `tfsdk:"usergroup_id"`
+	Blocked                   types.Bool           `tfsdk:"blocked"`
+	IsGuest                   types.Bool           `tfsdk:"is_guest"`
+	IsWired                   types.Bool           `tfsdk:"is_wired"`
+	Authorized                types.Bool           `tfsdk:"authorized"`
+	Status                    types.String         `tfsdk:"status"`
+	Uptime                    timetypes.GoDuration `tfsdk:"uptime"`
+	FirstSeen                 types.Int64          `tfsdk:"first_seen"`
+	LastSeen                  types.Int64          `tfsdk:"last_seen"`
+	Oui                       types.String         `tfsdk:"oui"`
+	LocalDNSRecord            types.String         `tfsdk:"local_dns_record"`
+	LocalDNSRecordEnabled     types.Bool           `tfsdk:"local_dns_record_enabled"`
+	UseFixedIP                types.Bool           `tfsdk:"use_fixedip"`
+	APMAC                     types.String         `tfsdk:"ap_mac"`
+	Channel                   types.Int64          `tfsdk:"channel"`
+	Radio                     types.String         `tfsdk:"radio"`
+	RadioName                 types.String         `tfsdk:"radio_name"`
+	Essid                     types.String         `tfsdk:"essid"`
+	BSSID                     types.String         `tfsdk:"bssid"`
+	Signal                    types.Int64          `tfsdk:"signal"`
+	RSSI                      types.Int64          `tfsdk:"rssi"`
+	Noise                     types.Int64          `tfsdk:"noise"`
+	TxRate                    types.Int64          `tfsdk:"tx_rate"`
+	RxRate                    types.Int64          `tfsdk:"rx_rate"`
+	TxBytes                   types.Int64          `tfsdk:"tx_bytes"`
+	RxBytes                   types.Int64          `tfsdk:"rx_bytes"`
+	WiredRateMbps             types.Int64          `tfsdk:"wired_rate_mbps"`
+	SwPort                    types.Int64          `tfsdk:"sw_port"`
+	LastUplinkMAC             types.String         `tfsdk:"last_uplink_mac"`
+	LastUplinkName            types.String         `tfsdk:"last_uplink_name"`
+	LastUplinkRemotePort      types.Int64          `tfsdk:"last_uplink_remote_port"`
+	LastConnectionNetworkID   types.String         `tfsdk:"last_connection_network_id"`
+	LastConnectionNetworkName types.String         `tfsdk:"last_connection_network_name"`
 }
 
 func (d *clientInfoDataSource) Metadata(
@@ -160,7 +162,7 @@ func (d *clientInfoDataSource) Read(
 	data.IsWired = types.BoolValue(clientInfo.IsWired)
 	data.Authorized = types.BoolValue(clientInfo.Authorized)
 	data.Status = util.StringValueOrNull(clientInfo.Status)
-	data.Uptime = types.Int64PointerValue(clientInfo.Uptime)
+	data.Uptime = util.DurationPtrValue(clientInfo.Uptime, time.Second)
 	data.FirstSeen = types.Int64PointerValue(clientInfo.FirstSeen)
 	data.LastSeen = types.Int64PointerValue(clientInfo.LastSeen)
 	data.Oui = util.StringValueOrNull(clientInfo.Oui)

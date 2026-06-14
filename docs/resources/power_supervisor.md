@@ -35,9 +35,9 @@ resource "unifi_power_supervisor" "ap_lobby" {
 ### Optional
 
 - `enabled` (Boolean) Whether supervision is enabled. Defaults to `true`.
-- `heartbeat_interval` (Number) How often (seconds) the controller probes the device. Defaults to `60`.
-- `power_off_duration` (Number) How long (seconds) the upstream PoE source stays off during a power-cycle. Defaults to `120` (2 min).
-- `silence_threshold` (Number) How long (seconds) the device may be silent before the controller power-cycles its upstream PoE source. Defaults to `900` (15 min).
+- `heartbeat_interval` (String) How often the controller probes the device, as a Go duration string (e.g. `60s`, `1m`). Defaults to `1m0s`.
+- `power_off_duration` (String) How long the upstream PoE source stays off during a power-cycle, as a Go duration string (e.g. `2m`). Defaults to `2m0s`.
+- `silence_threshold` (String) How long the device may be silent before the controller power-cycles its upstream PoE source, as a Go duration string (e.g. `15m`). Defaults to `15m0s`.
 - `site` (String) The name of the site the supervisor belongs to.
 
 ### Read-Only

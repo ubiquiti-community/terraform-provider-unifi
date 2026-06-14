@@ -81,7 +81,7 @@ func TestAccNetworkFramework_dhcp(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_dhcp",
 						"dhcp_server.leasetime",
-						"86400",
+						"24h0m0s",
 					),
 				),
 			},
@@ -156,7 +156,7 @@ resource "unifi_network" "test_dhcp" {
 		enabled   = true
 		start     = "192.168.20.10"
 		stop      = "192.168.20.254"
-		leasetime = 86400
+		leasetime = "24h0m0s"
 	}
 }
 `
@@ -422,12 +422,12 @@ func TestAccNetworkFramework_ipv6Static(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
 						"ipv6_ra_valid_lifetime",
-						"86400",
+						"24h0m0s",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
 						"ipv6_ra_preferred_lifetime",
-						"14400",
+						"4h0m0s",
 					),
 				),
 			},
@@ -530,8 +530,8 @@ resource "unifi_network" "test_ipv6_static" {
 	ipv6_static_subnet      = "fd00::1/64"
 	ipv6_ra                 = true
 	ipv6_ra_priority        = "high"
-	ipv6_ra_valid_lifetime  = 86400
-	ipv6_ra_preferred_lifetime = 14400
+	ipv6_ra_valid_lifetime  = "24h0m0s"
+	ipv6_ra_preferred_lifetime = "4h0m0s"
 }
 `
 }

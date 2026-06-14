@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -123,15 +124,15 @@ func (m destinationModel) AttributeTypes() map[string]attr.Type {
 
 // trafficRouteResourceModel describes the resource data model.
 type trafficRouteResourceModel struct {
-	ID                types.String `tfsdk:"id"`
-	Site              types.String `tfsdk:"site"`
-	Description       types.String `tfsdk:"description"`
-	Destination       types.Object `tfsdk:"destination"`
-	Enabled           types.Bool   `tfsdk:"enabled"`
-	KillSwitchEnabled types.Bool   `tfsdk:"kill_switch_enabled"`
-	NetworkID         types.String `tfsdk:"network_id"`
-	NextHop           types.String `tfsdk:"next_hop"`
-	Source            types.Object `tfsdk:"source"`
+	ID                types.String      `tfsdk:"id"`
+	Site              types.String      `tfsdk:"site"`
+	Description       types.String      `tfsdk:"description"`
+	Destination       types.Object      `tfsdk:"destination"`
+	Enabled           types.Bool        `tfsdk:"enabled"`
+	KillSwitchEnabled types.Bool        `tfsdk:"kill_switch_enabled"`
+	NetworkID         types.String      `tfsdk:"network_id"`
+	NextHop           iptypes.IPAddress `tfsdk:"next_hop"`
+	Source            types.Object      `tfsdk:"source"`
 }
 
 type trafficRouteIdentityModel struct {
@@ -275,6 +276,7 @@ func (r *trafficRouteResource) Schema(
 			},
 			"next_hop": schema.StringAttribute{
 				MarkdownDescription: "The next hop for the traffic route.",
+				CustomType:          iptypes.IPAddressType{},
 				Optional:            true,
 			},
 			"source": schema.SingleNestedAttribute{
@@ -735,7 +737,7 @@ func (r *trafficRouteResource) apiToModel(
 	model.Enabled = types.BoolValue(route.Enabled)
 	model.KillSwitchEnabled = types.BoolValue(route.KillSwitchEnabled)
 	model.NetworkID = util.StringValueOrNull(route.NetworkID)
-	model.NextHop = util.StringValueOrNull(route.NextHop)
+	model.NextHop = util.IPValueOrNull(route.NextHop)
 
 	// Domains
 	var domainsList types.List
