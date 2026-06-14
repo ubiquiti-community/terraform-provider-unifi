@@ -88,10 +88,6 @@ type siteToSiteVPNResourceModel struct {
 	RouteDistance  types.Int64          `tfsdk:"route_distance"`
 }
 
-type siteToSiteVPNIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // siteToSiteVPNListConfigModel describes the list configuration model.
 type siteToSiteVPNListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

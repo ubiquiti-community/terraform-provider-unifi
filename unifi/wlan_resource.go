@@ -155,10 +155,6 @@ type wlanFrameworkResourceModel struct {
 	BroadcastFilterList  types.Set   `tfsdk:"bc_filter_list"`
 }
 
-type wlanIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // wlanListConfigModel describes the list configuration model.
 type wlanListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

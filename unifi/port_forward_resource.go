@@ -49,11 +49,6 @@ type portForwardResource struct {
 	client *Client
 }
 
-// portForwardIdentityModel describes the identity model.
-type portForwardIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // portForwardListConfigModel describes the list configuration model.
 type portForwardListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

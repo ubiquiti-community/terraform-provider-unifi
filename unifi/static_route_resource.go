@@ -53,11 +53,6 @@ type staticRouteFrameworkResource struct {
 	client *Client
 }
 
-// staticRouteIdentityModel describes the identity model.
-type staticRouteIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // staticRouteListConfigModel describes the list configuration model.
 type staticRouteListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

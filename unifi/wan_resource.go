@@ -108,10 +108,6 @@ type wanResourceModel struct {
 	ProviderCapabilities types.Object `tfsdk:"provider_capabilities"`
 }
 
-type wanIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // wanListConfigModel describes the list configuration model.
 type wanListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

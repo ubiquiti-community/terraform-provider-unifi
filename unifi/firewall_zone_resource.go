@@ -44,11 +44,6 @@ type firewallZoneResource struct {
 	client *Client
 }
 
-// firewallZoneIdentityModel describes the identity model.
-type firewallZoneIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // firewallZoneListConfigModel describes the list configuration model.
 type firewallZoneListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

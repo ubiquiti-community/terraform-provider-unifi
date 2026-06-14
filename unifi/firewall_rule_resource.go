@@ -49,11 +49,6 @@ type firewallRuleResource struct {
 	client *Client
 }
 
-// firewallRuleIdentityModel describes the identity model.
-type firewallRuleIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // firewallRuleListConfigModel describes the list configuration model.
 type firewallRuleListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

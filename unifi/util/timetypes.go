@@ -83,7 +83,7 @@ func UpgradeDurationRawState(
 		return nil, fmt.Errorf("encoding upgraded state: %w", err)
 	}
 
-	val, err := tftypes.ValueFromJSON(newJSON, schemaType)
+	val, err := tftypes.ValueFromJSONWithOpts(newJSON, schemaType, tftypes.ValueFromJSONOpts{})
 	if err != nil {
 		return nil, fmt.Errorf("building upgraded value: %w", err)
 	}

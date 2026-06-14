@@ -914,7 +914,8 @@ func (r *portProfileResource) portProfileToModel(
 		for i, mac := range portProfile.PortSecurityMACAddress {
 			macAddressList[i] = types.StringValue(mac)
 		}
-		macAddressSet, _ := types.SetValueFrom(ctx, types.StringType, macAddressList)
+		macAddressSet, d := types.SetValueFrom(ctx, types.StringType, macAddressList)
+		diags.Append(d...)
 		model.PortSecurityMacAddress = macAddressSet
 	}
 
@@ -952,14 +953,16 @@ func (r *portProfileResource) portProfileToModel(
 	model.PortKeepaliveEnabled = types.BoolValue(portProfile.PortKeepaliveEnabled)
 
 	if len(portProfile.ExcludedNetworkIDs) > 0 {
-		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		diags.Append(d...)
 		model.ExcludedNetworkConfIDs = s
 	} else {
 		model.ExcludedNetworkConfIDs = types.SetNull(types.StringType)
 	}
 
 	if len(portProfile.MulticastRouterNetworkIDs) > 0 {
-		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		diags.Append(d...)
 		model.MulticastRouterNetworkIDs = s
 	} else {
 		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)

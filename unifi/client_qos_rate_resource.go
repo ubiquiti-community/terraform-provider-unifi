@@ -56,10 +56,6 @@ type clientQosRateResourceModel struct {
 	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
 }
 
-type clientQosRateIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // clientQosRateListConfigModel describes the list configuration model.
 type clientQosRateListConfigModel struct {
 	Site   types.String `tfsdk:"site"`

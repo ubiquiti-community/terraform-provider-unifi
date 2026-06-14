@@ -52,10 +52,6 @@ type siteFrameworkResourceModel struct {
 	Description types.String `tfsdk:"description"`
 }
 
-type siteIdentityModel struct {
-	ID types.String `tfsdk:"id"`
-}
-
 // siteListConfigModel describes the list configuration model. Sites are global
 // (not site-scoped), so there is no `site` attribute.
 type siteListConfigModel struct {
