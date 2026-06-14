@@ -1,5 +1,5 @@
 # Terraform Provider testing workflow.
-name: Tests
+name: CI/CD
 
 # This GitHub action runs your tests for each pull request and push.
 # Optionally, you can turn it on using a schedule for regular testing.
@@ -19,12 +19,27 @@ on:
     - "go.sum"
     - ".github/workflows/ci.yaml"
 
-# Testing only needs permissions to read the repository contents.
+# contents: read is needed to check out the repository.
+# id-token: write is needed for Codecov OIDC uploads.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
-  # Ensure project builds before running testing matrix
+  lint:
+    name: GolangCI Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
+        with:
+          go-version-file: "go.mod"
+          cache: true
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+        with:
+          version: latest
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -86,9 +101,11 @@ jobs:
       if: ${{ !cancelled() }}
       uses: codecov/test-results-action@v1
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        use_oidc: true
+        flags: unit
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        use_oidc: true
+        flags: unit

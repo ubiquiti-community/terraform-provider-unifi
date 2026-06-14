@@ -1,23 +1,45 @@
-name: Issue Triage
+name: Issues
 
-# Automated issue triage for terraform-provider-unifi.
+# Unified issue automation for terraform-provider-unifi.
 #
-# Triggers:
-#   push[main]        - runs the full backfill sweep automatically on every merge to main
-#   workflow_dispatch - manual run with optional dry_run mode for testing
-#   schedule          - weekly sweep every Monday at 09:00 UTC to catch newly-stale fixes
+# This single workflow pivots on the dispatch type and runs the appropriate
+# job(s):
 #
-# New-issue auto-labeling is handled by the separate issue-labeler.yml workflow.
-# Stale issue management is handled by the separate stale.yml workflow.
+#   issues[opened, reopened]          -> label   (auto-label + welcome comment)
+#   push[main]                        -> triage  (full backfill sweep on merge)
+#   schedule[0 9 * * 1]  (Mon 09:00)  -> triage  (weekly sweep for stale fixes)
+#   schedule[30 1 * * *] (daily 01:30)-> stale    (mark/close inactive issues)
+#   workflow_dispatch                 -> triage / stale / all (manual, see input)
+#
+# Each job below is gated with an `if:` condition so only the relevant work
+# runs for a given trigger.
 
 on:
+  issues:
+    types: [opened, reopened]
+
   push:
     branches: [main]
 
+  schedule:
+    # Weekly triage sweep — Mondays at 09:00 UTC
+    - cron: "0 9 * * 1"
+    # Daily stale sweep — 01:30 UTC
+    - cron: "30 1 * * *"
+
   workflow_dispatch:
     inputs:
+      task:
+        description: "Which issue automation to run"
+        required: false
+        default: "triage"
+        type: choice
+        options:
+          - triage
+          - stale
+          - all
       dry_run:
-        description: "Dry run - print actions without making changes"
+        description: "Dry run (triage only) - print actions without making changes"
         required: false
         default: "false"
         type: choice
@@ -25,20 +47,109 @@ on:
           - "false"
           - "true"
 
-  schedule:
-    - cron: "0 9 * * 1"
-
 permissions:
   issues: write
-
-
-concurrency:
-  group: issue-triage
-  cancel-in-progress: false
+  pull-requests: read
 
 jobs:
-  triage:
+  # ── New / reopened issue labeling + welcome ──────────────────────────────
+  label:
+    if: github.event_name == 'issues'
     runs-on: ubuntu-latest
+    concurrency:
+      group: issue-labeler-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Auto-label and welcome new issue
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const issue = context.payload.issue;
+            const num   = issue.number;
+            const title = issue.title || '';
+            const body  = issue.body  || '';
+            const text  = (title + ' ' + body).toLowerCase();
+
+            core.info('Labelling issue #' + num + ': ' + title);
+
+            // ── Label rules ───────────────────────────────────────────────
+            // Each entry: { label, pattern } – label is applied when pattern
+            // matches the lowercased title+body.  Rules are applied in order;
+            // earlier matches do not exclude later ones (multi-label OK).
+            const rules = [
+              { label: 'bug',           pattern: /\b(bug|error|fail|panic|crash|broken|doesn't work|does not work|exception|traceback)\b/ },
+              { label: 'enhancement',   pattern: /\b(feature|enhancement|add support|please add|support for|would (be great|love)|request)\b/ },
+              { label: 'documentation', pattern: /\b(doc|docs|documentation|readme|typo|misleading|confusing|clarif)\b/ },
+              { label: 'question',      pattern: /\b(question|how (do|to)|does .* work|can i|is (it|there) (possible|a way))\b/ },
+            ];
+
+            const labelsToAdd = [];
+            for (const { label, pattern } of rules) {
+              if (pattern.test(text) && !labelsToAdd.includes(label))
+                labelsToAdd.push(label);
+            }
+
+            // 'question' should only be added when nothing else matched
+            const nonQuestion = labelsToAdd.filter(l => l !== 'question');
+            const finalLabels = nonQuestion.length ? nonQuestion : labelsToAdd;
+
+            if (finalLabels.length) {
+              core.info('  Adding labels: ' + finalLabels.join(', '));
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: num, labels: finalLabels
+              });
+            }
+
+            // ── Welcome comment ────────────────────────────────────────────
+            // Only post once – idempotency marker prevents duplicates on
+            // re-opened events.
+            const WELCOME_MARKER = '<!-- triage-welcome -->';
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: num, per_page: 100 },
+            );
+            if (comments.some(c => c.body && c.body.includes(WELCOME_MARKER))) {
+              core.info('  Welcome comment already present, skipping');
+              return;
+            }
+
+            const typeHint = finalLabels.includes('bug')
+              ? 'bug report'
+              : finalLabels.includes('enhancement')
+                ? 'feature request'
+                : finalLabels.includes('documentation')
+                  ? 'documentation issue'
+                  : 'issue';
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: num,
+              body:
+                WELCOME_MARKER + '\n' +
+                'Thanks for filing this ' + typeHint + '! 🙏\n\n' +
+                'A maintainer will review it shortly. To help us triage faster, please confirm:\n\n' +
+                '| | |\n' +
+                '|---|---|\n' +
+                '| **Provider version** | `terraform providers` or `tofu providers` |\n' +
+                '| **UniFi Network Application version** | e.g. `8.x` |\n' +
+                '| **Controller type** | UDM Pro / UCG Ultra / USG / … |\n\n' +
+                'And include a **minimal reproducible configuration** along with the full error output.\n'
+            });
+
+            core.info('  Welcome comment posted');
+
+  # ── Full issue triage sweep ──────────────────────────────────────────────
+  triage:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 9 * * 1') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.task == 'triage' || github.event.inputs.task == 'all'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: issue-triage
+      cancel-in-progress: false
     steps:
       - name: Triage Issues
         uses: actions/github-script@v9
@@ -329,3 +440,64 @@ jobs:
             }
 
             core.info('Issue triage sweep complete.');
+
+  # ── Stale issue management ───────────────────────────────────────────────
+  stale:
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '30 1 * * *') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.task == 'stale' || github.event.inputs.task == 'all'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: issue-stale
+      cancel-in-progress: false
+    steps:
+      - uses: actions/stale@v10
+        with:
+          # ── Issues ───────────────────────────────────────────────────────
+          days-before-issue-stale: 90
+          days-before-issue-close: 14
+          stale-issue-label: "stale"
+
+          # Confirmed bugs and feature requests should not go stale; they
+          # stay open until a maintainer explicitly resolves them.
+          exempt-issue-labels: >-
+            bug,enhancement,fixed,pinned,security,good first issue
+
+          stale-issue-message: >
+            This issue has been automatically marked as **stale** because it
+            has not had any activity in the past 90 days.
+
+
+            It will be **closed in 14 days** unless it receives new activity.
+            If this is still relevant, please leave a comment — any activity
+            (comment, label change, etc.) will remove the stale mark and reset
+            the timer.
+
+
+            Thank you for your contribution! 🙏
+
+          close-issue-message: >
+            This issue has been automatically closed due to 14 days of
+            inactivity after being marked stale.
+
+
+            If this is still relevant with the current provider version,
+            please **reopen** it and include:
+            - Current provider version (`terraform providers`)
+            - UniFi Network Application / OS version
+            - A minimal reproducible configuration
+
+
+          close-issue-reason: not_planned
+
+          # ── Pull Requests ─────────────────────────────────────────────────
+          # Never auto-close PRs; contributors deserve time to address reviews.
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+
+          # ── General ───────────────────────────────────────────────────────
+          # Remove stale label automatically when the issue is updated.
+          remove-stale-when-updated: true
+
+          # Increase operations per run from the default 30 to handle backlogs.
+          operations-per-run: 100

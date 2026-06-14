@@ -31,6 +31,7 @@ dist
 coverage.*
 *.coverprofile
 profile.cov
+junit.xml
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

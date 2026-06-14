@@ -4,11 +4,17 @@ on:
     types: [published]
   schedule:
     - cron: "0 13 * * *"
+
+# OIDC token is needed to authenticate uploads to Codecov.
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   test:
     name: Matrix Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -35,3 +41,17 @@ jobs:
           max_attempts: 3
           command: make testacc TEST_TIMEOUT=1h UNIFI_STDOUT=true UNIFI_VERSION=${{ matrix.unifi_download_url && 'beta' || matrix.unifi_version }} UNIFI_DOWNLOAD_URL=${{ matrix.unifi_download_url }}
           retry_on: "timeout"
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          use_oidc: true
+          flags: acceptance
+
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          flags: acceptance
