@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -79,12 +81,13 @@ type firewallPolicyModel struct {
 	// Firmware-managed fields the controller requires back on every PUT. They are
 	// not user-settable; the provider round-trips them so updates don't drop them
 	// (an omitted connection_state_type/icmp_typename makes the PUT fail HTTP 400).
-	ConnectionStateType types.String `tfsdk:"connection_state_type"`
-	ConnectionStates    types.List   `tfsdk:"connection_states"`
-	ICMPTypename        types.String `tfsdk:"icmp_typename"`
-	ICMPV6Typename      types.String `tfsdk:"icmp_v6_typename"`
-	Source              types.Object `tfsdk:"source"`
-	Destination         types.Object `tfsdk:"destination"`
+	ConnectionStateType types.String   `tfsdk:"connection_state_type"`
+	ConnectionStates    types.List     `tfsdk:"connection_states"`
+	ICMPTypename        types.String   `tfsdk:"icmp_typename"`
+	ICMPV6Typename      types.String   `tfsdk:"icmp_v6_typename"`
+	Source              types.Object   `tfsdk:"source"`
+	Destination         types.Object   `tfsdk:"destination"`
+	Timeouts            timeouts.Value `tfsdk:"timeouts"`
 }
 
 // firewallPolicyEndpointModel is the nested source/destination block model.
@@ -342,6 +345,10 @@ func (r *firewallPolicyResource) Schema(
 				Required:            true,
 				Attributes:          endpointAttrs,
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -381,6 +388,14 @@ func (r *firewallPolicyResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	site := plan.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -417,6 +432,14 @@ func (r *firewallPolicyResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := state.Site.ValueString()
 	if site == "" {
@@ -459,6 +482,14 @@ func (r *firewallPolicyResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -497,6 +528,14 @@ func (r *firewallPolicyResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := state.Site.ValueString()
 	if site == "" {

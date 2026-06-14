@@ -7,9 +7,11 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -106,6 +108,8 @@ type clientResourceModel struct {
 
 	// Computed attributes
 	Hostname types.String `tfsdk:"hostname"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 type clientIdentityModel struct {
@@ -315,6 +319,10 @@ Clients are created in the controller when observed on the network, so the resou
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -354,6 +362,14 @@ func (r *clientResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// Initialize identity from plan
 	id := clientIdentityModel{
@@ -442,6 +458,14 @@ func (r *clientResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	// Get identity (MAC address)
 	id := clientIdentityModel{}
@@ -602,6 +626,14 @@ func (r *clientResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -654,6 +686,8 @@ func (r *clientResource) Update(
 				MAC: state.MAC,
 			}
 
+			state.Timeouts = plan.Timeouts
+
 			resp.Diagnostics.Append(resp.Identity.Set(ctx, identityModel)...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 			return
@@ -696,6 +730,8 @@ func (r *clientResource) Update(
 	identityModel := clientIdentityModel{
 		MAC: state.MAC,
 	}
+
+	state.Timeouts = plan.Timeouts
 
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, identityModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -763,6 +799,14 @@ func (r *clientResource) Delete(
 		return
 	}
 
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -804,29 +848,35 @@ func (r *clientResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// ImportStatePassthroughWithIdentity only supports plain string attributes,
+	// but mac uses the custom hwtypes.MACAddressType (in both the resource and
+	// identity schemas). Setting/reading it as a string triggers a value
+	// conversion error, so handle the passthrough manually for both the
+	// id-string and resource-identity import paths.
+
+	// Import by ID string (terraform import CLI, or import block with id set).
 	if req.ID != "" {
 		if !strings.Contains(req.ID, ":") {
 			resp.Diagnostics.AddError(
 				"Invalid import ID",
 				"Client can only be imported using a MAC address",
 			)
-		}
-		// Set identity with the MAC
-		idModel := clientIdentityModel{MAC: hwtypes.NewMACAddressValue(req.ID)}
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
-		if resp.Diagnostics.HasError() {
 			return
 		}
+
+		mac := hwtypes.NewMACAddressValue(req.ID)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("mac"), mac)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("mac"), mac)...)
+		return
 	}
 
-	// Import the state using MAC attribute
-	resource.ImportStatePassthroughWithIdentity(
-		ctx,
-		path.Root("mac"),
-		path.Root("mac"),
-		req,
-		resp,
-	)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var mac hwtypes.MACAddress
+	resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("mac"), &mac)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("mac"), mac)...)
 }
 
 // Helper functions for conversion and merging

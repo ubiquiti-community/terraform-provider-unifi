@@ -52,6 +52,7 @@ data "unifi_dns_record" "site_specific" {
 ### Optional
 
 - `site` (String) The name of the site the DNS record is associated with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -60,3 +61,10 @@ data "unifi_dns_record" "site_specific" {
 - `ttl` (String) The TTL of the DNS record, as a Go duration string.
 - `type` (String) The type of the DNS record.
 - `value` (String) The value of the DNS record.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

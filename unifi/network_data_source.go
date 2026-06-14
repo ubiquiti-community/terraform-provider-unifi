@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -87,6 +88,8 @@ type networkDataSourceModel struct {
 	WanType         types.String `tfsdk:"wan_type"`
 	WanTypeV6       types.String `tfsdk:"wan_type_v6"`
 	WanUsername     types.String `tfsdk:"wan_username"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *networkDataSource) Metadata(
@@ -465,6 +468,7 @@ func (d *networkDataSource) Schema(
 				MarkdownDescription: "Specifies the IPv4 WAN username.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -504,6 +508,14 @@ func (d *networkDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := config.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := config.Site.ValueString()
 	if site == "" {

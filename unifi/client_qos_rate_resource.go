@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -49,11 +51,12 @@ type clientQosRateResource struct {
 
 // clientQosRateResourceModel describes the resource data model.
 type clientQosRateResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	Name           types.String `tfsdk:"name"`
-	QOSRateMaxDown types.Int64  `tfsdk:"qos_rate_max_down"`
-	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
+	ID             types.String   `tfsdk:"id"`
+	Site           types.String   `tfsdk:"site"`
+	Name           types.String   `tfsdk:"name"`
+	QOSRateMaxDown types.Int64    `tfsdk:"qos_rate_max_down"`
+	QOSRateMaxUp   types.Int64    `tfsdk:"qos_rate_max_up"`
+	Timeouts       timeouts.Value `tfsdk:"timeouts"`
 }
 
 // clientQosRateListConfigModel describes the list configuration model.
@@ -138,6 +141,10 @@ func (r *clientQosRateResource) Schema(
 					int64validator.Between(2, 100000),
 				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -178,6 +185,14 @@ func (r *clientQosRateResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	site := plan.Site.ValueString()
 	if site == "" {
@@ -225,6 +240,14 @@ func (r *clientQosRateResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := state.Site.ValueString()
 	if site == "" {
@@ -279,6 +302,14 @@ func (r *clientQosRateResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
 
@@ -315,6 +346,8 @@ func (r *clientQosRateResource) Update(
 		return
 	}
 
+	state.Timeouts = plan.Timeouts
+
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -349,6 +382,14 @@ func (r *clientQosRateResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := state.Site.ValueString()
 	if site == "" {

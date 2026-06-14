@@ -96,6 +96,7 @@ resource "unifi_device" "us_24_poe" {
 - `stp_priority` (Number) STP priority.
 - `stp_version` (String) STP version; valid values are `stp`, `rstp`, and `disabled`.
 - `switch_vlan_enabled` (Boolean) Enable VLAN support on the switch.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `volume` (Number) Volume level (0-100).
 - `x_baresip_password` (String, Sensitive) Baresip password.
 
@@ -215,3 +216,14 @@ Optional:
 - `tx_power` (String) Transmit power or 'auto'.
 - `tx_power_mode` (String) Transmit power mode (auto, medium, high, low, custom).
 - `vwire_enabled` (Boolean) Enable virtual wire.
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

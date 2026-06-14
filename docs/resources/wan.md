@@ -104,6 +104,7 @@ resource "unifi_wan" "secondary" {
 - `single_network_lan` (String) The LAN network used for IPv6 single-network prefix delegation (used when the IPv6 delegation type is `single_network`).
 - `site` (String) The name of the site to associate the WAN network with
 - `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `type` (String) The WAN type (dhcp, static, pppoe)
 - `type_v6` (String) The IPv6 WAN type. One of `dhcpv6`, `slaac`, `static`, or `disabled`. Note: the controller requires `slaac` when the IPv6 delegation type is `single_network` (`api.err.SingleNetworkMustBeSLAAC` otherwise) — common with ISPs that deliver IPv6 by Router Advertisement, e.g. Free/Freebox in bridge mode.
 - `upnp` (Attributes) UPnP configuration (see [below for nested schema](#nestedatt--upnp))
@@ -212,6 +213,17 @@ Optional:
 - `down_rate` (Number) Smart Queue download rate in kbps
 - `enabled` (Boolean) Whether Smart Queue is enabled
 - `up_rate` (Number) Smart Queue upload rate in kbps
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 
 <a id="nestedatt--upnp"></a>

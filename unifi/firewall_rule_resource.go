@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -94,6 +96,7 @@ type firewallRuleResourceModel struct {
 	IPSec               types.String       `tfsdk:"ip_sec"`
 	SettingPreference   types.String       `tfsdk:"setting_preference"`
 	ProtocolMatchExcept types.Bool         `tfsdk:"protocol_match_excepted"`
+	Timeouts            timeouts.Value     `tfsdk:"timeouts"`
 }
 
 func (r *firewallRuleResource) Metadata(
@@ -323,6 +326,10 @@ func (r *firewallRuleResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -363,6 +370,14 @@ func (r *firewallRuleResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	firewallRule := r.modelToFirewallRule(ctx, &data)
 
 	site := data.Site.ValueString()
@@ -396,6 +411,14 @@ func (r *firewallRuleResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -439,6 +462,14 @@ func (r *firewallRuleResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	r.applyPlanToState(ctx, &plan, &state)
 
 	site := state.Site.ValueString()
@@ -460,6 +491,8 @@ func (r *firewallRuleResource) Update(
 
 	r.firewallRuleToModel(ctx, updatedFirewallRule, &state, site)
 
+	state.Timeouts = plan.Timeouts
+
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -475,6 +508,14 @@ func (r *firewallRuleResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

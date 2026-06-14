@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -34,6 +35,8 @@ type radiusProfileDataSourceModel struct {
 	UseUSGAuthServer      types.Bool           `tfsdk:"use_usg_auth_server"`
 	VlanEnabled           types.Bool           `tfsdk:"vlan_enabled"`
 	VlanWlanMode          types.String         `tfsdk:"vlan_wlan_mode"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *radiusProfileDataSource) Metadata(
@@ -95,6 +98,7 @@ func (d *radiusProfileDataSource) Schema(
 				MarkdownDescription: "The VLAN WLAN mode.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -134,6 +138,14 @@ func (d *radiusProfileDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

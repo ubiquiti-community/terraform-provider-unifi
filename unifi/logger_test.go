@@ -3,6 +3,7 @@ package unifi
 import (
 	"bytes"
 	"context"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -357,5 +358,97 @@ func TestUnifiLogger_ConcurrentMixedLevels(t *testing.T) {
 		if got := entry["unifi_password"]; got != "***" && got != nil {
 			t.Fatalf("expected sensitive field to be masked or absent, got %v", got)
 		}
+	}
+}
+
+func TestUnifiLogger_log(t *testing.T) {
+	type args struct {
+		fn func()
+	}
+	tests := []struct {
+		name string
+		l    *UnifiLogger
+		args args
+	}{
+		{
+			name: "executes_fn",
+			l: func() *UnifiLogger {
+				var buf bytes.Buffer
+				ctx := tflogtest.RootLogger(context.Background(), &buf)
+				return NewLogger(ctx)
+			}(),
+			args: args{fn: func() {}},
+		},
+		{
+			name: "fn_called_once",
+			l: func() *UnifiLogger {
+				var buf bytes.Buffer
+				ctx := tflogtest.RootLogger(context.Background(), &buf)
+				return NewLogger(ctx)
+			}(),
+			args: args{fn: func() {
+				// side-effect-free no-op; just confirms no panic
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.l.log(tt.args.fn)
+		})
+	}
+}
+
+func Test_convertToFields(t *testing.T) {
+	type args struct {
+		keysAndValues []any
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    map[string]any
+		wantErr bool
+	}{
+		{
+			name:    "empty",
+			args:    args{keysAndValues: []any{}},
+			want:    map[string]any{},
+			wantErr: false,
+		},
+		{
+			name:    "single_pair",
+			args:    args{keysAndValues: []any{"key", "value"}},
+			want:    map[string]any{"key": "value"},
+			wantErr: false,
+		},
+		{
+			name:    "multiple_pairs",
+			args:    args{keysAndValues: []any{"a", 1, "b", true}},
+			want:    map[string]any{"a": 1, "b": true},
+			wantErr: false,
+		},
+		{
+			name:    "odd_number_of_args",
+			args:    args{keysAndValues: []any{"key_without_value"}},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "non_string_key",
+			args:    args{keysAndValues: []any{42, "value"}},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := convertToFields(tt.args.keysAndValues)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("convertToFields() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("convertToFields() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

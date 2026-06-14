@@ -87,3 +87,14 @@ resource "unifi_device" "switch" {
 - `device_mac` (String) MAC address of the device containing the port to configure.
 - `poe_mode` (String) PoE mode to set for the port. Valid values are `auto`, `pasv24`, `passthrough`, and `off`.
 - `port_number` (Number) Port number (index) on the device to configure. Typically starts at 1.
+
+### Optional
+
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `invoke` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

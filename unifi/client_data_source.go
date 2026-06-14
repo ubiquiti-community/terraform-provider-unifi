@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -43,6 +45,7 @@ type clientDataSourceModel struct {
 	Blocked        types.Bool          `tfsdk:"blocked"`
 	LocalDNSRecord types.String        `tfsdk:"local_dns_record"`
 	Hostname       types.String        `tfsdk:"hostname"`
+	Timeouts       timeouts.Value      `tfsdk:"timeouts"`
 }
 
 func (d *clientDataSource) Metadata(
@@ -141,6 +144,7 @@ func (d *clientDataSource) Schema(
 				MarkdownDescription: "The hostname of the client.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -182,6 +186,14 @@ func (d *clientDataSource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := config.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	site := config.Site.ValueString()
 	if site == "" {
 		site = d.client.Site
@@ -214,6 +226,8 @@ func (d *clientDataSource) Read(
 
 	// Convert to model
 	var state clientDataSourceModel
+
+	state.Timeouts = config.Timeouts
 
 	state.ID = types.StringValue(client.ID)
 	state.Site = types.StringValue(site)

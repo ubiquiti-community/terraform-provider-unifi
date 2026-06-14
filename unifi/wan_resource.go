@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -106,6 +108,8 @@ type wanResourceModel struct {
 
 	// Provider Capabilities
 	ProviderCapabilities types.Object `tfsdk:"provider_capabilities"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 // wanListConfigModel describes the list configuration model.
@@ -809,6 +813,12 @@ func (r *wanResource) Schema(
 					},
 				},
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Create: true,
+				Read:   true,
+				Update: true,
+				Delete: true,
+			}),
 		},
 	}
 }
@@ -852,6 +862,14 @@ func (r *wanResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// Convert to unifi.Network
 	network, diags := r.modelToNetwork(ctx, &plan)
@@ -900,6 +918,7 @@ func (r *wanResource) Create(
 
 			// Overlay explicit config values onto the API state
 			r.overlayConfig(&state, &config, &plan)
+			state.Timeouts = plan.Timeouts
 
 			resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -930,6 +949,7 @@ func (r *wanResource) Create(
 
 	// Overlay explicit config values onto the API state
 	r.overlayConfig(&state, &config, &plan)
+	state.Timeouts = plan.Timeouts
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
@@ -1023,6 +1043,14 @@ func (r *wanResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -1084,8 +1112,17 @@ func (r *wanResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
+	state.Timeouts = plan.Timeouts
 
 	// Step 3: Convert the updated state to API format
 	network, diags := r.modelToNetwork(ctx, &state)
@@ -1209,6 +1246,14 @@ func (r *wanResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := state.Site.ValueString()
 	if site == "" {

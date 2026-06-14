@@ -50,9 +50,17 @@ data "unifi_firewall_zone" "external" {
 ### Optional
 
 - `site` (String) The name of the UniFi site.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `id` (String) The ID of the firewall zone.
 - `network_ids` (List of String) List of network IDs assigned to this zone.
 - `zone_key` (String) The internal key of the zone (e.g. `lan`, `wan`).
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

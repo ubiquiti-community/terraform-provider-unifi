@@ -34,6 +34,7 @@ data "unifi_network" "my_network" {
 - `id` (String) The ID of the network.
 - `name` (String) The name of the network.
 - `site` (String) The name of the site to associate the network with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -79,6 +80,14 @@ data "unifi_network" "my_network" {
 - `wan_type` (String) Specifies the IPv4 WAN connection type. One of `disabled`, `static`, `dhcp`, or `pppoe`.
 - `wan_type_v6` (String) Specifies the IPv6 WAN connection type. One of `disabled`, `static`, or `dhcpv6`.
 - `wan_username` (String) Specifies the IPv4 WAN username.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--dhcp_guarding"></a>
 ### Nested Schema for `dhcp_guarding`

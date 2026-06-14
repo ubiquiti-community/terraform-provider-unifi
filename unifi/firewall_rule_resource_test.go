@@ -1,9 +1,17 @@
 package unifi
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 func TestAccFirewallRule_basic(t *testing.T) {
@@ -667,4 +675,564 @@ resource "unifi_firewall_rule" "test" {
   state_related     = false
 }
 `
+}
+
+func TestNewFirewallRuleResource(t *testing.T) {
+	r := NewFirewallRuleResource()
+	if r == nil {
+		t.Fatal("NewFirewallRuleResource() returned nil")
+	}
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("resource does not implement ResourceWithImportState")
+	}
+	if _, ok := r.(fwresource.ResourceWithIdentity); !ok {
+		t.Error("resource does not implement ResourceWithIdentity")
+	}
+}
+
+func TestNewFirewallRuleListResource(t *testing.T) {
+	r := NewFirewallRuleListResource()
+	if r == nil {
+		t.Fatal("NewFirewallRuleListResource() returned nil")
+	}
+	if _, ok := r.(fwlist.ListResource); !ok {
+		t.Error("resource does not implement ListResource")
+	}
+}
+
+func Test_firewallRuleResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallRuleResource
+		args args
+	}{
+		{
+			name: "type name is unifi_firewall_rule",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.MetadataRequest{ProviderTypeName: "unifi"},
+				resp: &fwresource.MetadataResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+			if tt.args.resp.TypeName != "unifi_firewall_rule" {
+				t.Errorf("TypeName = %q, want %q", tt.args.resp.TypeName, "unifi_firewall_rule")
+			}
+		})
+	}
+}
+
+func Test_firewallRuleResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallRuleResource
+		args args
+	}{
+		{
+			name: "id attribute exists",
+			r:    &firewallRuleResource{},
+			args: args{
+				in0:  context.Background(),
+				in1:  fwresource.IdentitySchemaRequest{},
+				resp: &fwresource.IdentitySchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
+				t.Error("IdentitySchema missing 'id' attribute")
+			}
+		})
+	}
+}
+
+func Test_firewallRuleResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallRuleResource
+		args args
+	}{
+		{
+			name: "key attributes exist with correct configurability",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.SchemaRequest{},
+				resp: &fwresource.SchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+			s := tt.args.resp.Schema
+
+			checks := []struct {
+				attr     string
+				required bool
+				optional bool
+				computed bool
+			}{
+				{"id", false, false, true},
+				{"name", true, false, false},
+				{"action", true, false, false},
+				{"ruleset", true, false, false},
+				{"rule_index", true, false, false},
+				{"enabled", false, true, true},
+			}
+			for _, c := range checks {
+				a, ok := s.Attributes[c.attr]
+				if !ok {
+					t.Errorf("missing attribute %q", c.attr)
+					continue
+				}
+				if a.IsRequired() != c.required {
+					t.Errorf("%s: Required = %v, want %v", c.attr, a.IsRequired(), c.required)
+				}
+				if a.IsOptional() != c.optional {
+					t.Errorf("%s: Optional = %v, want %v", c.attr, a.IsOptional(), c.optional)
+				}
+				if a.IsComputed() != c.computed {
+					t.Errorf("%s: Computed = %v, want %v", c.attr, a.IsComputed(), c.computed)
+				}
+			}
+		})
+	}
+}
+
+func Test_firewallRuleResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name      string
+		r         *firewallRuleResource
+		args      args
+		wantError bool
+	}{
+		{
+			name: "nil provider data",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.ConfigureRequest{},
+				resp: &fwresource.ConfigureResponse{Diagnostics: diag.Diagnostics{}},
+			},
+			wantError: false,
+		},
+		{
+			name: "wrong type",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				req: fwresource.ConfigureRequest{
+					ProviderData: "not-a-client",
+				},
+				resp: &fwresource.ConfigureResponse{Diagnostics: diag.Diagnostics{}},
+			},
+			wantError: true,
+		},
+		{
+			name: "correct client type",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				req: fwresource.ConfigureRequest{
+					ProviderData: &Client{},
+				},
+				resp: &fwresource.ConfigureResponse{Diagnostics: diag.Diagnostics{}},
+			},
+			wantError: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+			if tt.wantError && !tt.args.resp.Diagnostics.HasError() {
+				t.Error("expected error but got none")
+			}
+			if !tt.wantError && tt.args.resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %s", tt.args.resp.Diagnostics.Errors())
+			}
+		})
+	}
+}
+
+func Test_firewallRuleResource_applyPlanToState(t *testing.T) {
+	type args struct {
+		in0   context.Context
+		plan  *firewallRuleResourceModel
+		state *firewallRuleResourceModel
+	}
+	tests := []struct {
+		name string
+		r    *firewallRuleResource
+		args args
+	}{
+		{
+			name: "non-null plan fields overwrite state, null fields preserve state",
+			r:    &firewallRuleResource{},
+			args: args{
+				in0: context.Background(),
+				plan: &firewallRuleResourceModel{
+					Name:     types.StringValue("new"),
+					Protocol: types.StringNull(),
+				},
+				state: &firewallRuleResourceModel{
+					Name:     types.StringValue("old"),
+					Protocol: types.StringValue("tcp"),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.applyPlanToState(tt.args.in0, tt.args.plan, tt.args.state)
+			if tt.args.state.Name.ValueString() != "new" {
+				t.Errorf("Name = %q, want %q", tt.args.state.Name.ValueString(), "new")
+			}
+			if tt.args.state.Protocol.ValueString() != "tcp" {
+				t.Errorf("Protocol = %q, want %q (should be preserved)", tt.args.state.Protocol.ValueString(), "tcp")
+			}
+		})
+	}
+}
+
+func Test_firewallRuleResource_modelToFirewallRule(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *firewallRuleResourceModel
+	}
+	ruleIndex2000 := int64(2000)
+	ruleIndex3000 := int64(3000)
+	tests := []struct {
+		name string
+		r    *firewallRuleResource
+		args args
+		want *unifi.FirewallRule
+	}{
+		{
+			name: "basic fields",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				model: &firewallRuleResourceModel{
+					Name:                types.StringValue("drop-rule"),
+					Action:              types.StringValue("drop"),
+					Ruleset:             types.StringValue("LAN_IN"),
+					RuleIndex:           types.Int64Value(2000),
+					Enabled:             types.BoolValue(true),
+					Protocol:            types.StringNull(),
+					ProtocolV6:          types.StringNull(),
+					ICMPTypename:        types.StringNull(),
+					ICMPV6Typename:      types.StringNull(),
+					SrcNetworkID:        types.StringNull(),
+					SrcNetworkType:      types.StringNull(),
+					SrcFirewallGroupIDs: types.SetNull(types.StringType),
+					SrcAddress:          types.StringNull(),
+					SrcAddressIPv6:      types.StringNull(),
+					SrcPort:             types.StringNull(),
+					SrcMac:              hwtypes.NewMACAddressNull(),
+					DstNetworkID:        types.StringNull(),
+					DstNetworkType:      types.StringNull(),
+					DstFirewallGroupIDs: types.SetNull(types.StringType),
+					DstAddress:          types.StringNull(),
+					DstAddressIPv6:      types.StringNull(),
+					DstPort:             types.StringNull(),
+					Logging:             types.BoolNull(),
+					StateEstablished:    types.BoolNull(),
+					StateInvalid:        types.BoolNull(),
+					StateNew:            types.BoolNull(),
+					StateRelated:        types.BoolNull(),
+					IPSec:               types.StringNull(),
+					SettingPreference:   types.StringNull(),
+					ProtocolMatchExcept: types.BoolValue(false),
+				},
+			},
+			want: &unifi.FirewallRule{
+				Name:      "drop-rule",
+				Action:    "drop",
+				Ruleset:   "LAN_IN",
+				RuleIndex: &ruleIndex2000,
+				Enabled:   true,
+			},
+		},
+		{
+			name: "with protocol src dst",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				model: &firewallRuleResourceModel{
+					Name:                types.StringValue("allow-https"),
+					Action:              types.StringValue("accept"),
+					Ruleset:             types.StringValue("WAN_IN"),
+					RuleIndex:           types.Int64Value(3000),
+					Enabled:             types.BoolValue(true),
+					Protocol:            types.StringValue("tcp"),
+					ProtocolV6:          types.StringNull(),
+					ICMPTypename:        types.StringNull(),
+					ICMPV6Typename:      types.StringNull(),
+					SrcNetworkID:        types.StringNull(),
+					SrcNetworkType:      types.StringNull(),
+					SrcFirewallGroupIDs: types.SetNull(types.StringType),
+					SrcAddress:          types.StringValue("10.0.0.1"),
+					SrcAddressIPv6:      types.StringNull(),
+					SrcPort:             types.StringNull(),
+					SrcMac:              hwtypes.NewMACAddressNull(),
+					DstNetworkID:        types.StringNull(),
+					DstNetworkType:      types.StringNull(),
+					DstFirewallGroupIDs: types.SetNull(types.StringType),
+					DstAddress:          types.StringNull(),
+					DstAddressIPv6:      types.StringNull(),
+					DstPort:             types.StringValue("443"),
+					Logging:             types.BoolNull(),
+					StateEstablished:    types.BoolNull(),
+					StateInvalid:        types.BoolNull(),
+					StateNew:            types.BoolNull(),
+					StateRelated:        types.BoolNull(),
+					IPSec:               types.StringNull(),
+					SettingPreference:   types.StringNull(),
+					ProtocolMatchExcept: types.BoolValue(false),
+				},
+			},
+			want: &unifi.FirewallRule{
+				Name:       "allow-https",
+				Action:     "accept",
+				Ruleset:    "WAN_IN",
+				RuleIndex:  &ruleIndex3000,
+				Enabled:    true,
+				Protocol:   "tcp",
+				SrcAddress: "10.0.0.1",
+				DstPort:    "443",
+			},
+		},
+		{
+			name: "minimal required fields only",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				model: &firewallRuleResourceModel{
+					Name:                types.StringValue("min"),
+					Action:              types.StringValue("drop"),
+					Ruleset:             types.StringValue("LAN_IN"),
+					RuleIndex:           types.Int64Value(2000),
+					Enabled:             types.BoolValue(false),
+					Protocol:            types.StringNull(),
+					ProtocolV6:          types.StringNull(),
+					ICMPTypename:        types.StringNull(),
+					ICMPV6Typename:      types.StringNull(),
+					SrcNetworkID:        types.StringNull(),
+					SrcNetworkType:      types.StringNull(),
+					SrcFirewallGroupIDs: types.SetNull(types.StringType),
+					SrcAddress:          types.StringNull(),
+					SrcAddressIPv6:      types.StringNull(),
+					SrcPort:             types.StringNull(),
+					SrcMac:              hwtypes.NewMACAddressNull(),
+					DstNetworkID:        types.StringNull(),
+					DstNetworkType:      types.StringNull(),
+					DstFirewallGroupIDs: types.SetNull(types.StringType),
+					DstAddress:          types.StringNull(),
+					DstAddressIPv6:      types.StringNull(),
+					DstPort:             types.StringNull(),
+					Logging:             types.BoolNull(),
+					StateEstablished:    types.BoolNull(),
+					StateInvalid:        types.BoolNull(),
+					StateNew:            types.BoolNull(),
+					StateRelated:        types.BoolNull(),
+					IPSec:               types.StringNull(),
+					SettingPreference:   types.StringNull(),
+					ProtocolMatchExcept: types.BoolNull(),
+				},
+			},
+			want: &unifi.FirewallRule{
+				Name:      "min",
+				Action:    "drop",
+				Ruleset:   "LAN_IN",
+				RuleIndex: &ruleIndex2000,
+				Enabled:   false,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.modelToFirewallRule(tt.args.ctx, tt.args.model); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("firewallRuleResource.modelToFirewallRule() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_firewallRuleResource_firewallRuleToModel(t *testing.T) {
+	type args struct {
+		ctx          context.Context
+		firewallRule *unifi.FirewallRule
+		model        *firewallRuleResourceModel
+		site         string
+	}
+	ruleIndex3000 := int64(3000)
+	ruleIndex2000 := int64(2000)
+	tests := []struct {
+		name      string
+		r         *firewallRuleResource
+		args      args
+		checkFunc func(t *testing.T, model *firewallRuleResourceModel)
+	}{
+		{
+			name: "basic API struct to model",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				firewallRule: &unifi.FirewallRule{
+					ID:        "r1",
+					Name:      "test",
+					Action:    "accept",
+					Ruleset:   "WAN_IN",
+					RuleIndex: &ruleIndex3000,
+					Enabled:   true,
+				},
+				model: &firewallRuleResourceModel{},
+				site:  "default",
+			},
+			checkFunc: func(t *testing.T, m *firewallRuleResourceModel) {
+				if m.ID.ValueString() != "r1" {
+					t.Errorf("ID = %q, want %q", m.ID.ValueString(), "r1")
+				}
+				if m.Name.ValueString() != "test" {
+					t.Errorf("Name = %q, want %q", m.Name.ValueString(), "test")
+				}
+				if m.Action.ValueString() != "accept" {
+					t.Errorf("Action = %q, want %q", m.Action.ValueString(), "accept")
+				}
+				if m.Ruleset.ValueString() != "WAN_IN" {
+					t.Errorf("Ruleset = %q, want %q", m.Ruleset.ValueString(), "WAN_IN")
+				}
+				if m.RuleIndex.ValueInt64() != 3000 {
+					t.Errorf("RuleIndex = %d, want %d", m.RuleIndex.ValueInt64(), 3000)
+				}
+				if m.Enabled.ValueBool() != true {
+					t.Error("Enabled should be true")
+				}
+				if m.Site.ValueString() != "default" {
+					t.Errorf("Site = %q, want %q", m.Site.ValueString(), "default")
+				}
+			},
+		},
+		{
+			name: "empty optional fields become null",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				firewallRule: &unifi.FirewallRule{
+					ID:        "r2",
+					Name:      "empty-opts",
+					Action:    "drop",
+					Ruleset:   "LAN_IN",
+					RuleIndex: &ruleIndex2000,
+				},
+				model: &firewallRuleResourceModel{},
+				site:  "default",
+			},
+			checkFunc: func(t *testing.T, m *firewallRuleResourceModel) {
+				if !m.Protocol.IsNull() {
+					t.Error("Protocol should be null")
+				}
+				if !m.SrcAddress.IsNull() {
+					t.Error("SrcAddress should be null")
+				}
+				if !m.DstPort.IsNull() {
+					t.Error("DstPort should be null")
+				}
+				if !m.IPSec.IsNull() {
+					t.Error("IPSec should be null")
+				}
+				if !m.SrcFirewallGroupIDs.IsNull() {
+					t.Error("SrcFirewallGroupIDs should be null")
+				}
+			},
+		},
+		{
+			name: "SrcNetworkType defaults to NETv4 when empty",
+			r:    &firewallRuleResource{},
+			args: args{
+				ctx: context.Background(),
+				firewallRule: &unifi.FirewallRule{
+					ID:             "r3",
+					Name:           "netv4-default",
+					Action:         "drop",
+					Ruleset:        "LAN_IN",
+					RuleIndex:      &ruleIndex2000,
+					SrcNetworkType: "",
+				},
+				model: &firewallRuleResourceModel{},
+				site:  "default",
+			},
+			checkFunc: func(t *testing.T, m *firewallRuleResourceModel) {
+				if m.SrcNetworkType.ValueString() != "NETv4" {
+					t.Errorf("SrcNetworkType = %q, want %q", m.SrcNetworkType.ValueString(), "NETv4")
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.firewallRuleToModel(tt.args.ctx, tt.args.firewallRule, tt.args.model, tt.args.site)
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, tt.args.model)
+			}
+		})
+	}
+}
+
+func Test_firewallRuleResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallRuleResource
+		args args
+	}{
+		{
+			name: "schema has site attribute",
+			r:    &firewallRuleResource{},
+			args: args{
+				in0:  context.Background(),
+				in1:  fwlist.ListResourceSchemaRequest{},
+				resp: &fwlist.ListResourceSchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
+			if _, ok := tt.args.resp.Schema.Attributes["site"]; !ok {
+				t.Error("ListResourceConfigSchema missing 'site' attribute")
+			}
+		})
+	}
 }

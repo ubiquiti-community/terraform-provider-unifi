@@ -39,12 +39,24 @@ resource "unifi_power_supervisor" "ap_lobby" {
 - `power_off_duration` (String) How long the upstream PoE source stays off during a power-cycle, as a Go duration string (e.g. `2m`). Defaults to `2m0s`.
 - `silence_threshold` (String) How long the device may be silent before the controller power-cycles its upstream PoE source, as a Go duration string (e.g. `15m`). Defaults to `15m0s`.
 - `site` (String) The name of the site the supervisor belongs to.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `consecutive_failures` (Number) Number of consecutive heartbeat failures observed by the controller (read-only).
 - `id` (String) The controller-assigned ID of the power supervisor.
 - `power_sources` (Attributes List) The upstream power source(s) the controller resolved for the device and will cycle on recovery (read-only). (see [below for nested schema](#nestedatt--power_sources))
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--power_sources"></a>
 ### Nested Schema for `power_sources`

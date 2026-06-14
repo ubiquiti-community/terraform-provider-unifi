@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -130,15 +132,16 @@ func (m bgpPeerModel) AttributeTypes() map[string]attr.Type {
 
 // bgpResourceModel describes the resource data model.
 type bgpResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	Enabled        types.Bool   `tfsdk:"enabled"`
-	Config         types.String `tfsdk:"config"`
-	ASN            types.Int64  `tfsdk:"asn"`
-	RouterID       types.String `tfsdk:"router_id"`
-	Peers          types.List   `tfsdk:"peers"`
-	UploadFileName types.String `tfsdk:"upload_file_name"`
-	Description    types.String `tfsdk:"description"`
+	ID             types.String   `tfsdk:"id"`
+	Site           types.String   `tfsdk:"site"`
+	Enabled        types.Bool     `tfsdk:"enabled"`
+	Config         types.String   `tfsdk:"config"`
+	ASN            types.Int64    `tfsdk:"asn"`
+	RouterID       types.String   `tfsdk:"router_id"`
+	Peers          types.List     `tfsdk:"peers"`
+	UploadFileName types.String   `tfsdk:"upload_file_name"`
+	Description    types.String   `tfsdk:"description"`
+	Timeouts       timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *bgpResource) Metadata(
@@ -255,6 +258,10 @@ func (r *bgpResource) Schema(
 				Computed:            true,
 				Default:             stringdefault.StaticString("BGP Configuration"),
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -295,6 +302,14 @@ func (r *bgpResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// Convert to unifi.BGPConfig
 	bgpConfig, d := r.modelToBGP(ctx, &data)
@@ -352,6 +367,14 @@ func (r *bgpResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	site := data.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -398,6 +421,14 @@ func (r *bgpResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
 
@@ -427,6 +458,8 @@ func (r *bgpResource) Update(
 	// Update state with API response
 	r.bgpToModel(ctx, updatedBGPConfig, &state, site)
 
+	state.Timeouts = plan.Timeouts
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -443,6 +476,14 @@ func (r *bgpResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

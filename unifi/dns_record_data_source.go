@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -31,6 +32,8 @@ type dnsRecordDataSourceModel struct {
 	Value   types.String         `tfsdk:"value"`
 	TTL     timetypes.GoDuration `tfsdk:"ttl"`
 	Enabled types.Bool           `tfsdk:"enabled"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *dnsRecordDataSource) Metadata(
@@ -80,6 +83,7 @@ func (d *dnsRecordDataSource) Schema(
 				MarkdownDescription: "Whether the DNS record is enabled.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -119,6 +123,14 @@ func (d *dnsRecordDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

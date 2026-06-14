@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -65,6 +66,7 @@ type dnsRecordFrameworkResourceModel struct {
 	TTL        timetypes.GoDuration `tfsdk:"ttl"`
 	Value      types.String         `tfsdk:"value"`
 	Weight     types.Int64          `tfsdk:"weight"`
+	Timeouts   timeouts.Value       `tfsdk:"timeouts"`
 }
 
 // dnsRecordFrameworkListConfigModel describes the list configuration model.
@@ -185,6 +187,10 @@ func (r *dnsRecordFrameworkResource) Schema(
 					int64validator.AtLeast(0),
 				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -262,6 +268,14 @@ func (r *dnsRecordFrameworkResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	// Convert to unifi.DNSRecord
 	dnsRecord := r.modelToDNSRecord(ctx, &data)
 
@@ -300,6 +314,14 @@ func (r *dnsRecordFrameworkResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -348,6 +370,14 @@ func (r *dnsRecordFrameworkResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
 
@@ -373,6 +403,8 @@ func (r *dnsRecordFrameworkResource) Update(
 	// Step 5: Update state with API response
 	r.dnsRecordToModel(ctx, updatedDNSRecord, &state, site)
 
+	state.Timeouts = plan.Timeouts
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -390,6 +422,14 @@ func (r *dnsRecordFrameworkResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

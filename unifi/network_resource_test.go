@@ -1,10 +1,22 @@
 package unifi
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
+
+func strPtr(s string) *string { return &s }
 
 func TestAccNetworkFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -556,4 +568,586 @@ resource "unifi_network" "test_dhcpv6" {
 	}
 }
 `
+}
+
+func TestNewNetworkResource(t *testing.T) {
+	got := NewNetworkResource()
+	if got == nil {
+		t.Fatal("NewNetworkResource() returned nil")
+	}
+	if _, ok := got.(fwresource.Resource); !ok {
+		t.Errorf("NewNetworkResource() does not implement fwresource.Resource")
+	}
+}
+
+func TestNewNetworkListResource(t *testing.T) {
+	got := NewNetworkListResource()
+	if got == nil {
+		t.Fatal("NewNetworkListResource() returned nil")
+	}
+	if _, ok := got.(fwlist.ListResource); !ok {
+		t.Errorf("NewNetworkListResource() does not implement fwlist.ListResource")
+	}
+}
+
+func Test_dhcpBootModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    dhcpBootModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct attribute types",
+			m:    dhcpBootModel{},
+			want: map[string]attr.Type{
+				"enabled":  types.BoolType,
+				"server":   types.StringType,
+				"filename": types.StringType,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("dhcpBootModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_winsModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    winsModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct attribute types",
+			m:    winsModel{},
+			want: map[string]attr.Type{
+				"enabled":   types.BoolType,
+				"addresses": types.ListType{ElemType: types.StringType},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("winsModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_dhcpServerModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    dhcpServerModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct attribute types",
+			m:    dhcpServerModel{},
+			want: map[string]attr.Type{
+				"boot":                types.ObjectType{AttrTypes: dhcpBootModel{}.AttributeTypes()},
+				"enabled":             types.BoolType,
+				"start":               types.StringType,
+				"stop":                types.StringType,
+				"gateway_enabled":     types.BoolType,
+				"conflict_checking":   types.BoolType,
+				"ntp_enabled":         types.BoolType,
+				"time_offset_enabled": types.BoolType,
+				"dns_enabled":         types.BoolType,
+				"leasetime":           timetypes.GoDurationType{},
+				"wins":                types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
+				"wpad_url":            types.StringType,
+				"tftp_server":         types.StringType,
+				"unifi_controller":    types.StringType,
+				"dns_servers":         types.ListType{ElemType: types.StringType},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("dhcpServerModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_natOutboundIPAddressesModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		d    natOutboundIPAddressesModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct attribute types",
+			d:    natOutboundIPAddressesModel{},
+			want: map[string]attr.Type{
+				"ip_address":        types.StringType,
+				"ip_address_pool":   types.ListType{ElemType: types.StringType},
+				"mode":              types.StringType,
+				"wan_network_group": types.StringType,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.d.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("natOutboundIPAddressesModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_natOutboundIPAddresses(t *testing.T) {
+	tests := []struct {
+		name string
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct type map",
+			want: map[string]attr.Type{
+				"ip_address":        types.StringType,
+				"ip_address_pool":   types.ListType{ElemType: types.StringType},
+				"mode":              types.StringType,
+				"wan_network_group": types.StringType,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := natOutboundIPAddresses(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("natOutboundIPAddresses() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_dhcpGuardingModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    dhcpGuardingModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct attribute types",
+			m:    dhcpGuardingModel{},
+			want: map[string]attr.Type{
+				"enabled": types.BoolType,
+				"servers": types.ListType{ElemType: types.StringType},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("dhcpGuardingModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_dhcpRelayModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		d    dhcpRelayModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct attribute types",
+			d:    dhcpRelayModel{},
+			want: map[string]attr.Type{
+				"enabled": types.BoolType,
+				"servers": types.ListType{ElemType: types.StringType},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.d.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("dhcpRelayModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_dhcpV6ServerModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    dhcpV6ServerModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns correct attribute types",
+			m:    dhcpV6ServerModel{},
+			want: map[string]attr.Type{
+				"enabled":     types.BoolType,
+				"dns_auto":    types.BoolType,
+				"dns_servers": types.ListType{ElemType: types.StringType},
+				"lease":       types.Int64Type,
+				"start":       types.StringType,
+				"stop":        types.StringType,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("dhcpV6ServerModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_networkResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *networkResource
+		args args
+	}{
+		{
+			name: "sets correct type name",
+			r:    &networkResource{},
+			args: args{
+				ctx: context.Background(),
+				req: fwresource.MetadataRequest{ProviderTypeName: "unifi"},
+				resp: &fwresource.MetadataResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+			if tt.args.resp.TypeName != "unifi_network" {
+				t.Errorf("Metadata() TypeName = %v, want unifi_network", tt.args.resp.TypeName)
+			}
+		})
+	}
+}
+
+func Test_networkResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *networkResource
+		args args
+	}{
+		{
+			name: "returns identity schema with id",
+			r:    &networkResource{},
+			args: args{
+				in0:  context.Background(),
+				in1:  fwresource.IdentitySchemaRequest{},
+				resp: &fwresource.IdentitySchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
+				t.Error("IdentitySchema() missing 'id' attribute")
+			}
+		})
+	}
+}
+
+func Test_networkResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *networkResource
+		args args
+	}{
+		{
+			name: "returns schema with key attributes",
+			r:    &networkResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.SchemaRequest{},
+				resp: &fwresource.SchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+			for _, key := range []string{"id", "name", "subnet"} {
+				if _, ok := tt.args.resp.Schema.Attributes[key]; !ok {
+					t.Errorf("Schema() missing attribute %q", key)
+				}
+			}
+		})
+	}
+}
+
+func Test_networkResource_UpgradeState(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		r    *networkResource
+		args args
+		want map[int64]fwresource.StateUpgrader
+	}{
+		{
+			name: "returns non-nil map",
+			r:    &networkResource{},
+			args: args{
+				ctx: context.Background(),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.r.UpgradeState(tt.args.ctx)
+			if got == nil {
+				t.Error("UpgradeState() returned nil")
+			}
+		})
+	}
+}
+
+func Test_networkResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *networkResource
+		args args
+	}{
+		{
+			name: "nil provider data does not error",
+			r:    &networkResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.ConfigureRequest{ProviderData: nil},
+				resp: &fwresource.ConfigureResponse{},
+			},
+		},
+		{
+			name: "wrong type produces error",
+			r:    &networkResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.ConfigureRequest{ProviderData: "wrong"},
+				resp: &fwresource.ConfigureResponse{},
+			},
+		},
+		{
+			name: "correct type sets client",
+			r:    &networkResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.ConfigureRequest{ProviderData: &Client{}},
+				resp: &fwresource.ConfigureResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+			switch tt.name {
+			case "nil provider data does not error":
+				if tt.args.resp.Diagnostics.HasError() {
+					t.Errorf("Configure() unexpected error: %v", tt.args.resp.Diagnostics)
+				}
+			case "wrong type produces error":
+				if !tt.args.resp.Diagnostics.HasError() {
+					t.Error("Configure() expected error for wrong type")
+				}
+			case "correct type sets client":
+				if tt.args.resp.Diagnostics.HasError() {
+					t.Errorf("Configure() unexpected error: %v", tt.args.resp.Diagnostics)
+				}
+				if tt.r.client == nil {
+					t.Error("Configure() client not set")
+				}
+			}
+		})
+	}
+}
+
+func Test_networkResource_modelToNetwork(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *networkResourceModel
+	}
+	tests := []struct {
+		name  string
+		r     *networkResource
+		args  args
+		want  *unifi.Network
+		want1 diag.Diagnostics
+	}{
+		{
+			name: "minimal model conversion",
+			r:    &networkResource{},
+			args: args{
+				ctx: context.Background(),
+				model: &networkResourceModel{
+					Name:                        types.StringValue("test-net"),
+					Enabled:                     types.BoolValue(true),
+					Subnet:                      cidrtypes.NewIPv4PrefixValue("10.0.0.0/24"),
+					AutoScale:                   types.BoolValue(false),
+					NetworkIsolation:            types.BoolValue(false),
+					SettingPreference:            types.StringNull(),
+					InternetAccess:              types.BoolValue(false),
+					MulticastDNS:                types.BoolValue(false),
+					GatewayType:                 types.StringNull(),
+					IPv6InterfaceType:           types.StringNull(),
+					IPv6ClientAddressAssignment: types.StringNull(),
+					IPv6StaticSubnet:            types.StringNull(),
+					IPv6RA:                      types.BoolValue(false),
+					IPv6RAPriority:              types.StringNull(),
+					IPv6RAPreferredLifetime:     timetypes.NewGoDurationNull(),
+					IPv6RAValidLifetime:         timetypes.NewGoDurationNull(),
+					IPv6PDInterface:             types.StringNull(),
+					IPv6PDPrefixID:              types.StringNull(),
+					IPv6PDStart:                 types.StringNull(),
+					IPv6PDStop:                  types.StringNull(),
+					IPv6PDAutoPrefixidEnabled:   types.BoolValue(false),
+					LteLan:                      types.BoolValue(false),
+					ThirdPartyGateway:           types.BoolValue(false),
+					IgmpSnooping:                types.BoolValue(false),
+					Vlan:                        types.Int64Null(),
+					NatOutboundIPAddresses:      types.ListNull(types.ObjectType{AttrTypes: natOutboundIPAddresses()}),
+					IPAliases:                   types.ListNull(types.StringType),
+					IPv6Aliases:                 types.ListNull(types.StringType),
+					DhcpServer:                  types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+					DhcpRelay:                   types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+					DhcpV6Server:                types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+					DhcpGuarding:                types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+				},
+			},
+			want1: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := tt.r.modelToNetwork(tt.args.ctx, tt.args.model)
+			if got == nil {
+				t.Fatal("modelToNetwork() returned nil network")
+			}
+			if *got.Name != "test-net" {
+				t.Errorf("modelToNetwork() Name = %v, want test-net", *got.Name)
+			}
+			if got.Purpose != unifi.PurposeCorporate {
+				t.Errorf("modelToNetwork() Purpose = %v, want %v", got.Purpose, unifi.PurposeCorporate)
+			}
+			if got1 != nil && got1.HasError() {
+				t.Errorf("modelToNetwork() diagnostics has errors: %v", got1)
+			}
+		})
+	}
+}
+
+func Test_networkResource_networkToModel(t *testing.T) {
+	type args struct {
+		ctx           context.Context
+		network       *unifi.Network
+		model         *networkResourceModel
+		site          string
+		previousModel *networkResourceModel
+	}
+	tests := []struct {
+		name string
+		r    *networkResource
+		args args
+		want diag.Diagnostics
+	}{
+		{
+			name: "minimal network to model",
+			r:    &networkResource{},
+			args: args{
+				ctx: context.Background(),
+				network: &unifi.Network{
+					ID:      "net-123",
+					Name:    strPtr("test-net"),
+					Purpose: unifi.PurposeCorporate,
+					Enabled: true,
+				},
+				model: &networkResourceModel{},
+				site:  "default",
+				previousModel: &networkResourceModel{
+					DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+					DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+					DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+					DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+					NatOutboundIPAddresses: types.ListNull(types.ObjectType{AttrTypes: natOutboundIPAddresses()}),
+					IPAliases:    types.ListNull(types.StringType),
+					IPv6Aliases:  types.ListNull(types.StringType),
+				},
+			},
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.r.networkToModel(tt.args.ctx, tt.args.network, tt.args.model, tt.args.site, tt.args.previousModel)
+			if got != nil && got.HasError() {
+				t.Errorf("networkToModel() diagnostics has errors: %v", got)
+			}
+			if tt.args.model.ID.ValueString() != "net-123" {
+				t.Errorf("networkToModel() ID = %v, want net-123", tt.args.model.ID.ValueString())
+			}
+			if tt.args.model.Site.ValueString() != "default" {
+				t.Errorf("networkToModel() Site = %v, want default", tt.args.model.Site.ValueString())
+			}
+			if tt.args.model.Name.ValueString() != "test-net" {
+				t.Errorf("networkToModel() Name = %v, want test-net", tt.args.model.Name.ValueString())
+			}
+		})
+	}
+}
+
+func Test_networkResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *networkResource
+		args args
+	}{
+		{
+			name: "returns schema without panic",
+			r:    &networkResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwlist.ListResourceSchemaRequest{},
+				resp: &fwlist.ListResourceSchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.ctx, tt.args.req, tt.args.resp)
+			if tt.args.resp.Schema.Attributes == nil {
+				t.Error("ListResourceConfigSchema() returned nil attributes")
+			}
+		})
+	}
 }

@@ -119,6 +119,7 @@ resource "unifi_port_forward" "game_server" {
 - `protocol` (String) The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`.
 - `site` (String) The name of the site to associate the port forwarding rule with.
 - `source_limiting` (Attributes) Source limiting configuration for the port forwarding rule. (see [below for nested schema](#nestedatt--source_limiting))
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `wan` (Attributes) WAN configuration for the port forwarding rule. (see [below for nested schema](#nestedatt--wan))
 
 ### Read-Only
@@ -152,6 +153,17 @@ Optional:
 - `firewall_group_id` (String) The ID of the firewall group to use for source limiting.
 - `ip` (String) The source IPv4 address (or CIDR) of the port forwarding rule. For all traffic, specify `any`.
 - `type` (String) The source limiting type. Can be `ip` or `firewall_group`. Inferred automatically when only one of `ip` or `firewall_group_id` is set.
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 
 <a id="nestedatt--wan"></a>

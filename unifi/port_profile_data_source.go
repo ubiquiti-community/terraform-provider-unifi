@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -27,6 +29,8 @@ type portProfileDataSourceModel struct {
 	Forward              types.String `tfsdk:"forward"`
 	NativeNetworkconfID  types.String `tfsdk:"native_networkconf_id"`
 	TaggedNetworkconfIDs types.Set    `tfsdk:"tagged_networkconf_ids"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *portProfileDataSource) Metadata(
@@ -72,6 +76,7 @@ func (d *portProfileDataSource) Schema(
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -111,6 +116,14 @@ func (d *portProfileDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
