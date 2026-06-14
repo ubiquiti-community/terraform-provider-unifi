@@ -515,7 +515,11 @@ func Test_wanResource_Metadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &wanResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName},
+				resp,
+			)
 			if resp.TypeName != tt.wantTypeName {
 				t.Errorf("Metadata() TypeName = %v, want %v", resp.TypeName, tt.wantTypeName)
 			}
@@ -574,7 +578,10 @@ func Test_wanResource_Configure(t *testing.T) {
 		resp := &fwresource.ConfigureResponse{}
 		r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: nil}, resp)
 		if resp.Diagnostics.HasError() {
-			t.Errorf("Configure() with nil provider data should not error, got: %v", resp.Diagnostics)
+			t.Errorf(
+				"Configure() with nil provider data should not error, got: %v",
+				resp.Diagnostics,
+			)
 		}
 	})
 
@@ -682,28 +689,28 @@ func Test_wanResource_modelToNetwork(t *testing.T) {
 		r := &wanResource{}
 		ctx := context.Background()
 		model := &wanResourceModel{
-			Name:                 types.StringValue("test"),
-			Type:                 types.StringValue("dhcp"),
-			TypeV6:               types.StringNull(),
-			Enabled:              types.BoolValue(true),
-			Vlan:                 types.ObjectNull(vlanModel{}.AttributeTypes()),
-			EgressQoS:            types.ObjectNull(egressQosModel{}.AttributeTypes()),
-			DNS:                  types.ObjectNull(dnsModel{}.AttributeTypes()),
-			DHCP:                 types.ObjectNull(dhcpWanModel{}.AttributeTypes()),
-			DHCPv6:               types.ObjectNull(dhcpv6WanModel{}.AttributeTypes()),
-			SmartQ:               types.ObjectNull(smartqModel{}.AttributeTypes()),
-			UPnP:                 types.ObjectNull(upnpModel{}.AttributeTypes()),
-			LoadBalance:          types.ObjectNull(loadBalanceModel{}.AttributeTypes()),
-			IGMPProxy:            types.ObjectNull(igmpProxyModel{}.AttributeTypes()),
-			ProviderCapabilities: types.ObjectNull(providerCapabilitiesModel{}.AttributeTypes()),
-			ReportWANEvent:       types.BoolNull(),
-			IPAliases:            types.ListNull(types.StringType),
-			SettingPreference:    types.StringNull(),
+			Name:                  types.StringValue("test"),
+			Type:                  types.StringValue("dhcp"),
+			TypeV6:                types.StringNull(),
+			Enabled:               types.BoolValue(true),
+			Vlan:                  types.ObjectNull(vlanModel{}.AttributeTypes()),
+			EgressQoS:             types.ObjectNull(egressQosModel{}.AttributeTypes()),
+			DNS:                   types.ObjectNull(dnsModel{}.AttributeTypes()),
+			DHCP:                  types.ObjectNull(dhcpWanModel{}.AttributeTypes()),
+			DHCPv6:                types.ObjectNull(dhcpv6WanModel{}.AttributeTypes()),
+			SmartQ:                types.ObjectNull(smartqModel{}.AttributeTypes()),
+			UPnP:                  types.ObjectNull(upnpModel{}.AttributeTypes()),
+			LoadBalance:           types.ObjectNull(loadBalanceModel{}.AttributeTypes()),
+			IGMPProxy:             types.ObjectNull(igmpProxyModel{}.AttributeTypes()),
+			ProviderCapabilities:  types.ObjectNull(providerCapabilitiesModel{}.AttributeTypes()),
+			ReportWANEvent:        types.BoolNull(),
+			IPAliases:             types.ListNull(types.StringType),
+			SettingPreference:     types.StringNull(),
 			IPv6SettingPreference: types.StringNull(),
-			SingleNetworkLAN:     types.StringNull(),
-			MACOverrideEnabled:   types.BoolNull(),
-			DsliteRemoteHost:     types.StringNull(),
-			DsliteRemoteHostAuto: types.BoolNull(),
+			SingleNetworkLAN:      types.StringNull(),
+			MACOverrideEnabled:    types.BoolNull(),
+			DsliteRemoteHost:      types.StringNull(),
+			DsliteRemoteHostAuto:  types.BoolNull(),
 		}
 		got, diags := r.modelToNetwork(ctx, model)
 		if diags.HasError() {

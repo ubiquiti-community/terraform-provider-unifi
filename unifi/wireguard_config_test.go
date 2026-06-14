@@ -205,13 +205,17 @@ func Test_parseWireGuardConfig(t *testing.T) {
 			},
 		},
 		{
-			name:    "missing public key returns error",
-			args:    args{content: "[Interface]\nPrivateKey = abc==\nAddress = 10.0.0.1/24\n\n[Peer]\nEndpoint = 1.2.3.4:51820\n"},
+			name: "missing public key returns error",
+			args: args{
+				content: "[Interface]\nPrivateKey = abc==\nAddress = 10.0.0.1/24\n\n[Peer]\nEndpoint = 1.2.3.4:51820\n",
+			},
 			wantErr: true,
 		},
 		{
-			name:    "missing endpoint returns error",
-			args:    args{content: "[Interface]\nPrivateKey = abc==\nAddress = 10.0.0.1/24\n\n[Peer]\nPublicKey = xyz==\n"},
+			name: "missing endpoint returns error",
+			args: args{
+				content: "[Interface]\nPrivateKey = abc==\nAddress = 10.0.0.1/24\n\n[Peer]\nPublicKey = xyz==\n",
+			},
 			wantErr: true,
 		},
 	}

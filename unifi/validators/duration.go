@@ -74,7 +74,10 @@ func (v goDurationMultipleOfValidator) Description(ctx context.Context) string {
 }
 
 func (v goDurationMultipleOfValidator) MarkdownDescription(ctx context.Context) string {
-	return fmt.Sprintf("value must be a Go duration string that is a whole multiple of `%s`", v.unit)
+	return fmt.Sprintf(
+		"value must be a Go duration string that is a whole multiple of `%s`",
+		v.unit,
+	)
 }
 
 func (v goDurationMultipleOfValidator) ValidateString(
@@ -101,7 +104,9 @@ func (v goDurationMultipleOfValidator) ValidateString(
 			"Invalid Duration",
 			fmt.Sprintf(
 				"Duration %s is not a whole multiple of %s. The controller stores this value with %s resolution, so smaller fractions would be silently truncated.",
-				dur, v.unit, v.unit,
+				dur,
+				v.unit,
+				v.unit,
 			),
 		)
 	}

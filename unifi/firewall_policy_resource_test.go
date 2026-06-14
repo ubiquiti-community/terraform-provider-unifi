@@ -328,7 +328,9 @@ func TestNewFirewallPolicyListResource(t *testing.T) {
 		t.Errorf("NewFirewallPolicyListResource() does not implement list.ListResource")
 	}
 	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
-		t.Errorf("NewFirewallPolicyListResource() does not implement list.ListResourceWithConfigure")
+		t.Errorf(
+			"NewFirewallPolicyListResource() does not implement list.ListResourceWithConfigure",
+		)
 	}
 }
 
@@ -551,7 +553,11 @@ func Test_modelToFirewallPolicy(t *testing.T) {
 						PortGroupID:        types.StringNull(),
 						PortMatchingType:   types.StringValue("ANY"),
 					}
-					srcObj, _ := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(), srcEndpoint)
+					srcObj, _ := types.ObjectValueFrom(
+						ctx,
+						firewallPolicyEndpointModel{}.AttributeTypes(),
+						srcEndpoint,
+					)
 					dstEndpoint := firewallPolicyEndpointModel{
 						ZoneID:             types.StringValue("z2"),
 						MatchingTarget:     types.StringValue("ANY"),
@@ -564,25 +570,29 @@ func Test_modelToFirewallPolicy(t *testing.T) {
 						PortGroupID:        types.StringNull(),
 						PortMatchingType:   types.StringValue("ANY"),
 					}
-					dstObj, _ := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(), dstEndpoint)
+					dstObj, _ := types.ObjectValueFrom(
+						ctx,
+						firewallPolicyEndpointModel{}.AttributeTypes(),
+						dstEndpoint,
+					)
 					return firewallPolicyModel{
-						Name:             types.StringValue("allow-lan"),
-						Action:           types.StringValue("ALLOW"),
-						Enabled:          types.BoolValue(true),
-						Protocol:         types.StringValue("all"),
-						Description:      types.StringNull(),
-						Logging:          types.BoolValue(false),
-						Index:            types.Int64Null(),
-						CreateAllowRespond: types.BoolValue(false),
-						IPVersion:        types.StringNull(),
+						Name:                types.StringValue("allow-lan"),
+						Action:              types.StringValue("ALLOW"),
+						Enabled:             types.BoolValue(true),
+						Protocol:            types.StringValue("all"),
+						Description:         types.StringNull(),
+						Logging:             types.BoolValue(false),
+						Index:               types.Int64Null(),
+						CreateAllowRespond:  types.BoolValue(false),
+						IPVersion:           types.StringNull(),
 						ConnectionStateType: types.StringNull(),
-						ConnectionStates: types.ListNull(types.StringType),
-						ICMPTypename:     types.StringNull(),
-						ICMPV6Typename:   types.StringNull(),
-						Source:           srcObj,
-						Destination:      dstObj,
-						ID:               types.StringNull(),
-						Site:             types.StringNull(),
+						ConnectionStates:    types.ListNull(types.StringType),
+						ICMPTypename:        types.StringNull(),
+						ICMPV6Typename:      types.StringNull(),
+						Source:              srcObj,
+						Destination:         dstObj,
+						ID:                  types.StringNull(),
+						Site:                types.StringNull(),
 					}
 				}(),
 			},
@@ -664,7 +674,14 @@ func Test_endpointModelToSource(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := endpointModelToSource(tt.args.ctx, tt.args.m, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+			if got := endpointModelToSource(
+				tt.args.ctx,
+				tt.args.m,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("endpointModelToSource() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -716,7 +733,14 @@ func Test_endpointModelToDestination(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := endpointModelToDestination(tt.args.ctx, tt.args.m, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+			if got := endpointModelToDestination(
+				tt.args.ctx,
+				tt.args.m,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("endpointModelToDestination() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -762,11 +786,22 @@ func Test_firewallPolicyToModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := firewallPolicyToModel(tt.args.ctx, tt.args.fp, tt.args.model); !reflect.DeepEqual(got, tt.want) {
+			if got := firewallPolicyToModel(
+				tt.args.ctx,
+				tt.args.fp,
+				tt.args.model,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("firewallPolicyToModel() = %v, want %v", got, tt.want)
 			}
 			if tt.args.model.Name.ValueString() != tt.args.fp.Name {
-				t.Errorf("model.Name = %q, want %q", tt.args.model.Name.ValueString(), tt.args.fp.Name)
+				t.Errorf(
+					"model.Name = %q, want %q",
+					tt.args.model.Name.ValueString(),
+					tt.args.fp.Name,
+				)
 			}
 			if tt.args.model.ID.ValueString() != tt.args.fp.ID {
 				t.Errorf("model.ID = %q, want %q", tt.args.model.ID.ValueString(), tt.args.fp.ID)
@@ -823,7 +858,14 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := apiSourceToEndpointModel(tt.args.ctx, tt.args.src, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+			if got := apiSourceToEndpointModel(
+				tt.args.ctx,
+				tt.args.src,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("apiSourceToEndpointModel() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -877,7 +919,14 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := apiDestinationToEndpointModel(tt.args.ctx, tt.args.dst, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+			if got := apiDestinationToEndpointModel(
+				tt.args.ctx,
+				tt.args.dst,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("apiDestinationToEndpointModel() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -926,8 +975,20 @@ func Test_firewallPolicyResource_firewallPolicyListToModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.firewallPolicyListToModel(tt.args.ctx, tt.args.api, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("firewallPolicyResource.firewallPolicyListToModel() = %v, want %v", got, tt.want)
+			if got := tt.r.firewallPolicyListToModel(
+				tt.args.ctx,
+				tt.args.api,
+				tt.args.model,
+				tt.args.site,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf(
+					"firewallPolicyResource.firewallPolicyListToModel() = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if tt.args.model.Site.ValueString() != tt.args.site {
 				t.Errorf("model.Site = %q, want %q", tt.args.model.Site.ValueString(), tt.args.site)

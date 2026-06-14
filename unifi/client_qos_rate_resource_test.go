@@ -311,9 +311,7 @@ func Test_clientQosRateResource_Create(t *testing.T) {
 		name string
 		r    *clientQosRateResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -331,9 +329,7 @@ func Test_clientQosRateResource_Read(t *testing.T) {
 		name string
 		r    *clientQosRateResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -351,9 +347,7 @@ func Test_clientQosRateResource_Update(t *testing.T) {
 		name string
 		r    *clientQosRateResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -371,9 +365,7 @@ func Test_clientQosRateResource_applyPlanToState(t *testing.T) {
 		name string
 		r    *clientQosRateResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.applyPlanToState(tt.args.in0, tt.args.plan, tt.args.state)
@@ -391,9 +383,7 @@ func Test_clientQosRateResource_Delete(t *testing.T) {
 		name string
 		r    *clientQosRateResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -411,9 +401,7 @@ func Test_clientQosRateResource_ImportState(t *testing.T) {
 		name string
 		r    *clientQosRateResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -475,10 +463,18 @@ func Test_clientQosRateResource_planToClientQosRate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.planToClientQosRate(tt.args.in0, tt.args.plan)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("clientQosRateResource.planToClientQosRate() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"clientQosRateResource.planToClientQosRate() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("clientQosRateResource.planToClientQosRate() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"clientQosRateResource.planToClientQosRate() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -519,7 +515,15 @@ func Test_clientQosRateResource_clientQosRateToModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.clientQosRateToModel(tt.args.in0, tt.args.clientGroup, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
+			if got := tt.r.clientQosRateToModel(
+				tt.args.in0,
+				tt.args.clientGroup,
+				tt.args.model,
+				tt.args.site,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("clientQosRateResource.clientQosRateToModel() = %v, want %v", got, tt.want)
 			}
 		})
@@ -564,9 +568,7 @@ func Test_clientQosRateResource_List(t *testing.T) {
 		name string
 		r    *clientQosRateResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)

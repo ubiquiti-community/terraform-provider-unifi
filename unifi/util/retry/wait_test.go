@@ -25,7 +25,11 @@ func TestRetryContext(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := RetryContext(tt.args.ctx, tt.args.timeout, tt.args.f); (err != nil) != tt.wantErr {
+			if err := RetryContext(
+				tt.args.ctx,
+				tt.args.timeout,
+				tt.args.f,
+			); (err != nil) != tt.wantErr {
 				t.Errorf("RetryContext() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

@@ -698,7 +698,11 @@ func Test_portForwardSourceLimitingModel_AttributeTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("portForwardSourceLimitingModel.AttributeTypes() = %v, want %v", got, tt.want)
+				t.Errorf(
+					"portForwardSourceLimitingModel.AttributeTypes() = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 		})
 	}
@@ -722,7 +726,11 @@ func Test_portForwardDestinationIPModel_AttributeTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("portForwardDestinationIPModel.AttributeTypes() = %v, want %v", got, tt.want)
+				t.Errorf(
+					"portForwardDestinationIPModel.AttributeTypes() = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 		})
 	}
@@ -753,7 +761,11 @@ func Test_portForwardResource_Metadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
 			if tt.args.resp.TypeName != "unifi_port_forward" {
-				t.Errorf("Metadata() TypeName = %v, want %v", tt.args.resp.TypeName, "unifi_port_forward")
+				t.Errorf(
+					"Metadata() TypeName = %v, want %v",
+					tt.args.resp.TypeName,
+					"unifi_port_forward",
+				)
 			}
 		})
 	}
@@ -895,13 +907,15 @@ func Test_portForwardResource_modelToPortForward(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				model: &portForwardResourceModel{
-					Name:           types.StringValue("test"),
-					Protocol:       types.StringValue("tcp_udp"),
-					Enabled:        types.BoolValue(true),
-					Logging:        types.BoolValue(false),
-					Wan:            types.ObjectNull(portForwardWanModel{}.AttributeTypes()),
-					Forward:        types.ObjectNull(portForwardForwardModel{}.AttributeTypes()),
-					SourceLimiting: types.ObjectNull(portForwardSourceLimitingModel{}.AttributeTypes()),
+					Name:     types.StringValue("test"),
+					Protocol: types.StringValue("tcp_udp"),
+					Enabled:  types.BoolValue(true),
+					Logging:  types.BoolValue(false),
+					Wan:      types.ObjectNull(portForwardWanModel{}.AttributeTypes()),
+					Forward:  types.ObjectNull(portForwardForwardModel{}.AttributeTypes()),
+					SourceLimiting: types.ObjectNull(
+						portForwardSourceLimitingModel{}.AttributeTypes(),
+					),
 					DestinationIPs: types.ListNull(destElemType),
 				},
 			},
@@ -921,7 +935,11 @@ func Test_portForwardResource_modelToPortForward(t *testing.T) {
 				t.Errorf("portForwardResource.modelToPortForward() got = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("portForwardResource.modelToPortForward() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"portForwardResource.modelToPortForward() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -953,9 +971,11 @@ func Test_portForwardResource_portForwardToModel(t *testing.T) {
 					Log:     false,
 				},
 				model: &portForwardResourceModel{
-					Wan:            types.ObjectNull(portForwardWanModel{}.AttributeTypes()),
-					Forward:        types.ObjectNull(portForwardForwardModel{}.AttributeTypes()),
-					SourceLimiting: types.ObjectNull(portForwardSourceLimitingModel{}.AttributeTypes()),
+					Wan:     types.ObjectNull(portForwardWanModel{}.AttributeTypes()),
+					Forward: types.ObjectNull(portForwardForwardModel{}.AttributeTypes()),
+					SourceLimiting: types.ObjectNull(
+						portForwardSourceLimitingModel{}.AttributeTypes(),
+					),
 				},
 				site: "default",
 			},
@@ -964,15 +984,28 @@ func Test_portForwardResource_portForwardToModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.r.portForwardToModel(tt.args.ctx, tt.args.portForward, tt.args.model, tt.args.site)
+			got := tt.r.portForwardToModel(
+				tt.args.ctx,
+				tt.args.portForward,
+				tt.args.model,
+				tt.args.site,
+			)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("portForwardResource.portForwardToModel() = %v, want %v", got, tt.want)
 			}
 			if tt.args.model.ID.ValueString() != tt.args.portForward.ID {
-				t.Errorf("model.ID = %v, want %v", tt.args.model.ID.ValueString(), tt.args.portForward.ID)
+				t.Errorf(
+					"model.ID = %v, want %v",
+					tt.args.model.ID.ValueString(),
+					tt.args.portForward.ID,
+				)
 			}
 			if tt.args.model.Name.ValueString() != tt.args.portForward.Name {
-				t.Errorf("model.Name = %v, want %v", tt.args.model.Name.ValueString(), tt.args.portForward.Name)
+				t.Errorf(
+					"model.Name = %v, want %v",
+					tt.args.model.Name.ValueString(),
+					tt.args.portForward.Name,
+				)
 			}
 			if tt.args.model.Site.ValueString() != tt.args.site {
 				t.Errorf("model.Site = %v, want %v", tt.args.model.Site.ValueString(), tt.args.site)

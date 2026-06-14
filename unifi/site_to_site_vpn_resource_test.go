@@ -135,7 +135,11 @@ func Test_siteToSiteVPNResource_Metadata(t *testing.T) {
 		t.Run(tt.provider, func(t *testing.T) {
 			r := &siteToSiteVPNResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.provider},
+				resp,
+			)
 			if resp.TypeName != tt.want {
 				t.Errorf("got %q, want %q", resp.TypeName, tt.want)
 			}
@@ -201,7 +205,11 @@ func Test_siteToSiteVPNResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &siteToSiteVPNResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantErr && !resp.Diagnostics.HasError() {
 				t.Error("expected error")
 			}
@@ -286,7 +294,10 @@ func Test_siteToSiteVPNResource_modelToNetwork(t *testing.T) {
 			t.Errorf("IPSecInterface should be nil for null input, got %v", network.IPSecInterface)
 		}
 		if network.IPSecEncryption != nil {
-			t.Errorf("IPSecEncryption should be nil for null input, got %v", network.IPSecEncryption)
+			t.Errorf(
+				"IPSecEncryption should be nil for null input, got %v",
+				network.IPSecEncryption,
+			)
 		}
 	})
 }
@@ -342,10 +353,16 @@ func Test_siteToSiteVPNResource_networkToModel(t *testing.T) {
 			t.Fatalf("unexpected diags: %v", diags)
 		}
 		if !model.Interface.IsNull() {
-			t.Errorf("Interface should be null for nil pointer, got %q", model.Interface.ValueString())
+			t.Errorf(
+				"Interface should be null for nil pointer, got %q",
+				model.Interface.ValueString(),
+			)
 		}
 		if !model.IKEEncryption.IsNull() {
-			t.Errorf("IKEEncryption should be null for nil pointer, got %q", model.IKEEncryption.ValueString())
+			t.Errorf(
+				"IKEEncryption should be null for nil pointer, got %q",
+				model.IKEEncryption.ValueString(),
+			)
 		}
 	})
 }

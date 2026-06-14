@@ -404,7 +404,11 @@ func Test_firewallZoneResource_firewallZoneToModel(t *testing.T) {
 				t.Errorf("ZoneKey = %q, want %q", model.ZoneKey.ValueString(), tt.wantZoneKey)
 			}
 			if model.DefaultZone.ValueBool() != tt.wantDefaultZone {
-				t.Errorf("DefaultZone = %v, want %v", model.DefaultZone.ValueBool(), tt.wantDefaultZone)
+				t.Errorf(
+					"DefaultZone = %v, want %v",
+					model.DefaultZone.ValueBool(),
+					tt.wantDefaultZone,
+				)
 			}
 			var netIDs []string
 			model.NetworkIDs.ElementsAs(ctx, &netIDs, false)

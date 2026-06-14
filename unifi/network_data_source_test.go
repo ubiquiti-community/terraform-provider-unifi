@@ -329,7 +329,11 @@ func Test_networkDataSource_Metadata(t *testing.T) {
 		t.Run(tt.provider, func(t *testing.T) {
 			d := &networkDataSource{}
 			resp := &fwdatasource.MetadataResponse{}
-			d.Metadata(context.Background(), fwdatasource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			d.Metadata(
+				context.Background(),
+				fwdatasource.MetadataRequest{ProviderTypeName: tt.provider},
+				resp,
+			)
 			if resp.TypeName != tt.want {
 				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.want)
 			}
@@ -364,7 +368,11 @@ func Test_networkDataSource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			d := &networkDataSource{}
 			resp := &fwdatasource.ConfigureResponse{}
-			d.Configure(context.Background(), fwdatasource.ConfigureRequest{ProviderData: tt.data}, resp)
+			d.Configure(
+				context.Background(),
+				fwdatasource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantErr && !resp.Diagnostics.HasError() {
 				t.Error("expected error diagnostic")
 			}

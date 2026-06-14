@@ -649,7 +649,9 @@ func Test_dhcpServerModel_AttributeTypes(t *testing.T) {
 			name: "returns correct attribute types",
 			m:    dhcpServerModel{},
 			want: map[string]attr.Type{
-				"boot":                types.ObjectType{AttrTypes: dhcpBootModel{}.AttributeTypes()},
+				"boot": types.ObjectType{
+					AttrTypes: dhcpBootModel{}.AttributeTypes(),
+				},
 				"enabled":             types.BoolType,
 				"start":               types.StringType,
 				"stop":                types.StringType,
@@ -817,8 +819,8 @@ func Test_networkResource_Metadata(t *testing.T) {
 			name: "sets correct type name",
 			r:    &networkResource{},
 			args: args{
-				ctx: context.Background(),
-				req: fwresource.MetadataRequest{ProviderTypeName: "unifi"},
+				ctx:  context.Background(),
+				req:  fwresource.MetadataRequest{ProviderTypeName: "unifi"},
 				resp: &fwresource.MetadataResponse{},
 			},
 		},
@@ -1011,7 +1013,7 @@ func Test_networkResource_modelToNetwork(t *testing.T) {
 					Subnet:                      cidrtypes.NewIPv4PrefixValue("10.0.0.0/24"),
 					AutoScale:                   types.BoolValue(false),
 					NetworkIsolation:            types.BoolValue(false),
-					SettingPreference:            types.StringNull(),
+					SettingPreference:           types.StringNull(),
 					InternetAccess:              types.BoolValue(false),
 					MulticastDNS:                types.BoolValue(false),
 					GatewayType:                 types.StringNull(),
@@ -1031,13 +1033,23 @@ func Test_networkResource_modelToNetwork(t *testing.T) {
 					ThirdPartyGateway:           types.BoolValue(false),
 					IgmpSnooping:                types.BoolValue(false),
 					Vlan:                        types.Int64Null(),
-					NatOutboundIPAddresses:      types.ListNull(types.ObjectType{AttrTypes: natOutboundIPAddresses()}),
-					IPAliases:                   types.ListNull(types.StringType),
-					IPv6Aliases:                 types.ListNull(types.StringType),
-					DhcpServer:                  types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
-					DhcpRelay:                   types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
-					DhcpV6Server:                types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
-					DhcpGuarding:                types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+					NatOutboundIPAddresses: types.ListNull(
+						types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+					),
+					IPAliases:   types.ListNull(types.StringType),
+					IPv6Aliases: types.ListNull(types.StringType),
+					DhcpServer: types.ObjectNull(
+						dhcpServerModel{}.AttributeTypes(),
+					),
+					DhcpRelay: types.ObjectNull(
+						dhcpRelayModel{}.AttributeTypes(),
+					),
+					DhcpV6Server: types.ObjectNull(
+						dhcpV6ServerModel{}.AttributeTypes(),
+					),
+					DhcpGuarding: types.ObjectNull(
+						dhcpGuardingModel{}.AttributeTypes(),
+					),
 				},
 			},
 			want1: nil,
@@ -1053,7 +1065,11 @@ func Test_networkResource_modelToNetwork(t *testing.T) {
 				t.Errorf("modelToNetwork() Name = %v, want test-net", *got.Name)
 			}
 			if got.Purpose != unifi.PurposeCorporate {
-				t.Errorf("modelToNetwork() Purpose = %v, want %v", got.Purpose, unifi.PurposeCorporate)
+				t.Errorf(
+					"modelToNetwork() Purpose = %v, want %v",
+					got.Purpose,
+					unifi.PurposeCorporate,
+				)
 			}
 			if got1 != nil && got1.HasError() {
 				t.Errorf("modelToNetwork() diagnostics has errors: %v", got1)
@@ -1094,9 +1110,11 @@ func Test_networkResource_networkToModel(t *testing.T) {
 					DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
 					DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
 					DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
-					NatOutboundIPAddresses: types.ListNull(types.ObjectType{AttrTypes: natOutboundIPAddresses()}),
-					IPAliases:    types.ListNull(types.StringType),
-					IPv6Aliases:  types.ListNull(types.StringType),
+					NatOutboundIPAddresses: types.ListNull(
+						types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+					),
+					IPAliases:   types.ListNull(types.StringType),
+					IPv6Aliases: types.ListNull(types.StringType),
 				},
 			},
 			want: nil,
@@ -1104,7 +1122,13 @@ func Test_networkResource_networkToModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.r.networkToModel(tt.args.ctx, tt.args.network, tt.args.model, tt.args.site, tt.args.previousModel)
+			got := tt.r.networkToModel(
+				tt.args.ctx,
+				tt.args.network,
+				tt.args.model,
+				tt.args.site,
+				tt.args.previousModel,
+			)
 			if got != nil && got.HasError() {
 				t.Errorf("networkToModel() diagnostics has errors: %v", got)
 			}
@@ -1112,10 +1136,16 @@ func Test_networkResource_networkToModel(t *testing.T) {
 				t.Errorf("networkToModel() ID = %v, want net-123", tt.args.model.ID.ValueString())
 			}
 			if tt.args.model.Site.ValueString() != "default" {
-				t.Errorf("networkToModel() Site = %v, want default", tt.args.model.Site.ValueString())
+				t.Errorf(
+					"networkToModel() Site = %v, want default",
+					tt.args.model.Site.ValueString(),
+				)
 			}
 			if tt.args.model.Name.ValueString() != "test-net" {
-				t.Errorf("networkToModel() Name = %v, want test-net", tt.args.model.Name.ValueString())
+				t.Errorf(
+					"networkToModel() Name = %v, want test-net",
+					tt.args.model.Name.ValueString(),
+				)
 			}
 		})
 	}

@@ -43,27 +43,27 @@ func Test_radiusUserResource_moveFromAccount(t *testing.T) {
 		{
 			name: "wrong_source_type_skipped",
 			req: fwresource.MoveStateRequest{
-				SourceTypeName:      "unifi_other",
+				SourceTypeName:        "unifi_other",
 				SourceProviderAddress: "registry.terraform.io/ubiquiti-community/unifi",
-				SourceSchemaVersion: 0,
+				SourceSchemaVersion:   0,
 			},
 			wantSkipped: true,
 		},
 		{
 			name: "wrong_provider_skipped",
 			req: fwresource.MoveStateRequest{
-				SourceTypeName:      "unifi_account",
+				SourceTypeName:        "unifi_account",
 				SourceProviderAddress: "registry.terraform.io/someone-else/other",
-				SourceSchemaVersion: 0,
+				SourceSchemaVersion:   0,
 			},
 			wantSkipped: true,
 		},
 		{
 			name: "correct_provider_address_with_slashes",
 			req: fwresource.MoveStateRequest{
-				SourceTypeName:      "unifi_account",
+				SourceTypeName:        "unifi_account",
 				SourceProviderAddress: "registry.terraform.io/ubiquiti-community/unifi",
-				SourceSchemaVersion: 0,
+				SourceSchemaVersion:   0,
 				// SourceState is nil, so the mover returns early after passing the guard.
 			},
 			wantSkipped: true, // nil SourceState causes early return after provider guard
@@ -71,9 +71,9 @@ func Test_radiusUserResource_moveFromAccount(t *testing.T) {
 		{
 			name: "empty_provider_address_passes_guard",
 			req: fwresource.MoveStateRequest{
-				SourceTypeName:      "unifi_account",
+				SourceTypeName:        "unifi_account",
 				SourceProviderAddress: "",
-				SourceSchemaVersion: 0,
+				SourceSchemaVersion:   0,
 				// SourceState is nil — guard passes (empty addr is allowed), then nil state guard triggers.
 			},
 			wantSkipped: true,
@@ -81,9 +81,9 @@ func Test_radiusUserResource_moveFromAccount(t *testing.T) {
 		{
 			name: "non_zero_schema_version_skipped",
 			req: fwresource.MoveStateRequest{
-				SourceTypeName:      "unifi_account",
+				SourceTypeName:        "unifi_account",
 				SourceProviderAddress: "registry.terraform.io/ubiquiti-community/unifi",
-				SourceSchemaVersion: 1,
+				SourceSchemaVersion:   1,
 			},
 			wantSkipped: true,
 		},

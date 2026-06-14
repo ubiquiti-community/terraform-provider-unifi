@@ -447,9 +447,7 @@ func Test_clientResource_Create(t *testing.T) {
 		name string
 		r    *clientResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -467,9 +465,7 @@ func Test_clientResource_Read(t *testing.T) {
 		name string
 		r    *clientResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -487,9 +483,7 @@ func Test_clientResource_Update(t *testing.T) {
 		name string
 		r    *clientResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -507,9 +501,7 @@ func Test_clientResource_applyPlanToState(t *testing.T) {
 		name string
 		r    *clientResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.applyPlanToState(tt.args.in0, tt.args.plan, tt.args.state)
@@ -527,9 +519,7 @@ func Test_clientResource_Delete(t *testing.T) {
 		name string
 		r    *clientResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -547,9 +537,7 @@ func Test_clientResource_ImportState(t *testing.T) {
 		name string
 		r    *clientResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -569,9 +557,7 @@ func Test_clientResource_planToClient(t *testing.T) {
 		args  args
 		want  *unifi.Client
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.planToClient(tt.args.ctx, tt.args.site, tt.args.plan)
@@ -598,9 +584,7 @@ func Test_clientResource_reconcileCreatedClient(t *testing.T) {
 		args  args
 		want  *unifi.Client
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.reconcileCreatedClient(
@@ -635,9 +619,7 @@ func Test_clientResource_clientToModel(t *testing.T) {
 		r    *clientResource
 		args args
 		want diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.r.clientToModel(
@@ -762,9 +744,7 @@ func Test_clientResource_resolveGroupNames(t *testing.T) {
 		args    args
 		want    []string
 		wantErr bool
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.r.resolveGroupNames(tt.args.ctx, tt.args.site, tt.args.ids)
@@ -795,9 +775,7 @@ func Test_clientResource_resolveGroupID(t *testing.T) {
 		args    args
 		want    string
 		wantErr bool
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.r.resolveGroupID(tt.args.ctx, tt.args.site, tt.args.groupName)
@@ -824,9 +802,7 @@ func Test_clientResource_resolveClientGroup(t *testing.T) {
 		args  args
 		want  string
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.resolveClientGroup(tt.args.ctx, tt.args.site, tt.args.qos)
@@ -850,9 +826,7 @@ func Test_clientResource_List(t *testing.T) {
 		name string
 		r    *clientResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)

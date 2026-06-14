@@ -569,7 +569,11 @@ func Test_trafficRouteResource_Metadata(t *testing.T) {
 		t.Run(tt.providerTypeName, func(t *testing.T) {
 			r := &trafficRouteResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName},
+				resp,
+			)
 			if resp.TypeName != tt.wantTypeName {
 				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
 			}
@@ -617,7 +621,11 @@ func Test_trafficRouteResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &trafficRouteResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantError && !resp.Diagnostics.HasError() {
 				t.Error("expected error")
 			}
@@ -629,7 +637,9 @@ func Test_trafficRouteResource_Configure(t *testing.T) {
 }
 
 func Test_trafficRouteResource_ImportState(t *testing.T) {
-	t.Skip("ImportState delegates to ImportStatePassthroughWithIdentity which requires full state schema setup")
+	t.Skip(
+		"ImportState delegates to ImportStatePassthroughWithIdentity which requires full state schema setup",
+	)
 }
 
 func Test_trafficRouteResource_modelToAPI(t *testing.T) {
@@ -674,7 +684,9 @@ func Test_trafficRouteResource_modelToAPI(t *testing.T) {
 		}
 		dest := destinationModel{
 			Domain: domainList,
-			IP:     types.ListNull(types.ObjectType{AttrTypes: destinationIPModel{}.AttributeTypes()}),
+			IP: types.ListNull(
+				types.ObjectType{AttrTypes: destinationIPModel{}.AttributeTypes()},
+			),
 			Region: types.ListNull(types.StringType),
 		}
 		destObj, d := types.ObjectValueFrom(ctx, destinationModel{}.AttributeTypes(), dest)
@@ -755,7 +767,11 @@ func Test_trafficRouteResource_apiToModel(t *testing.T) {
 			t.Fatal("Destination should not be null for a domain route")
 		}
 		var dest destinationModel
-		if d := model.Destination.As(ctx, &dest, struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{}); d.HasError() {
+		if d := model.Destination.As(
+			ctx,
+			&dest,
+			struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{},
+		); d.HasError() {
 			t.Fatalf("reading destination: %v", d)
 		}
 		var domains []string

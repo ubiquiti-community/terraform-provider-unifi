@@ -28,11 +28,19 @@ func TestClientInfoListType_ApplyTerraform5AttributePathStep(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.tr.ApplyTerraform5AttributePathStep(tt.args.in0)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ClientInfoListType.ApplyTerraform5AttributePathStep() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf(
+					"ClientInfoListType.ApplyTerraform5AttributePathStep() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ClientInfoListType.ApplyTerraform5AttributePathStep() = %v, want %v", got, tt.want)
+				t.Errorf(
+					"ClientInfoListType.ApplyTerraform5AttributePathStep() = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 		})
 	}
@@ -142,7 +150,11 @@ func TestClientInfoListType_ValueFromTerraform(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.tr.ValueFromTerraform(tt.args.in0, tt.args.in1)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ClientInfoListType.ValueFromTerraform() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf(
+					"ClientInfoListType.ValueFromTerraform() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
@@ -288,7 +300,11 @@ func TestClientInfoListValue_ToTerraformValue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.c.ToTerraformValue(tt.args.in0)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ClientInfoListValue.ToTerraformValue() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf(
+					"ClientInfoListValue.ToTerraformValue() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {

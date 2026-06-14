@@ -206,7 +206,13 @@ func Test_dynamicDNSResource_modelToDynamicDNS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &dynamicDNSResource{}
-			if got := r.modelToDynamicDNS(context.Background(), tt.model); !reflect.DeepEqual(got, tt.want) {
+			if got := r.modelToDynamicDNS(
+				context.Background(),
+				tt.model,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("modelToDynamicDNS() = %+v, want %+v", got, tt.want)
 			}
 		})

@@ -299,7 +299,11 @@ func Test_vpnClientResource_Metadata(t *testing.T) {
 		t.Run(tt.provider, func(t *testing.T) {
 			r := &vpnClientResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.provider},
+				resp,
+			)
 			if resp.TypeName != tt.want {
 				t.Errorf("got %q, want %q", resp.TypeName, tt.want)
 			}
@@ -346,7 +350,11 @@ func Test_vpnClientResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &vpnClientResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantErr && !resp.Diagnostics.HasError() {
 				t.Error("expected error")
 			}
@@ -362,11 +370,15 @@ func Test_vpnClientResource_modelToNetwork(t *testing.T) {
 	r := &vpnClientResource{}
 
 	t.Run("basic manual mode fields", func(t *testing.T) {
-		peerObj, d := types.ObjectValueFrom(ctx, wireguardPeerModel{}.AttributeTypes(), wireguardPeerModel{
-			IP:        types.StringValue("1.2.3.4"),
-			Port:      types.Int64Value(51820),
-			PublicKey: types.StringValue("pubkey=="),
-		})
+		peerObj, d := types.ObjectValueFrom(
+			ctx,
+			wireguardPeerModel{}.AttributeTypes(),
+			wireguardPeerModel{
+				IP:        types.StringValue("1.2.3.4"),
+				Port:      types.Int64Value(51820),
+				PublicKey: types.StringValue("pubkey=="),
+			},
+		)
 		if d.HasError() {
 			t.Fatalf("building peer: %v", d)
 		}
@@ -441,13 +453,13 @@ func Test_vpnClientResource_networkToModel(t *testing.T) {
 		subnet := "10.0.0.2/24"
 		name := "test-vpn"
 		network := &unifi.Network{
-			ID:                          "net-1",
-			Name:                        &name,
-			Enabled:                     true,
-			IPSubnet:                    &subnet,
-			WireguardClientMode:         &mode,
-			WireguardClientPeerIP:       &ip,
-			WireguardClientPeerPort:     &port,
+			ID:                           "net-1",
+			Name:                         &name,
+			Enabled:                      true,
+			IPSubnet:                     &subnet,
+			WireguardClientMode:          &mode,
+			WireguardClientPeerIP:        &ip,
+			WireguardClientPeerPort:      &port,
 			WireguardClientPeerPublicKey: &pubKey,
 		}
 		model := &vpnClientResourceModel{}

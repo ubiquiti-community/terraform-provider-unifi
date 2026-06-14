@@ -267,7 +267,11 @@ func Test_radiusUserResource_Metadata(t *testing.T) {
 		t.Run(tt.provider, func(t *testing.T) {
 			r := &radiusUserResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.provider},
+				resp,
+			)
 			if resp.TypeName != tt.want {
 				t.Errorf("got %q, want %q", resp.TypeName, tt.want)
 			}
@@ -317,7 +321,11 @@ func Test_radiusUserResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &radiusUserResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantErr && !resp.Diagnostics.HasError() {
 				t.Error("expected error")
 			}
@@ -559,10 +567,16 @@ func Test_radiusUserResource_radiusUserToModel(t *testing.T) {
 		r.radiusUserToModel(ctx, account, model, "site1")
 
 		if !model.NetworkID.IsNull() {
-			t.Errorf("NetworkID should be null for empty string, got %q", model.NetworkID.ValueString())
+			t.Errorf(
+				"NetworkID should be null for empty string, got %q",
+				model.NetworkID.ValueString(),
+			)
 		}
 		if !model.TunnelConfigType.IsNull() {
-			t.Errorf("TunnelConfigType should be null for empty string, got %q", model.TunnelConfigType.ValueString())
+			t.Errorf(
+				"TunnelConfigType should be null for empty string, got %q",
+				model.TunnelConfigType.ValueString(),
+			)
 		}
 	})
 }

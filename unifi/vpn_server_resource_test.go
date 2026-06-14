@@ -707,7 +707,11 @@ func Test_vpnServerResource_Metadata(t *testing.T) {
 		t.Run(tt.providerTypeName, func(t *testing.T) {
 			r := &vpnServerResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName},
+				resp,
+			)
 			if resp.TypeName != tt.wantTypeName {
 				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
 			}
@@ -755,7 +759,11 @@ func Test_vpnServerResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &vpnServerResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantError && !resp.Diagnostics.HasError() {
 				t.Error("expected error")
 			}
@@ -767,7 +775,9 @@ func Test_vpnServerResource_Configure(t *testing.T) {
 }
 
 func Test_vpnServerResource_ImportState(t *testing.T) {
-	t.Skip("ImportState delegates to ImportStatePassthroughWithIdentity which requires full state schema setup")
+	t.Skip(
+		"ImportState delegates to ImportStatePassthroughWithIdentity which requires full state schema setup",
+	)
 }
 
 func Test_vpnServerResource_modelToNetwork(t *testing.T) {
@@ -905,7 +915,11 @@ func Test_vpnServerResource_networkToModel(t *testing.T) {
 			t.Fatal("Wireguard block should not be null")
 		}
 		var wg vpnServerWireguardModel
-		if d := model.Wireguard.As(ctx, &wg, struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{}); d.HasError() {
+		if d := model.Wireguard.As(
+			ctx,
+			&wg,
+			struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{},
+		); d.HasError() {
 			t.Fatalf("reading wireguard: %v", d)
 		}
 		if wg.PrivateKey.ValueString() != privKey {
@@ -942,7 +956,11 @@ func Test_vpnServerResource_networkToModel(t *testing.T) {
 			AllowWeakCiphers: types.BoolValue(false),
 			PreSharedKey:     types.StringValue("stored-psk"),
 		}
-		priorL2TPObj, d := types.ObjectValueFrom(ctx, vpnServerL2TPModel{}.AttributeTypes(), priorL2TP)
+		priorL2TPObj, d := types.ObjectValueFrom(
+			ctx,
+			vpnServerL2TPModel{}.AttributeTypes(),
+			priorL2TP,
+		)
 		if d.HasError() {
 			t.Fatalf("building prior l2tp: %v", d)
 		}
@@ -959,12 +977,19 @@ func Test_vpnServerResource_networkToModel(t *testing.T) {
 			t.Fatal("L2TP block should not be null")
 		}
 		var l2tp vpnServerL2TPModel
-		if d := model.L2TP.As(ctx, &l2tp, struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{}); d.HasError() {
+		if d := model.L2TP.As(
+			ctx,
+			&l2tp,
+			struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{},
+		); d.HasError() {
 			t.Fatalf("reading l2tp: %v", d)
 		}
 		// PSK should be preserved from prior state since the API doesn't return it
 		if l2tp.PreSharedKey.ValueString() != "stored-psk" {
-			t.Errorf("PreSharedKey = %q, want stored-psk (preserved from prior state)", l2tp.PreSharedKey.ValueString())
+			t.Errorf(
+				"PreSharedKey = %q, want stored-psk (preserved from prior state)",
+				l2tp.PreSharedKey.ValueString(),
+			)
 		}
 	})
 }

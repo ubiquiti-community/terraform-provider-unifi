@@ -178,7 +178,18 @@ func Test_bgpResource_Schema(t *testing.T) {
 			s := tt.args.resp.Schema
 
 			// Verify key attributes exist
-			expectedAttrs := []string{"id", "site", "enabled", "config", "asn", "router_id", "peers", "upload_file_name", "description", "timeouts"}
+			expectedAttrs := []string{
+				"id",
+				"site",
+				"enabled",
+				"config",
+				"asn",
+				"router_id",
+				"peers",
+				"upload_file_name",
+				"description",
+				"timeouts",
+			}
 			for _, name := range expectedAttrs {
 				if _, ok := s.Attributes[name]; !ok {
 					t.Errorf("missing attribute %q", name)
@@ -276,7 +287,9 @@ func Test_bgpResource_Configure(t *testing.T) {
 // Test_bgpResource_ImportState is skipped because ImportStatePassthroughID
 // requires a valid state schema which is complex to set up in a unit test.
 func Test_bgpResource_ImportState(t *testing.T) {
-	t.Skip("ImportState delegates to ImportStatePassthroughID which requires full state schema setup")
+	t.Skip(
+		"ImportState delegates to ImportStatePassthroughID which requires full state schema setup",
+	)
 }
 
 func Test_bgpResource_applyPlanToState(t *testing.T) {
@@ -297,21 +310,25 @@ func Test_bgpResource_applyPlanToState(t *testing.T) {
 			args: args{
 				in0: context.Background(),
 				plan: &bgpResourceModel{
-					Enabled:        types.BoolValue(true),
-					Config:         types.StringValue("new config"),
-					ASN:            types.Int64Value(65001),
-					RouterID:       types.StringValue("10.0.0.2"),
-					Peers:          types.ListNull(types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()}),
+					Enabled:  types.BoolValue(true),
+					Config:   types.StringValue("new config"),
+					ASN:      types.Int64Value(65001),
+					RouterID: types.StringValue("10.0.0.2"),
+					Peers: types.ListNull(
+						types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()},
+					),
 					UploadFileName: types.StringValue("new.conf"),
 					Description:    types.StringValue("new desc"),
 				},
 				state: &bgpResourceModel{
-					ID:             types.StringValue("existing-id"),
-					Enabled:        types.BoolValue(false),
-					Config:         types.StringValue("old config"),
-					ASN:            types.Int64Value(65000),
-					RouterID:       types.StringValue("10.0.0.1"),
-					Peers:          types.ListNull(types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()}),
+					ID:       types.StringValue("existing-id"),
+					Enabled:  types.BoolValue(false),
+					Config:   types.StringValue("old config"),
+					ASN:      types.Int64Value(65000),
+					RouterID: types.StringValue("10.0.0.1"),
+					Peers: types.ListNull(
+						types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()},
+					),
 					UploadFileName: types.StringValue("old.conf"),
 					Description:    types.StringValue("old desc"),
 				},
@@ -346,21 +363,25 @@ func Test_bgpResource_applyPlanToState(t *testing.T) {
 			args: args{
 				in0: context.Background(),
 				plan: &bgpResourceModel{
-					Enabled:        types.BoolNull(),
-					Config:         types.StringNull(),
-					ASN:            types.Int64Null(),
-					RouterID:       types.StringNull(),
-					Peers:          types.ListNull(types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()}),
+					Enabled:  types.BoolNull(),
+					Config:   types.StringNull(),
+					ASN:      types.Int64Null(),
+					RouterID: types.StringNull(),
+					Peers: types.ListNull(
+						types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()},
+					),
 					UploadFileName: types.StringNull(),
 					Description:    types.StringNull(),
 				},
 				state: &bgpResourceModel{
-					ID:             types.StringValue("keep-id"),
-					Enabled:        types.BoolValue(true),
-					Config:         types.StringValue("keep config"),
-					ASN:            types.Int64Value(65000),
-					RouterID:       types.StringValue("10.0.0.1"),
-					Peers:          types.ListNull(types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()}),
+					ID:       types.StringValue("keep-id"),
+					Enabled:  types.BoolValue(true),
+					Config:   types.StringValue("keep config"),
+					ASN:      types.Int64Value(65000),
+					RouterID: types.StringValue("10.0.0.1"),
+					Peers: types.ListNull(
+						types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()},
+					),
 					UploadFileName: types.StringValue("keep.conf"),
 					Description:    types.StringValue("keep desc"),
 				},
@@ -383,20 +404,24 @@ func Test_bgpResource_applyPlanToState(t *testing.T) {
 			args: args{
 				in0: context.Background(),
 				plan: &bgpResourceModel{
-					Enabled:        types.BoolUnknown(),
-					Config:         types.StringUnknown(),
-					ASN:            types.Int64Unknown(),
-					RouterID:       types.StringUnknown(),
-					Peers:          types.ListUnknown(types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()}),
+					Enabled:  types.BoolUnknown(),
+					Config:   types.StringUnknown(),
+					ASN:      types.Int64Unknown(),
+					RouterID: types.StringUnknown(),
+					Peers: types.ListUnknown(
+						types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()},
+					),
 					UploadFileName: types.StringUnknown(),
 					Description:    types.StringUnknown(),
 				},
 				state: &bgpResourceModel{
-					Enabled:        types.BoolValue(false),
-					Config:         types.StringValue("kept"),
-					ASN:            types.Int64Value(65002),
-					RouterID:       types.StringValue("1.2.3.4"),
-					Peers:          types.ListNull(types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()}),
+					Enabled:  types.BoolValue(false),
+					Config:   types.StringValue("kept"),
+					ASN:      types.Int64Value(65002),
+					RouterID: types.StringValue("1.2.3.4"),
+					Peers: types.ListNull(
+						types.ObjectType{AttrTypes: bgpPeerModel{}.AttributeTypes()},
+					),
 					UploadFileName: types.StringValue("kept.conf"),
 					Description:    types.StringValue("kept desc"),
 				},
@@ -419,7 +444,7 @@ func Test_bgpResource_applyPlanToState(t *testing.T) {
 	}
 }
 
-// helper to build a peers list for testing
+// helper to build a peers list for testing.
 func testBuildPeersList(t *testing.T, peers []bgpPeerModel) types.List {
 	t.Helper()
 	peerAttrTypes := bgpPeerModel{}.AttributeTypes()
@@ -625,7 +650,10 @@ func Test_bgpResource_modelToBGP(t *testing.T) {
 			} else if got != nil {
 				// For structured mode, verify rendered config contains expected content
 				if !strings.Contains(got.Config, "router bgp 65000") {
-					t.Errorf("expected rendered config to contain 'router bgp 65000', got %q", got.Config)
+					t.Errorf(
+						"expected rendered config to contain 'router bgp 65000', got %q",
+						got.Config,
+					)
 				}
 				if got.Enabled != true {
 					t.Error("expected Enabled=true")

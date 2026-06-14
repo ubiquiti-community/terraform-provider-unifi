@@ -498,7 +498,11 @@ func Test_radiusProfileResource_Metadata(t *testing.T) {
 		t.Run(tt.provider, func(t *testing.T) {
 			r := &radiusProfileResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.provider},
+				resp,
+			)
 			if resp.TypeName != tt.want {
 				t.Errorf("got %q, want %q", resp.TypeName, tt.want)
 			}
@@ -557,7 +561,11 @@ func Test_radiusProfileResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &radiusProfileResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantErr && !resp.Diagnostics.HasError() {
 				t.Error("expected error")
 			}
@@ -582,7 +590,11 @@ func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
 			VlanEnabled:          types.BoolValue(true),
 			VlanWlanMode:         types.StringValue("required"),
 			AuthServer: []radiusServerModel{
-				{IP: types.StringValue("1.2.3.4"), Port: types.Int64Value(1812), Secret: types.StringValue("s")},
+				{
+					IP:     types.StringValue("1.2.3.4"),
+					Port:   types.Int64Value(1812),
+					Secret: types.StringValue("s"),
+				},
 			},
 			AcctServer: []radiusServerModel{},
 		}
@@ -676,9 +688,9 @@ func Test_radiusProfileResource_modelToRadiusProfile(t *testing.T) {
 	t.Run("auth and acct servers are appended", func(t *testing.T) {
 		port := int64(1812)
 		model := &radiusProfileResourceModel{
-			Name:             types.StringValue("prof-with-servers"),
+			Name:              types.StringValue("prof-with-servers"),
 			AccountingEnabled: types.BoolValue(false),
-			VlanWlanMode:     types.StringValue(""),
+			VlanWlanMode:      types.StringValue(""),
 			AuthServer: []radiusServerModel{
 				{
 					IP:     types.StringValue("10.0.0.1"),

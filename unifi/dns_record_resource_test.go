@@ -7,10 +7,10 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -294,7 +294,11 @@ func Test_dnsRecordFrameworkResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
 			if tt.args.resp.Diagnostics.HasError() != tt.wantError {
-				t.Errorf("hasError = %v, want %v", tt.args.resp.Diagnostics.HasError(), tt.wantError)
+				t.Errorf(
+					"hasError = %v, want %v",
+					tt.args.resp.Diagnostics.HasError(),
+					tt.wantError,
+				)
 			}
 		})
 	}
@@ -378,7 +382,13 @@ func Test_dnsRecordFrameworkResource_modelToDNSRecord(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.modelToDNSRecord(tt.args.in0, tt.args.model); !reflect.DeepEqual(got, tt.want) {
+			if got := tt.r.modelToDNSRecord(
+				tt.args.in0,
+				tt.args.model,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("modelToDNSRecord() = %v, want %v", got, tt.want)
 			}
 		})
@@ -439,7 +449,11 @@ func Test_dnsRecordFrameworkResource_dnsRecordToModel(t *testing.T) {
 				t.Errorf("Site = %q, want %q", tt.args.model.Site.ValueString(), tt.args.site)
 			}
 			if tt.args.model.Name.ValueString() != tt.args.dnsRecord.Key {
-				t.Errorf("Name = %q, want %q", tt.args.model.Name.ValueString(), tt.args.dnsRecord.Key)
+				t.Errorf(
+					"Name = %q, want %q",
+					tt.args.model.Name.ValueString(),
+					tt.args.dnsRecord.Key,
+				)
 			}
 		})
 	}

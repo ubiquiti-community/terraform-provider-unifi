@@ -102,9 +102,9 @@ func TestNewFirewallGroupFrameworkResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewFirewallGroupFrameworkResource() returned nil")
 	}
-	var _ fwresource.Resource = got
-	var _ fwresource.ResourceWithImportState = got.(fwresource.ResourceWithImportState)
-	var _ fwresource.ResourceWithIdentity = got.(fwresource.ResourceWithIdentity)
+	_ = got
+	_ = got.(fwresource.ResourceWithImportState)
+	_ = got.(fwresource.ResourceWithIdentity)
 }
 
 func TestNewFirewallGroupListResource(t *testing.T) {
@@ -112,7 +112,7 @@ func TestNewFirewallGroupListResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewFirewallGroupListResource() returned nil")
 	}
-	var _ fwlist.ListResource = got
+	_ = got
 }
 
 func Test_firewallGroupResource_Metadata(t *testing.T) {
@@ -218,10 +218,10 @@ func Test_firewallGroupResource_Configure(t *testing.T) {
 		resp *fwresource.ConfigureResponse
 	}
 	tests := []struct {
-		name      string
-		r         *firewallGroupResource
-		args      args
-		wantErr   bool
+		name       string
+		r          *firewallGroupResource
+		args       args
+		wantErr    bool
 		wantClient bool
 	}{
 		{
@@ -346,11 +346,19 @@ func Test_firewallGroupResource_modelToAPIFirewallGroup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.r.modelToAPIFirewallGroup(tt.args.ctx, tt.args.model)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("firewallGroupResource.modelToAPIFirewallGroup() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf(
+					"firewallGroupResource.modelToAPIFirewallGroup() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("firewallGroupResource.modelToAPIFirewallGroup() = %v, want %v", got, tt.want)
+				t.Errorf(
+					"firewallGroupResource.modelToAPIFirewallGroup() = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 		})
 	}

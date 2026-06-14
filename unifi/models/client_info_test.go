@@ -72,7 +72,11 @@ func TestClientInfoObjectType_ValueFromObject(t *testing.T) {
 				t.Errorf("ClientInfoObjectType.ValueFromObject() got = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("ClientInfoObjectType.ValueFromObject() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"ClientInfoObjectType.ValueFromObject() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -253,7 +257,14 @@ func TestClientListValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ClientListValue(tt.args.ctx, tt.args.clientInfoList, tt.args.target); !reflect.DeepEqual(got, tt.want) {
+			if got := ClientListValue(
+				tt.args.ctx,
+				tt.args.clientInfoList,
+				tt.args.target,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("ClientListValue() = %v, want %v", got, tt.want)
 			}
 		})
@@ -274,7 +285,13 @@ func TestClientInfoAttrValues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ClientInfoAttrValues(tt.args.ctx, tt.args.clientInfo); !reflect.DeepEqual(got, tt.want) {
+			if got := ClientInfoAttrValues(
+				tt.args.ctx,
+				tt.args.clientInfo,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("ClientInfoAttrValues() = %v, want %v", got, tt.want)
 			}
 		})
@@ -296,7 +313,14 @@ func TestClientInfoValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ClientInfoValue(tt.args.ctx, tt.args.clientInfo, tt.args.target); !reflect.DeepEqual(got, tt.want) {
+			if got := ClientInfoValue(
+				tt.args.ctx,
+				tt.args.clientInfo,
+				tt.args.target,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("ClientInfoValue() = %v, want %v", got, tt.want)
 			}
 		})

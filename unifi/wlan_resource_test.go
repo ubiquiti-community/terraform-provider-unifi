@@ -101,10 +101,10 @@ func TestNewWLANFrameworkResource(t *testing.T) {
 		t.Fatal("NewWLANFrameworkResource() returned nil")
 	}
 	// Verify interface compliance
-	var _ fwresource.Resource = got
-	var _ fwresource.ResourceWithImportState = got.(fwresource.ResourceWithImportState)
-	var _ fwresource.ResourceWithIdentity = got.(fwresource.ResourceWithIdentity)
-	var _ fwresource.ResourceWithUpgradeState = got.(fwresource.ResourceWithUpgradeState)
+	_ = got
+	_ = got.(fwresource.ResourceWithImportState)
+	_ = got.(fwresource.ResourceWithIdentity)
+	_ = got.(fwresource.ResourceWithUpgradeState)
 }
 
 func TestNewWLANListResource(t *testing.T) {
@@ -112,8 +112,8 @@ func TestNewWLANListResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewWLANListResource() returned nil")
 	}
-	var _ fwlist.ListResource = got
-	var _ fwlist.ListResourceWithConfigure = got.(fwlist.ListResourceWithConfigure)
+	_ = got
+	_ = got.(fwlist.ListResourceWithConfigure)
 }
 
 func Test_wlanPrivatePresharedKeyModel_AttributeTypes(t *testing.T) {
@@ -327,18 +327,20 @@ func Test_wlanFrameworkResource_planToWLAN(t *testing.T) {
 	r := &wlanFrameworkResource{}
 
 	plan := wlanFrameworkResourceModel{
-		Name:                        types.StringValue("test"),
-		Security:                    types.StringValue("wpapsk"),
-		MacFilter:                   types.ObjectNull(map[string]attr.Type{
+		Name:     types.StringValue("test"),
+		Security: types.StringValue("wpapsk"),
+		MacFilter: types.ObjectNull(map[string]attr.Type{
 			"enabled": types.BoolType,
 			"list":    types.SetType{ElemType: types.StringType},
 			"policy":  types.StringType,
 		}),
-		PrivatePresharedKeys:        types.ListNull(types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}),
-		ApGroupIDs:                  types.SetNull(types.StringType),
-		WLANBands:                   types.SetNull(types.StringType),
-		Schedule:                    types.ListNull(types.ObjectType{}),
-		BroadcastFilterList:         types.SetNull(types.StringType),
+		PrivatePresharedKeys: types.ListNull(
+			types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()},
+		),
+		ApGroupIDs:          types.SetNull(types.StringType),
+		WLANBands:           types.SetNull(types.StringType),
+		Schedule:            types.ListNull(types.ObjectType{}),
+		BroadcastFilterList: types.SetNull(types.StringType),
 	}
 
 	got, diags := r.planToWLAN(ctx, plan)

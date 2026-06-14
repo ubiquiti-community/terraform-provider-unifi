@@ -47,8 +47,8 @@ func Test_portAction_Metadata(t *testing.T) {
 
 func Test_portAction_Schema(t *testing.T) {
 	tests := []struct {
-		name       string
-		wantAttrs  []string
+		name      string
+		wantAttrs []string
 	}{
 		{
 			name:      "has_required_attributes",
@@ -102,4 +102,3 @@ func Test_portAction_Configure(t *testing.T) {
 		})
 	}
 }
-

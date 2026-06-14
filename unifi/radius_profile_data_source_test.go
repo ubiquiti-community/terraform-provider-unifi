@@ -181,7 +181,11 @@ func Test_radiusProfileDataSource_Metadata(t *testing.T) {
 		t.Run(tt.providerTypeName, func(t *testing.T) {
 			d := &radiusProfileDataSource{}
 			resp := &fwdatasource.MetadataResponse{}
-			d.Metadata(context.Background(), fwdatasource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			d.Metadata(
+				context.Background(),
+				fwdatasource.MetadataRequest{ProviderTypeName: tt.providerTypeName},
+				resp,
+			)
 			if resp.TypeName != tt.wantTypeName {
 				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
 			}
@@ -217,7 +221,11 @@ func Test_radiusProfileDataSource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			d := &radiusProfileDataSource{}
 			resp := &fwdatasource.ConfigureResponse{}
-			d.Configure(context.Background(), fwdatasource.ConfigureRequest{ProviderData: tt.data}, resp)
+			d.Configure(
+				context.Background(),
+				fwdatasource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantError && !resp.Diagnostics.HasError() {
 				t.Error("expected error in diagnostics")
 			}

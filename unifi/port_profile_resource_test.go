@@ -105,13 +105,19 @@ func TestNewPortProfileFrameworkResource(t *testing.T) {
 		t.Errorf("NewPortProfileFrameworkResource() does not implement fwresource.Resource")
 	}
 	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
-		t.Errorf("NewPortProfileFrameworkResource() does not implement fwresource.ResourceWithImportState")
+		t.Errorf(
+			"NewPortProfileFrameworkResource() does not implement fwresource.ResourceWithImportState",
+		)
 	}
 	if _, ok := got.(fwresource.ResourceWithIdentity); !ok {
-		t.Errorf("NewPortProfileFrameworkResource() does not implement fwresource.ResourceWithIdentity")
+		t.Errorf(
+			"NewPortProfileFrameworkResource() does not implement fwresource.ResourceWithIdentity",
+		)
 	}
 	if _, ok := got.(fwresource.ResourceWithUpgradeState); !ok {
-		t.Errorf("NewPortProfileFrameworkResource() does not implement fwresource.ResourceWithUpgradeState")
+		t.Errorf(
+			"NewPortProfileFrameworkResource() does not implement fwresource.ResourceWithUpgradeState",
+		)
 	}
 }
 
@@ -165,7 +171,11 @@ func Test_portProfileResource_Metadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
 			if tt.args.resp.TypeName != tt.wantTypeName {
-				t.Errorf("Metadata() TypeName = %q, want %q", tt.args.resp.TypeName, tt.wantTypeName)
+				t.Errorf(
+					"Metadata() TypeName = %q, want %q",
+					tt.args.resp.TypeName,
+					tt.wantTypeName,
+				)
 			}
 		})
 	}
@@ -266,11 +276,11 @@ func Test_portProfileResource_Configure(t *testing.T) {
 		resp *fwresource.ConfigureResponse
 	}
 	tests := []struct {
-		name        string
-		r           *portProfileResource
-		args        args
-		wantErr     bool
-		wantClient  bool
+		name       string
+		r          *portProfileResource
+		args       args
+		wantErr    bool
+		wantClient bool
 	}{
 		{
 			name: "nil provider data produces no error",
@@ -396,10 +406,18 @@ func Test_portProfileResource_modelToAPIPortProfile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.modelToAPIPortProfile(tt.args.ctx, tt.args.model)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("portProfileResource.modelToAPIPortProfile() got = %+v, want %+v", got, tt.want)
+				t.Errorf(
+					"portProfileResource.modelToAPIPortProfile() got = %+v, want %+v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("portProfileResource.modelToAPIPortProfile() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"portProfileResource.modelToAPIPortProfile() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}

@@ -261,9 +261,7 @@ func Test_deviceResource_UpgradeState(t *testing.T) {
 		r    *deviceResource
 		args args
 		want map[int64]fwresource.StateUpgrader
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.r.UpgradeState(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
@@ -311,9 +309,7 @@ func Test_deviceResource_Create(t *testing.T) {
 		name string
 		r    *deviceResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -331,9 +327,7 @@ func Test_deviceResource_Read(t *testing.T) {
 		name string
 		r    *deviceResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -351,9 +345,7 @@ func Test_deviceResource_Update(t *testing.T) {
 		name string
 		r    *deviceResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -371,9 +363,7 @@ func Test_deviceResource_Delete(t *testing.T) {
 		name string
 		r    *deviceResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -391,9 +381,7 @@ func Test_deviceResource_ImportState(t *testing.T) {
 		name string
 		r    *deviceResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
@@ -411,12 +399,16 @@ func Test_deviceResource_updateDevice(t *testing.T) {
 		r    *deviceResource
 		args args
 		want diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.updateDevice(tt.args.ctx, tt.args.model); !reflect.DeepEqual(got, tt.want) {
+			if got := tt.r.updateDevice(
+				tt.args.ctx,
+				tt.args.model,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("deviceResource.updateDevice() = %v, want %v", got, tt.want)
 			}
 		})
@@ -435,12 +427,16 @@ func Test_deviceResource_setResourceData(t *testing.T) {
 		name string
 		r    *deviceResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.setResourceData(tt.args.ctx, tt.args.diags, tt.args.device, tt.args.model, tt.args.site)
+			tt.r.setResourceData(
+				tt.args.ctx,
+				tt.args.diags,
+				tt.args.device,
+				tt.args.model,
+				tt.args.site,
+			)
 		})
 	}
 }
@@ -456,9 +452,7 @@ func Test_deviceResource_modelToAPIDevice(t *testing.T) {
 		args  args
 		want  *unifi.Device
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.modelToAPIDevice(tt.args.ctx, tt.args.model)
@@ -502,7 +496,13 @@ func Test_mergePortOverridesByIndex(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := mergePortOverridesByIndex(tt.args.current, tt.args.declared); !reflect.DeepEqual(got, tt.want) {
+			if got := mergePortOverridesByIndex(
+				tt.args.current,
+				tt.args.declared,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("mergePortOverridesByIndex() = %v, want %v", got, tt.want)
 			}
 		})
@@ -521,17 +521,23 @@ func Test_deviceResource_reconcilePortOverrides(t *testing.T) {
 		args  args
 		want  types.Set
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := tt.r.reconcilePortOverrides(tt.args.ctx, tt.args.prior, tt.args.apiOverrides)
+			got, got1 := tt.r.reconcilePortOverrides(
+				tt.args.ctx,
+				tt.args.prior,
+				tt.args.apiOverrides,
+			)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("deviceResource.reconcilePortOverrides() got = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.reconcilePortOverrides() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.reconcilePortOverrides() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -548,17 +554,23 @@ func Test_deviceResource_portOverridesToFramework(t *testing.T) {
 		args  args
 		want  types.Set
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.portOverridesToFramework(tt.args.ctx, tt.args.pos)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deviceResource.portOverridesToFramework() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"deviceResource.portOverridesToFramework() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.portOverridesToFramework() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.portOverridesToFramework() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -575,17 +587,23 @@ func Test_deviceResource_frameworkToPortOverrides(t *testing.T) {
 		args  args
 		want  []unifi.DevicePortOverrides
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.frameworkToPortOverrides(tt.args.ctx, tt.args.portOverrideSet)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deviceResource.frameworkToPortOverrides() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"deviceResource.frameworkToPortOverrides() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.frameworkToPortOverrides() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.frameworkToPortOverrides() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -606,14 +624,23 @@ func Test_deviceResource_waitForDeviceState(t *testing.T) {
 		args    args
 		want    *unifi.Device
 		wantErr bool
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.r.waitForDeviceState(tt.args.ctx, tt.args.site, tt.args.mac, tt.args.targetState, tt.args.pendingStates, tt.args.timeout)
+			got, err := tt.r.waitForDeviceState(
+				tt.args.ctx,
+				tt.args.site,
+				tt.args.mac,
+				tt.args.targetState,
+				tt.args.pendingStates,
+				tt.args.timeout,
+			)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("deviceResource.waitForDeviceState() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf(
+					"deviceResource.waitForDeviceState() error = %v, wantErr %v",
+					err,
+					tt.wantErr,
+				)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
@@ -816,17 +843,23 @@ func Test_deviceResource_configNetworkToFramework(t *testing.T) {
 		args  args
 		want  types.Object
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.configNetworkToFramework(tt.args.ctx, tt.args.cn)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deviceResource.configNetworkToFramework() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"deviceResource.configNetworkToFramework() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.configNetworkToFramework() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.configNetworkToFramework() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -843,9 +876,7 @@ func Test_deviceResource_radioTableToFramework(t *testing.T) {
 		args  args
 		want  types.List
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.radioTableToFramework(tt.args.ctx, tt.args.radios)
@@ -853,7 +884,11 @@ func Test_deviceResource_radioTableToFramework(t *testing.T) {
 				t.Errorf("deviceResource.radioTableToFramework() got = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.radioTableToFramework() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.radioTableToFramework() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -870,17 +905,23 @@ func Test_deviceResource_outletOverridesToFramework(t *testing.T) {
 		args  args
 		want  types.List
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.outletOverridesToFramework(tt.args.ctx, tt.args.outlets)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deviceResource.outletOverridesToFramework() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"deviceResource.outletOverridesToFramework() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.outletOverridesToFramework() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.outletOverridesToFramework() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -897,17 +938,23 @@ func Test_deviceResource_frameworkToConfigNetwork(t *testing.T) {
 		args  args
 		want  *unifi.DeviceConfigNetwork
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.frameworkToConfigNetwork(tt.args.ctx, tt.args.configNetworkObj)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deviceResource.frameworkToConfigNetwork() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"deviceResource.frameworkToConfigNetwork() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.frameworkToConfigNetwork() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.frameworkToConfigNetwork() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -924,9 +971,7 @@ func Test_deviceResource_frameworkToRadioTable(t *testing.T) {
 		args  args
 		want  []unifi.DeviceRadioTable
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.frameworkToRadioTable(tt.args.ctx, tt.args.radioList)
@@ -934,7 +979,11 @@ func Test_deviceResource_frameworkToRadioTable(t *testing.T) {
 				t.Errorf("deviceResource.frameworkToRadioTable() got = %v, want %v", got, tt.want)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.frameworkToRadioTable() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.frameworkToRadioTable() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -951,17 +1000,23 @@ func Test_deviceResource_frameworkToOutletOverrides(t *testing.T) {
 		args  args
 		want  []unifi.DeviceOutletOverrides
 		want1 diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := tt.r.frameworkToOutletOverrides(tt.args.ctx, tt.args.outletList)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deviceResource.frameworkToOutletOverrides() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"deviceResource.frameworkToOutletOverrides() got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("deviceResource.frameworkToOutletOverrides() got1 = %v, want %v", got1, tt.want1)
+				t.Errorf(
+					"deviceResource.frameworkToOutletOverrides() got1 = %v, want %v",
+					got1,
+					tt.want1,
+				)
 			}
 		})
 	}
@@ -979,12 +1034,18 @@ func Test_deviceResource_deviceListToModel(t *testing.T) {
 		r    *deviceResource
 		args args
 		want diag.Diagnostics
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.deviceListToModel(tt.args.ctx, tt.args.api, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
+			if got := tt.r.deviceListToModel(
+				tt.args.ctx,
+				tt.args.api,
+				tt.args.model,
+				tt.args.site,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("deviceResource.deviceListToModel() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1029,9 +1090,7 @@ func Test_deviceResource_List(t *testing.T) {
 		name string
 		r    *deviceResource
 		args args
-	}{
-		
-	}
+	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)

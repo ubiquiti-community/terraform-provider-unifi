@@ -224,7 +224,11 @@ func Test_siteFrameworkResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
 			if tt.args.resp.Diagnostics.HasError() != tt.wantError {
-				t.Errorf("hasError = %v, want %v", tt.args.resp.Diagnostics.HasError(), tt.wantError)
+				t.Errorf(
+					"hasError = %v, want %v",
+					tt.args.resp.Diagnostics.HasError(),
+					tt.wantError,
+				)
 			}
 		})
 	}
@@ -357,4 +361,3 @@ func Test_siteFrameworkResource_ListResourceConfigSchema(t *testing.T) {
 		})
 	}
 }
-

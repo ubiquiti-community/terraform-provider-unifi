@@ -628,7 +628,11 @@ func Test_settingResource_Metadata(t *testing.T) {
 		t.Run(tt.providerTypeName, func(t *testing.T) {
 			r := &settingResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName},
+				resp,
+			)
 			if resp.TypeName != tt.wantTypeName {
 				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
 			}
@@ -676,7 +680,11 @@ func Test_settingResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &settingResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.wantError && !resp.Diagnostics.HasError() {
 				t.Error("expected error")
 			}
@@ -688,7 +696,9 @@ func Test_settingResource_Configure(t *testing.T) {
 }
 
 func Test_settingResource_ImportState(t *testing.T) {
-	t.Skip("ImportState delegates to ImportStatePassthroughID which requires full state schema setup")
+	t.Skip(
+		"ImportState delegates to ImportStatePassthroughID which requires full state schema setup",
+	)
 }
 
 func Test_settingResource_mgmtModelToSetting(t *testing.T) {
@@ -856,7 +866,10 @@ func Test_settingResource_radiusSettingToModel(t *testing.T) {
 		}
 		// When plan.Secret is null, model.Secret should be null regardless of remote value.
 		if !got.Secret.IsNull() {
-			t.Errorf("Secret should be null when plan secret is null, got %q", got.Secret.ValueString())
+			t.Errorf(
+				"Secret should be null when plan secret is null, got %q",
+				got.Secret.ValueString(),
+			)
 		}
 	})
 

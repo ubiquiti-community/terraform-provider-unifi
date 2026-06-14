@@ -183,7 +183,11 @@ func Test_wireguardPeerResource_Metadata(t *testing.T) {
 		t.Run(tt.p, func(t *testing.T) {
 			r := &wireguardPeerResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.p}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.p},
+				resp,
+			)
 			if resp.TypeName != tt.w {
 				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.w)
 			}
@@ -233,7 +237,11 @@ func Test_wireguardPeerResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &wireguardPeerResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.err && !resp.Diagnostics.HasError() {
 				t.Error("expected error in diagnostics")
 			}
@@ -249,7 +257,11 @@ func Test_wireguardPeerResource_modelToPeer(t *testing.T) {
 	r := &wireguardPeerResource{}
 
 	t.Run("maps all fields", func(t *testing.T) {
-		allowedIPs, _ := types.ListValueFrom(ctx, types.StringType, []string{"10.0.0.0/8", "192.168.1.0/24"})
+		allowedIPs, _ := types.ListValueFrom(
+			ctx,
+			types.StringType,
+			[]string{"10.0.0.0/8", "192.168.1.0/24"},
+		)
 		model := &wireguardPeerResourceModel{
 			Name:        types.StringValue("my-peer"),
 			InterfaceIP: types.StringValue("10.0.0.2"),
@@ -356,7 +368,10 @@ func Test_wireguardPeerResource_peerToModel(t *testing.T) {
 			t.Error("AllowedIPs should not be null for empty slice")
 		}
 		if len(model.AllowedIPs.Elements()) != 0 {
-			t.Errorf("AllowedIPs should be empty, got %d elements", len(model.AllowedIPs.Elements()))
+			t.Errorf(
+				"AllowedIPs should be empty, got %d elements",
+				len(model.AllowedIPs.Elements()),
+			)
 		}
 	})
 }

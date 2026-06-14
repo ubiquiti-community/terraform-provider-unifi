@@ -150,7 +150,11 @@ func Test_powerSupervisorResource_Metadata(t *testing.T) {
 		t.Run(tt.p, func(t *testing.T) {
 			r := &powerSupervisorResource{}
 			resp := &fwresource.MetadataResponse{}
-			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.p}, resp)
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.p},
+				resp,
+			)
 			if resp.TypeName != tt.w {
 				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.w)
 			}
@@ -180,8 +184,10 @@ func Test_powerSupervisorResource_Schema(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() returned errors: %v", resp.Diagnostics)
 	}
-	for _, key := range []string{"id", "site", "device_mac", "enabled", "heartbeat_interval",
-		"silence_threshold", "power_off_duration", "consecutive_failures", "power_sources", "timeouts"} {
+	for _, key := range []string{
+		"id", "site", "device_mac", "enabled", "heartbeat_interval",
+		"silence_threshold", "power_off_duration", "consecutive_failures", "power_sources", "timeouts",
+	} {
 		if _, ok := resp.Schema.Attributes[key]; !ok {
 			t.Errorf("Schema() missing attribute %q", key)
 		}
@@ -212,7 +218,11 @@ func Test_powerSupervisorResource_Configure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &powerSupervisorResource{}
 			resp := &fwresource.ConfigureResponse{}
-			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
 			if tt.err && !resp.Diagnostics.HasError() {
 				t.Error("expected error in diagnostics")
 			}
@@ -340,7 +350,10 @@ func Test_powerSupervisorResource_powerSupervisorToModel(t *testing.T) {
 			t.Fatalf("powerSupervisorToModel() errors: %v", diags)
 		}
 		if len(model.PowerSources.Elements()) != 0 {
-			t.Errorf("PowerSources should be empty, got %d elements", len(model.PowerSources.Elements()))
+			t.Errorf(
+				"PowerSources should be empty, got %d elements",
+				len(model.PowerSources.Elements()),
+			)
 		}
 	})
 }

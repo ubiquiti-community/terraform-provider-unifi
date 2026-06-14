@@ -915,7 +915,11 @@ func Test_firewallRuleResource_applyPlanToState(t *testing.T) {
 				t.Errorf("Name = %q, want %q", tt.args.state.Name.ValueString(), "new")
 			}
 			if tt.args.state.Protocol.ValueString() != "tcp" {
-				t.Errorf("Protocol = %q, want %q (should be preserved)", tt.args.state.Protocol.ValueString(), "tcp")
+				t.Errorf(
+					"Protocol = %q, want %q (should be preserved)",
+					tt.args.state.Protocol.ValueString(),
+					"tcp",
+				)
 			}
 		})
 	}
@@ -1078,7 +1082,13 @@ func Test_firewallRuleResource_modelToFirewallRule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.modelToFirewallRule(tt.args.ctx, tt.args.model); !reflect.DeepEqual(got, tt.want) {
+			if got := tt.r.modelToFirewallRule(
+				tt.args.ctx,
+				tt.args.model,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("firewallRuleResource.modelToFirewallRule() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1191,7 +1201,11 @@ func Test_firewallRuleResource_firewallRuleToModel(t *testing.T) {
 			},
 			checkFunc: func(t *testing.T, m *firewallRuleResourceModel) {
 				if m.SrcNetworkType.ValueString() != "NETv4" {
-					t.Errorf("SrcNetworkType = %q, want %q", m.SrcNetworkType.ValueString(), "NETv4")
+					t.Errorf(
+						"SrcNetworkType = %q, want %q",
+						m.SrcNetworkType.ValueString(),
+						"NETv4",
+					)
 				}
 			},
 		},
