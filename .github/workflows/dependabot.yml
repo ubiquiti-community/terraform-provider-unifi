@@ -4,9 +4,6 @@ name: Bot PR Auto-Approve
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
-    branches:
-      - "dependabot/**"
-      - "copilot/**"
 
 permissions:
   pull-requests: write
