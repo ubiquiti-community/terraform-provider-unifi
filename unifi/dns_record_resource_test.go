@@ -38,7 +38,7 @@ resource "unifi_dns_record" "test" {
   enabled     = true
   priority    = 10
   record_type = "A"
-  ttl         = 300
+  ttl         = "5m0s"
   value       = "192.168.1.100"
 }
 `

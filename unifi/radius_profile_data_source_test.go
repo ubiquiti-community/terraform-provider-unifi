@@ -99,7 +99,7 @@ func TestAccRadiusProfileDataSource_accountingEnabled(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_profile.test",
 						"interim_update_interval",
-						"900",
+						"15m0s",
 					),
 				),
 			},
@@ -146,7 +146,7 @@ resource "unifi_radius_profile" "test" {
   name                    = "tfacc-radius-profile-ds-acct"
   accounting_enabled      = true
   interim_update_enabled  = true
-  interim_update_interval = 900
+  interim_update_interval = "15m0s"
 }
 
 data "unifi_radius_profile" "test" {
