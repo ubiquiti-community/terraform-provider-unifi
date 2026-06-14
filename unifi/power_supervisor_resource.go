@@ -8,8 +8,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -27,9 +30,20 @@ import (
 var (
 	_ resource.Resource                = &powerSupervisorResource{}
 	_ resource.ResourceWithImportState = &powerSupervisorResource{}
+	_ resource.ResourceWithIdentity    = &powerSupervisorResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &powerSupervisorResource{}
+	_ list.ListResourceWithConfigure = &powerSupervisorResource{}
 )
 
 func NewPowerSupervisorResource() resource.Resource {
+	return &powerSupervisorResource{}
+}
+
+func NewPowerSupervisorListResource() list.ListResource {
 	return &powerSupervisorResource{}
 }
 
@@ -51,6 +65,22 @@ type powerSupervisorResourceModel struct {
 	PowerSources        types.List   `tfsdk:"power_sources"`
 }
 
+type powerSupervisorIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// powerSupervisorListConfigModel describes the list configuration model.
+type powerSupervisorListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// powerSupervisorListFilterModel represents a single name/value filter entry.
+type powerSupervisorListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 // powerSourceAttrTypes is the object schema of a resolved upstream power source.
 func powerSourceAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
@@ -67,6 +97,21 @@ func (r *powerSupervisorResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_power_supervisor"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *powerSupervisorResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *powerSupervisorResource) Schema(
@@ -223,6 +268,7 @@ func (r *powerSupervisorResource) Create(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(created, &data, site)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -257,6 +303,7 @@ func (r *powerSupervisorResource) Read(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(supervisor, &data, site)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -287,6 +334,7 @@ func (r *powerSupervisorResource) Update(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(updated, &data, site)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -407,4 +455,121 @@ func (r *powerSupervisorResource) powerSupervisorToModel(
 	model.PowerSources = list
 
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *powerSupervisorResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List power supervisors in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list power supervisors from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `device_mac`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *powerSupervisorResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config powerSupervisorListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []powerSupervisorListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	supervisors, err := r.client.ListPowerSupervisors(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Power Supervisors",
+			"Could not list power supervisors: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for i := range supervisors {
+			supervisor := supervisors[i]
+
+			// Apply device_mac filter.
+			if val, ok := postFilters["device_mac"]; ok {
+				if supervisor.ClientMAC != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer device MAC, fall back to ID.
+			if supervisor.ClientMAC != "" {
+				result.DisplayName = supervisor.ClientMAC
+			} else {
+				result.DisplayName = supervisor.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(supervisor.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model powerSupervisorResourceModel
+			result.Diagnostics.Append(r.powerSupervisorToModel(&supervisor, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

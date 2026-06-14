@@ -8,8 +8,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -25,14 +28,42 @@ import (
 var (
 	_ resource.Resource                = &portForwardResource{}
 	_ resource.ResourceWithImportState = &portForwardResource{}
+	_ resource.ResourceWithIdentity    = &portForwardResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &portForwardResource{}
+	_ list.ListResourceWithConfigure = &portForwardResource{}
 )
 
 func NewPortForwardResource() resource.Resource {
 	return &portForwardResource{}
 }
 
+func NewPortForwardListResource() list.ListResource {
+	return &portForwardResource{}
+}
+
 type portForwardResource struct {
 	client *Client
+}
+
+// portForwardIdentityModel describes the identity model.
+type portForwardIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// portForwardListConfigModel describes the list configuration model.
+type portForwardListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// portForwardListFilterModel represents a single name/value filter entry.
+type portForwardListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 // portForwardWanModel describes the WAN configuration for a port forwarding rule.
@@ -113,6 +144,21 @@ func (r *portForwardResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_port_forward"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *portForwardResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *portForwardResource) Schema(
@@ -321,6 +367,7 @@ func (r *portForwardResource) Create(
 
 	resp.Diagnostics.Append(r.portForwardToModel(ctx, createdPortForward, &data, site)...)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -356,6 +403,7 @@ func (r *portForwardResource) Read(
 
 	resp.Diagnostics.Append(r.portForwardToModel(ctx, portForward, &data, site)...)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -402,6 +450,7 @@ func (r *portForwardResource) Update(
 
 	resp.Diagnostics.Append(r.portForwardToModel(ctx, updatedPortForward, &state, site)...)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -702,4 +751,125 @@ func stringValueOrNull(s string) types.String {
 		return types.StringNull()
 	}
 	return types.StringValue(s)
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *portForwardResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List port forwarding rules in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list port forwarding rules from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *portForwardResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config portForwardListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []portForwardListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	portForwards, err := r.client.ListPortForward(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing Port Forwards", "Could not list port forwards: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, portForward := range portForwards {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if portForward.Name != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", portForward.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if portForward.Name != "" {
+				result.DisplayName = portForward.Name
+			} else {
+				result.DisplayName = portForward.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(portForward.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model portForwardResourceModel
+			pfCopy := portForward
+			result.Diagnostics.Append(r.portForwardToModel(ctx, &pfCopy, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

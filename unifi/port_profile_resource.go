@@ -7,8 +7,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -27,15 +30,38 @@ import (
 var (
 	_ resource.Resource                = &portProfileResource{}
 	_ resource.ResourceWithImportState = &portProfileResource{}
+	_ resource.ResourceWithIdentity    = &portProfileResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &portProfileResource{}
+	_ list.ListResourceWithConfigure = &portProfileResource{}
 )
 
 func NewPortProfileFrameworkResource() resource.Resource {
 	return &portProfileResource{}
 }
 
+func NewPortProfileListResource() list.ListResource {
+	return &portProfileResource{}
+}
+
 // portProfileResource defines the resource implementation.
 type portProfileResource struct {
 	client *Client
+}
+
+// portProfileListConfigModel describes the list configuration model.
+type portProfileListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// portProfileListFilterModel represents a single name/value filter entry.
+type portProfileListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 // portProfileResourceModel describes the resource data model.
@@ -90,6 +116,21 @@ func (r *portProfileResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_port_profile"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *portProfileResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *portProfileResource) Schema(
@@ -474,8 +515,9 @@ func (r *portProfileResource) Create(
 	// Set state
 	plan.ID = types.StringValue(apiPortProfile.ID)
 	plan.Site = types.StringValue(site)
-	r.setResourceData(ctx, apiPortProfile, &plan, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &plan, site)...)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -512,8 +554,9 @@ func (r *portProfileResource) Read(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, portProfile, &state, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, portProfile, &state, site)...)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -580,8 +623,9 @@ func (r *portProfileResource) Update(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, apiPortProfile, &state, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &state, site)...)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -745,6 +789,27 @@ func (r *portProfileResource) setResourceData(
 	model *portProfileResourceModel,
 	site string,
 ) {
+	r.portProfileToModel(ctx, portProfile, model, site)
+}
+
+// portProfileToModel populates the resource model from the API struct, setting
+// every schema field. It is the reusable API->model converter shared by Read
+// and List. It only performs API->model field population; plan/state
+// reconciliation (applyPlanToState) is intentionally left to the callers.
+func (r *portProfileResource) portProfileToModel(
+	ctx context.Context,
+	api *unifi.PortProfile,
+	model *portProfileResourceModel,
+	site string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	portProfile := api
+
+	if portProfile.ID != "" {
+		model.ID = types.StringValue(portProfile.ID)
+	}
+
 	model.Site = types.StringValue(site)
 
 	if portProfile.Name == "" {
@@ -879,6 +944,8 @@ func (r *portProfileResource) setResourceData(
 	model.StormctrlUcastLevel = types.Int64Null()
 	model.StormctrlUcastRate = types.Int64Null()
 	model.STPPortMode = types.BoolValue(portProfile.StpPortMode)
+
+	return diags
 }
 
 func (r *portProfileResource) applyPlanToState(
@@ -966,4 +1033,121 @@ func (r *portProfileResource) applyPlanToState(
 		state.STPPortMode = plan.STPPortMode
 	}
 	// Apply other fields as needed...
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *portProfileResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List port profiles in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list port profiles from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *portProfileResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config portProfileListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []portProfileListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	profiles, err := r.client.ListPortProfile(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Port Profiles",
+			"Could not list port profiles: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, profile := range profiles {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if profile.Name != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if profile.Name != "" {
+				result.DisplayName = profile.Name
+			} else {
+				result.DisplayName = profile.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(profile.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model portProfileResourceModel
+			result.Diagnostics.Append(
+				r.portProfileToModel(ctx, &profile, &model, site)...,
+			)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

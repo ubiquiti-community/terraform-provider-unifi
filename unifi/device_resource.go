@@ -13,8 +13,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -34,10 +37,33 @@ import (
 var (
 	_ resource.Resource                = &deviceResource{}
 	_ resource.ResourceWithImportState = &deviceResource{}
+	_ resource.ResourceWithIdentity    = &deviceResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &deviceResource{}
+	_ list.ListResourceWithConfigure = &deviceResource{}
 )
 
 func NewDeviceFrameworkResource() resource.Resource {
 	return &deviceResource{}
+}
+
+func NewDeviceListResource() list.ListResource {
+	return &deviceResource{}
+}
+
+// deviceListConfigModel describes the list configuration model.
+type deviceListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// deviceListFilterModel represents a single name/value filter entry.
+type deviceListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 // deviceResource defines the resource implementation.
@@ -210,6 +236,21 @@ func (r *deviceResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_device"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *deviceResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *deviceResource) Schema(
@@ -1041,6 +1082,7 @@ func (r *deviceResource) Create(
 	plan.ForgetOnDestroy = forgetOnDestroy
 
 	// Set state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -1134,6 +1176,7 @@ func (r *deviceResource) Read(
 		}
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -1243,6 +1286,7 @@ func (r *deviceResource) Update(
 		plan.ForgetOnDestroy = types.BoolValue(true)
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -2789,4 +2833,171 @@ func (r *deviceResource) frameworkToOutletOverrides(
 	}
 
 	return outlets, diags
+}
+
+// ---------------------------------------------------------------------------
+// List resource
+// ---------------------------------------------------------------------------
+
+// deviceListToModel populates the model's schema fields directly from the API
+// struct for listing. It reuses the existing setResourceData flatten (which
+// relies on nil-safe configNetwork/radioTable/outletOverrides helpers) for a
+// faithful representation, then nulls out the write-only plan-only flags and
+// the large port_override set — listing does not need full per-port detail.
+func (r *deviceResource) deviceListToModel(
+	ctx context.Context,
+	api *unifi.Device,
+	model *deviceResourceModel,
+	site string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	r.setResourceData(ctx, &diags, api, model, site)
+
+	// port_override is a Set where every field contributes to identity; the API
+	// returns all ports with all fields. A faithful-but-sparse listing sets it
+	// null rather than reproducing the full controller-managed detail.
+	model.PortOverride = types.SetNull(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+	)
+
+	// Write-only plan flags are never returned by the API.
+	model.AllowAdoption = types.BoolNull()
+	model.ForgetOnDestroy = types.BoolNull()
+
+	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *deviceResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List devices in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list devices from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `mac`, `model`, `type`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *deviceResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config deviceListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []deviceListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	devices, err := r.client.ListDevice(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing Devices", "Could not list devices: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, device := range devices {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if device.Name != val {
+					continue
+				}
+			}
+
+			// Apply mac filter.
+			if val, ok := postFilters["mac"]; ok {
+				if device.MAC != val {
+					continue
+				}
+			}
+
+			// Apply model filter.
+			if val, ok := postFilters["model"]; ok {
+				if device.Model != val {
+					continue
+				}
+			}
+
+			// Apply type filter.
+			if val, ok := postFilters["type"]; ok {
+				if device.Type != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to MAC.
+			if device.Name != "" {
+				result.DisplayName = device.Name
+			} else {
+				result.DisplayName = device.MAC
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(device.ID),
+				)...,
+			)
+
+			// Convert to model.
+			d := device
+			var model deviceResourceModel
+			result.Diagnostics.Append(r.deviceListToModel(ctx, &d, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

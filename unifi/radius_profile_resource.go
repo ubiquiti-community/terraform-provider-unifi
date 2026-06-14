@@ -7,8 +7,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -24,9 +28,20 @@ import (
 var (
 	_ resource.Resource                = &radiusProfileResource{}
 	_ resource.ResourceWithImportState = &radiusProfileResource{}
+	_ resource.ResourceWithIdentity    = &radiusProfileResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &radiusProfileResource{}
+	_ list.ListResourceWithConfigure = &radiusProfileResource{}
 )
 
 func NewRadiusProfileResource() resource.Resource {
+	return &radiusProfileResource{}
+}
+
+func NewRadiusProfileListResource() list.ListResource {
 	return &radiusProfileResource{}
 }
 
@@ -55,12 +70,39 @@ type radiusProfileResourceModel struct {
 	AcctServer            []radiusServerModel `tfsdk:"acct_server"`
 }
 
+// radiusProfileListConfigModel describes the list configuration model.
+type radiusProfileListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// radiusProfileListFilterModel represents a single name/value filter entry.
+type radiusProfileListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *radiusProfileResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_radius_profile"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *radiusProfileResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *radiusProfileResource) Schema(
@@ -253,6 +295,7 @@ func (r *radiusProfileResource) Create(
 
 	r.radiusProfileToModel(ctx, createdRadiusProfile, &data, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -288,6 +331,7 @@ func (r *radiusProfileResource) Read(
 
 	r.radiusProfileToModel(ctx, radiusProfile, &data, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -330,6 +374,7 @@ func (r *radiusProfileResource) Update(
 
 	r.radiusProfileToModel(ctx, updatedRadiusProfile, &state, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -500,5 +545,115 @@ func (r *radiusProfileResource) radiusProfileToModel(
 			Port:   types.Int64PointerValue(acctServer.Port),
 			Secret: types.StringValue(acctServer.Secret),
 		})
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *radiusProfileResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List RADIUS profiles in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list RADIUS profiles from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *radiusProfileResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config radiusProfileListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []radiusProfileListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	profiles, err := r.client.ListRADIUSProfile(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing RADIUS Profiles", "Could not list RADIUS profiles: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, profile := range profiles {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if profile.Name != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if profile.Name != "" {
+				result.DisplayName = profile.Name
+			} else {
+				result.DisplayName = profile.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(profile.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model radiusProfileResourceModel
+			r.radiusProfileToModel(ctx, &profile, &model, site)
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

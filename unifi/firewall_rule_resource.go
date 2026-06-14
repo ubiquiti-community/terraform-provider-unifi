@@ -7,8 +7,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -22,14 +26,42 @@ import (
 var (
 	_ resource.Resource                = &firewallRuleResource{}
 	_ resource.ResourceWithImportState = &firewallRuleResource{}
+	_ resource.ResourceWithIdentity    = &firewallRuleResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &firewallRuleResource{}
+	_ list.ListResourceWithConfigure = &firewallRuleResource{}
 )
 
 func NewFirewallRuleResource() resource.Resource {
 	return &firewallRuleResource{}
 }
 
+func NewFirewallRuleListResource() list.ListResource {
+	return &firewallRuleResource{}
+}
+
 type firewallRuleResource struct {
 	client *Client
+}
+
+// firewallRuleIdentityModel describes the identity model.
+type firewallRuleIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// firewallRuleListConfigModel describes the list configuration model.
+type firewallRuleListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// firewallRuleListFilterModel represents a single name/value filter entry.
+type firewallRuleListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 type firewallRuleResourceModel struct {
@@ -73,6 +105,21 @@ func (r *firewallRuleResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_firewall_rule"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *firewallRuleResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *firewallRuleResource) Schema(
@@ -336,6 +383,7 @@ func (r *firewallRuleResource) Create(
 
 	r.firewallRuleToModel(ctx, createdFirewallRule, &data, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -371,6 +419,7 @@ func (r *firewallRuleResource) Read(
 
 	r.firewallRuleToModel(ctx, firewallRule, &data, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -413,6 +462,7 @@ func (r *firewallRuleResource) Update(
 
 	r.firewallRuleToModel(ctx, updatedFirewallRule, &state, site)
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -803,4 +853,137 @@ func (r *firewallRuleResource) firewallRuleToModel(
 	}
 
 	model.ProtocolMatchExcept = types.BoolValue(firewallRule.ProtocolMatchExcepted)
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *firewallRuleResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List firewall rules in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list firewall rules from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `ruleset`, `action`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *firewallRuleResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config firewallRuleListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []firewallRuleListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	rules, err := r.client.ListFirewallRule(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing Firewall Rules", "Could not list firewall rules: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, rule := range rules {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if rule.Name != val {
+					continue
+				}
+			}
+
+			// Apply ruleset filter.
+			if val, ok := postFilters["ruleset"]; ok {
+				if rule.Ruleset != val {
+					continue
+				}
+			}
+
+			// Apply action filter.
+			if val, ok := postFilters["action"]; ok {
+				if rule.Action != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", rule.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if rule.Name != "" {
+				result.DisplayName = rule.Name
+			} else {
+				result.DisplayName = rule.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(rule.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model firewallRuleResourceModel
+			ruleCopy := rule
+			r.firewallRuleToModel(ctx, &ruleCopy, &model, site)
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

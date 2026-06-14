@@ -10,8 +10,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -33,9 +36,20 @@ import (
 var (
 	_ resource.Resource                = &wanResource{}
 	_ resource.ResourceWithImportState = &wanResource{}
+	_ resource.ResourceWithIdentity    = &wanResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &wanResource{}
+	_ list.ListResourceWithConfigure = &wanResource{}
 )
 
 func NewWANResource() resource.Resource {
+	return &wanResource{}
+}
+
+func NewWANListResource() list.ListResource {
 	return &wanResource{}
 }
 
@@ -92,6 +106,22 @@ type wanResourceModel struct {
 
 	// Provider Capabilities
 	ProviderCapabilities types.Object `tfsdk:"provider_capabilities"`
+}
+
+type wanIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// wanListConfigModel describes the list configuration model.
+type wanListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// wanListFilterModel represents a single name/value filter entry.
+type wanListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 // vlanModel describes the VLAN configuration.
@@ -269,6 +299,21 @@ func (r *wanResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_wan"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *wanResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *wanResource) Schema(
@@ -860,6 +905,7 @@ func (r *wanResource) Create(
 			// Overlay explicit config values onto the API state
 			r.overlayConfig(&state, &config, &plan)
 
+			resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 			return
 		}
@@ -890,6 +936,7 @@ func (r *wanResource) Create(
 	r.overlayConfig(&state, &config, &plan)
 
 	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1017,6 +1064,7 @@ func (r *wanResource) Read(
 	}
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1074,6 +1122,7 @@ func (r *wanResource) Update(
 	}
 
 	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1817,5 +1866,118 @@ func applyWANDefaults(model *wanResourceModel) {
 	// List types need properly-typed null values
 	if model.IPAliases.IsNull() || model.IPAliases.IsUnknown() {
 		model.IPAliases = types.ListNull(types.StringType)
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *wanResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List WAN networks in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list WAN networks from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *wanResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config wanListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []wanListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	networks, err := r.client.ListNetwork(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing WAN Networks", "Could not list WAN networks: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, network := range networks {
+			// Filter to only WAN networks.
+			if network.Purpose != unifi.PurposeWAN || network.WANNetworkGroup == nil {
+				continue
+			}
+
+			// Apply name filter if specified.
+			if nameFilter, ok := postFilters["name"]; ok {
+				if network.Name == nil || *network.Name != nameFilter {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+			if network.Name != nil {
+				result.DisplayName = *network.Name
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(network.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model wanResourceModel
+			result.Diagnostics.Append(r.networkToModel(ctx, &network, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

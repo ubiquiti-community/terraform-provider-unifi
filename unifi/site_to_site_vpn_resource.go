@@ -9,8 +9,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -30,9 +33,20 @@ import (
 var (
 	_ resource.Resource                = &siteToSiteVPNResource{}
 	_ resource.ResourceWithImportState = &siteToSiteVPNResource{}
+	_ resource.ResourceWithIdentity    = &siteToSiteVPNResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &siteToSiteVPNResource{}
+	_ list.ListResourceWithConfigure = &siteToSiteVPNResource{}
 )
 
 func NewSiteToSiteVPNResource() resource.Resource {
+	return &siteToSiteVPNResource{}
+}
+
+func NewSiteToSiteVPNListResource() list.ListResource {
 	return &siteToSiteVPNResource{}
 }
 
@@ -70,12 +84,43 @@ type siteToSiteVPNResourceModel struct {
 	RouteDistance  types.Int64  `tfsdk:"route_distance"`
 }
 
+type siteToSiteVPNIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
+// siteToSiteVPNListConfigModel describes the list configuration model.
+type siteToSiteVPNListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// siteToSiteVPNListFilterModel represents a single name/value filter entry.
+type siteToSiteVPNListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 func (r *siteToSiteVPNResource) Metadata(
 	ctx context.Context,
 	req resource.MetadataRequest,
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_site_to_site_vpn"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *siteToSiteVPNResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *siteToSiteVPNResource) Schema(
@@ -332,6 +377,7 @@ func (r *siteToSiteVPNResource) Create(
 	if usedWO {
 		data.PreSharedKey = types.StringNull()
 	}
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -363,6 +409,7 @@ func (r *siteToSiteVPNResource) Read(
 	}
 
 	resp.Diagnostics.Append(r.networkToModel(ctx, network, &data, site)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -402,6 +449,7 @@ func (r *siteToSiteVPNResource) Update(
 	if usedWO {
 		data.PreSharedKey = types.StringNull()
 	}
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -588,4 +636,121 @@ func stringPtrOrNull(v *string) types.String {
 		return types.StringNull()
 	}
 	return types.StringValue(*v)
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *siteToSiteVPNResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List site-to-site VPN networks in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list site-to-site VPN networks from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *siteToSiteVPNResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config siteToSiteVPNListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []siteToSiteVPNListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	networks, err := r.client.ListNetwork(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Site-to-Site VPNs",
+			"Could not list site-to-site VPNs: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, network := range networks {
+			// Filter to only site-to-site IPsec VPN networks.
+			if network.Purpose != unifi.PurposeSiteVPN ||
+				network.VPNType == nil || *network.VPNType != "ipsec-vpn" {
+				continue
+			}
+
+			// Apply name filter if specified.
+			if nameFilter, ok := postFilters["name"]; ok {
+				if network.Name == nil || *network.Name != nameFilter {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+			if network.Name != nil {
+				result.DisplayName = *network.Name
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(network.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model siteToSiteVPNResourceModel
+			result.Diagnostics.Append(r.networkToModel(ctx, &network, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }
