@@ -656,9 +656,16 @@ func (r *wlanFrameworkResource) Schema(
 							},
 						},
 						"duration": schema.StringAttribute{
-							MarkdownDescription: "Length of the block, as a Go duration string (e.g. `30m`, `2h`).",
-							CustomType:          timetypes.GoDurationType{},
-							Required:            true,
+							MarkdownDescription: "Length of the block, as a Go duration string. " +
+								"The controller stores this value with one-minute resolution, so the " +
+								"duration must be at least `1m` and a whole multiple of one minute " +
+								"(e.g. `30m`, `2h`).",
+							CustomType: timetypes.GoDurationType{},
+							Required:   true,
+							Validators: []validator.String{
+								validators.GoDurationBetween(time.Minute, 7*24*time.Hour),
+								validators.GoDurationMultipleOf(time.Minute),
+							},
 						},
 						"name": schema.StringAttribute{
 							MarkdownDescription: "Name of the block.",

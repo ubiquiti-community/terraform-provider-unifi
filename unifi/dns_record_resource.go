@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -164,9 +165,14 @@ func (r *dnsRecordFrameworkResource) Schema(
 			},
 			"ttl": schema.StringAttribute{
 				MarkdownDescription: "The TTL of the DNS record, as a Go duration string " +
-					"(e.g. `1h`, `300s`).",
+					"(e.g. `1h`, `300s`). The controller stores this value as whole seconds " +
+					"in the range 0–65535s (≈18h12m15s).",
 				CustomType: timetypes.GoDurationType{},
 				Optional:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 65535*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 			},
 			"value": schema.StringAttribute{
 				MarkdownDescription: "The value of the DNS record.",

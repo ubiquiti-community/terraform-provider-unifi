@@ -83,7 +83,7 @@ resource "unifi_dns_record" "sip_srv" {
 - `port` (Number) The port of the DNS record.
 - `priority` (Number) The priority of the DNS record.
 - `site` (String) The name of the site to associate the DNS record with.
-- `ttl` (String) The TTL of the DNS record, as a Go duration string (e.g. `1h`, `300s`).
+- `ttl` (String) The TTL of the DNS record, as a Go duration string (e.g. `1h`, `300s`). The controller stores this value as whole seconds in the range 0–65535s (≈18h12m15s).
 - `weight` (Number) The weight of the DNS record.
 
 ### Read-Only

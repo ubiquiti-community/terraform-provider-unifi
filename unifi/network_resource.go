@@ -463,20 +463,30 @@ func (r *networkResource) Schema(
 			},
 			"ipv6_ra_preferred_lifetime": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime, as a Go " +
-					"duration string (e.g. `14400s`, `4h`).",
+					"duration string (e.g. `14400s`, `4h`). Must be a whole number of seconds " +
+					"between `0s` and `31536000s` (1 year).",
 				CustomType: timetypes.GoDurationType{},
 				Optional:   true,
 				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 31536000*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_ra_valid_lifetime": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 Router Advertisement valid lifetime, as a Go " +
-					"duration string (e.g. `86400s`, `24h`).",
+					"duration string (e.g. `86400s`, `24h`). Must be a whole number of seconds " +
+					"between `0s` and `31536000s` (1 year).",
 				CustomType: timetypes.GoDurationType{},
 				Optional:   true,
 				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 31536000*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},

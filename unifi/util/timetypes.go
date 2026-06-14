@@ -36,6 +36,11 @@ func DurationPtrValue(n *int64, unit time.Duration) timetypes.GoDuration {
 
 // DurationUnits converts a GoDuration back to an integer count of unit for the
 // API (e.g. DurationUnits(d, time.Second) -> whole seconds). Null/unknown -> 0.
+//
+// Conversion uses integer division and silently truncates any sub-unit
+// remainder (e.g. `90s` -> `1` minute, `1500ms` -> `1` second). Schemas that
+// accept user-provided durations should validate unit alignment up-front (see
+// `validators.GoDurationMultipleOf`) so this truncation cannot lose user intent.
 func DurationUnits(d timetypes.GoDuration, unit time.Duration) int64 {
 	if d.IsNull() || d.IsUnknown() {
 		return 0

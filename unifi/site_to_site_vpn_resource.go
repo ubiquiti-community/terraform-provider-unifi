@@ -261,10 +261,15 @@ func (r *siteToSiteVPNResource) Schema(
 			},
 			"ike_lifetime": schema.StringAttribute{
 				MarkdownDescription: "IKE (phase 1) security-association lifetime, as a Go " +
-					"duration string (e.g. `8h`, `28800s`).",
-				CustomType:    timetypes.GoDurationType{},
-				Optional:      true,
-				Computed:      true,
+					"duration string (e.g. `8h`, `28800s`). Must be a whole number of seconds " +
+					"between `30s` and `86400s` (24h).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(30*time.Second, 86400*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"esp_encryption": schema.StringAttribute{
@@ -289,10 +294,15 @@ func (r *siteToSiteVPNResource) Schema(
 			},
 			"esp_lifetime": schema.StringAttribute{
 				MarkdownDescription: "ESP (phase 2) security-association lifetime, as a Go " +
-					"duration string (e.g. `1h`, `3600s`).",
-				CustomType:    timetypes.GoDurationType{},
-				Optional:      true,
-				Computed:      true,
+					"duration string (e.g. `1h`, `3600s`). Must be a whole number of seconds " +
+					"between `30s` and `86400s` (24h).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(30*time.Second, 86400*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"pfs": schema.BoolAttribute{
