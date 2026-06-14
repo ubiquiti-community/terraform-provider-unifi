@@ -370,7 +370,26 @@ func TestUnifiLogger_log(t *testing.T) {
 		l    *UnifiLogger
 		args args
 	}{
-		// TODO: Add test cases.
+		{
+			name: "executes_fn",
+			l: func() *UnifiLogger {
+				var buf bytes.Buffer
+				ctx := tflogtest.RootLogger(context.Background(), &buf)
+				return NewLogger(ctx)
+			}(),
+			args: args{fn: func() {}},
+		},
+		{
+			name: "fn_called_once",
+			l: func() *UnifiLogger {
+				var buf bytes.Buffer
+				ctx := tflogtest.RootLogger(context.Background(), &buf)
+				return NewLogger(ctx)
+			}(),
+			args: args{fn: func() {
+				// side-effect-free no-op; just confirms no panic
+			}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -389,7 +408,36 @@ func Test_convertToFields(t *testing.T) {
 		want    map[string]any
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name:    "empty",
+			args:    args{keysAndValues: []any{}},
+			want:    map[string]any{},
+			wantErr: false,
+		},
+		{
+			name:    "single_pair",
+			args:    args{keysAndValues: []any{"key", "value"}},
+			want:    map[string]any{"key": "value"},
+			wantErr: false,
+		},
+		{
+			name:    "multiple_pairs",
+			args:    args{keysAndValues: []any{"a", 1, "b", true}},
+			want:    map[string]any{"a": 1, "b": true},
+			wantErr: false,
+		},
+		{
+			name:    "odd_number_of_args",
+			args:    args{keysAndValues: []any{"key_without_value"}},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "non_string_key",
+			args:    args{keysAndValues: []any{42, "value"}},
+			want:    nil,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

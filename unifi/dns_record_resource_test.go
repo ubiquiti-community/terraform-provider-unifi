@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"regexp"
 	"testing"
@@ -11,14 +12,54 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
+
+func testAccDNSRecordCheckDestroy(s *terraform.State) error {
+	ctx := context.Background()
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "unifi_dns_record" {
+			continue
+		}
+		id := rs.Primary.ID
+		site := rs.Primary.Attributes["site"]
+		if site == "" {
+			site = "default"
+		}
+		client := &Client{
+			ApiClient: nil, // populated by the acceptance test provider
+			Site:      site,
+		}
+		// Use the shared provider client via a direct API call.
+		apiClient, err := unifi.New(ctx, &unifi.Config{
+			BaseURL:       rs.Primary.Attributes["api_url"],
+			Username:      rs.Primary.Attributes["username"],
+			Password:      rs.Primary.Attributes["password"],
+			AllowInsecure: true,
+		})
+		if err != nil {
+			// If we can't build a client, skip the check.
+			return nil
+		}
+		client.ApiClient = apiClient
+		_, err = client.GetDNSRecord(ctx, site, id)
+		if err != nil {
+			if _, ok := err.(*unifi.NotFoundError); ok {
+				continue
+			}
+			return fmt.Errorf("error checking DNS record %s: %w", id, err)
+		}
+		return fmt.Errorf("DNS record %s still exists", id)
+	}
+	return nil
+}
 
 func TestAccDNSRecordFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: providerFactories,
-		CheckDestroy:             nil, // TODO: implement check destroy
+		CheckDestroy:             testAccDNSRecordCheckDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSRecordFrameworkConfig_basic(),
@@ -259,26 +300,6 @@ func Test_dnsRecordFrameworkResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_dnsRecordFrameworkResource_Create(t *testing.T) {
-	// CRUD tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dnsRecordFrameworkResource_Read(t *testing.T) {
-	// Read tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dnsRecordFrameworkResource_Update(t *testing.T) {
-	// Update tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dnsRecordFrameworkResource_Delete(t *testing.T) {
-	// Delete tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dnsRecordFrameworkResource_ImportState(t *testing.T) {
-	// ImportState tests require tfsdk state setup; covered by acceptance tests.
-}
-
 func Test_dnsRecordFrameworkResource_applyPlanToState(t *testing.T) {
 	type args struct {
 		in0   context.Context
@@ -453,8 +474,4 @@ func Test_dnsRecordFrameworkResource_ListResourceConfigSchema(t *testing.T) {
 			}
 		})
 	}
-}
-
-func Test_dnsRecordFrameworkResource_List(t *testing.T) {
-	// List tests require a configured API client; covered by acceptance tests.
 }

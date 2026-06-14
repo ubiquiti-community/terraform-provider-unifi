@@ -522,111 +522,6 @@ func Test_firewallPolicyResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_firewallPolicyResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	tests := []struct {
-		name string
-		r    *firewallPolicyResource
-		args args
-	}{
-		// Skip: requires a configured API client.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Skip("requires configured API client")
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallPolicyResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		r    *firewallPolicyResource
-		args args
-	}{
-		// Skip: requires a configured API client.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Skip("requires configured API client")
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallPolicyResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	tests := []struct {
-		name string
-		r    *firewallPolicyResource
-		args args
-	}{
-		// Skip: requires a configured API client.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Skip("requires configured API client")
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallPolicyResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	tests := []struct {
-		name string
-		r    *firewallPolicyResource
-		args args
-	}{
-		// Skip: requires a configured API client.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Skip("requires configured API client")
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallPolicyResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	tests := []struct {
-		name string
-		r    *firewallPolicyResource
-		args args
-	}{
-		// Skip: requires a configured API client.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Skip("requires configured API client")
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
 func Test_modelToFirewallPolicy(t *testing.T) {
 	type args struct {
 		ctx   context.Context
@@ -1068,27 +963,6 @@ func Test_firewallPolicyResource_ListResourceConfigSchema(t *testing.T) {
 			if _, ok := tt.args.resp.Schema.Attributes["site"]; !ok {
 				t.Error("ListResourceConfigSchema missing 'site' attribute")
 			}
-		})
-	}
-}
-
-func Test_firewallPolicyResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
-	tests := []struct {
-		name string
-		r    *firewallPolicyResource
-		args args
-	}{
-		// Skip: requires a configured API client.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Skip("requires configured API client")
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
 		})
 	}
 }

@@ -281,101 +281,6 @@ func Test_firewallZoneResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_firewallZoneResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	t.Skip("requires initialized terraform plan/state")
-	tests := []struct {
-		name string
-		r    *firewallZoneResource
-		args args
-	}{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallZoneResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	t.Skip("requires initialized terraform plan/state")
-	tests := []struct {
-		name string
-		r    *firewallZoneResource
-		args args
-	}{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallZoneResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	t.Skip("requires initialized terraform plan/state")
-	tests := []struct {
-		name string
-		r    *firewallZoneResource
-		args args
-	}{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallZoneResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	t.Skip("requires initialized terraform plan/state")
-	tests := []struct {
-		name string
-		r    *firewallZoneResource
-		args args
-	}{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_firewallZoneResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	t.Skip("requires initialized terraform plan/state")
-	tests := []struct {
-		name string
-		r    *firewallZoneResource
-		args args
-	}{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
 func Test_firewallZoneResource_modelToFirewallZone(t *testing.T) {
 	ctx := context.Background()
 	r := &firewallZoneResource{}
@@ -537,25 +442,6 @@ func Test_firewallZoneResource_ListResourceConfigSchema(t *testing.T) {
 			if _, ok := tt.args.resp.Schema.Attributes["site"]; !ok {
 				t.Error("ListResourceConfigSchema missing 'site' attribute")
 			}
-		})
-	}
-}
-
-func Test_firewallZoneResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
-	t.Skip("requires configured client")
-	tests := []struct {
-		name string
-		r    *firewallZoneResource
-		args args
-	}{}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
 		})
 	}
 }

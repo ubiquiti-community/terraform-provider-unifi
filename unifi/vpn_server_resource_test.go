@@ -3,13 +3,12 @@ package unifi
 import (
 	"context"
 	"encoding/base64"
-	"reflect"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -619,421 +618,383 @@ func TestGenerateWireGuardPrivateKey(t *testing.T) {
 }
 
 func TestNewVPNServerResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwresource.Resource
-	}{
-		// TODO: Add test cases.
+	r := NewVPNServerResource()
+	if r == nil {
+		t.Fatal("NewVPNServerResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewVPNServerResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewVPNServerResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwresource.ResourceWithConfigure); !ok {
+		t.Error("expected ResourceWithConfigure interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState interface")
 	}
 }
 
 func TestNewVPNServerListResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwlist.ListResource
-	}{
-		// TODO: Add test cases.
+	r := NewVPNServerListResource()
+	if r == nil {
+		t.Fatal("NewVPNServerListResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewVPNServerListResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewVPNServerListResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwlist.ListResource); !ok {
+		t.Error("expected fwlist.ListResource interface")
 	}
 }
 
 func Test_vpnServerDNSModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    vpnServerDNSModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
+	m := vpnServerDNSModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"enabled", "servers"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("vpnServerDNSModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	if got["enabled"] != types.BoolType {
+		t.Errorf("enabled type = %v, want BoolType", got["enabled"])
 	}
 }
 
 func Test_vpnServerWANModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    vpnServerWANModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("vpnServerWANModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	m := vpnServerWANModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"ip", "interface"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
 }
 
 func Test_vpnServerWireguardModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    vpnServerWireguardModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
+	m := vpnServerWireguardModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"private_key", "public_key", "port"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("vpnServerWireguardModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	if got["port"] != types.Int64Type {
+		t.Errorf("port type = %v, want Int64Type", got["port"])
 	}
 }
 
 func Test_vpnServerL2TPModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    vpnServerL2TPModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("vpnServerL2TPModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	m := vpnServerL2TPModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"allow_weak_ciphers", "pre_shared_key"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
 }
 
 func Test_vpnServerOpenVPNModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    vpnServerOpenVPNModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("vpnServerOpenVPNModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	m := vpnServerOpenVPNModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"port", "mode", "encryption_cipher", "server_crt", "server_key", "dh_key", "ca_crt", "ca_key"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
 }
 
 func Test_vpnServerResource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
 	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
+		providerTypeName, wantTypeName string
 	}{
-		// TODO: Add test cases.
+		{"unifi", "unifi_vpn_server"},
+		{"test", "test_vpn_server"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		t.Run(tt.providerTypeName, func(t *testing.T) {
+			r := &vpnServerResource{}
+			resp := &fwresource.MetadataResponse{}
+			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			if resp.TypeName != tt.wantTypeName {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
+			}
 		})
 	}
 }
 
 func Test_vpnServerResource_IdentitySchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwresource.IdentitySchemaRequest
-		resp *fwresource.IdentitySchemaResponse
+	r := &vpnServerResource{}
+	resp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(context.Background(), fwresource.IdentitySchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("IdentitySchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
+	if _, ok := resp.IdentitySchema.Attributes["id"]; !ok {
+		t.Error("IdentitySchema missing 'id' attribute")
 	}
 }
 
 func Test_vpnServerResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
+	r := &vpnServerResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	for _, attr := range []string{"id", "site", "name", "enabled", "subnet", "dns", "wan", "radiusprofile_id", "wireguard", "l2tp", "openvpn"} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
 	}
 }
 
 func Test_vpnServerResource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ConfigureRequest
-		resp *fwresource.ConfigureResponse
-	}
 	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
+		name      string
+		data      any
+		wantError bool
 	}{
-		// TODO: Add test cases.
+		{"nil", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct client", &Client{Site: "default"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_vpnServerResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_vpnServerResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_vpnServerResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_vpnServerResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+			r := &vpnServerResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.wantError && !resp.Diagnostics.HasError() {
+				t.Error("expected error")
+			}
+			if !tt.wantError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
 		})
 	}
 }
 
 func Test_vpnServerResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
+	t.Skip("ImportState delegates to ImportStatePassthroughWithIdentity which requires full state schema setup")
 }
 
 func Test_vpnServerResource_modelToNetwork(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *vpnServerResourceModel
-	}
-	tests := []struct {
-		name  string
-		r     *vpnServerResource
-		args  args
-		want  *unifi.Network
-		want1 diag.Diagnostics
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := tt.r.modelToNetwork(tt.args.ctx, tt.args.model)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("vpnServerResource.modelToNetwork() got = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("vpnServerResource.modelToNetwork() got1 = %v, want %v", got1, tt.want1)
-			}
-		})
-	}
+	ctx := context.Background()
+
+	t.Run("missing vpn type returns error", func(t *testing.T) {
+		r := &vpnServerResource{}
+		model := &vpnServerResourceModel{
+			Name:      types.StringValue("test"),
+			Enabled:   types.BoolValue(true),
+			Subnet:    cidrtypes.NewIPv4PrefixValue("10.100.0.1/24"),
+			Wireguard: types.ObjectNull(vpnServerWireguardModel{}.AttributeTypes()),
+			L2TP:      types.ObjectNull(vpnServerL2TPModel{}.AttributeTypes()),
+			OpenVPN:   types.ObjectNull(vpnServerOpenVPNModel{}.AttributeTypes()),
+			DNS:       types.ObjectNull(vpnServerDNSModel{}.AttributeTypes()),
+			WAN:       types.ObjectNull(vpnServerWANModel{}.AttributeTypes()),
+		}
+		got, diags := r.modelToNetwork(ctx, model)
+		if !diags.HasError() {
+			t.Error("expected error for missing VPN type")
+		}
+		if got != nil {
+			t.Error("expected nil network for error case")
+		}
+	})
+
+	t.Run("wireguard model sets vpn type", func(t *testing.T) {
+		r := &vpnServerResource{}
+		port := int64(51820)
+		privKey := "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="
+		wgModel := vpnServerWireguardModel{
+			PrivateKey: types.StringValue(privKey),
+			PublicKey:  types.StringNull(),
+			Port:       types.Int64Value(port),
+		}
+		wgObj, d := types.ObjectValueFrom(ctx, vpnServerWireguardModel{}.AttributeTypes(), wgModel)
+		if d.HasError() {
+			t.Fatalf("building wireguard object: %v", d)
+		}
+		model := &vpnServerResourceModel{
+			Name:      types.StringValue("wg-server"),
+			Enabled:   types.BoolValue(true),
+			Subnet:    cidrtypes.NewIPv4PrefixValue("10.100.0.1/24"),
+			Wireguard: wgObj,
+			L2TP:      types.ObjectNull(vpnServerL2TPModel{}.AttributeTypes()),
+			OpenVPN:   types.ObjectNull(vpnServerOpenVPNModel{}.AttributeTypes()),
+			DNS:       types.ObjectNull(vpnServerDNSModel{}.AttributeTypes()),
+			WAN:       types.ObjectNull(vpnServerWANModel{}.AttributeTypes()),
+		}
+		got, diags := r.modelToNetwork(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil network")
+		}
+		if got.VPNType == nil || *got.VPNType != "wireguard-server" {
+			t.Errorf("VPNType = %v, want wireguard-server", got.VPNType)
+		}
+		if got.WireguardPrivateKey == nil || *got.WireguardPrivateKey != privKey {
+			t.Errorf("WireguardPrivateKey = %v, want %q", got.WireguardPrivateKey, privKey)
+		}
+		if got.LocalPort == nil || *got.LocalPort != port {
+			t.Errorf("LocalPort = %v, want %d", got.LocalPort, port)
+		}
+	})
+
+	t.Run("l2tp model sets vpn type", func(t *testing.T) {
+		r := &vpnServerResource{}
+		l2tpModel := vpnServerL2TPModel{
+			AllowWeakCiphers: types.BoolValue(false),
+			PreSharedKey:     types.StringValue("my-psk"),
+		}
+		l2tpObj, d := types.ObjectValueFrom(ctx, vpnServerL2TPModel{}.AttributeTypes(), l2tpModel)
+		if d.HasError() {
+			t.Fatalf("building l2tp object: %v", d)
+		}
+		model := &vpnServerResourceModel{
+			Name:      types.StringValue("l2tp-server"),
+			Enabled:   types.BoolValue(true),
+			Subnet:    cidrtypes.NewIPv4PrefixValue("10.110.0.1/24"),
+			Wireguard: types.ObjectNull(vpnServerWireguardModel{}.AttributeTypes()),
+			L2TP:      l2tpObj,
+			OpenVPN:   types.ObjectNull(vpnServerOpenVPNModel{}.AttributeTypes()),
+			DNS:       types.ObjectNull(vpnServerDNSModel{}.AttributeTypes()),
+			WAN:       types.ObjectNull(vpnServerWANModel{}.AttributeTypes()),
+		}
+		got, diags := r.modelToNetwork(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.VPNType == nil || *got.VPNType != "l2tp-server" {
+			t.Errorf("VPNType = %v, want l2tp-server", got.VPNType)
+		}
+		if got.IPSecPreSharedKey == nil || *got.IPSecPreSharedKey != "my-psk" {
+			t.Errorf("IPSecPreSharedKey = %v, want my-psk", got.IPSecPreSharedKey)
+		}
+	})
 }
 
 func Test_vpnServerResource_networkToModel(t *testing.T) {
-	type args struct {
-		ctx        context.Context
-		network    *unifi.Network
-		model      *vpnServerResourceModel
-		site       string
-		priorState *vpnServerResourceModel
-	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-		want diag.Diagnostics
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.networkToModel(
-				tt.args.ctx,
-				tt.args.network,
-				tt.args.model,
-				tt.args.site,
-				tt.args.priorState,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("vpnServerResource.networkToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	ctx := context.Background()
+
+	t.Run("wireguard network populates wireguard block", func(t *testing.T) {
+		r := &vpnServerResource{}
+		vpnType := "wireguard-server"
+		name := "wg-test"
+		subnet := "10.100.0.1/24"
+		port := int64(51820)
+		privKey := "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="
+		network := &unifi.Network{
+			ID:                  "net-123",
+			Name:                &name,
+			Enabled:             true,
+			IPSubnet:            &subnet,
+			VPNType:             &vpnType,
+			WireguardPrivateKey: &privKey,
+			LocalPort:           &port,
+		}
+		var model vpnServerResourceModel
+		diags := r.networkToModel(ctx, network, &model, "default", &vpnServerResourceModel{})
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if model.ID.ValueString() != "net-123" {
+			t.Errorf("ID = %q, want net-123", model.ID.ValueString())
+		}
+		if model.Name.ValueString() != "wg-test" {
+			t.Errorf("Name = %q, want wg-test", model.Name.ValueString())
+		}
+		if !model.Enabled.ValueBool() {
+			t.Error("Enabled should be true")
+		}
+		if model.Wireguard.IsNull() {
+			t.Fatal("Wireguard block should not be null")
+		}
+		var wg vpnServerWireguardModel
+		if d := model.Wireguard.As(ctx, &wg, struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{}); d.HasError() {
+			t.Fatalf("reading wireguard: %v", d)
+		}
+		if wg.PrivateKey.ValueString() != privKey {
+			t.Errorf("PrivateKey = %q, want %q", wg.PrivateKey.ValueString(), privKey)
+		}
+		if wg.Port.ValueInt64() != port {
+			t.Errorf("Port = %d, want %d", wg.Port.ValueInt64(), port)
+		}
+		// L2TP and OpenVPN should be null for a wireguard server
+		if !model.L2TP.IsNull() {
+			t.Error("L2TP should be null for wireguard server")
+		}
+		if !model.OpenVPN.IsNull() {
+			t.Error("OpenVPN should be null for wireguard server")
+		}
+	})
+
+	t.Run("l2tp network preserves psk from prior state", func(t *testing.T) {
+		r := &vpnServerResource{}
+		vpnType := "l2tp-server"
+		name := "l2tp-test"
+		subnet := "10.110.0.1/24"
+		network := &unifi.Network{
+			ID:       "net-456",
+			Name:     &name,
+			Enabled:  true,
+			IPSubnet: &subnet,
+			VPNType:  &vpnType,
+			// IPSecPreSharedKey is nil (API does not return it on read)
+		}
+
+		// Prior state has the PSK
+		priorL2TP := vpnServerL2TPModel{
+			AllowWeakCiphers: types.BoolValue(false),
+			PreSharedKey:     types.StringValue("stored-psk"),
+		}
+		priorL2TPObj, d := types.ObjectValueFrom(ctx, vpnServerL2TPModel{}.AttributeTypes(), priorL2TP)
+		if d.HasError() {
+			t.Fatalf("building prior l2tp: %v", d)
+		}
+		priorState := &vpnServerResourceModel{
+			L2TP: priorL2TPObj,
+		}
+
+		var model vpnServerResourceModel
+		diags := r.networkToModel(ctx, network, &model, "default", priorState)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if model.L2TP.IsNull() {
+			t.Fatal("L2TP block should not be null")
+		}
+		var l2tp vpnServerL2TPModel
+		if d := model.L2TP.As(ctx, &l2tp, struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{}); d.HasError() {
+			t.Fatalf("reading l2tp: %v", d)
+		}
+		// PSK should be preserved from prior state since the API doesn't return it
+		if l2tp.PreSharedKey.ValueString() != "stored-psk" {
+			t.Errorf("PreSharedKey = %q, want stored-psk (preserved from prior state)", l2tp.PreSharedKey.ValueString())
+		}
+	})
 }
 
 func Test_vpnServerResource_ListResourceConfigSchema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwlist.ListResourceSchemaRequest
-		resp *fwlist.ListResourceSchemaResponse
+	r := &vpnServerResource{}
+	resp := &fwlist.ListResourceSchemaResponse{}
+	r.ListResourceConfigSchema(context.Background(), fwlist.ListResourceSchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("ListResourceConfigSchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ListResourceConfigSchema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_vpnServerResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
-	tests := []struct {
-		name string
-		r    *vpnServerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
-		})
+	if _, ok := resp.Schema.Attributes["site"]; !ok {
+		t.Error("ListResourceConfigSchema missing 'site' attribute")
 	}
 }
 
 func Test_generateWireGuardPrivateKey(t *testing.T) {
-	tests := []struct {
-		name    string
-		want    string
-		wantErr bool
-	}{
-		// TODO: Add test cases.
+	got, err := generateWireGuardPrivateKey()
+	if err != nil {
+		t.Fatalf("generateWireGuardPrivateKey() error = %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := generateWireGuardPrivateKey()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("generateWireGuardPrivateKey() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("generateWireGuardPrivateKey() = %v, want %v", got, tt.want)
-			}
-		})
+	if got == "" {
+		t.Error("generateWireGuardPrivateKey() returned empty string")
+	}
+	// Must be valid base64
+	raw, err := base64.StdEncoding.DecodeString(got)
+	if err != nil {
+		t.Fatalf("result is not valid base64: %v", err)
+	}
+	if len(raw) != 32 {
+		t.Errorf("key length = %d bytes, want 32", len(raw))
 	}
 }

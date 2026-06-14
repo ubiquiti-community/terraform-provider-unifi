@@ -2,7 +2,6 @@ package unifi
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -10,113 +9,57 @@ import (
 )
 
 func TestNewDeprecatedAccountResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwresource.Resource
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewDeprecatedAccountResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewDeprecatedAccountResource() = %v, want %v", got, tt.want)
-			}
-		})
+	r := NewDeprecatedAccountResource()
+	if r == nil {
+		t.Fatal("NewDeprecatedAccountResource() returned nil")
 	}
 }
 
 func Test_deprecatedAccountResource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		r    *deprecatedAccountResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	r := &deprecatedAccountResource{}
+	resp := &fwresource.MetadataResponse{}
+	r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: "unifi"}, resp)
+	if resp.TypeName != "unifi_account" {
+		t.Errorf("TypeName = %q, want %q", resp.TypeName, "unifi_account")
 	}
 }
 
 func Test_deprecatedAccountResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
+	r := &deprecatedAccountResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *deprecatedAccountResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	if resp.Schema.DeprecationMessage == "" {
+		t.Error("expected a deprecation message")
 	}
 }
 
 func TestNewDeprecatedAccountDataSource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwdatasource.DataSource
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewDeprecatedAccountDataSource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewDeprecatedAccountDataSource() = %v, want %v", got, tt.want)
-			}
-		})
+	d := NewDeprecatedAccountDataSource()
+	if d == nil {
+		t.Fatal("NewDeprecatedAccountDataSource() returned nil")
 	}
 }
 
 func Test_deprecatedAccountDataSource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.MetadataRequest
-		resp *fwdatasource.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		d    *deprecatedAccountDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	d := &deprecatedAccountDataSource{}
+	resp := &fwdatasource.MetadataResponse{}
+	d.Metadata(context.Background(), fwdatasource.MetadataRequest{ProviderTypeName: "unifi"}, resp)
+	if resp.TypeName != "unifi_account" {
+		t.Errorf("TypeName = %q, want %q", resp.TypeName, "unifi_account")
 	}
 }
 
 func Test_deprecatedAccountDataSource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.SchemaRequest
-		resp *fwdatasource.SchemaResponse
+	d := &deprecatedAccountDataSource{}
+	resp := &fwdatasource.SchemaResponse{}
+	d.Schema(context.Background(), fwdatasource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		d    *deprecatedAccountDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	if resp.Schema.DeprecationMessage == "" {
+		t.Error("expected a deprecation message")
 	}
 }

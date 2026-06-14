@@ -137,26 +137,6 @@ func Test_dynamicDNSResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_dynamicDNSResource_Create(t *testing.T) {
-	// CRUD tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dynamicDNSResource_Read(t *testing.T) {
-	// Read tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dynamicDNSResource_Update(t *testing.T) {
-	// Update tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dynamicDNSResource_Delete(t *testing.T) {
-	// Delete tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_dynamicDNSResource_ImportState(t *testing.T) {
-	// ImportState tests require tfsdk state setup; covered by acceptance tests.
-}
-
 func Test_dynamicDNSResource_applyPlanToState(t *testing.T) {
 	r := &dynamicDNSResource{}
 	plan := &dynamicDNSResourceModel{
@@ -288,8 +268,4 @@ func Test_dynamicDNSResource_ListResourceConfigSchema(t *testing.T) {
 	if len(resp.Schema.Attributes) == 0 {
 		t.Error("expected non-empty list resource schema")
 	}
-}
-
-func Test_dynamicDNSResource_List(t *testing.T) {
-	// List tests require a configured API client; covered by acceptance tests.
 }

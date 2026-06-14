@@ -2,11 +2,11 @@ package unifi
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -468,337 +468,334 @@ resource "unifi_radius_profile" "test" {
 }
 
 func TestNewRadiusProfileResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwresource.Resource
-	}{
-		// TODO: Add test cases.
+	r := NewRadiusProfileResource()
+	if r == nil {
+		t.Fatal("NewRadiusProfileResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewRadiusProfileResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewRadiusProfileResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithUpgradeState); !ok {
+		t.Error("expected ResourceWithUpgradeState interface")
 	}
 }
 
 func TestNewRadiusProfileListResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwlist.ListResource
-	}{
-		// TODO: Add test cases.
+	r := NewRadiusProfileListResource()
+	if r == nil {
+		t.Fatal("NewRadiusProfileListResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewRadiusProfileListResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewRadiusProfileListResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
+		t.Error("expected ListResourceWithConfigure interface")
 	}
 }
 
 func Test_radiusProfileResource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+	for _, tt := range []struct{ provider, want string }{
+		{"unifi", "unifi_radius_profile"},
+		{"test", "test_radius_profile"},
+	} {
+		t.Run(tt.provider, func(t *testing.T) {
+			r := &radiusProfileResource{}
+			resp := &fwresource.MetadataResponse{}
+			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			if resp.TypeName != tt.want {
+				t.Errorf("got %q, want %q", resp.TypeName, tt.want)
+			}
 		})
 	}
 }
 
 func Test_radiusProfileResource_IdentitySchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwresource.IdentitySchemaRequest
-		resp *fwresource.IdentitySchemaResponse
+	r := &radiusProfileResource{}
+	resp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(context.Background(), fwresource.IdentitySchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("IdentitySchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
+	if _, ok := resp.IdentitySchema.Attributes["id"]; !ok {
+		t.Error("IdentitySchema missing 'id' attribute")
 	}
 }
 
 func Test_radiusProfileResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
+	r := &radiusProfileResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	for _, attr := range []string{
+		"id", "site", "name", "accounting_enabled", "interim_update_enabled",
+		"interim_update_interval", "use_usg_acct_server", "use_usg_auth_server",
+		"vlan_enabled", "vlan_wlan_mode", "timeouts",
+	} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
 	}
 }
 
 func Test_radiusProfileResource_UpgradeState(t *testing.T) {
-	type args struct {
-		ctx context.Context
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-		want map[int64]fwresource.StateUpgrader
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.UpgradeState(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("radiusProfileResource.UpgradeState() = %v, want %v", got, tt.want)
-			}
-		})
+	r := &radiusProfileResource{}
+	upgraders := r.UpgradeState(context.Background())
+	if _, ok := upgraders[0]; !ok {
+		t.Error("expected state upgrader for version 0")
 	}
 }
 
 func Test_radiusProfileResource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ConfigureRequest
-		resp *fwresource.ConfigureResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
+	for _, tt := range []struct {
+		name    string
+		data    any
+		wantErr bool
 	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
+		{"nil", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct", &Client{Site: "default"}, false},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusProfileResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusProfileResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusProfileResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusProfileResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusProfileResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+			r := &radiusProfileResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.wantErr && !resp.Diagnostics.HasError() {
+				t.Error("expected error")
+			}
+			if !tt.wantErr && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected: %v", resp.Diagnostics)
+			}
 		})
 	}
 }
 
 func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
-	type args struct {
-		in0   context.Context
-		plan  *radiusProfileResourceModel
-		state *radiusProfileResourceModel
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.applyPlanToState(tt.args.in0, tt.args.plan, tt.args.state)
-		})
-	}
+	ctx := context.Background()
+	r := &radiusProfileResource{}
+
+	t.Run("plan values override state", func(t *testing.T) {
+		plan := &radiusProfileResourceModel{
+			Name:                 types.StringValue("new-profile"),
+			AccountingEnabled:    types.BoolValue(true),
+			InterimUpdateEnabled: types.BoolValue(true),
+			UseUSGAcctServer:     types.BoolValue(true),
+			UseUSGAuthServer:     types.BoolValue(false),
+			VlanEnabled:          types.BoolValue(true),
+			VlanWlanMode:         types.StringValue("required"),
+			AuthServer: []radiusServerModel{
+				{IP: types.StringValue("1.2.3.4"), Port: types.Int64Value(1812), Secret: types.StringValue("s")},
+			},
+			AcctServer: []radiusServerModel{},
+		}
+		state := &radiusProfileResourceModel{
+			ID:                   types.StringValue("prof-1"),
+			Name:                 types.StringValue("old-profile"),
+			AccountingEnabled:    types.BoolValue(false),
+			InterimUpdateEnabled: types.BoolValue(false),
+			UseUSGAcctServer:     types.BoolValue(false),
+			UseUSGAuthServer:     types.BoolValue(false),
+			VlanEnabled:          types.BoolValue(false),
+			VlanWlanMode:         types.StringValue("disabled"),
+		}
+		r.applyPlanToState(ctx, plan, state)
+		if state.Name.ValueString() != "new-profile" {
+			t.Errorf("Name = %q, want new-profile", state.Name.ValueString())
+		}
+		if !state.AccountingEnabled.ValueBool() {
+			t.Error("AccountingEnabled should be true")
+		}
+		if state.VlanWlanMode.ValueString() != "required" {
+			t.Errorf("VlanWlanMode = %q, want required", state.VlanWlanMode.ValueString())
+		}
+		if len(state.AuthServer) != 1 {
+			t.Errorf("AuthServer length = %d, want 1", len(state.AuthServer))
+		}
+		// ID must be preserved
+		if state.ID.ValueString() != "prof-1" {
+			t.Errorf("ID was modified, want prof-1, got %q", state.ID.ValueString())
+		}
+	})
+
+	t.Run("null plan values leave state unchanged", func(t *testing.T) {
+		plan := &radiusProfileResourceModel{
+			Name:                 types.StringNull(),
+			AccountingEnabled:    types.BoolNull(),
+			InterimUpdateEnabled: types.BoolNull(),
+			UseUSGAcctServer:     types.BoolNull(),
+			UseUSGAuthServer:     types.BoolNull(),
+			VlanEnabled:          types.BoolNull(),
+			VlanWlanMode:         types.StringNull(),
+			AuthServer:           nil,
+			AcctServer:           nil,
+		}
+		state := &radiusProfileResourceModel{
+			Name:              types.StringValue("keep-profile"),
+			AccountingEnabled: types.BoolValue(true),
+			VlanWlanMode:      types.StringValue("optional"),
+		}
+		r.applyPlanToState(ctx, plan, state)
+		if state.Name.ValueString() != "keep-profile" {
+			t.Errorf("Name should be preserved, got %q", state.Name.ValueString())
+		}
+		if !state.AccountingEnabled.ValueBool() {
+			t.Error("AccountingEnabled should be preserved as true")
+		}
+	})
 }
 
 func Test_radiusProfileResource_modelToRadiusProfile(t *testing.T) {
-	type args struct {
-		in0   context.Context
-		model *radiusProfileResourceModel
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-		want *unifi.RADIUSProfile
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.modelToRadiusProfile(tt.args.in0, tt.args.model); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("radiusProfileResource.modelToRadiusProfile() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	ctx := context.Background()
+	r := &radiusProfileResource{}
+
+	t.Run("basic fields are converted", func(t *testing.T) {
+		model := &radiusProfileResourceModel{
+			Name:                 types.StringValue("my-profile"),
+			AccountingEnabled:    types.BoolValue(true),
+			InterimUpdateEnabled: types.BoolValue(false),
+			UseUSGAcctServer:     types.BoolValue(false),
+			UseUSGAuthServer:     types.BoolValue(false),
+			VlanEnabled:          types.BoolValue(false),
+			VlanWlanMode:         types.StringValue("disabled"),
+			AuthServer:           []radiusServerModel{},
+			AcctServer:           []radiusServerModel{},
+		}
+		got := r.modelToRadiusProfile(ctx, model)
+		if got == nil {
+			t.Fatal("modelToRadiusProfile() returned nil")
+		}
+		if got.Name != "my-profile" {
+			t.Errorf("Name = %q, want my-profile", got.Name)
+		}
+		if !got.AccountingEnabled {
+			t.Error("AccountingEnabled should be true")
+		}
+		if got.VLANWLANMode != "disabled" {
+			t.Errorf("VLANWLANMode = %q, want disabled", got.VLANWLANMode)
+		}
+	})
+
+	t.Run("auth and acct servers are appended", func(t *testing.T) {
+		port := int64(1812)
+		model := &radiusProfileResourceModel{
+			Name:             types.StringValue("prof-with-servers"),
+			AccountingEnabled: types.BoolValue(false),
+			VlanWlanMode:     types.StringValue(""),
+			AuthServer: []radiusServerModel{
+				{
+					IP:     types.StringValue("10.0.0.1"),
+					Port:   types.Int64Value(port),
+					Secret: types.StringValue("auth-secret"),
+				},
+			},
+			AcctServer: []radiusServerModel{
+				{
+					IP:     types.StringValue("10.0.0.2"),
+					Port:   types.Int64Value(1813),
+					Secret: types.StringValue("acct-secret"),
+				},
+			},
+		}
+		got := r.modelToRadiusProfile(ctx, model)
+		if len(got.AuthServers) != 1 {
+			t.Fatalf("AuthServers length = %d, want 1", len(got.AuthServers))
+		}
+		if got.AuthServers[0].IP != "10.0.0.1" {
+			t.Errorf("AuthServer IP = %q, want 10.0.0.1", got.AuthServers[0].IP)
+		}
+		if len(got.AcctServers) != 1 {
+			t.Fatalf("AcctServers length = %d, want 1", len(got.AcctServers))
+		}
+		if got.AcctServers[0].IP != "10.0.0.2" {
+			t.Errorf("AcctServer IP = %q, want 10.0.0.2", got.AcctServers[0].IP)
+		}
+	})
 }
 
 func Test_radiusProfileResource_radiusProfileToModel(t *testing.T) {
-	type args struct {
-		in0           context.Context
-		radiusProfile *unifi.RADIUSProfile
-		model         *radiusProfileResourceModel
-		site          string
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.radiusProfileToModel(tt.args.in0, tt.args.radiusProfile, tt.args.model, tt.args.site)
-		})
-	}
+	ctx := context.Background()
+	r := &radiusProfileResource{}
+
+	t.Run("all fields are mapped from API", func(t *testing.T) {
+		port1812 := int64(1812)
+		port1813 := int64(1813)
+		interval := int64(3600)
+		profile := &unifi.RADIUSProfile{
+			ID:                    "prof-1",
+			Name:                  "my-profile",
+			AccountingEnabled:     true,
+			InterimUpdateEnabled:  false,
+			InterimUpdateInterval: &interval,
+			UseUsgAcctServer:      false,
+			UseUsgAuthServer:      true,
+			VLANEnabled:           true,
+			VLANWLANMode:          "required",
+			AuthServers: []unifi.RADIUSProfileAuthServers{
+				{IP: "1.2.3.4", Port: &port1812, Secret: ""},
+			},
+			AcctServers: []unifi.RADIUSProfileAcctServers{
+				{IP: "5.6.7.8", Port: &port1813, Secret: ""},
+			},
+		}
+		model := &radiusProfileResourceModel{}
+		r.radiusProfileToModel(ctx, profile, model, "default")
+
+		if model.ID.ValueString() != "prof-1" {
+			t.Errorf("ID = %q, want prof-1", model.ID.ValueString())
+		}
+		if model.Site.ValueString() != "default" {
+			t.Errorf("Site = %q, want default", model.Site.ValueString())
+		}
+		if model.Name.ValueString() != "my-profile" {
+			t.Errorf("Name = %q, want my-profile", model.Name.ValueString())
+		}
+		if !model.AccountingEnabled.ValueBool() {
+			t.Error("AccountingEnabled should be true")
+		}
+		if !model.UseUSGAuthServer.ValueBool() {
+			t.Error("UseUSGAuthServer should be true")
+		}
+		if !model.VlanEnabled.ValueBool() {
+			t.Error("VlanEnabled should be true")
+		}
+		if model.VlanWlanMode.ValueString() != "required" {
+			t.Errorf("VlanWlanMode = %q, want required", model.VlanWlanMode.ValueString())
+		}
+		if len(model.AuthServer) != 1 {
+			t.Fatalf("AuthServer length = %d, want 1", len(model.AuthServer))
+		}
+		if model.AuthServer[0].IP.ValueString() != "1.2.3.4" {
+			t.Errorf("AuthServer IP = %q, want 1.2.3.4", model.AuthServer[0].IP.ValueString())
+		}
+		if len(model.AcctServer) != 1 {
+			t.Fatalf("AcctServer length = %d, want 1", len(model.AcctServer))
+		}
+	})
+
+	t.Run("empty servers produce empty slices not nil", func(t *testing.T) {
+		profile := &unifi.RADIUSProfile{
+			ID:          "prof-2",
+			Name:        "empty-prof",
+			AuthServers: nil,
+			AcctServers: nil,
+		}
+		model := &radiusProfileResourceModel{}
+		r.radiusProfileToModel(ctx, profile, model, "site1")
+		if model.AuthServer == nil {
+			t.Error("AuthServer should be empty slice, not nil")
+		}
+		if model.AcctServer == nil {
+			t.Error("AcctServer should be empty slice, not nil")
+		}
+	})
 }
 
 func Test_radiusProfileResource_ListResourceConfigSchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwlist.ListResourceSchemaRequest
-		resp *fwlist.ListResourceSchemaResponse
+	r := &radiusProfileResource{}
+	resp := &fwlist.ListResourceSchemaResponse{}
+	r.ListResourceConfigSchema(context.Background(), fwlist.ListResourceSchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("ListResourceConfigSchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusProfileResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
-	tests := []struct {
-		name string
-		r    *radiusProfileResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
-		})
+	if _, ok := resp.Schema.Attributes["site"]; !ok {
+		t.Error("ListResourceConfigSchema missing 'site' attribute")
 	}
 }

@@ -2,104 +2,104 @@ package unifi
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	fwaction "github.com/hashicorp/terraform-plugin-framework/action"
 )
 
 func TestNewPortAction(t *testing.T) {
+	got := NewPortAction()
+	if got == nil {
+		t.Fatal("NewPortAction() returned nil")
+	}
+	if _, ok := got.(fwaction.ActionWithConfigure); !ok {
+		t.Error("expected ActionWithConfigure interface")
+	}
+}
+
+func Test_portAction_Metadata(t *testing.T) {
 	tests := []struct {
-		name string
-		want fwaction.Action
+		name         string
+		providerType string
+		wantTypeName string
 	}{
-		// TODO: Add test cases.
+		{
+			name:         "sets_type_name",
+			providerType: "unifi",
+			wantTypeName: "unifi_port",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewPortAction(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewPortAction() = %v, want %v", got, tt.want)
+			a := &portAction{}
+			resp := &fwaction.MetadataResponse{}
+			a.Metadata(
+				context.Background(),
+				fwaction.MetadataRequest{ProviderTypeName: tt.providerType},
+				resp,
+			)
+			if resp.TypeName != tt.wantTypeName {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
 			}
 		})
 	}
 }
 
-func Test_portAction_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwaction.MetadataRequest
-		resp *fwaction.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		a    *portAction
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.a.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
 func Test_portAction_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwaction.SchemaRequest
-		resp *fwaction.SchemaResponse
-	}
 	tests := []struct {
-		name string
-		a    *portAction
-		args args
+		name       string
+		wantAttrs  []string
 	}{
-		// TODO: Add test cases.
+		{
+			name:      "has_required_attributes",
+			wantAttrs: []string{"device_mac", "port_number", "poe_mode", "timeouts"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.a.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+			a := &portAction{}
+			resp := &fwaction.SchemaResponse{}
+			a.Schema(context.Background(), fwaction.SchemaRequest{}, resp)
+			for _, attr := range tt.wantAttrs {
+				if _, ok := resp.Schema.Attributes[attr]; !ok {
+					t.Errorf("expected attribute %q in schema", attr)
+				}
+			}
 		})
 	}
 }
 
 func Test_portAction_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwaction.ConfigureRequest
-		resp *fwaction.ConfigureResponse
-	}
 	tests := []struct {
-		name string
-		a    *portAction
-		args args
+		name      string
+		req       fwaction.ConfigureRequest
+		wantError bool
 	}{
-		// TODO: Add test cases.
+		{
+			name:      "nil_provider_data",
+			req:       fwaction.ConfigureRequest{},
+			wantError: false,
+		},
+		{
+			name:      "wrong_type",
+			req:       fwaction.ConfigureRequest{ProviderData: "not-a-client"},
+			wantError: true,
+		},
+		{
+			name:      "correct_client",
+			req:       fwaction.ConfigureRequest{ProviderData: &Client{}},
+			wantError: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.a.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+			a := &portAction{}
+			resp := &fwaction.ConfigureResponse{}
+			a.Configure(context.Background(), tt.req, resp)
+			if resp.Diagnostics.HasError() != tt.wantError {
+				t.Errorf("hasError = %v, want %v", resp.Diagnostics.HasError(), tt.wantError)
+			}
 		})
 	}
 }
 
-func Test_portAction_Invoke(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwaction.InvokeRequest
-		resp *fwaction.InvokeResponse
-	}
-	tests := []struct {
-		name string
-		a    *portAction
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.a.Invoke(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}

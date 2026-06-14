@@ -309,137 +309,142 @@ data "unifi_network" "test" {
 }
 
 func TestNewNetworkDataSource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwdatasource.DataSource
-	}{
-		// TODO: Add test cases.
+	got := NewNetworkDataSource()
+	if got == nil {
+		t.Fatal("NewNetworkDataSource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewNetworkDataSource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewNetworkDataSource() = %v, want %v", got, tt.want)
+	if _, ok := got.(fwdatasource.DataSourceWithConfigure); !ok {
+		t.Error("expected DataSourceWithConfigure interface")
+	}
+}
+
+func Test_networkDataSource_Metadata(t *testing.T) {
+	for _, tt := range []struct {
+		provider string
+		want     string
+	}{
+		{"unifi", "unifi_network"},
+		{"test", "test_network"},
+	} {
+		t.Run(tt.provider, func(t *testing.T) {
+			d := &networkDataSource{}
+			resp := &fwdatasource.MetadataResponse{}
+			d.Metadata(context.Background(), fwdatasource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			if resp.TypeName != tt.want {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.want)
 			}
 		})
 	}
 }
 
-func Test_networkDataSource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.MetadataRequest
-		resp *fwdatasource.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		d    *networkDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
 func Test_networkDataSource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.SchemaRequest
-		resp *fwdatasource.SchemaResponse
+	d := &networkDataSource{}
+	resp := &fwdatasource.SchemaResponse{}
+	d.Schema(context.Background(), fwdatasource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		d    *networkDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	for _, a := range []string{"id", "site", "name", "subnet", "enabled"} {
+		if _, ok := resp.Schema.Attributes[a]; !ok {
+			t.Errorf("Schema() missing attribute %q", a)
+		}
 	}
 }
 
 func Test_networkDataSource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.ConfigureRequest
-		resp *fwdatasource.ConfigureResponse
-	}
-	tests := []struct {
-		name string
-		d    *networkDataSource
-		args args
+	for _, tt := range []struct {
+		name    string
+		data    any
+		wantErr bool
 	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
+		{"nil", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct", &Client{Site: "default"}, false},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_networkDataSource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.ReadRequest
-		resp *fwdatasource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		d    *networkDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+			d := &networkDataSource{}
+			resp := &fwdatasource.ConfigureResponse{}
+			d.Configure(context.Background(), fwdatasource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.wantErr && !resp.Diagnostics.HasError() {
+				t.Error("expected error diagnostic")
+			}
+			if !tt.wantErr && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
 		})
 	}
 }
 
 func Test_networkDataSource_setDataSourceData(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		diags   *diag.Diagnostics
-		network *unifi.Network
-		model   *networkDataSourceModel
-		site    string
-	}
+	ctx := context.Background()
+	name := "My Network"
 	tests := []struct {
-		name string
-		d    *networkDataSource
-		args args
+		name    string
+		network *unifi.Network
+		site    string
+		checkID string
 	}{
-		// TODO: Add test cases.
+		{
+			name: "basic fields populated",
+			network: &unifi.Network{
+				ID:      "net-001",
+				Name:    &name,
+				Purpose: "corporate",
+				Enabled: true,
+			},
+			site:    "default",
+			checkID: "net-001",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.d.setDataSourceData(tt.args.ctx, tt.args.diags, tt.args.network, tt.args.model, tt.args.site)
+			d := &networkDataSource{}
+			var diagsVal diag.Diagnostics
+			model := &networkDataSourceModel{}
+			d.setDataSourceData(ctx, &diagsVal, tt.network, model, tt.site)
+			if diagsVal.HasError() {
+				t.Errorf("setDataSourceData() unexpected errors: %v", diagsVal)
+			}
+			if model.ID.ValueString() != tt.checkID {
+				t.Errorf("ID = %q, want %q", model.ID.ValueString(), tt.checkID)
+			}
+			if model.Site.ValueString() != tt.site {
+				t.Errorf("Site = %q, want %q", model.Site.ValueString(), tt.site)
+			}
 		})
 	}
 }
 
 func Test_collectNonEmptyStrings(t *testing.T) {
-	type args struct {
-		vals []string
-	}
 	tests := []struct {
 		name string
-		args args
+		vals []string
 		want []string
 	}{
-		// TODO: Add test cases.
+		{
+			name: "filters empty strings",
+			vals: []string{"a", "", "b", ""},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "all empty returns nil",
+			vals: []string{"", ""},
+			want: nil,
+		},
+		{
+			name: "no args returns nil",
+			vals: nil,
+			want: nil,
+		},
+		{
+			name: "all non-empty preserved",
+			vals: []string{"x", "y"},
+			want: []string{"x", "y"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := collectNonEmptyStrings(tt.args.vals...); !reflect.DeepEqual(got, tt.want) {
+			if got := collectNonEmptyStrings(tt.vals...); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("collectNonEmptyStrings() = %v, want %v", got, tt.want)
 			}
 		})
@@ -447,19 +452,36 @@ func Test_collectNonEmptyStrings(t *testing.T) {
 }
 
 func Test_collectNonEmptyStringPointers(t *testing.T) {
-	type args struct {
-		ptrs []*string
-	}
+	s := func(v string) *string { return &v }
 	tests := []struct {
 		name string
-		args args
+		ptrs []*string
 		want []string
 	}{
-		// TODO: Add test cases.
+		{
+			name: "filters nil and empty pointers",
+			ptrs: []*string{s("a"), nil, s(""), s("b")},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "all nil returns nil",
+			ptrs: []*string{nil, nil},
+			want: nil,
+		},
+		{
+			name: "no args returns nil",
+			ptrs: nil,
+			want: nil,
+		},
+		{
+			name: "all non-empty preserved",
+			ptrs: []*string{s("x"), s("y")},
+			want: []string{"x", "y"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := collectNonEmptyStringPointers(tt.args.ptrs...); !reflect.DeepEqual(got, tt.want) {
+			if got := collectNonEmptyStringPointers(tt.ptrs...); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("collectNonEmptyStringPointers() = %v, want %v", got, tt.want)
 			}
 		})

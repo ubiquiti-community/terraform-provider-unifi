@@ -3,12 +3,11 @@ package unifi
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -148,304 +147,231 @@ resource "unifi_wireguard_peer" "test" {
 }
 
 func TestNewWireguardPeerResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwresource.Resource
-	}{
-		// TODO: Add test cases.
+	r := NewWireguardPeerResource()
+	if r == nil {
+		t.Fatal("NewWireguardPeerResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewWireguardPeerResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewWireguardPeerResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwresource.ResourceWithConfigure); !ok {
+		t.Error("expected ResourceWithConfigure interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithIdentity); !ok {
+		t.Error("expected ResourceWithIdentity interface")
 	}
 }
 
 func TestNewWireguardPeerListResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwlist.ListResource
-	}{
-		// TODO: Add test cases.
+	r := NewWireguardPeerListResource()
+	if r == nil {
+		t.Fatal("NewWireguardPeerListResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewWireguardPeerListResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewWireguardPeerListResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwlist.ListResource); !ok {
+		t.Error("expected fwlist.ListResource interface")
+	}
+	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
+		t.Error("expected fwlist.ListResourceWithConfigure interface")
 	}
 }
 
 func Test_wireguardPeerResource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+	for _, tt := range []struct{ p, w string }{
+		{"unifi", "unifi_wireguard_peer"},
+		{"test", "test_wireguard_peer"},
+	} {
+		t.Run(tt.p, func(t *testing.T) {
+			r := &wireguardPeerResource{}
+			resp := &fwresource.MetadataResponse{}
+			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.p}, resp)
+			if resp.TypeName != tt.w {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.w)
+			}
 		})
 	}
 }
 
 func Test_wireguardPeerResource_IdentitySchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwresource.IdentitySchemaRequest
-		resp *fwresource.IdentitySchemaResponse
+	r := &wireguardPeerResource{}
+	resp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(context.Background(), fwresource.IdentitySchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("IdentitySchema() returned errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
+	if len(resp.IdentitySchema.Attributes) == 0 {
+		t.Error("IdentitySchema() returned no attributes")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
+	if _, ok := resp.IdentitySchema.Attributes["id"]; !ok {
+		t.Error("IdentitySchema() missing 'id' attribute")
 	}
 }
 
 func Test_wireguardPeerResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
+	r := &wireguardPeerResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() returned errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	for _, key := range []string{"id", "site", "network_id", "name", "interface_ip", "public_key", "allowed_ips", "timeouts"} {
+		if _, ok := resp.Schema.Attributes[key]; !ok {
+			t.Errorf("Schema() missing attribute %q", key)
+		}
 	}
 }
 
 func Test_wireguardPeerResource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ConfigureRequest
-		resp *fwresource.ConfigureResponse
-	}
-	tests := []struct {
+	for _, tt := range []struct {
 		name string
-		r    *wireguardPeerResource
-		args args
+		data any
+		err  bool
 	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
+		{"nil", nil, false},
+		{"wrong", "wrong", true},
+		{"ok", &Client{}, false},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_wireguardPeerResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_wireguardPeerResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_wireguardPeerResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_wireguardPeerResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_wireguardPeerResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+			r := &wireguardPeerResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.err && !resp.Diagnostics.HasError() {
+				t.Error("expected error in diagnostics")
+			}
+			if !tt.err && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
 		})
 	}
 }
 
 func Test_wireguardPeerResource_modelToPeer(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *wireguardPeerResourceModel
-	}
-	tests := []struct {
-		name  string
-		r     *wireguardPeerResource
-		args  args
-		want  *unifi.WireGuardPeer
-		want1 diag.Diagnostics
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := tt.r.modelToPeer(tt.args.ctx, tt.args.model)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("wireguardPeerResource.modelToPeer() got = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("wireguardPeerResource.modelToPeer() got1 = %v, want %v", got1, tt.want1)
-			}
-		})
-	}
+	ctx := context.Background()
+	r := &wireguardPeerResource{}
+
+	t.Run("maps all fields", func(t *testing.T) {
+		allowedIPs, _ := types.ListValueFrom(ctx, types.StringType, []string{"10.0.0.0/8", "192.168.1.0/24"})
+		model := &wireguardPeerResourceModel{
+			Name:        types.StringValue("my-peer"),
+			InterfaceIP: types.StringValue("10.0.0.2"),
+			PublicKey:   types.StringValue("abc123=="),
+			AllowedIPs:  allowedIPs,
+		}
+		got, diags := r.modelToPeer(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToPeer() errors: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("modelToPeer() returned nil")
+		}
+		if got.Name != "my-peer" {
+			t.Errorf("Name = %q, want my-peer", got.Name)
+		}
+		if got.InterfaceIP != "10.0.0.2" {
+			t.Errorf("InterfaceIP = %q, want 10.0.0.2", got.InterfaceIP)
+		}
+		if got.PublicKey != "abc123==" {
+			t.Errorf("PublicKey = %q, want abc123==", got.PublicKey)
+		}
+		if len(got.AllowedIPs) != 2 {
+			t.Errorf("AllowedIPs len = %d, want 2", len(got.AllowedIPs))
+		}
+	})
+
+	t.Run("null allowed_ips gives empty slice", func(t *testing.T) {
+		model := &wireguardPeerResourceModel{
+			Name:        types.StringValue("peer2"),
+			InterfaceIP: types.StringValue("10.0.0.3"),
+			PublicKey:   types.StringValue("xyz=="),
+			AllowedIPs:  types.ListNull(types.StringType),
+		}
+		got, diags := r.modelToPeer(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToPeer() errors: %v", diags)
+		}
+		if got.AllowedIPs == nil {
+			t.Error("AllowedIPs should be non-nil empty slice, got nil")
+		}
+		if len(got.AllowedIPs) != 0 {
+			t.Errorf("AllowedIPs should be empty, got %v", got.AllowedIPs)
+		}
+	})
 }
 
 func Test_wireguardPeerResource_peerToModel(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		peer  *unifi.WireGuardPeer
-		model *wireguardPeerResourceModel
-		site  string
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-		want diag.Diagnostics
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.peerToModel(tt.args.ctx, tt.args.peer, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("wireguardPeerResource.peerToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	ctx := context.Background()
+	r := &wireguardPeerResource{}
+
+	t.Run("populates all model fields", func(t *testing.T) {
+		peer := &unifi.WireGuardPeer{
+			ID:          "peer-abc",
+			NetworkID:   "net-xyz",
+			Name:        "my-peer",
+			InterfaceIP: "10.0.0.5",
+			PublicKey:   "pubkey==",
+			AllowedIPs:  []string{"172.16.0.0/12"},
+		}
+		var model wireguardPeerResourceModel
+		diags := r.peerToModel(ctx, peer, &model, "default")
+		if diags.HasError() {
+			t.Fatalf("peerToModel() errors: %v", diags)
+		}
+		if model.ID.ValueString() != "peer-abc" {
+			t.Errorf("ID = %q, want peer-abc", model.ID.ValueString())
+		}
+		if model.Site.ValueString() != "default" {
+			t.Errorf("Site = %q, want default", model.Site.ValueString())
+		}
+		if model.NetworkID.ValueString() != "net-xyz" {
+			t.Errorf("NetworkID = %q, want net-xyz", model.NetworkID.ValueString())
+		}
+		if model.Name.ValueString() != "my-peer" {
+			t.Errorf("Name = %q, want my-peer", model.Name.ValueString())
+		}
+		if model.InterfaceIP.ValueString() != "10.0.0.5" {
+			t.Errorf("InterfaceIP = %q, want 10.0.0.5", model.InterfaceIP.ValueString())
+		}
+		if model.PublicKey.ValueString() != "pubkey==" {
+			t.Errorf("PublicKey = %q, want pubkey==", model.PublicKey.ValueString())
+		}
+		if len(model.AllowedIPs.Elements()) != 1 {
+			t.Errorf("AllowedIPs len = %d, want 1", len(model.AllowedIPs.Elements()))
+		}
+	})
+
+	t.Run("empty allowed_ips becomes empty list", func(t *testing.T) {
+		peer := &unifi.WireGuardPeer{
+			ID:          "peer-empty",
+			NetworkID:   "net-1",
+			Name:        "p",
+			InterfaceIP: "10.0.0.1",
+			PublicKey:   "k==",
+			AllowedIPs:  []string{},
+		}
+		var model wireguardPeerResourceModel
+		diags := r.peerToModel(ctx, peer, &model, "site1")
+		if diags.HasError() {
+			t.Fatalf("peerToModel() errors: %v", diags)
+		}
+		if model.AllowedIPs.IsNull() {
+			t.Error("AllowedIPs should not be null for empty slice")
+		}
+		if len(model.AllowedIPs.Elements()) != 0 {
+			t.Errorf("AllowedIPs should be empty, got %d elements", len(model.AllowedIPs.Elements()))
+		}
+	})
 }
 
 func Test_wireguardPeerResource_ListResourceConfigSchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwlist.ListResourceSchemaRequest
-		resp *fwlist.ListResourceSchemaResponse
+	r := &wireguardPeerResource{}
+	resp := &fwlist.ListResourceSchemaResponse{}
+	r.ListResourceConfigSchema(context.Background(), fwlist.ListResourceSchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ListResourceConfigSchema() returned errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
+	if _, ok := resp.Schema.Attributes["site"]; !ok {
+		t.Error("ListResourceConfigSchema() missing 'site' attribute")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
-	}
-}
-
-func Test_wireguardPeerResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
-	tests := []struct {
-		name string
-		r    *wireguardPeerResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
-		})
+	if _, ok := resp.Schema.Attributes["network_id"]; !ok {
+		t.Error("ListResourceConfigSchema() missing 'network_id' attribute")
 	}
 }

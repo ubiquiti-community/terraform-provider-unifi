@@ -322,26 +322,6 @@ func Test_portProfileResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_portProfileResource_Create(t *testing.T) {
-	t.Skip("Create requires terraform plan/state infrastructure")
-}
-
-func Test_portProfileResource_Read(t *testing.T) {
-	t.Skip("Read requires terraform state infrastructure")
-}
-
-func Test_portProfileResource_Update(t *testing.T) {
-	t.Skip("Update requires terraform plan/state infrastructure")
-}
-
-func Test_portProfileResource_Delete(t *testing.T) {
-	t.Skip("Delete requires terraform state infrastructure")
-}
-
-func Test_portProfileResource_ImportState(t *testing.T) {
-	t.Skip("ImportState requires terraform state infrastructure")
-}
-
 func Test_portProfileResource_modelToAPIPortProfile(t *testing.T) {
 	type args struct {
 		ctx   context.Context
@@ -425,10 +405,6 @@ func Test_portProfileResource_modelToAPIPortProfile(t *testing.T) {
 	}
 }
 
-func Test_portProfileResource_setResourceData(t *testing.T) {
-	t.Skip("setResourceData calls portProfileToModel internally")
-}
-
 func Test_portProfileResource_portProfileToModel(t *testing.T) {
 	type args struct {
 		ctx   context.Context
@@ -489,10 +465,6 @@ func Test_portProfileResource_portProfileToModel(t *testing.T) {
 	}
 }
 
-func Test_portProfileResource_applyPlanToState(t *testing.T) {
-	t.Skip("applyPlanToState requires terraform state infrastructure")
-}
-
 func Test_portProfileResource_ListResourceConfigSchema(t *testing.T) {
 	type args struct {
 		in0  context.Context
@@ -519,8 +491,4 @@ func Test_portProfileResource_ListResourceConfigSchema(t *testing.T) {
 			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
 		})
 	}
-}
-
-func Test_portProfileResource_List(t *testing.T) {
-	t.Skip("List requires configured client")
 }

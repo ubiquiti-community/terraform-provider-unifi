@@ -876,30 +876,6 @@ func Test_portForwardResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_portForwardResource_Create(t *testing.T) {
-	t.Skip("needs terraform state")
-}
-
-func Test_portForwardResource_Read(t *testing.T) {
-	t.Skip("needs terraform state")
-}
-
-func Test_portForwardResource_Update(t *testing.T) {
-	t.Skip("needs terraform state")
-}
-
-func Test_portForwardResource_Delete(t *testing.T) {
-	t.Skip("needs terraform state")
-}
-
-func Test_portForwardResource_ImportState(t *testing.T) {
-	t.Skip("needs terraform state")
-}
-
-func Test_portForwardResource_applyPlanToState(t *testing.T) {
-	t.Skip("needs state")
-}
-
 func Test_portForwardResource_modelToPortForward(t *testing.T) {
 	type args struct {
 		ctx   context.Context
@@ -1060,8 +1036,4 @@ func Test_portForwardResource_ListResourceConfigSchema(t *testing.T) {
 			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
 		})
 	}
-}
-
-func Test_portForwardResource_List(t *testing.T) {
-	t.Skip("needs client")
 }

@@ -3,9 +3,9 @@ package unifi
 import (
 	"context"
 	"os"
-	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -605,583 +605,593 @@ resource "unifi_setting" "test" {
 }
 
 func TestNewSettingResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwresource.Resource
-	}{
-		// TODO: Add test cases.
+	r := NewSettingResource()
+	if r == nil {
+		t.Fatal("NewSettingResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewSettingResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewSettingResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwresource.ResourceWithConfigure); !ok {
+		t.Error("expected ResourceWithConfigure interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState interface")
 	}
 }
 
 func Test_settingResource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
 	tests := []struct {
-		name string
-		r    *settingResource
-		args args
+		providerTypeName, wantTypeName string
 	}{
-		// TODO: Add test cases.
+		{"unifi", "unifi_setting"},
+		{"test", "test_setting"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		t.Run(tt.providerTypeName, func(t *testing.T) {
+			r := &settingResource{}
+			resp := &fwresource.MetadataResponse{}
+			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			if resp.TypeName != tt.wantTypeName {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
+			}
 		})
 	}
 }
 
 func Test_settingResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
+	r := &settingResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	for _, attr := range []string{"id", "site", "mgmt", "radius", "usg", "igmp_snooping", "doh", "ips"} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
 	}
 }
 
 func Test_settingResource_UpgradeState(t *testing.T) {
-	type args struct {
-		ctx context.Context
+	r := &settingResource{}
+	ctx := context.Background()
+	got := r.UpgradeState(ctx)
+	if got == nil {
+		t.Fatal("UpgradeState() returned nil")
 	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want map[int64]fwresource.StateUpgrader
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.UpgradeState(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("settingResource.UpgradeState() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := got[0]; !ok {
+		t.Error("UpgradeState() map should contain version key 0")
 	}
 }
 
 func Test_settingResource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ConfigureRequest
-		resp *fwresource.ConfigureResponse
-	}
 	tests := []struct {
-		name string
-		r    *settingResource
-		args args
+		name      string
+		data      any
+		wantError bool
 	}{
-		// TODO: Add test cases.
+		{"nil", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct client", &Client{Site: "default"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_settingResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_settingResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_settingResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_settingResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+			r := &settingResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.wantError && !resp.Diagnostics.HasError() {
+				t.Error("expected error")
+			}
+			if !tt.wantError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
 		})
 	}
 }
 
 func Test_settingResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_settingResource_readSettings(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		site  string
-		data  *settingResourceModel
-		diags *diag.Diagnostics
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.readSettings(tt.args.ctx, tt.args.site, tt.args.data, tt.args.diags)
-		})
-	}
+	t.Skip("ImportState delegates to ImportStatePassthroughID which requires full state schema setup")
 }
 
 func Test_settingResource_mgmtModelToSetting(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *settingMgmtModel
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settings.Mgmt
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.mgmtModelToSetting(
-				tt.args.ctx,
-				tt.args.model,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.mgmtModelToSetting() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("nil model returns empty setting", func(t *testing.T) {
+		// mgmtModelToSetting does not accept nil (it dereferences the pointer);
+		// test zero-value model produces a zero-value settings.Mgmt.
+		model := &settingMgmtModel{
+			AutoUpgrade: types.BoolNull(),
+			SSHEnabled:  types.BoolNull(),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtModelToSetting(ctx, model)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.AutoUpgrade {
+			t.Error("AutoUpgrade should be false for null input")
+		}
+		if got.SSHEnabled {
+			t.Error("SSHEnabled should be false for null input")
+		}
+	})
+
+	t.Run("basic fields set", func(t *testing.T) {
+		model := &settingMgmtModel{
+			AutoUpgrade: types.BoolValue(true),
+			SSHEnabled:  types.BoolValue(false),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtModelToSetting(ctx, model)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AutoUpgrade {
+			t.Error("AutoUpgrade should be true")
+		}
+		if got.SSHEnabled {
+			t.Error("SSHEnabled should be false")
+		}
+	})
 }
 
 func Test_settingResource_mgmtSettingToModel(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		setting *settings.Mgmt
-		plan    *settingMgmtModel
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settingMgmtModel
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.mgmtSettingToModel(
-				tt.args.ctx,
-				tt.args.setting,
-				tt.args.plan,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.mgmtSettingToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan fields produce null model fields", func(t *testing.T) {
+		setting := &settings.Mgmt{
+			AutoUpgrade: true,
+			SSHEnabled:  true,
+		}
+		plan := &settingMgmtModel{
+			AutoUpgrade: types.BoolNull(),
+			SSHEnabled:  types.BoolNull(),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtSettingToModel(ctx, setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AutoUpgrade.IsNull() {
+			t.Error("AutoUpgrade should be null when plan is null")
+		}
+		if !got.SSHEnabled.IsNull() {
+			t.Error("SSHEnabled should be null when plan is null")
+		}
+	})
+
+	t.Run("non-null plan fields reflect remote value", func(t *testing.T) {
+		setting := &settings.Mgmt{
+			AutoUpgrade: true,
+			SSHEnabled:  false,
+		}
+		plan := &settingMgmtModel{
+			AutoUpgrade: types.BoolValue(false), // plan had a value configured
+			SSHEnabled:  types.BoolValue(true),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtSettingToModel(ctx, setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AutoUpgrade.ValueBool() {
+			t.Error("AutoUpgrade should reflect remote value (true)")
+		}
+		if got.SSHEnabled.ValueBool() {
+			t.Error("SSHEnabled should reflect remote value (false)")
+		}
+	})
 }
 
 func Test_settingResource_radiusModelToSetting(t *testing.T) {
-	type args struct {
-		in0   context.Context
-		model *settingRadiusModel
-		base  *settings.Radius
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settings.Radius
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.radiusModelToSetting(
-				tt.args.in0,
-				tt.args.model,
-				tt.args.base,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.radiusModelToSetting() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+
+	t.Run("null fields leave base unchanged", func(t *testing.T) {
+		authPort := int64(1812)
+		base := &settings.Radius{
+			AccountingEnabled: true,
+			AuthPort:          &authPort,
+		}
+		model := &settingRadiusModel{
+			AccountingEnabled:     types.BoolNull(),
+			AcctPort:              types.Int64Null(),
+			AuthPort:              types.Int64Null(),
+			InterimUpdateInterval: timetypes.NewGoDurationNull(),
+			Secret:                types.StringNull(),
+		}
+		got := r.radiusModelToSetting(context.Background(), model, base)
+		// radiusModelToSetting starts from base and only overlays non-null fields.
+		// Null AccountingEnabled means the base value (true) is left in place.
+		if !got.AccountingEnabled {
+			t.Error("AccountingEnabled should remain true (from base)")
+		}
+	})
+
+	t.Run("non-null fields overlay base", func(t *testing.T) {
+		base := &settings.Radius{}
+		model := &settingRadiusModel{
+			AccountingEnabled:     types.BoolValue(true),
+			AcctPort:              types.Int64Value(1813),
+			AuthPort:              types.Int64Value(1812),
+			InterimUpdateInterval: timetypes.NewGoDurationNull(),
+			Secret:                types.StringValue("mysecret"),
+		}
+		got := r.radiusModelToSetting(context.Background(), model, base)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AccountingEnabled {
+			t.Error("AccountingEnabled should be true")
+		}
+		if got.AuthPort == nil || *got.AuthPort != 1812 {
+			t.Errorf("AuthPort = %v, want 1812", got.AuthPort)
+		}
+		if got.Secret != "mysecret" {
+			t.Errorf("Secret = %q, want mysecret", got.Secret)
+		}
+	})
 }
 
 func Test_settingResource_radiusSettingToModel(t *testing.T) {
-	type args struct {
-		in0     context.Context
-		setting *settings.Radius
-		plan    *settingRadiusModel
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settingRadiusModel
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.radiusSettingToModel(
-				tt.args.in0,
-				tt.args.setting,
-				tt.args.plan,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.radiusSettingToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+
+	t.Run("nil secret plan produces null secret model", func(t *testing.T) {
+		authPort := int64(1812)
+		acctPort := int64(1813)
+		setting := &settings.Radius{
+			AccountingEnabled: true,
+			AuthPort:          &authPort,
+			AcctPort:          &acctPort,
+			Secret:            "remote-secret",
+		}
+		plan := &settingRadiusModel{
+			Secret: types.StringNull(),
+		}
+		got := r.radiusSettingToModel(context.Background(), setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AccountingEnabled.ValueBool() {
+			t.Error("AccountingEnabled should be true")
+		}
+		// When plan.Secret is null, model.Secret should be null regardless of remote value.
+		if !got.Secret.IsNull() {
+			t.Errorf("Secret should be null when plan secret is null, got %q", got.Secret.ValueString())
+		}
+	})
+
+	t.Run("non-null secret plan reflects remote value", func(t *testing.T) {
+		setting := &settings.Radius{Secret: "the-secret"}
+		plan := &settingRadiusModel{Secret: types.StringValue("old")}
+		got := r.radiusSettingToModel(context.Background(), setting, plan)
+		if got.Secret.ValueString() != "the-secret" {
+			t.Errorf("Secret = %q, want the-secret", got.Secret.ValueString())
+		}
+	})
 }
 
 func Test_settingResource_usgModelToSetting(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *settingUSGModel
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settings.Usg
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.usgModelToSetting(
-				tt.args.ctx,
-				tt.args.model,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.usgModelToSetting() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null fields produce zero-value setting", func(t *testing.T) {
+		model := &settingUSGModel{
+			FtpModule:       types.BoolNull(),
+			BroadcastPing:   types.BoolNull(),
+			DNSVerification: types.ObjectNull(nil),
+		}
+		got := r.usgModelToSetting(ctx, model)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.FtpModule {
+			t.Error("FtpModule should be false for null input")
+		}
+	})
+
+	t.Run("ftp_module set to true", func(t *testing.T) {
+		model := &settingUSGModel{
+			FtpModule:       types.BoolValue(true),
+			BroadcastPing:   types.BoolNull(),
+			DNSVerification: types.ObjectNull(nil),
+		}
+		got := r.usgModelToSetting(ctx, model)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.FtpModule {
+			t.Error("FtpModule should be true")
+		}
+	})
 }
 
 func Test_settingResource_usgSettingToModel(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		setting *settings.Usg
-		plan    *settingUSGModel
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settingUSGModel
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.usgSettingToModel(
-				tt.args.ctx,
-				tt.args.setting,
-				tt.args.plan,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.usgSettingToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan fields produce null model fields", func(t *testing.T) {
+		setting := &settings.Usg{FtpModule: true, SipModule: true}
+		plan := &settingUSGModel{
+			FtpModule: types.BoolNull(),
+			SipModule: types.BoolNull(),
+		}
+		got := r.usgSettingToModel(ctx, setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.FtpModule.IsNull() {
+			t.Error("FtpModule should be null when plan is null")
+		}
+	})
+
+	t.Run("non-null plan fields reflect remote value", func(t *testing.T) {
+		setting := &settings.Usg{FtpModule: true, GreModule: false}
+		plan := &settingUSGModel{
+			FtpModule: types.BoolValue(false),
+			GreModule: types.BoolValue(true),
+		}
+		got := r.usgSettingToModel(ctx, setting, plan)
+		if !got.FtpModule.ValueBool() {
+			t.Error("FtpModule should be true (remote value)")
+		}
+		if got.GreModule.ValueBool() {
+			t.Error("GreModule should be false (remote value)")
+		}
+	})
 }
 
 func Test_settingResource_igmpSnoopingModelToSetting(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *settingIgmpSnoopingModel
-		base  *settings.IgmpSnooping
-		diags *diag.Diagnostics
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settings.IgmpSnooping
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.igmpSnoopingModelToSetting(
-				tt.args.ctx,
-				tt.args.model,
-				tt.args.base,
-				tt.args.diags,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.igmpSnoopingModelToSetting() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("enabled overlaid onto base", func(t *testing.T) {
+		base := &settings.IgmpSnooping{Enabled: false, QuerierMode: "AUTO"}
+		model := &settingIgmpSnoopingModel{
+			Enabled:    types.BoolValue(true),
+			NetworkIDs: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingModelToSetting(ctx, model, base, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if !got.Enabled {
+			t.Error("Enabled should be true")
+		}
+		// Advanced fields on base must be preserved.
+		if got.QuerierMode != "AUTO" {
+			t.Errorf("QuerierMode = %q, want AUTO", got.QuerierMode)
+		}
+	})
+
+	t.Run("network_ids overlaid onto base", func(t *testing.T) {
+		base := &settings.IgmpSnooping{NetworkIDs: []string{"old-net"}}
+		nids, d := types.ListValueFrom(ctx, types.StringType, []string{"net-1", "net-2"})
+		if d.HasError() {
+			t.Fatalf("building list: %v", d)
+		}
+		model := &settingIgmpSnoopingModel{
+			Enabled:    types.BoolNull(),
+			NetworkIDs: nids,
+		}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingModelToSetting(ctx, model, base, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if len(got.NetworkIDs) != 2 || got.NetworkIDs[0] != "net-1" {
+			t.Errorf("NetworkIDs = %v, want [net-1 net-2]", got.NetworkIDs)
+		}
+	})
 }
 
 func Test_settingResource_igmpSnoopingSettingToModel(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		setting *settings.IgmpSnooping
-		diags   *diag.Diagnostics
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settingIgmpSnoopingModel
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.igmpSnoopingSettingToModel(
-				tt.args.ctx,
-				tt.args.setting,
-				tt.args.diags,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.igmpSnoopingSettingToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("basic fields mapped", func(t *testing.T) {
+		setting := &settings.IgmpSnooping{
+			Enabled:    true,
+			NetworkIDs: []string{"net-a", "net-b"},
+		}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingSettingToModel(ctx, setting, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.Enabled.ValueBool() {
+			t.Error("Enabled should be true")
+		}
+		var ids []string
+		if d := got.NetworkIDs.ElementsAs(ctx, &ids, false); d.HasError() {
+			t.Fatalf("reading network_ids: %v", d)
+		}
+		if len(ids) != 2 {
+			t.Errorf("NetworkIDs len = %d, want 2", len(ids))
+		}
+	})
+
+	t.Run("empty network ids", func(t *testing.T) {
+		setting := &settings.IgmpSnooping{Enabled: false, NetworkIDs: nil}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingSettingToModel(ctx, setting, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.Enabled.ValueBool() {
+			t.Error("Enabled should be false")
+		}
+	})
 }
 
 func Test_settingResource_dohModelToSetting(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *settingDohModel
-		diags *diag.Diagnostics
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settings.Doh
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.dohModelToSetting(
-				tt.args.ctx,
-				tt.args.model,
-				tt.args.diags,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.dohModelToSetting() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null fields produce empty setting", func(t *testing.T) {
+		model := &settingDohModel{
+			State:         types.StringNull(),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.State != "" {
+			t.Errorf("State should be empty, got %q", got.State)
+		}
+	})
+
+	t.Run("state set", func(t *testing.T) {
+		model := &settingDohModel{
+			State:         types.StringValue("auto"),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.State != "auto" {
+			t.Errorf("State = %q, want auto", got.State)
+		}
+	})
 }
 
 func Test_settingResource_dohSettingToModel(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		setting *settings.Doh
-		plan    *settingDohModel
-		diags   *diag.Diagnostics
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settingDohModel
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.dohSettingToModel(
-				tt.args.ctx,
-				tt.args.setting,
-				tt.args.plan,
-				tt.args.diags,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.dohSettingToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan state produces null model state", func(t *testing.T) {
+		setting := &settings.Doh{State: "auto"}
+		plan := &settingDohModel{
+			State:         types.StringNull(),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.State.IsNull() {
+			t.Errorf("State should be null when plan is null, got %q", got.State.ValueString())
+		}
+	})
+
+	t.Run("non-null plan state reflects remote value", func(t *testing.T) {
+		setting := &settings.Doh{State: "off"}
+		plan := &settingDohModel{
+			State:         types.StringValue("auto"),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.State.ValueString() != "off" {
+			t.Errorf("State = %q, want off", got.State.ValueString())
+		}
+	})
 }
 
 func Test_settingResource_ipsModelToSetting(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *settingIpsModel
-		diags *diag.Diagnostics
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settings.Ips
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.ipsModelToSetting(
-				tt.args.ctx,
-				tt.args.model,
-				tt.args.diags,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.ipsModelToSetting() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null fields produce empty setting", func(t *testing.T) {
+		model := &settingIpsModel{
+			IPSMode:          types.StringNull(),
+			HoneypotEnabled:  types.BoolNull(),
+			RestrictTorrents: types.BoolNull(),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.IPsMode != "" {
+			t.Errorf("IPsMode should be empty, got %q", got.IPsMode)
+		}
+	})
+
+	t.Run("ips_mode and restrict_torrents set", func(t *testing.T) {
+		model := &settingIpsModel{
+			IPSMode:          types.StringValue("disabled"),
+			RestrictTorrents: types.BoolValue(true),
+			HoneypotEnabled:  types.BoolNull(),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.IPsMode != "disabled" {
+			t.Errorf("IPsMode = %q, want disabled", got.IPsMode)
+		}
+		if !got.RestrictTorrents {
+			t.Error("RestrictTorrents should be true")
+		}
+	})
 }
 
 func Test_settingResource_ipsSettingToModel(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		setting *settings.Ips
-		plan    *settingIpsModel
-		diags   *diag.Diagnostics
-	}
-	tests := []struct {
-		name string
-		r    *settingResource
-		args args
-		want *settingIpsModel
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.ipsSettingToModel(
-				tt.args.ctx,
-				tt.args.setting,
-				tt.args.plan,
-				tt.args.diags,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("settingResource.ipsSettingToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan ips_mode produces null model ips_mode", func(t *testing.T) {
+		setting := &settings.Ips{IPsMode: "ips"}
+		plan := &settingIpsModel{
+			IPSMode: types.StringNull(),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.IPSMode.IsNull() {
+			t.Errorf("IPSMode should be null when plan is null, got %q", got.IPSMode.ValueString())
+		}
+	})
+
+	t.Run("non-null plan reflects remote value", func(t *testing.T) {
+		setting := &settings.Ips{IPsMode: "disabled", RestrictTorrents: true}
+		plan := &settingIpsModel{
+			IPSMode:          types.StringValue("ips"),
+			RestrictTorrents: types.BoolValue(false),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.IPSMode.ValueString() != "disabled" {
+			t.Errorf("IPSMode = %q, want disabled", got.IPSMode.ValueString())
+		}
+		if !got.RestrictTorrents.ValueBool() {
+			t.Error("RestrictTorrents should be true (remote value)")
+		}
+	})
 }
 
 // TestIgmpSnoopingModelMerge guards #164: the site-level igmp_snooping setting

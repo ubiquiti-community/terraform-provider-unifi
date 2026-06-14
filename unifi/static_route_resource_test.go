@@ -2,7 +2,9 @@ package unifi
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
+	"os"
 	"reflect"
 	"testing"
 
@@ -15,9 +17,45 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
+
+func testAccStaticRouteCheckDestroy(s *terraform.State) error {
+	ctx := context.Background()
+	apiURL := os.Getenv("UNIFI_API")
+	if apiURL == "" {
+		return nil
+	}
+	apiClient, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:       apiURL,
+		Username:      os.Getenv("UNIFI_USERNAME"),
+		Password:      os.Getenv("UNIFI_PASSWORD"),
+		AllowInsecure: true,
+	})
+	if err != nil {
+		return nil
+	}
+	c := &Client{ApiClient: apiClient, Site: "default"}
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "unifi_static_route" {
+			continue
+		}
+		site := rs.Primary.Attributes["site"]
+		if site == "" {
+			site = c.Site
+		}
+		_, err := c.GetRouting(ctx, site, rs.Primary.ID)
+		if err == nil {
+			return fmt.Errorf("unifi_static_route %s still exists", rs.Primary.ID)
+		}
+		if _, ok := err.(*unifi.NotFoundError); !ok {
+			return err
+		}
+	}
+	return nil
+}
 
 // TestUnitStaticRoute_nextHopValidation verifies the next_hop validator accepts IPv4 and IPv6
 // and rejects non-IP values, without requiring a real UniFi controller.
@@ -101,7 +139,7 @@ func TestAccStaticRouteFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: providerFactories,
-		CheckDestroy:             nil, // TODO: implement check destroy
+		CheckDestroy:             testAccStaticRouteCheckDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccStaticRouteFrameworkConfig_basic(),
@@ -313,26 +351,6 @@ func Test_staticRouteFrameworkResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_staticRouteFrameworkResource_Create(t *testing.T) {
-	// CRUD tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_staticRouteFrameworkResource_Read(t *testing.T) {
-	// Read tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_staticRouteFrameworkResource_Update(t *testing.T) {
-	// Update tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_staticRouteFrameworkResource_Delete(t *testing.T) {
-	// Delete tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_staticRouteFrameworkResource_ImportState(t *testing.T) {
-	// ImportState tests require tfsdk state setup; covered by acceptance tests.
-}
-
 func Test_staticRouteFrameworkResource_ConfigValidators(t *testing.T) {
 	r := &staticRouteFrameworkResource{}
 	validators := r.ConfigValidators(context.Background())
@@ -355,11 +373,6 @@ func Test_staticRouteIPVersionValidator_MarkdownDescription(t *testing.T) {
 	if got := v.MarkdownDescription(context.Background()); got != want {
 		t.Errorf("MarkdownDescription() = %q, want %q", got, want)
 	}
-}
-
-func Test_staticRouteIPVersionValidator_ValidateResource(t *testing.T) {
-	// ValidateResource requires a fully-populated tfsdk.Config; covered by acceptance tests
-	// and by TestUnitStaticRoute_ipVersionValidator above.
 }
 
 func Test_ipVersionsMatch(t *testing.T) {
@@ -516,8 +529,4 @@ func Test_staticRouteFrameworkResource_ListResourceConfigSchema(t *testing.T) {
 	if len(resp.Schema.Attributes) == 0 {
 		t.Error("expected non-empty list resource schema")
 	}
-}
-
-func Test_staticRouteFrameworkResource_List(t *testing.T) {
-	// List tests require a configured API client; covered by acceptance tests.
 }

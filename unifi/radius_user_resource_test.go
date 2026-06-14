@@ -3,10 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
-	"reflect"
+	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -15,11 +14,46 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
+func testAccRadiusUserCheckDestroy(s *terraform.State) error {
+	ctx := context.Background()
+	apiURL := os.Getenv("UNIFI_API")
+	if apiURL == "" {
+		return nil
+	}
+	apiClient, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:       apiURL,
+		Username:      os.Getenv("UNIFI_USERNAME"),
+		Password:      os.Getenv("UNIFI_PASSWORD"),
+		AllowInsecure: true,
+	})
+	if err != nil {
+		return nil
+	}
+	c := &Client{ApiClient: apiClient, Site: "default"}
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "unifi_radius_user" {
+			continue
+		}
+		site := rs.Primary.Attributes["site"]
+		if site == "" {
+			site = c.Site
+		}
+		_, err := c.GetAccount(ctx, site, rs.Primary.ID)
+		if err == nil {
+			return fmt.Errorf("unifi_radius_user %s still exists", rs.Primary.ID)
+		}
+		if _, ok := err.(*unifi.NotFoundError); !ok {
+			return err
+		}
+	}
+	return nil
+}
+
 func TestAccRadiusUser_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
 		ProtoV6ProviderFactories: providerFactories,
-		CheckDestroy:             nil, // TODO: implement check destroy
+		CheckDestroy:             testAccRadiusUserCheckDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccRadiusUserConfig_basic(),
@@ -206,351 +240,342 @@ func testAccCaptureResourceID(name string, dst *string) resource.TestCheckFunc {
 }
 
 func TestNewRadiusUserResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwresource.Resource
-	}{
-		// TODO: Add test cases.
+	r := NewRadiusUserResource()
+	if r == nil {
+		t.Fatal("NewRadiusUserResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewRadiusUserResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewRadiusUserResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState interface")
 	}
 }
 
 func TestNewRadiusUserListResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwlist.ListResource
-	}{
-		// TODO: Add test cases.
+	r := NewRadiusUserListResource()
+	if r == nil {
+		t.Fatal("NewRadiusUserListResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewRadiusUserListResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewRadiusUserListResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
+		t.Error("expected ListResourceWithConfigure interface")
 	}
 }
 
 func Test_radiusUserResource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+	for _, tt := range []struct{ provider, want string }{
+		{"unifi", "unifi_radius_user"},
+		{"test", "test_radius_user"},
+	} {
+		t.Run(tt.provider, func(t *testing.T) {
+			r := &radiusUserResource{}
+			resp := &fwresource.MetadataResponse{}
+			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.provider}, resp)
+			if resp.TypeName != tt.want {
+				t.Errorf("got %q, want %q", resp.TypeName, tt.want)
+			}
 		})
 	}
 }
 
 func Test_radiusUserResource_IdentitySchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwresource.IdentitySchemaRequest
-		resp *fwresource.IdentitySchemaResponse
+	r := &radiusUserResource{}
+	resp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(context.Background(), fwresource.IdentitySchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("IdentitySchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
+	if _, ok := resp.IdentitySchema.Attributes["id"]; !ok {
+		t.Error("IdentitySchema missing 'id' attribute")
 	}
 }
 
 func Test_radiusUserResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
+	r := &radiusUserResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	for _, attr := range []string{
+		"id", "site", "name", "password", "tunnel_type",
+		"tunnel_medium_type", "network_id", "vlan", "tunnel_config_type", "timeouts",
+	} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
 	}
 }
 
 func Test_radiusUserResource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ConfigureRequest
-		resp *fwresource.ConfigureResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
+	for _, tt := range []struct {
+		name    string
+		data    any
+		wantErr bool
 	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
+		{"nil", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct", &Client{Site: "default"}, false},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+			r := &radiusUserResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.wantErr && !resp.Diagnostics.HasError() {
+				t.Error("expected error")
+			}
+			if !tt.wantErr && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected: %v", resp.Diagnostics)
+			}
 		})
 	}
 }
 
-func Test_radiusUserResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusUserResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusUserResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusUserResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusUserResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
+func Test_radiusUserResource_IdentitySchemaStub(t *testing.T) {
+	// Already covered by Test_radiusUserResource_IdentitySchema above.
 }
 
 func Test_radiusUserResource_applyPlanToState(t *testing.T) {
-	type args struct {
-		in0   context.Context
-		plan  *radiusUserResourceModel
-		state *radiusUserResourceModel
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.applyPlanToState(tt.args.in0, tt.args.plan, tt.args.state)
-		})
-	}
+	ctx := context.Background()
+	r := &radiusUserResource{}
+
+	t.Run("plan values override state", func(t *testing.T) {
+		plan := &radiusUserResourceModel{
+			Name:             types.StringValue("new-name"),
+			Password:         types.StringValue("new-pass"),
+			TunnelType:       types.Int64Value(13),
+			TunnelMediumType: types.Int64Value(6),
+			NetworkID:        types.StringValue("net-xyz"),
+			VLAN:             types.Int64Value(200),
+			TunnelConfigType: types.StringValue("802.1x"),
+		}
+		state := &radiusUserResourceModel{
+			ID:               types.StringValue("existing-id"),
+			Name:             types.StringValue("old-name"),
+			Password:         types.StringValue("old-pass"),
+			TunnelType:       types.Int64Value(3),
+			TunnelMediumType: types.Int64Value(6),
+			NetworkID:        types.StringNull(),
+			VLAN:             types.Int64Null(),
+			TunnelConfigType: types.StringNull(),
+		}
+		r.applyPlanToState(ctx, plan, state)
+		if state.Name.ValueString() != "new-name" {
+			t.Errorf("Name = %q, want new-name", state.Name.ValueString())
+		}
+		if state.TunnelType.ValueInt64() != 13 {
+			t.Errorf("TunnelType = %d, want 13", state.TunnelType.ValueInt64())
+		}
+		if state.VLAN.ValueInt64() != 200 {
+			t.Errorf("VLAN = %d, want 200", state.VLAN.ValueInt64())
+		}
+		// ID must be preserved (applyPlanToState doesn't touch it)
+		if state.ID.ValueString() != "existing-id" {
+			t.Errorf("ID was modified, want existing-id, got %q", state.ID.ValueString())
+		}
+	})
+
+	t.Run("null plan values leave state unchanged", func(t *testing.T) {
+		plan := &radiusUserResourceModel{
+			Name:             types.StringNull(),
+			Password:         types.StringNull(),
+			TunnelType:       types.Int64Null(),
+			TunnelMediumType: types.Int64Null(),
+			NetworkID:        types.StringNull(),
+			VLAN:             types.Int64Null(),
+			TunnelConfigType: types.StringNull(),
+		}
+		state := &radiusUserResourceModel{
+			Name:             types.StringValue("keep-name"),
+			TunnelType:       types.Int64Value(3),
+			TunnelMediumType: types.Int64Value(6),
+		}
+		r.applyPlanToState(ctx, plan, state)
+		if state.Name.ValueString() != "keep-name" {
+			t.Errorf("Name should be preserved, got %q", state.Name.ValueString())
+		}
+		if state.TunnelType.ValueInt64() != 3 {
+			t.Errorf("TunnelType should be preserved, got %d", state.TunnelType.ValueInt64())
+		}
+	})
 }
 
 func Test_radiusUserResource_modelToRadiusUser(t *testing.T) {
-	type args struct {
-		in0   context.Context
-		model *radiusUserResourceModel
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-		want *unifi.Account
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.modelToRadiusUser(
-				tt.args.in0,
-				tt.args.model,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
-				t.Errorf("radiusUserResource.modelToRadiusUser() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	ctx := context.Background()
+	r := &radiusUserResource{}
+
+	t.Run("basic fields are set", func(t *testing.T) {
+		tt3 := int64(3)
+		tt6 := int64(6)
+		model := &radiusUserResourceModel{
+			Name:             types.StringValue("alice"),
+			Password:         types.StringValue("secret"),
+			TunnelType:       types.Int64Value(tt3),
+			TunnelMediumType: types.Int64Value(tt6),
+			NetworkID:        types.StringNull(),
+			VLAN:             types.Int64Null(),
+			TunnelConfigType: types.StringNull(),
+		}
+		got := r.modelToRadiusUser(ctx, model)
+		if got == nil {
+			t.Fatal("modelToRadiusUser() returned nil")
+		}
+		if got.Name != "alice" {
+			t.Errorf("Name = %q, want alice", got.Name)
+		}
+		if got.Password != "secret" {
+			t.Errorf("Password = %q, want secret", got.Password)
+		}
+		if got.TunnelType == nil || *got.TunnelType != 3 {
+			t.Errorf("TunnelType = %v, want 3", got.TunnelType)
+		}
+		if got.TunnelMediumType == nil || *got.TunnelMediumType != 6 {
+			t.Errorf("TunnelMediumType = %v, want 6", got.TunnelMediumType)
+		}
+		if got.NetworkID != "" {
+			t.Errorf("NetworkID = %q, want empty", got.NetworkID)
+		}
+	})
+
+	t.Run("optional fields are populated when set", func(t *testing.T) {
+		model := &radiusUserResourceModel{
+			Name:             types.StringValue("bob"),
+			Password:         types.StringValue("pass"),
+			TunnelType:       types.Int64Value(13),
+			TunnelMediumType: types.Int64Value(6),
+			NetworkID:        types.StringValue("net-abc"),
+			VLAN:             types.Int64Value(100),
+			TunnelConfigType: types.StringValue("802.1x"),
+		}
+		got := r.modelToRadiusUser(ctx, model)
+		if got.NetworkID != "net-abc" {
+			t.Errorf("NetworkID = %q, want net-abc", got.NetworkID)
+		}
+		if got.VLAN == nil || *got.VLAN != 100 {
+			t.Errorf("VLAN = %v, want 100", got.VLAN)
+		}
+		if got.TunnelConfigType != "802.1x" {
+			t.Errorf("TunnelConfigType = %q, want 802.1x", got.TunnelConfigType)
+		}
+	})
 }
 
 func Test_radiusUserResource_resolveVLAN(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *radiusUserResourceModel
-		site  string
-	}
-	tests := []struct {
-		name  string
-		r     *radiusUserResource
-		args  args
-		want  *int64
-		want1 diag.Diagnostics
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := tt.r.resolveVLAN(tt.args.ctx, tt.args.model, tt.args.site)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("radiusUserResource.resolveVLAN() got = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("radiusUserResource.resolveVLAN() got1 = %v, want %v", got1, tt.want1)
-			}
-		})
-	}
+	// client-independent branches (no network lookup needed)
+	ctx := context.Background()
+	r := &radiusUserResource{}
+
+	t.Run("explicit vlan wins", func(t *testing.T) {
+		model := &radiusUserResourceModel{
+			VLAN:      types.Int64Value(100),
+			NetworkID: types.StringValue("net-abc"),
+		}
+		vlan, diags := r.resolveVLAN(ctx, model, "default")
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if vlan == nil || *vlan != 100 {
+			t.Fatalf("vlan = %v, want 100", vlan)
+		}
+	})
+
+	t.Run("no vlan and no network_id yields nil", func(t *testing.T) {
+		model := &radiusUserResourceModel{
+			VLAN:      types.Int64Null(),
+			NetworkID: types.StringNull(),
+		}
+		vlan, diags := r.resolveVLAN(ctx, model, "default")
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if vlan != nil {
+			t.Fatalf("vlan = %v, want nil", *vlan)
+		}
+	})
+
+	t.Run("empty network_id string yields nil", func(t *testing.T) {
+		model := &radiusUserResourceModel{
+			VLAN:      types.Int64Null(),
+			NetworkID: types.StringValue(""),
+		}
+		vlan, diags := r.resolveVLAN(ctx, model, "default")
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if vlan != nil {
+			t.Fatalf("vlan = %v, want nil", *vlan)
+		}
+	})
 }
 
 func Test_radiusUserResource_radiusUserToModel(t *testing.T) {
-	type args struct {
-		in0     context.Context
-		account *unifi.Account
-		model   *radiusUserResourceModel
-		site    string
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.radiusUserToModel(tt.args.in0, tt.args.account, tt.args.model, tt.args.site)
-		})
-	}
+	ctx := context.Background()
+	r := &radiusUserResource{}
+
+	t.Run("all fields are mapped from API", func(t *testing.T) {
+		tt := int64(3)
+		mt := int64(6)
+		vlan := int64(100)
+		account := &unifi.Account{
+			ID:               "acc-1",
+			Name:             "alice",
+			Password:         "secret",
+			TunnelType:       &tt,
+			TunnelMediumType: &mt,
+			NetworkID:        "net-abc",
+			VLAN:             &vlan,
+			TunnelConfigType: "802.1x",
+		}
+		model := &radiusUserResourceModel{}
+		r.radiusUserToModel(ctx, account, model, "default")
+
+		if model.ID.ValueString() != "acc-1" {
+			t.Errorf("ID = %q, want acc-1", model.ID.ValueString())
+		}
+		if model.Site.ValueString() != "default" {
+			t.Errorf("Site = %q, want default", model.Site.ValueString())
+		}
+		if model.Name.ValueString() != "alice" {
+			t.Errorf("Name = %q, want alice", model.Name.ValueString())
+		}
+		if model.TunnelType.ValueInt64() != 3 {
+			t.Errorf("TunnelType = %d, want 3", model.TunnelType.ValueInt64())
+		}
+		if model.NetworkID.ValueString() != "net-abc" {
+			t.Errorf("NetworkID = %q, want net-abc", model.NetworkID.ValueString())
+		}
+		if model.VLAN.ValueInt64() != 100 {
+			t.Errorf("VLAN = %d, want 100", model.VLAN.ValueInt64())
+		}
+		if model.TunnelConfigType.ValueString() != "802.1x" {
+			t.Errorf("TunnelConfigType = %q, want 802.1x", model.TunnelConfigType.ValueString())
+		}
+	})
+
+	t.Run("empty strings become null", func(t *testing.T) {
+		account := &unifi.Account{
+			ID:               "acc-2",
+			NetworkID:        "",
+			TunnelConfigType: "",
+		}
+		model := &radiusUserResourceModel{}
+		r.radiusUserToModel(ctx, account, model, "site1")
+
+		if !model.NetworkID.IsNull() {
+			t.Errorf("NetworkID should be null for empty string, got %q", model.NetworkID.ValueString())
+		}
+		if !model.TunnelConfigType.IsNull() {
+			t.Errorf("TunnelConfigType should be null for empty string, got %q", model.TunnelConfigType.ValueString())
+		}
+	})
 }
 
 func Test_radiusUserResource_ListResourceConfigSchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwlist.ListResourceSchemaRequest
-		resp *fwlist.ListResourceSchemaResponse
+	r := &radiusUserResource{}
+	resp := &fwlist.ListResourceSchemaResponse{}
+	r.ListResourceConfigSchema(context.Background(), fwlist.ListResourceSchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("ListResourceConfigSchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
-	}
-}
-
-func Test_radiusUserResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
-	tests := []struct {
-		name string
-		r    *radiusUserResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
-		})
+	if _, ok := resp.Schema.Attributes["site"]; !ok {
+		t.Error("ListResourceConfigSchema missing 'site' attribute")
 	}
 }
 

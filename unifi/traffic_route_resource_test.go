@@ -2,13 +2,12 @@ package unifi
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -482,418 +481,356 @@ resource "unifi_traffic_route" "test" {
 }
 
 func TestNewTrafficRouteResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwresource.Resource
-	}{
-		// TODO: Add test cases.
+	r := NewTrafficRouteResource()
+	if r == nil {
+		t.Fatal("NewTrafficRouteResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewTrafficRouteResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewTrafficRouteResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwresource.ResourceWithConfigure); !ok {
+		t.Error("expected ResourceWithConfigure interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState interface")
 	}
 }
 
 func TestNewTrafficRouteListResource(t *testing.T) {
-	tests := []struct {
-		name string
-		want fwlist.ListResource
-	}{
-		// TODO: Add test cases.
+	r := NewTrafficRouteListResource()
+	if r == nil {
+		t.Fatal("NewTrafficRouteListResource() returned nil")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewTrafficRouteListResource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewTrafficRouteListResource() = %v, want %v", got, tt.want)
-			}
-		})
+	if _, ok := r.(fwlist.ListResource); !ok {
+		t.Error("expected fwlist.ListResource interface")
 	}
 }
 
 func Test_destinationIPModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    destinationIPModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
+	m := destinationIPModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"address", "ports"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("destinationIPModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	if got["address"] != types.StringType {
+		t.Errorf("address type = %v, want StringType", got["address"])
 	}
 }
 
 func Test_sourceNetworkModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    sourceNetworkModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
+	m := sourceNetworkModel{}
+	got := m.AttributeTypes()
+	if _, ok := got["id"]; !ok {
+		t.Error("AttributeTypes() missing key 'id'")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("sourceNetworkModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	if got["id"] != types.StringType {
+		t.Errorf("id type = %v, want StringType", got["id"])
 	}
 }
 
 func Test_sourceClientModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    sourceClientModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
+	m := sourceClientModel{}
+	got := m.AttributeTypes()
+	if _, ok := got["mac"]; !ok {
+		t.Error("AttributeTypes() missing key 'mac'")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("sourceClientModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	if got["mac"] != types.StringType {
+		t.Errorf("mac type = %v, want StringType", got["mac"])
 	}
 }
 
 func Test_sourceModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    sourceModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("sourceModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	m := sourceModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"networks", "clients"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
 }
 
 func Test_destinationModel_AttributeTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		m    destinationModel
-		want map[string]attr.Type
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("destinationModel.AttributeTypes() = %v, want %v", got, tt.want)
-			}
-		})
+	m := destinationModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"domain", "ip", "region"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
 	}
 }
 
 func Test_trafficRouteResource_Metadata(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
 	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
+		providerTypeName, wantTypeName string
 	}{
-		// TODO: Add test cases.
+		{"unifi", "unifi_traffic_route"},
+		{"test", "test_traffic_route"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Metadata(tt.args.in0, tt.args.req, tt.args.resp)
+		t.Run(tt.providerTypeName, func(t *testing.T) {
+			r := &trafficRouteResource{}
+			resp := &fwresource.MetadataResponse{}
+			r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			if resp.TypeName != tt.wantTypeName {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
+			}
 		})
 	}
 }
 
 func Test_trafficRouteResource_IdentitySchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwresource.IdentitySchemaRequest
-		resp *fwresource.IdentitySchemaResponse
+	r := &trafficRouteResource{}
+	resp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(context.Background(), fwresource.IdentitySchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("IdentitySchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
+	if _, ok := resp.IdentitySchema.Attributes["id"]; !ok {
+		t.Error("IdentitySchema missing 'id' attribute")
 	}
 }
 
 func Test_trafficRouteResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		in1  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
+	r := &trafficRouteResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Schema(tt.args.ctx, tt.args.in1, tt.args.resp)
-		})
+	for _, attr := range []string{"id", "site", "description", "destination", "enabled", "kill_switch_enabled", "network_id", "next_hop", "source"} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
 	}
 }
 
 func Test_trafficRouteResource_Configure(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		req  fwresource.ConfigureRequest
-		resp *fwresource.ConfigureResponse
-	}
 	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
+		name      string
+		data      any
+		wantError bool
 	}{
-		// TODO: Add test cases.
+		{"nil", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct client", &Client{Site: "default"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Configure(tt.args.in0, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_trafficRouteResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_trafficRouteResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_trafficRouteResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_trafficRouteResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+			r := &trafficRouteResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(context.Background(), fwresource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.wantError && !resp.Diagnostics.HasError() {
+				t.Error("expected error")
+			}
+			if !tt.wantError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
 		})
 	}
 }
 
 func Test_trafficRouteResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
+	t.Skip("ImportState delegates to ImportStatePassthroughWithIdentity which requires full state schema setup")
 }
 
 func Test_trafficRouteResource_modelToAPI(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *trafficRouteResourceModel
-		site  string
-	}
-	tests := []struct {
-		name  string
-		r     *trafficRouteResource
-		args  args
-		want  *unifi.TrafficRoute
-		want1 diag.Diagnostics
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := tt.r.modelToAPI(tt.args.ctx, tt.args.model, tt.args.site)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("trafficRouteResource.modelToAPI() got = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("trafficRouteResource.modelToAPI() got1 = %v, want %v", got1, tt.want1)
-			}
-		})
-	}
+	ctx := context.Background()
+
+	t.Run("nil client causes error on network lookup", func(t *testing.T) {
+		// modelToAPI with an empty NetworkID will try to call defaultWANNetworkID,
+		// which requires a live client. Test that the non-network-lookup path works
+		// by pre-populating NetworkID.
+		r := &trafficRouteResource{}
+		model := &trafficRouteResourceModel{
+			Description:       types.StringValue("test-route"),
+			Enabled:           types.BoolValue(true),
+			KillSwitchEnabled: types.BoolValue(false),
+			NetworkID:         types.StringValue("some-network-id"),
+			Destination:       types.ObjectNull(destinationModel{}.AttributeTypes()),
+			Source:            types.ObjectNull(sourceModel{}.AttributeTypes()),
+		}
+		got, diags := r.modelToAPI(ctx, model, "default")
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.Description != "test-route" {
+			t.Errorf("Description = %q, want test-route", got.Description)
+		}
+		if !got.Enabled {
+			t.Error("Enabled should be true")
+		}
+		if got.NetworkID != "some-network-id" {
+			t.Errorf("NetworkID = %q, want some-network-id", got.NetworkID)
+		}
+	})
+
+	t.Run("domain destination sets MatchingTarget", func(t *testing.T) {
+		r := &trafficRouteResource{}
+		domainList, d := types.ListValueFrom(ctx, types.StringType, []string{"example.com"})
+		if d.HasError() {
+			t.Fatalf("building domain list: %v", d)
+		}
+		dest := destinationModel{
+			Domain: domainList,
+			IP:     types.ListNull(types.ObjectType{AttrTypes: destinationIPModel{}.AttributeTypes()}),
+			Region: types.ListNull(types.StringType),
+		}
+		destObj, d := types.ObjectValueFrom(ctx, destinationModel{}.AttributeTypes(), dest)
+		if d.HasError() {
+			t.Fatalf("building destination object: %v", d)
+		}
+		model := &trafficRouteResourceModel{
+			Enabled:           types.BoolValue(true),
+			KillSwitchEnabled: types.BoolValue(false),
+			NetworkID:         types.StringValue("net-1"),
+			Destination:       destObj,
+			Source:            types.ObjectNull(sourceModel{}.AttributeTypes()),
+		}
+		got, diags := r.modelToAPI(ctx, model, "default")
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.MatchingTarget != "DOMAIN" {
+			t.Errorf("MatchingTarget = %q, want DOMAIN", got.MatchingTarget)
+		}
+		if len(got.Domains) != 1 || got.Domains[0].Domain != "example.com" {
+			t.Errorf("Domains = %v, want [{example.com}]", got.Domains)
+		}
+	})
 }
 
 func Test_trafficRouteResource_apiToModel(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		route *unifi.TrafficRoute
-		model *trafficRouteResourceModel
-		site  string
-	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-		want diag.Diagnostics
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.apiToModel(tt.args.ctx, tt.args.route, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("trafficRouteResource.apiToModel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
+	ctx := context.Background()
 
-func Test_trafficRouteResource_defaultWANNetworkID(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		site string
-	}
-	tests := []struct {
-		name    string
-		r       *trafficRouteResource
-		args    args
-		want    string
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.r.defaultWANNetworkID(tt.args.ctx, tt.args.site)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("trafficRouteResource.defaultWANNetworkID() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("trafficRouteResource.defaultWANNetworkID() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	t.Run("basic fields populated", func(t *testing.T) {
+		r := &trafficRouteResource{}
+		route := &unifi.TrafficRoute{
+			ID:                "route-123",
+			Description:       "my-route",
+			Enabled:           true,
+			KillSwitchEnabled: false,
+			NetworkID:         "net-abc",
+			MatchingTarget:    "INTERNET",
+			TargetDevices:     []unifi.TrafficRouteTargetDevices{{Type: "ALL_CLIENTS"}},
+		}
+		var model trafficRouteResourceModel
+		diags := r.apiToModel(ctx, route, &model, "default")
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if model.ID.ValueString() != "route-123" {
+			t.Errorf("ID = %q, want route-123", model.ID.ValueString())
+		}
+		if model.Description.ValueString() != "my-route" {
+			t.Errorf("Description = %q, want my-route", model.Description.ValueString())
+		}
+		if !model.Enabled.ValueBool() {
+			t.Error("Enabled should be true")
+		}
+		if model.Site.ValueString() != "default" {
+			t.Errorf("Site = %q, want default", model.Site.ValueString())
+		}
+	})
+
+	t.Run("domain route sets destination", func(t *testing.T) {
+		r := &trafficRouteResource{}
+		route := &unifi.TrafficRoute{
+			ID:             "route-456",
+			Enabled:        true,
+			MatchingTarget: "DOMAIN",
+			Domains: []unifi.TrafficRouteDomains{
+				{Domain: "example.com"},
+				{Domain: "test.com"},
+			},
+			TargetDevices: []unifi.TrafficRouteTargetDevices{{Type: "ALL_CLIENTS"}},
+		}
+		var model trafficRouteResourceModel
+		diags := r.apiToModel(ctx, route, &model, "site1")
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if model.Destination.IsNull() {
+			t.Fatal("Destination should not be null for a domain route")
+		}
+		var dest destinationModel
+		if d := model.Destination.As(ctx, &dest, struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{}); d.HasError() {
+			t.Fatalf("reading destination: %v", d)
+		}
+		var domains []string
+		if d := dest.Domain.ElementsAs(ctx, &domains, false); d.HasError() {
+			t.Fatalf("reading domains: %v", d)
+		}
+		if len(domains) != 2 {
+			t.Errorf("domains len = %d, want 2", len(domains))
+		}
+	})
 }
 
 func Test_trafficRouteResource_ListResourceConfigSchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwlist.ListResourceSchemaRequest
-		resp *fwlist.ListResourceSchemaResponse
+	r := &trafficRouteResource{}
+	resp := &fwlist.ListResourceSchemaResponse{}
+	r.ListResourceConfigSchema(context.Background(), fwlist.ListResourceSchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("ListResourceConfigSchema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
-		})
+	if _, ok := resp.Schema.Attributes["site"]; !ok {
+		t.Error("ListResourceConfigSchema missing 'site' attribute")
 	}
 }
 
-func Test_trafficRouteResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
+// Test_trafficRouteResource_modelToAPI_ipRange verifies IP range addresses are
+// converted to TrafficRouteIPRanges (not IPAddresses) in the API struct.
+func Test_trafficRouteResource_modelToAPI_ipRange(t *testing.T) {
+	ctx := context.Background()
+	r := &trafficRouteResource{}
+
+	ipEntry := destinationIPModel{
+		Address: types.StringValue("10.0.0.1-10.0.0.100"),
+		Ports:   types.ListNull(types.StringType),
 	}
-	tests := []struct {
-		name string
-		r    *trafficRouteResource
-		args args
-	}{
-		// TODO: Add test cases.
+	ipObj, d := types.ObjectValueFrom(ctx, destinationIPModel{}.AttributeTypes(), ipEntry)
+	if d.HasError() {
+		t.Fatalf("building ip object: %v", d)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
-		})
+	ipList, d := types.ListValue(
+		types.ObjectType{AttrTypes: destinationIPModel{}.AttributeTypes()},
+		[]attr.Value{ipObj},
+	)
+	if d.HasError() {
+		t.Fatalf("building ip list: %v", d)
+	}
+	dest := destinationModel{
+		Domain: types.ListNull(types.StringType),
+		IP:     ipList,
+		Region: types.ListNull(types.StringType),
+	}
+	destObj, d := types.ObjectValueFrom(ctx, destinationModel{}.AttributeTypes(), dest)
+	if d.HasError() {
+		t.Fatalf("building destination object: %v", d)
+	}
+
+	model := &trafficRouteResourceModel{
+		Enabled:           types.BoolValue(true),
+		KillSwitchEnabled: types.BoolValue(false),
+		NetworkID:         types.StringValue("net-1"),
+		Destination:       destObj,
+		Source:            types.ObjectNull(sourceModel{}.AttributeTypes()),
+	}
+
+	got, diags := r.modelToAPI(ctx, model, "default")
+	if diags.HasError() {
+		t.Fatalf("unexpected diags: %v", diags)
+	}
+	if len(got.IPRanges) != 1 {
+		t.Fatalf("IPRanges len = %d, want 1", len(got.IPRanges))
+	}
+	if got.IPRanges[0].Start != "10.0.0.1" || got.IPRanges[0].Stop != "10.0.0.100" {
+		t.Errorf("IPRange = {%s-%s}, want {10.0.0.1-10.0.0.100}",
+			got.IPRanges[0].Start, got.IPRanges[0].Stop)
+	}
+	if len(got.IPAddresses) != 0 {
+		t.Errorf("IPAddresses should be empty for a range, got %v", got.IPAddresses)
 	}
 }

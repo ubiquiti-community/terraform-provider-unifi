@@ -230,18 +230,6 @@ func Test_siteFrameworkResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_siteFrameworkResource_Create(t *testing.T) {
-	// CRUD tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_siteFrameworkResource_Read(t *testing.T) {
-	// Read tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_siteFrameworkResource_Update(t *testing.T) {
-	// Update tests require a configured API client; covered by acceptance tests.
-}
-
 func Test_siteFrameworkResource_applyPlanToState(t *testing.T) {
 	type args struct {
 		in0   context.Context
@@ -275,14 +263,6 @@ func Test_siteFrameworkResource_applyPlanToState(t *testing.T) {
 			}
 		})
 	}
-}
-
-func Test_siteFrameworkResource_Delete(t *testing.T) {
-	// Delete tests require a configured API client; covered by acceptance tests.
-}
-
-func Test_siteFrameworkResource_ImportState(t *testing.T) {
-	// ImportState tests require tfsdk state setup; covered by acceptance tests.
 }
 
 func Test_siteFrameworkResource_siteToModel(t *testing.T) {
@@ -378,22 +358,3 @@ func Test_siteFrameworkResource_ListResourceConfigSchema(t *testing.T) {
 	}
 }
 
-func Test_siteFrameworkResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
-	tests := []struct {
-		name string
-		r    *siteFrameworkResource
-		args args
-	}{
-		// List tests require a configured API client; covered by acceptance tests.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
-		})
-	}
-}

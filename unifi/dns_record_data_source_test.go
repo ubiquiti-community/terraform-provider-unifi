@@ -2,104 +2,76 @@ package unifi
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
 )
 
 func TestNewDNSRecordDataSource(t *testing.T) {
+	d := NewDNSRecordDataSource()
+	if d == nil {
+		t.Fatal("NewDNSRecordDataSource() returned nil")
+	}
+	if _, ok := d.(fwdatasource.DataSourceWithConfigure); !ok {
+		t.Error("expected DataSourceWithConfigure interface")
+	}
+}
+
+func Test_dnsRecordDataSource_Metadata(t *testing.T) {
 	tests := []struct {
-		name string
-		want fwdatasource.DataSource
+		providerTypeName string
+		wantTypeName     string
 	}{
-		// TODO: Add test cases.
+		{"unifi", "unifi_dns_record"},
+		{"test", "test_dns_record"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NewDNSRecordDataSource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewDNSRecordDataSource() = %v, want %v", got, tt.want)
+		t.Run(tt.providerTypeName, func(t *testing.T) {
+			d := &dnsRecordDataSource{}
+			resp := &fwdatasource.MetadataResponse{}
+			d.Metadata(context.Background(), fwdatasource.MetadataRequest{ProviderTypeName: tt.providerTypeName}, resp)
+			if resp.TypeName != tt.wantTypeName {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
 			}
 		})
 	}
 }
 
-func Test_dnsRecordDataSource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.MetadataRequest
-		resp *fwdatasource.MetadataResponse
-	}
-	tests := []struct {
-		name string
-		d    *dnsRecordDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
 func Test_dnsRecordDataSource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.SchemaRequest
-		resp *fwdatasource.SchemaResponse
+	d := &dnsRecordDataSource{}
+	resp := &fwdatasource.SchemaResponse{}
+	d.Schema(context.Background(), fwdatasource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	tests := []struct {
-		name string
-		d    *dnsRecordDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
+	for _, attr := range []string{"id", "site", "name", "type", "value"} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
 	}
 }
 
 func Test_dnsRecordDataSource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.ConfigureRequest
-		resp *fwdatasource.ConfigureResponse
-	}
 	tests := []struct {
-		name string
-		d    *dnsRecordDataSource
-		args args
+		name      string
+		data      any
+		wantError bool
 	}{
-		// TODO: Add test cases.
+		{"nil provider data", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct client type", &Client{Site: "default"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
-		})
-	}
-}
-
-func Test_dnsRecordDataSource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwdatasource.ReadRequest
-		resp *fwdatasource.ReadResponse
-	}
-	tests := []struct {
-		name string
-		d    *dnsRecordDataSource
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.d.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+			d := &dnsRecordDataSource{}
+			resp := &fwdatasource.ConfigureResponse{}
+			d.Configure(context.Background(), fwdatasource.ConfigureRequest{ProviderData: tt.data}, resp)
+			if tt.wantError && !resp.Diagnostics.HasError() {
+				t.Error("expected error in diagnostics")
+			}
+			if !tt.wantError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
 		})
 	}
 }

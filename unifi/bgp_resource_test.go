@@ -273,24 +273,6 @@ func Test_bgpResource_Configure(t *testing.T) {
 	}
 }
 
-// Test_bgpResource_Create requires a fully initialized terraform plan/state schema
-// which panics with nil schema in unit tests. CRUD operations are covered by acceptance tests.
-func Test_bgpResource_Create(t *testing.T) {
-	t.Skip("CRUD methods require full terraform plan/state schema setup; covered by acceptance tests")
-}
-
-func Test_bgpResource_Read(t *testing.T) {
-	t.Skip("CRUD methods require full terraform plan/state schema setup; covered by acceptance tests")
-}
-
-func Test_bgpResource_Update(t *testing.T) {
-	t.Skip("CRUD methods require full terraform plan/state schema setup; covered by acceptance tests")
-}
-
-func Test_bgpResource_Delete(t *testing.T) {
-	t.Skip("CRUD methods require full terraform plan/state schema setup; covered by acceptance tests")
-}
-
 // Test_bgpResource_ImportState is skipped because ImportStatePassthroughID
 // requires a valid state schema which is complex to set up in a unit test.
 func Test_bgpResource_ImportState(t *testing.T) {

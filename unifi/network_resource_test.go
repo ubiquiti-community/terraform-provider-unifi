@@ -988,30 +988,6 @@ func Test_networkResource_Configure(t *testing.T) {
 	}
 }
 
-func Test_networkResource_ModifyPlan(t *testing.T) {
-	t.Skip("requires terraform state")
-}
-
-func Test_networkResource_Create(t *testing.T) {
-	t.Skip("requires terraform state")
-}
-
-func Test_networkResource_Read(t *testing.T) {
-	t.Skip("requires terraform state")
-}
-
-func Test_networkResource_Update(t *testing.T) {
-	t.Skip("requires terraform state")
-}
-
-func Test_networkResource_Delete(t *testing.T) {
-	t.Skip("requires terraform state")
-}
-
-func Test_networkResource_ImportState(t *testing.T) {
-	t.Skip("requires terraform state")
-}
-
 func Test_networkResource_modelToNetwork(t *testing.T) {
 	type args struct {
 		ctx   context.Context
@@ -1174,8 +1150,4 @@ func Test_networkResource_ListResourceConfigSchema(t *testing.T) {
 			}
 		})
 	}
-}
-
-func Test_networkResource_List(t *testing.T) {
-	t.Skip("requires client")
 }
