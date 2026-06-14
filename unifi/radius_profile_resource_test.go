@@ -1,9 +1,14 @@
 package unifi
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 func TestAccRadiusProfile_basic(t *testing.T) {
@@ -460,4 +465,340 @@ resource "unifi_radius_profile" "test" {
   interim_update_interval = "30m0s"
 }
 `
+}
+
+func TestNewRadiusProfileResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwresource.Resource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewRadiusProfileResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewRadiusProfileResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewRadiusProfileListResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwlist.ListResource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewRadiusProfileListResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewRadiusProfileListResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_radiusProfileResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_UpgradeState(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+		want map[int64]fwresource.StateUpgrader
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.UpgradeState(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("radiusProfileResource.UpgradeState() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_radiusProfileResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_Create(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.CreateRequest
+		resp *fwresource.CreateResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_Read(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ReadRequest
+		resp *fwresource.ReadResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_Update(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.UpdateRequest
+		resp *fwresource.UpdateResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_Delete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.DeleteRequest
+		resp *fwresource.DeleteResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_ImportState(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ImportStateRequest
+		resp *fwresource.ImportStateResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
+	type args struct {
+		in0   context.Context
+		plan  *radiusProfileResourceModel
+		state *radiusProfileResourceModel
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.applyPlanToState(tt.args.in0, tt.args.plan, tt.args.state)
+		})
+	}
+}
+
+func Test_radiusProfileResource_modelToRadiusProfile(t *testing.T) {
+	type args struct {
+		in0   context.Context
+		model *radiusProfileResourceModel
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+		want *unifi.RADIUSProfile
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.modelToRadiusProfile(tt.args.in0, tt.args.model); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("radiusProfileResource.modelToRadiusProfile() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_radiusProfileResource_radiusProfileToModel(t *testing.T) {
+	type args struct {
+		in0           context.Context
+		radiusProfile *unifi.RADIUSProfile
+		model         *radiusProfileResourceModel
+		site          string
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.radiusProfileToModel(tt.args.in0, tt.args.radiusProfile, tt.args.model, tt.args.site)
+		})
+	}
+}
+
+func Test_radiusProfileResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_radiusProfileResource_List(t *testing.T) {
+	type args struct {
+		ctx    context.Context
+		req    fwlist.ListRequest
+		stream *fwlist.ListResultsStream
+	}
+	tests := []struct {
+		name string
+		r    *radiusProfileResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
+		})
+	}
 }

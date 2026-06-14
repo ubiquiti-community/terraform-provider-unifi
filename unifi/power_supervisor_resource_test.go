@@ -2,10 +2,15 @@ package unifi
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
@@ -87,5 +92,338 @@ func TestPowerSupervisorModelRoundTrip(t *testing.T) {
 	if len(sources) != 1 || sources[0].PowerSourceMAC != "f4:e2:c6:ad:4f:82" ||
 		sources[0].PowerSourceType != "poe_port" || sources[0].PowerSourceIndex != 4 {
 		t.Errorf("power_sources not read back correctly: %+v", sources)
+	}
+}
+
+func TestNewPowerSupervisorResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwresource.Resource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewPowerSupervisorResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewPowerSupervisorResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewPowerSupervisorListResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwlist.ListResource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewPowerSupervisorListResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewPowerSupervisorListResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_powerSourceAttrTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := powerSourceAttrTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("powerSourceAttrTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_powerSupervisorResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_UpgradeState(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+		want map[int64]fwresource.StateUpgrader
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.UpgradeState(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("powerSupervisorResource.UpgradeState() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_powerSupervisorResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_Create(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.CreateRequest
+		resp *fwresource.CreateResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_Read(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ReadRequest
+		resp *fwresource.ReadResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_Update(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.UpdateRequest
+		resp *fwresource.UpdateResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_Delete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.DeleteRequest
+		resp *fwresource.DeleteResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_ImportState(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ImportStateRequest
+		resp *fwresource.ImportStateResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_modelToPowerSupervisor(t *testing.T) {
+	type args struct {
+		model *powerSupervisorResourceModel
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+		want *unifi.PowerSupervisor
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.modelToPowerSupervisor(tt.args.model); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("powerSupervisorResource.modelToPowerSupervisor() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_powerSupervisorResource_powerSupervisorToModel(t *testing.T) {
+	type args struct {
+		supervisor *unifi.PowerSupervisor
+		model      *powerSupervisorResourceModel
+		site       string
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+		want diag.Diagnostics
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.powerSupervisorToModel(tt.args.supervisor, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("powerSupervisorResource.powerSupervisorToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_powerSupervisorResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_powerSupervisorResource_List(t *testing.T) {
+	type args struct {
+		ctx    context.Context
+		req    fwlist.ListRequest
+		stream *fwlist.ListResultsStream
+	}
+	tests := []struct {
+		name string
+		r    *powerSupervisorResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
+		})
 	}
 }

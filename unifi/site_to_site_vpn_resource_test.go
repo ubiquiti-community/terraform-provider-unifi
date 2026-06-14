@@ -2,9 +2,14 @@ package unifi
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -102,5 +107,459 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 	}
 	if l := len(out.RemoteSubnets.Elements()); l != 2 {
 		t.Errorf("RemoteSubnets length = %d, want 2", l)
+	}
+}
+
+func TestNewSiteToSiteVPNResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwresource.Resource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewSiteToSiteVPNResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewSiteToSiteVPNResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewSiteToSiteVPNListResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwlist.ListResource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewSiteToSiteVPNListResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewSiteToSiteVPNListResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_UpgradeState(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+		want map[int64]fwresource.StateUpgrader
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.UpgradeState(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("siteToSiteVPNResource.UpgradeState() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_ConfigValidators(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+		want []fwresource.ConfigValidator
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.ConfigValidators(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("siteToSiteVPNResource.ConfigValidators() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_Create(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.CreateRequest
+		resp *fwresource.CreateResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_Read(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ReadRequest
+		resp *fwresource.ReadResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_Update(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.UpdateRequest
+		resp *fwresource.UpdateResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_Delete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.DeleteRequest
+		resp *fwresource.DeleteResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_ImportState(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ImportStateRequest
+		resp *fwresource.ImportStateResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_siteOrDefault(t *testing.T) {
+	type args struct {
+		site types.String
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+		want string
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.siteOrDefault(tt.args.site); got != tt.want {
+				t.Errorf("siteToSiteVPNResource.siteOrDefault() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_applyPreSharedKeyWO(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		config  tfsdk.Config
+		network *unifi.Network
+		diags   *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+		want bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.applyPreSharedKeyWO(tt.args.ctx, tt.args.config, tt.args.network, tt.args.diags); got != tt.want {
+				t.Errorf("siteToSiteVPNResource.applyPreSharedKeyWO() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_modelToNetwork(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *siteToSiteVPNResourceModel
+	}
+	tests := []struct {
+		name  string
+		r     *siteToSiteVPNResource
+		args  args
+		want  *unifi.Network
+		want1 diag.Diagnostics
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := tt.r.modelToNetwork(tt.args.ctx, tt.args.model)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("siteToSiteVPNResource.modelToNetwork() got = %v, want %v", got, tt.want)
+			}
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("siteToSiteVPNResource.modelToNetwork() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_networkToModel(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		network *unifi.Network
+		model   *siteToSiteVPNResourceModel
+		site    string
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+		want diag.Diagnostics
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.networkToModel(tt.args.ctx, tt.args.network, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("siteToSiteVPNResource.networkToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_optStr(t *testing.T) {
+	type args struct {
+		s interface {
+			IsNull() bool
+			IsUnknown() bool
+			ValueString() string
+		}
+	}
+	tests := []struct {
+		name string
+		args args
+		want *string
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := optStr(tt.args.s); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("optStr() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_optInt64(t *testing.T) {
+	type args struct {
+		v types.Int64
+	}
+	tests := []struct {
+		name string
+		args args
+		want *int64
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := optInt64(tt.args.v); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("optInt64() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_stringPtrOrNull(t *testing.T) {
+	type args struct {
+		v *string
+	}
+	tests := []struct {
+		name string
+		args args
+		want types.String
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stringPtrOrNull(tt.args.v); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("stringPtrOrNull() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_siteToSiteVPNResource_List(t *testing.T) {
+	type args struct {
+		ctx    context.Context
+		req    fwlist.ListRequest
+		stream *fwlist.ListResultsStream
+	}
+	tests := []struct {
+		name string
+		r    *siteToSiteVPNResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
+		})
 	}
 }

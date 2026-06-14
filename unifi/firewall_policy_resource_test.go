@@ -2,9 +2,13 @@ package unifi
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -296,5 +300,795 @@ func TestFirewallPolicyICMPProtocolRoundTrip(t *testing.T) {
 		if out.Protocol != proto {
 			t.Errorf("[%s] PUT dropped Protocol = %q, want %q", proto, out.Protocol, proto)
 		}
+	}
+}
+
+func TestNewFirewallPolicyResource(t *testing.T) {
+	got := NewFirewallPolicyResource()
+	if got == nil {
+		t.Fatal("NewFirewallPolicyResource() returned nil")
+	}
+	if _, ok := got.(fwresource.Resource); !ok {
+		t.Errorf("NewFirewallPolicyResource() does not implement resource.Resource")
+	}
+	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
+		t.Errorf("NewFirewallPolicyResource() does not implement resource.ResourceWithImportState")
+	}
+	if _, ok := got.(fwresource.ResourceWithIdentity); !ok {
+		t.Errorf("NewFirewallPolicyResource() does not implement resource.ResourceWithIdentity")
+	}
+}
+
+func TestNewFirewallPolicyListResource(t *testing.T) {
+	got := NewFirewallPolicyListResource()
+	if got == nil {
+		t.Fatal("NewFirewallPolicyListResource() returned nil")
+	}
+	if _, ok := got.(fwlist.ListResource); !ok {
+		t.Errorf("NewFirewallPolicyListResource() does not implement list.ListResource")
+	}
+	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
+		t.Errorf("NewFirewallPolicyListResource() does not implement list.ListResourceWithConfigure")
+	}
+}
+
+func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    firewallPolicyEndpointModel
+		want map[string]attr.Type
+	}{
+		{
+			name: "returns expected attribute types",
+			m:    firewallPolicyEndpointModel{},
+			want: map[string]attr.Type{
+				"zone_id":              types.StringType,
+				"matching_target":      types.StringType,
+				"network_ids":          types.ListType{ElemType: types.StringType},
+				"client_macs":          types.ListType{ElemType: types.StringType},
+				"ips":                  types.ListType{ElemType: types.StringType},
+				"web_domains":          types.ListType{ElemType: types.StringType},
+				"port":                 types.Int64Type,
+				"port_group_id":        types.StringType,
+				"port_matching_type":   types.StringType,
+				"matching_target_type": types.StringType,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("firewallPolicyEndpointModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		{
+			name: "type name is unifi_firewall_policy",
+			r:    &firewallPolicyResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.MetadataRequest{ProviderTypeName: "unifi"},
+				resp: &fwresource.MetadataResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+			if tt.args.resp.TypeName != "unifi_firewall_policy" {
+				t.Errorf("TypeName = %q, want unifi_firewall_policy", tt.args.resp.TypeName)
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		{
+			name: "has id attribute",
+			r:    &firewallPolicyResource{},
+			args: args{
+				in0:  context.Background(),
+				in1:  fwresource.IdentitySchemaRequest{},
+				resp: &fwresource.IdentitySchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
+				t.Error("IdentitySchema missing 'id' attribute")
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		{
+			name: "schema has key attributes",
+			r:    &firewallPolicyResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.SchemaRequest{},
+				resp: &fwresource.SchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+			for _, key := range []string{"id", "name", "action", "source", "destination"} {
+				if _, ok := tt.args.resp.Schema.Attributes[key]; !ok {
+					t.Errorf("Schema missing %q attribute", key)
+				}
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		{
+			name: "nil provider data",
+			r:    &firewallPolicyResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.ConfigureRequest{ProviderData: nil},
+				resp: &fwresource.ConfigureResponse{},
+			},
+		},
+		{
+			name: "wrong type",
+			r:    &firewallPolicyResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.ConfigureRequest{ProviderData: "wrong"},
+				resp: &fwresource.ConfigureResponse{},
+			},
+		},
+		{
+			name: "correct client",
+			r:    &firewallPolicyResource{},
+			args: args{
+				ctx:  context.Background(),
+				req:  fwresource.ConfigureRequest{ProviderData: &Client{}},
+				resp: &fwresource.ConfigureResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+			switch tt.name {
+			case "nil provider data":
+				if tt.args.resp.Diagnostics.HasError() {
+					t.Error("nil ProviderData should not error")
+				}
+			case "wrong type":
+				if !tt.args.resp.Diagnostics.HasError() {
+					t.Error("wrong type should produce an error")
+				}
+			case "correct client":
+				if tt.args.resp.Diagnostics.HasError() {
+					t.Errorf("correct client should not error: %v", tt.args.resp.Diagnostics)
+				}
+				if tt.r.client == nil {
+					t.Error("client should be set after Configure")
+				}
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_Create(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.CreateRequest
+		resp *fwresource.CreateResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		// Skip: requires a configured API client.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Skip("requires configured API client")
+			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_firewallPolicyResource_Read(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ReadRequest
+		resp *fwresource.ReadResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		// Skip: requires a configured API client.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Skip("requires configured API client")
+			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_firewallPolicyResource_Update(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.UpdateRequest
+		resp *fwresource.UpdateResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		// Skip: requires a configured API client.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Skip("requires configured API client")
+			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_firewallPolicyResource_Delete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.DeleteRequest
+		resp *fwresource.DeleteResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		// Skip: requires a configured API client.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Skip("requires configured API client")
+			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_firewallPolicyResource_ImportState(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ImportStateRequest
+		resp *fwresource.ImportStateResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		// Skip: requires a configured API client.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Skip("requires configured API client")
+			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_modelToFirewallPolicy(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model firewallPolicyModel
+	}
+	tests := []struct {
+		name  string
+		args  args
+		want  *unifi.FirewallPolicy
+		want1 diag.Diagnostics
+	}{
+		{
+			name: "basic allow-lan policy",
+			args: args{
+				ctx: context.Background(),
+				model: func() firewallPolicyModel {
+					ctx := context.Background()
+					srcEndpoint := firewallPolicyEndpointModel{
+						ZoneID:             types.StringValue("z1"),
+						MatchingTarget:     types.StringValue("ANY"),
+						MatchingTargetType: types.StringNull(),
+						NetworkIDs:         types.ListNull(types.StringType),
+						ClientMACs:         types.ListNull(types.StringType),
+						IPs:                types.ListNull(types.StringType),
+						WebDomains:         types.ListNull(types.StringType),
+						Port:               types.Int64Null(),
+						PortGroupID:        types.StringNull(),
+						PortMatchingType:   types.StringValue("ANY"),
+					}
+					srcObj, _ := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(), srcEndpoint)
+					dstEndpoint := firewallPolicyEndpointModel{
+						ZoneID:             types.StringValue("z2"),
+						MatchingTarget:     types.StringValue("ANY"),
+						MatchingTargetType: types.StringNull(),
+						NetworkIDs:         types.ListNull(types.StringType),
+						ClientMACs:         types.ListNull(types.StringType),
+						IPs:                types.ListNull(types.StringType),
+						WebDomains:         types.ListNull(types.StringType),
+						Port:               types.Int64Null(),
+						PortGroupID:        types.StringNull(),
+						PortMatchingType:   types.StringValue("ANY"),
+					}
+					dstObj, _ := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(), dstEndpoint)
+					return firewallPolicyModel{
+						Name:             types.StringValue("allow-lan"),
+						Action:           types.StringValue("ALLOW"),
+						Enabled:          types.BoolValue(true),
+						Protocol:         types.StringValue("all"),
+						Description:      types.StringNull(),
+						Logging:          types.BoolValue(false),
+						Index:            types.Int64Null(),
+						CreateAllowRespond: types.BoolValue(false),
+						IPVersion:        types.StringNull(),
+						ConnectionStateType: types.StringNull(),
+						ConnectionStates: types.ListNull(types.StringType),
+						ICMPTypename:     types.StringNull(),
+						ICMPV6Typename:   types.StringNull(),
+						Source:           srcObj,
+						Destination:      dstObj,
+						ID:               types.StringNull(),
+						Site:             types.StringNull(),
+					}
+				}(),
+			},
+			want: &unifi.FirewallPolicy{
+				Name:             "allow-lan",
+				Action:           "ALLOW",
+				Enabled:          true,
+				Protocol:         "all",
+				ConnectionStates: []string{},
+				Schedule:         &unifi.FirewallPolicySchedule{Mode: "ALWAYS"},
+				Source: &unifi.FirewallPolicySource{
+					ZoneID:           "z1",
+					MatchingTarget:   "ANY",
+					PortMatchingType: "ANY",
+				},
+				Destination: &unifi.FirewallPolicyDestination{
+					ZoneID:           "z2",
+					MatchingTarget:   "ANY",
+					PortMatchingType: "ANY",
+				},
+			},
+			want1: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := modelToFirewallPolicy(tt.args.ctx, tt.args.model)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("modelToFirewallPolicy() got = %+v, want %+v", got, tt.want)
+			}
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("modelToFirewallPolicy() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func Test_endpointModelToSource(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		m     firewallPolicyEndpointModel
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		args args
+		want *unifi.FirewallPolicySource
+	}{
+		{
+			name: "source with IP matching",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: func() firewallPolicyEndpointModel {
+					ctx := context.Background()
+					ips, _ := types.ListValueFrom(ctx, types.StringType, []string{"10.0.0.1"})
+					return firewallPolicyEndpointModel{
+						ZoneID:             types.StringValue("z1"),
+						MatchingTarget:     types.StringValue("IP"),
+						MatchingTargetType: types.StringValue("OBJECT"),
+						NetworkIDs:         types.ListNull(types.StringType),
+						ClientMACs:         types.ListNull(types.StringType),
+						IPs:                ips,
+						WebDomains:         types.ListNull(types.StringType),
+						Port:               types.Int64Null(),
+						PortGroupID:        types.StringNull(),
+						PortMatchingType:   types.StringValue("ANY"),
+					}
+				}(),
+			},
+			want: &unifi.FirewallPolicySource{
+				ZoneID:             "z1",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "OBJECT",
+				PortMatchingType:   "ANY",
+				IPs:                []string{"10.0.0.1"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := endpointModelToSource(tt.args.ctx, tt.args.m, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("endpointModelToSource() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_endpointModelToDestination(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		m     firewallPolicyEndpointModel
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		args args
+		want *unifi.FirewallPolicyDestination
+	}{
+		{
+			name: "destination with IP matching",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: func() firewallPolicyEndpointModel {
+					ctx := context.Background()
+					ips, _ := types.ListValueFrom(ctx, types.StringType, []string{"192.168.1.1"})
+					return firewallPolicyEndpointModel{
+						ZoneID:             types.StringValue("z2"),
+						MatchingTarget:     types.StringValue("IP"),
+						MatchingTargetType: types.StringValue("OBJECT"),
+						NetworkIDs:         types.ListNull(types.StringType),
+						ClientMACs:         types.ListNull(types.StringType),
+						IPs:                ips,
+						WebDomains:         types.ListNull(types.StringType),
+						Port:               types.Int64Value(80),
+						PortGroupID:        types.StringNull(),
+						PortMatchingType:   types.StringValue("SPECIFIC"),
+					}
+				}(),
+			},
+			want: &unifi.FirewallPolicyDestination{
+				ZoneID:             "z2",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "OBJECT",
+				Port:               ptrInt64(80),
+				PortMatchingType:   "SPECIFIC",
+				IPs:                []string{"192.168.1.1"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := endpointModelToDestination(tt.args.ctx, tt.args.m, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("endpointModelToDestination() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyToModel(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		fp    *unifi.FirewallPolicy
+		model *firewallPolicyModel
+	}
+	tests := []struct {
+		name string
+		args args
+		want diag.Diagnostics
+	}{
+		{
+			name: "basic policy to model",
+			args: args{
+				ctx: context.Background(),
+				fp: &unifi.FirewallPolicy{
+					ID:       "pol-1",
+					Name:     "test-policy",
+					Action:   "ALLOW",
+					Enabled:  true,
+					Protocol: "all",
+					Source: &unifi.FirewallPolicySource{
+						ZoneID:           "z1",
+						MatchingTarget:   "ANY",
+						PortMatchingType: "ANY",
+					},
+					Destination: &unifi.FirewallPolicyDestination{
+						ZoneID:           "z2",
+						MatchingTarget:   "ANY",
+						PortMatchingType: "ANY",
+					},
+				},
+				model: &firewallPolicyModel{},
+			},
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := firewallPolicyToModel(tt.args.ctx, tt.args.fp, tt.args.model); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("firewallPolicyToModel() = %v, want %v", got, tt.want)
+			}
+			if tt.args.model.Name.ValueString() != tt.args.fp.Name {
+				t.Errorf("model.Name = %q, want %q", tt.args.model.Name.ValueString(), tt.args.fp.Name)
+			}
+			if tt.args.model.ID.ValueString() != tt.args.fp.ID {
+				t.Errorf("model.ID = %q, want %q", tt.args.model.ID.ValueString(), tt.args.fp.ID)
+			}
+		})
+	}
+}
+
+func Test_apiSourceToEndpointModel(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		src   *unifi.FirewallPolicySource
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		args args
+		want firewallPolicyEndpointModel
+	}{
+		{
+			name: "source with IP and port",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				src: &unifi.FirewallPolicySource{
+					ZoneID:             "z1",
+					MatchingTarget:     "IP",
+					MatchingTargetType: "OBJECT",
+					IPs:                []string{"10.0.0.1"},
+					PortMatchingType:   "SPECIFIC",
+					Port:               ptrInt64(443),
+				},
+			},
+			want: func() firewallPolicyEndpointModel {
+				ctx := context.Background()
+				ips, _ := types.ListValueFrom(ctx, types.StringType, []string{"10.0.0.1"})
+				networkIDs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
+				clientMACs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
+				webDomains, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
+				return firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z1"),
+					MatchingTarget:     types.StringValue("IP"),
+					MatchingTargetType: types.StringValue("OBJECT"),
+					IPs:                ips,
+					NetworkIDs:         networkIDs,
+					ClientMACs:         clientMACs,
+					WebDomains:         webDomains,
+					Port:               types.Int64Value(443),
+					PortGroupID:        types.StringValue(""),
+					PortMatchingType:   types.StringValue("SPECIFIC"),
+				}
+			}(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := apiSourceToEndpointModel(tt.args.ctx, tt.args.src, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("apiSourceToEndpointModel() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_apiDestinationToEndpointModel(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		dst   *unifi.FirewallPolicyDestination
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		args args
+		want firewallPolicyEndpointModel
+	}{
+		{
+			name: "destination with port",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				dst: &unifi.FirewallPolicyDestination{
+					ZoneID:             "z2",
+					MatchingTarget:     "ANY",
+					MatchingTargetType: "OBJECT",
+					PortMatchingType:   "SPECIFIC",
+					Port:               ptrInt64(8080),
+				},
+			},
+			want: func() firewallPolicyEndpointModel {
+				ctx := context.Background()
+				ips, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
+				networkIDs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
+				clientMACs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
+				webDomains, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
+				return firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z2"),
+					MatchingTarget:     types.StringValue("ANY"),
+					MatchingTargetType: types.StringValue("OBJECT"),
+					IPs:                ips,
+					NetworkIDs:         networkIDs,
+					ClientMACs:         clientMACs,
+					WebDomains:         webDomains,
+					Port:               types.Int64Value(8080),
+					PortGroupID:        types.StringValue(""),
+					PortMatchingType:   types.StringValue("SPECIFIC"),
+				}
+			}(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := apiDestinationToEndpointModel(tt.args.ctx, tt.args.dst, tt.args.diags); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("apiDestinationToEndpointModel() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_firewallPolicyListToModel(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		api   *unifi.FirewallPolicy
+		model *firewallPolicyModel
+		site  string
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+		want diag.Diagnostics
+	}{
+		{
+			name: "sets site and populates model",
+			r:    &firewallPolicyResource{},
+			args: args{
+				ctx: context.Background(),
+				api: &unifi.FirewallPolicy{
+					ID:       "pol-1",
+					Name:     "list-test",
+					Action:   "BLOCK",
+					Protocol: "all",
+					Source: &unifi.FirewallPolicySource{
+						ZoneID:           "z1",
+						MatchingTarget:   "ANY",
+						PortMatchingType: "ANY",
+					},
+					Destination: &unifi.FirewallPolicyDestination{
+						ZoneID:           "z2",
+						MatchingTarget:   "ANY",
+						PortMatchingType: "ANY",
+					},
+				},
+				model: &firewallPolicyModel{},
+				site:  "mysite",
+			},
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.firewallPolicyListToModel(tt.args.ctx, tt.args.api, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("firewallPolicyResource.firewallPolicyListToModel() = %v, want %v", got, tt.want)
+			}
+			if tt.args.model.Site.ValueString() != tt.args.site {
+				t.Errorf("model.Site = %q, want %q", tt.args.model.Site.ValueString(), tt.args.site)
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		{
+			name: "has site attribute",
+			r:    &firewallPolicyResource{},
+			args: args{
+				in0:  context.Background(),
+				in1:  fwlist.ListResourceSchemaRequest{},
+				resp: &fwlist.ListResourceSchemaResponse{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
+			if _, ok := tt.args.resp.Schema.Attributes["site"]; !ok {
+				t.Error("ListResourceConfigSchema missing 'site' attribute")
+			}
+		})
+	}
+}
+
+func Test_firewallPolicyResource_List(t *testing.T) {
+	type args struct {
+		ctx    context.Context
+		req    fwlist.ListRequest
+		stream *fwlist.ListResultsStream
+	}
+	tests := []struct {
+		name string
+		r    *firewallPolicyResource
+		args args
+	}{
+		// Skip: requires a configured API client.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Skip("requires configured API client")
+			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
+		})
 	}
 }

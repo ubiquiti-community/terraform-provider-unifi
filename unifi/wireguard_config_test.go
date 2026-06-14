@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"encoding/base64"
+	"reflect"
 	"testing"
 )
 
@@ -166,6 +167,88 @@ func TestParseEndpoint(t *testing.T) {
 			}
 			if port != tc.wantPort {
 				t.Errorf("port = %d, want %d", port, tc.wantPort)
+			}
+		})
+	}
+}
+
+func Test_parseWireGuardConfig(t *testing.T) {
+	type args struct {
+		content string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *wireguardConfigParsed
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseWireGuardConfig(tt.args.content)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseWireGuardConfig() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseWireGuardConfig() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_parseEndpoint(t *testing.T) {
+	type args struct {
+		endpoint string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		want1   int64
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1, err := parseEndpoint(tt.args.endpoint)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseEndpoint() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("parseEndpoint() got = %v, want %v", got, tt.want)
+			}
+			if got1 != tt.want1 {
+				t.Errorf("parseEndpoint() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func Test_parseWireGuardBase64Config(t *testing.T) {
+	type args struct {
+		b64Content string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *wireguardConfigParsed
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseWireGuardBase64Config(tt.args.b64Content)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseWireGuardBase64Config() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseWireGuardBase64Config() = %v, want %v", got, tt.want)
 			}
 		})
 	}

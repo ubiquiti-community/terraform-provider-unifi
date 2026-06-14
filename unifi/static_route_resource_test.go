@@ -2,14 +2,20 @@ package unifi
 
 import (
 	"context"
+	"net/netip"
+	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
@@ -222,4 +228,296 @@ resource "unifi_static_route" "test" {
 	next_hop = "2001:db8::1"
 }
 `
+}
+
+func TestNewStaticRouteFrameworkResource(t *testing.T) {
+	r := NewStaticRouteFrameworkResource()
+	if r == nil {
+		t.Fatal("returned nil")
+	}
+	if _, ok := r.(fwresource.ResourceWithConfigure); !ok {
+		t.Error("expected ResourceWithConfigure")
+	}
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState")
+	}
+	if _, ok := r.(fwresource.ResourceWithIdentity); !ok {
+		t.Error("expected ResourceWithIdentity")
+	}
+	if _, ok := r.(fwresource.ResourceWithConfigValidators); !ok {
+		t.Error("expected ResourceWithConfigValidators")
+	}
+}
+
+func TestNewStaticRouteListResource(t *testing.T) {
+	r := NewStaticRouteListResource()
+	if r == nil {
+		t.Fatal("returned nil")
+	}
+	if _, ok := r.(fwlist.ListResource); !ok {
+		t.Error("expected ListResource")
+	}
+	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
+		t.Error("expected ListResourceWithConfigure")
+	}
+}
+
+func Test_staticRouteFrameworkResource_Metadata(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	resp := &fwresource.MetadataResponse{}
+	r.Metadata(context.Background(), fwresource.MetadataRequest{ProviderTypeName: "unifi"}, resp)
+	if resp.TypeName != "unifi_static_route" {
+		t.Errorf("TypeName = %q, want %q", resp.TypeName, "unifi_static_route")
+	}
+}
+
+func Test_staticRouteFrameworkResource_IdentitySchema(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	resp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(context.Background(), fwresource.IdentitySchemaRequest{}, resp)
+	if _, ok := resp.IdentitySchema.Attributes["id"]; !ok {
+		t.Error("expected identity schema to have 'id' attribute")
+	}
+}
+
+func Test_staticRouteFrameworkResource_Schema(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	for _, attr := range []string{"id", "site", "name", "network", "type", "distance", "next_hop", "interface", "enabled", "gateway_device", "gateway_type"} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("expected attribute %q in schema", attr)
+		}
+	}
+}
+
+func Test_staticRouteFrameworkResource_Configure(t *testing.T) {
+	tests := []struct {
+		name      string
+		req       fwresource.ConfigureRequest
+		wantError bool
+	}{
+		{"nil_provider_data", fwresource.ConfigureRequest{}, false},
+		{"wrong_type", fwresource.ConfigureRequest{ProviderData: "wrong"}, true},
+		{"correct_client", fwresource.ConfigureRequest{ProviderData: &Client{}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &staticRouteFrameworkResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(context.Background(), tt.req, resp)
+			if resp.Diagnostics.HasError() != tt.wantError {
+				t.Errorf("hasError = %v, want %v", resp.Diagnostics.HasError(), tt.wantError)
+			}
+		})
+	}
+}
+
+func Test_staticRouteFrameworkResource_Create(t *testing.T) {
+	// CRUD tests require a configured API client; covered by acceptance tests.
+}
+
+func Test_staticRouteFrameworkResource_Read(t *testing.T) {
+	// Read tests require a configured API client; covered by acceptance tests.
+}
+
+func Test_staticRouteFrameworkResource_Update(t *testing.T) {
+	// Update tests require a configured API client; covered by acceptance tests.
+}
+
+func Test_staticRouteFrameworkResource_Delete(t *testing.T) {
+	// Delete tests require a configured API client; covered by acceptance tests.
+}
+
+func Test_staticRouteFrameworkResource_ImportState(t *testing.T) {
+	// ImportState tests require tfsdk state setup; covered by acceptance tests.
+}
+
+func Test_staticRouteFrameworkResource_ConfigValidators(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	validators := r.ConfigValidators(context.Background())
+	if len(validators) == 0 {
+		t.Error("expected at least one config validator")
+	}
+}
+
+func Test_staticRouteIPVersionValidator_Description(t *testing.T) {
+	v := &staticRouteIPVersionValidator{}
+	want := "network and next_hop must use the same IP version (both IPv4 or both IPv6)"
+	if got := v.Description(context.Background()); got != want {
+		t.Errorf("Description() = %q, want %q", got, want)
+	}
+}
+
+func Test_staticRouteIPVersionValidator_MarkdownDescription(t *testing.T) {
+	v := &staticRouteIPVersionValidator{}
+	want := "network and next_hop must use the same IP version (both IPv4 or both IPv6)"
+	if got := v.MarkdownDescription(context.Background()); got != want {
+		t.Errorf("MarkdownDescription() = %q, want %q", got, want)
+	}
+}
+
+func Test_staticRouteIPVersionValidator_ValidateResource(t *testing.T) {
+	// ValidateResource requires a fully-populated tfsdk.Config; covered by acceptance tests
+	// and by TestUnitStaticRoute_ipVersionValidator above.
+}
+
+func Test_ipVersionsMatch(t *testing.T) {
+	tests := []struct {
+		name string
+		args struct {
+			prefix netip.Prefix
+			hop    netip.Addr
+		}
+		want bool
+	}{
+		{
+			name: "both_ipv4",
+			args: struct {
+				prefix netip.Prefix
+				hop    netip.Addr
+			}{netip.MustParsePrefix("192.168.0.0/24"), netip.MustParseAddr("10.0.0.1")},
+			want: true,
+		},
+		{
+			name: "both_ipv6",
+			args: struct {
+				prefix netip.Prefix
+				hop    netip.Addr
+			}{netip.MustParsePrefix("2001:db8::/32"), netip.MustParseAddr("2001:db8::1")},
+			want: true,
+		},
+		{
+			name: "ipv4_prefix_ipv6_hop",
+			args: struct {
+				prefix netip.Prefix
+				hop    netip.Addr
+			}{netip.MustParsePrefix("192.168.0.0/24"), netip.MustParseAddr("2001:db8::1")},
+			want: false,
+		},
+		{
+			name: "ipv6_prefix_ipv4_hop",
+			args: struct {
+				prefix netip.Prefix
+				hop    netip.Addr
+			}{netip.MustParsePrefix("2001:db8::/32"), netip.MustParseAddr("10.0.0.1")},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ipVersionsMatch(tt.args.prefix, tt.args.hop); got != tt.want {
+				t.Errorf("ipVersionsMatch() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_validateIPVersionMatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		network string
+		nextHop string
+		wantErr bool
+	}{
+		{"both_ipv4", "192.168.0.0/24", "10.0.0.1", false},
+		{"both_ipv6", "2001:db8::/32", "2001:db8::1", false},
+		{"mixed_v4_v6", "192.168.0.0/24", "2001:db8::1", true},
+		{"mixed_v6_v4", "2001:db8::/32", "10.0.0.1", true},
+		{"invalid_network", "not-cidr", "10.0.0.1", false},
+		{"invalid_hop", "192.168.0.0/24", "not-ip", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := validateIPVersionMatch(tt.network, tt.nextHop); (err != nil) != tt.wantErr {
+				t.Errorf("validateIPVersionMatch() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func Test_staticRouteFrameworkResource_applyPlanToState(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	plan := &staticRouteFrameworkResourceModel{
+		Name:    types.StringValue("route1"),
+		Network: types.StringValue("10.0.0.0/8"),
+		Type:    types.StringValue("nexthop-route"),
+	}
+	state := &staticRouteFrameworkResourceModel{}
+	r.applyPlanToState(context.Background(), plan, state)
+	if state.Name.ValueString() != "route1" {
+		t.Error("expected Name to be copied from plan")
+	}
+	if state.Network.ValueString() != "10.0.0.0/8" {
+		t.Error("expected Network to be copied from plan")
+	}
+}
+
+func Test_staticRouteFrameworkResource_modelToRouting(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	dist := int64(1)
+	model := &staticRouteFrameworkResourceModel{
+		Name:          types.StringValue("route1"),
+		Network:       types.StringValue("192.168.0.0/24"),
+		Type:          types.StringValue("nexthop-route"),
+		Distance:      types.Int64Value(1),
+		NextHop:       iptypes.NewIPAddressValue("192.168.1.1"),
+		Interface:     types.StringNull(),
+		Enabled:       types.BoolValue(true),
+		GatewayDevice: types.StringNull(),
+		GatewayType:   types.StringValue("default"),
+	}
+	got := r.modelToRouting(context.Background(), model)
+	want := &unifi.Routing{
+		Type:                "static-route",
+		Name:                "route1",
+		StaticRouteNetwork:  "192.168.0.0/24",
+		StaticRouteType:     "nexthop-route",
+		StaticRouteDistance: &dist,
+		StaticRouteNexthop:  "192.168.1.1",
+		Enabled:             true,
+		GatewayType:         "default",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("modelToRouting() = %+v, want %+v", got, want)
+	}
+}
+
+func Test_staticRouteFrameworkResource_routingToModel(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	dist := int64(1)
+	routing := &unifi.Routing{
+		ID:                  "abc123",
+		Name:                "route1",
+		StaticRouteNetwork:  "192.168.0.0/24",
+		StaticRouteType:     "nexthop-route",
+		StaticRouteDistance: &dist,
+		StaticRouteNexthop:  "192.168.1.1",
+		Enabled:             true,
+		GatewayType:         "default",
+	}
+	model := &staticRouteFrameworkResourceModel{}
+	r.routingToModel(context.Background(), routing, model, "default")
+	if model.ID.ValueString() != "abc123" {
+		t.Errorf("ID = %q, want %q", model.ID.ValueString(), "abc123")
+	}
+	if model.Site.ValueString() != "default" {
+		t.Errorf("Site = %q, want %q", model.Site.ValueString(), "default")
+	}
+	if model.NextHop.ValueString() != "192.168.1.1" {
+		t.Errorf("NextHop = %q, want %q", model.NextHop.ValueString(), "192.168.1.1")
+	}
+}
+
+func Test_staticRouteFrameworkResource_ListResourceConfigSchema(t *testing.T) {
+	r := &staticRouteFrameworkResource{}
+	resp := &fwlist.ListResourceSchemaResponse{}
+	r.ListResourceConfigSchema(context.Background(), fwlist.ListResourceSchemaRequest{}, resp)
+	if len(resp.Schema.Attributes) == 0 {
+		t.Error("expected non-empty list resource schema")
+	}
+}
+
+func Test_staticRouteFrameworkResource_List(t *testing.T) {
+	// List tests require a configured API client; covered by acceptance tests.
 }

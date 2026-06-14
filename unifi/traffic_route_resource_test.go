@@ -1,9 +1,16 @@
 package unifi
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 func TestAccTrafficRoute_basic(t *testing.T) {
@@ -472,4 +479,421 @@ resource "unifi_traffic_route" "test" {
 	source = { clients = [{ mac = "aa:bb:cc:dd:ee:ff" }] }
 }
 `
+}
+
+func TestNewTrafficRouteResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwresource.Resource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewTrafficRouteResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewTrafficRouteResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewTrafficRouteListResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwlist.ListResource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewTrafficRouteListResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewTrafficRouteListResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_destinationIPModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    destinationIPModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("destinationIPModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_sourceNetworkModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    sourceNetworkModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("sourceNetworkModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_sourceClientModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    sourceClientModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("sourceClientModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_sourceModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    sourceModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("sourceModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_destinationModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    destinationModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("destinationModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_trafficRouteResource_Metadata(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.in0, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		in1  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_Configure(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.in0, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_Create(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.CreateRequest
+		resp *fwresource.CreateResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_Read(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ReadRequest
+		resp *fwresource.ReadResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_Update(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.UpdateRequest
+		resp *fwresource.UpdateResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_Delete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.DeleteRequest
+		resp *fwresource.DeleteResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_ImportState(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ImportStateRequest
+		resp *fwresource.ImportStateResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_modelToAPI(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *trafficRouteResourceModel
+		site  string
+	}
+	tests := []struct {
+		name  string
+		r     *trafficRouteResource
+		args  args
+		want  *unifi.TrafficRoute
+		want1 diag.Diagnostics
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := tt.r.modelToAPI(tt.args.ctx, tt.args.model, tt.args.site)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("trafficRouteResource.modelToAPI() got = %v, want %v", got, tt.want)
+			}
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("trafficRouteResource.modelToAPI() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func Test_trafficRouteResource_apiToModel(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		route *unifi.TrafficRoute
+		model *trafficRouteResourceModel
+		site  string
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+		want diag.Diagnostics
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.apiToModel(tt.args.ctx, tt.args.route, tt.args.model, tt.args.site); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("trafficRouteResource.apiToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_trafficRouteResource_defaultWANNetworkID(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		site string
+	}
+	tests := []struct {
+		name    string
+		r       *trafficRouteResource
+		args    args
+		want    string
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.r.defaultWANNetworkID(tt.args.ctx, tt.args.site)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("trafficRouteResource.defaultWANNetworkID() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("trafficRouteResource.defaultWANNetworkID() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_trafficRouteResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_trafficRouteResource_List(t *testing.T) {
+	type args struct {
+		ctx    context.Context
+		req    fwlist.ListRequest
+		stream *fwlist.ListResultsStream
+	}
+	tests := []struct {
+		name string
+		r    *trafficRouteResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
+		})
+	}
 }

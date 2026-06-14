@@ -1,9 +1,16 @@
 package unifi
 
 import (
+	"context"
+	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 func TestAccVPNClient_file_mode(t *testing.T) {
@@ -210,4 +217,359 @@ resource "unifi_vpn_client" "test" {
   }
 }
 `
+}
+
+func TestNewVPNClientResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwresource.Resource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewVPNClientResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewVPNClientResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewVPNClientListResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwlist.ListResource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewVPNClientListResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewVPNClientListResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_wireguardConfigurationModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    wireguardConfigurationModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("wireguardConfigurationModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_wireguardPeerModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    wireguardPeerModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("wireguardPeerModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_wireguardModel_AttributeTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		m    wireguardModel
+		want map[string]attr.Type
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.AttributeTypes(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("wireguardModel.AttributeTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_vpnClientResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_IdentitySchema(t *testing.T) {
+	type args struct {
+		in0  context.Context
+		in1  fwresource.IdentitySchemaRequest
+		resp *fwresource.IdentitySchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_Create(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.CreateRequest
+		resp *fwresource.CreateResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_Read(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ReadRequest
+		resp *fwresource.ReadResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_Update(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.UpdateRequest
+		resp *fwresource.UpdateResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_Delete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.DeleteRequest
+		resp *fwresource.DeleteResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_ImportState(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ImportStateRequest
+		resp *fwresource.ImportStateResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_modelToNetwork(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *vpnClientResourceModel
+	}
+	tests := []struct {
+		name  string
+		r     *vpnClientResource
+		args  args
+		want  *unifi.Network
+		want1 diag.Diagnostics
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := tt.r.modelToNetwork(tt.args.ctx, tt.args.model)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("vpnClientResource.modelToNetwork() got = %v, want %v", got, tt.want)
+			}
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("vpnClientResource.modelToNetwork() got1 = %v, want %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func Test_vpnClientResource_networkToModel(t *testing.T) {
+	type args struct {
+		ctx        context.Context
+		network    *unifi.Network
+		model      *vpnClientResourceModel
+		site       string
+		priorState *vpnClientResourceModel
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+		want diag.Diagnostics
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.networkToModel(tt.args.ctx, tt.args.network, tt.args.model, tt.args.site, tt.args.priorState); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("vpnClientResource.networkToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_vpnClientResource_ListResourceConfigSchema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwlist.ListResourceSchemaRequest
+		resp *fwlist.ListResourceSchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ListResourceConfigSchema(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_vpnClientResource_List(t *testing.T) {
+	type args struct {
+		ctx    context.Context
+		req    fwlist.ListRequest
+		stream *fwlist.ListResultsStream
+	}
+	tests := []struct {
+		name string
+		r    *vpnClientResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
+		})
+	}
 }

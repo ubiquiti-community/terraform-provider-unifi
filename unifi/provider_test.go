@@ -4,11 +4,18 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/docker/compose/v2/pkg/api"
+	fwaction "github.com/hashicorp/terraform-plugin-framework/action"
+	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
+	fwephemeral "github.com/hashicorp/terraform-plugin-framework/ephemeral"
+	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	fwprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-log/tflogtest"
@@ -430,4 +437,202 @@ func waitForUniFiAPI(
 	}
 
 	return nil, fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
+}
+
+func TestClient_GetSiteName(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *Client
+		want string
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.c.GetSiteName(); got != tt.want {
+				t.Errorf("Client.GetSiteName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNew(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwprovider.Provider
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := New(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("New() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_unifiProvider_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwprovider.MetadataRequest
+		resp *fwprovider.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.p.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_unifiProvider_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwprovider.SchemaRequest
+		resp *fwprovider.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.p.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_unifiProvider_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwprovider.ConfigureRequest
+		resp *fwprovider.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.p.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_unifiProvider_Resources(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+		want []func() fwresource.Resource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.p.Resources(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("unifiProvider.Resources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_unifiProvider_DataSources(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+		want []func() fwdatasource.DataSource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.p.DataSources(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("unifiProvider.DataSources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_unifiProvider_EphemeralResources(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+		want []func() fwephemeral.EphemeralResource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.p.EphemeralResources(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("unifiProvider.EphemeralResources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_unifiProvider_Actions(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+		want []func() fwaction.Action
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.p.Actions(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("unifiProvider.Actions() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_unifiProvider_ListResources(t *testing.T) {
+	type args struct {
+		in0 context.Context
+	}
+	tests := []struct {
+		name string
+		p    *unifiProvider
+		args args
+		want []func() fwlist.ListResource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.p.ListResources(tt.args.in0); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("unifiProvider.ListResources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

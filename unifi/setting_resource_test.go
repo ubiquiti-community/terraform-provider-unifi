@@ -1,10 +1,16 @@
 package unifi
 
 import (
+	"context"
 	"os"
+	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 )
 
 func TestAccSettingResource_mgmt(t *testing.T) {
@@ -596,4 +602,642 @@ resource "unifi_setting" "test" {
   }
 }
 `
+}
+
+func TestNewSettingResource(t *testing.T) {
+	tests := []struct {
+		name string
+		want fwresource.Resource
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewSettingResource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewSettingResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_Metadata(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.MetadataRequest
+		resp *fwresource.MetadataResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Metadata(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_Schema(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.SchemaRequest
+		resp *fwresource.SchemaResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_UpgradeState(t *testing.T) {
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want map[int64]fwresource.StateUpgrader
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.UpgradeState(tt.args.ctx); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("settingResource.UpgradeState() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_Configure(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ConfigureRequest
+		resp *fwresource.ConfigureResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Configure(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_Create(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.CreateRequest
+		resp *fwresource.CreateResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Create(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_Read(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ReadRequest
+		resp *fwresource.ReadResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Read(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_Update(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.UpdateRequest
+		resp *fwresource.UpdateResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Update(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_Delete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.DeleteRequest
+		resp *fwresource.DeleteResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.Delete(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_ImportState(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		req  fwresource.ImportStateRequest
+		resp *fwresource.ImportStateResponse
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.ImportState(tt.args.ctx, tt.args.req, tt.args.resp)
+		})
+	}
+}
+
+func Test_settingResource_readSettings(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		site  string
+		data  *settingResourceModel
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.r.readSettings(tt.args.ctx, tt.args.site, tt.args.data, tt.args.diags)
+		})
+	}
+}
+
+func Test_settingResource_mgmtModelToSetting(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *settingMgmtModel
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settings.Mgmt
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.mgmtModelToSetting(
+				tt.args.ctx,
+				tt.args.model,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.mgmtModelToSetting() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_mgmtSettingToModel(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		setting *settings.Mgmt
+		plan    *settingMgmtModel
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settingMgmtModel
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.mgmtSettingToModel(
+				tt.args.ctx,
+				tt.args.setting,
+				tt.args.plan,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.mgmtSettingToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_radiusModelToSetting(t *testing.T) {
+	type args struct {
+		in0   context.Context
+		model *settingRadiusModel
+		base  *settings.Radius
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settings.Radius
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.radiusModelToSetting(
+				tt.args.in0,
+				tt.args.model,
+				tt.args.base,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.radiusModelToSetting() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_radiusSettingToModel(t *testing.T) {
+	type args struct {
+		in0     context.Context
+		setting *settings.Radius
+		plan    *settingRadiusModel
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settingRadiusModel
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.radiusSettingToModel(
+				tt.args.in0,
+				tt.args.setting,
+				tt.args.plan,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.radiusSettingToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_usgModelToSetting(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *settingUSGModel
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settings.Usg
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.usgModelToSetting(
+				tt.args.ctx,
+				tt.args.model,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.usgModelToSetting() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_usgSettingToModel(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		setting *settings.Usg
+		plan    *settingUSGModel
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settingUSGModel
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.usgSettingToModel(
+				tt.args.ctx,
+				tt.args.setting,
+				tt.args.plan,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.usgSettingToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_igmpSnoopingModelToSetting(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *settingIgmpSnoopingModel
+		base  *settings.IgmpSnooping
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settings.IgmpSnooping
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.igmpSnoopingModelToSetting(
+				tt.args.ctx,
+				tt.args.model,
+				tt.args.base,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.igmpSnoopingModelToSetting() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_igmpSnoopingSettingToModel(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		setting *settings.IgmpSnooping
+		diags   *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settingIgmpSnoopingModel
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.igmpSnoopingSettingToModel(
+				tt.args.ctx,
+				tt.args.setting,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.igmpSnoopingSettingToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_dohModelToSetting(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *settingDohModel
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settings.Doh
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.dohModelToSetting(
+				tt.args.ctx,
+				tt.args.model,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.dohModelToSetting() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_dohSettingToModel(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		setting *settings.Doh
+		plan    *settingDohModel
+		diags   *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settingDohModel
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.dohSettingToModel(
+				tt.args.ctx,
+				tt.args.setting,
+				tt.args.plan,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.dohSettingToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_ipsModelToSetting(t *testing.T) {
+	type args struct {
+		ctx   context.Context
+		model *settingIpsModel
+		diags *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settings.Ips
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.ipsModelToSetting(
+				tt.args.ctx,
+				tt.args.model,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.ipsModelToSetting() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_settingResource_ipsSettingToModel(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		setting *settings.Ips
+		plan    *settingIpsModel
+		diags   *diag.Diagnostics
+	}
+	tests := []struct {
+		name string
+		r    *settingResource
+		args args
+		want *settingIpsModel
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.ipsSettingToModel(
+				tt.args.ctx,
+				tt.args.setting,
+				tt.args.plan,
+				tt.args.diags,
+			); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
+				t.Errorf("settingResource.ipsSettingToModel() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIgmpSnoopingModelMerge guards #164: the site-level igmp_snooping setting
+// exposes only enabled + network_ids, and the model->setting conversion must
+// overlay those onto the current remote setting so advanced querier/flood
+// fields configured in the UI are preserved across an update.
+func TestIgmpSnoopingModelMerge(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+	var diags diag.Diagnostics
+
+	// Current remote setting with advanced fields that must survive.
+	base := &settings.IgmpSnooping{
+		Enabled:             false,
+		QuerierMode:         "CUSTOM",
+		QuerierSwitches:     []string{"aa:bb:cc:dd:ee:ff"},
+		FloodKnownProtocols: true,
+	}
+	nids, d := types.ListValueFrom(ctx, types.StringType, []string{"net-1", "net-2"})
+	if d.HasError() {
+		t.Fatalf("building network_ids: %v", d)
+	}
+	model := &settingIgmpSnoopingModel{
+		Enabled:    types.BoolValue(true),
+		NetworkIDs: nids,
+	}
+
+	out := r.igmpSnoopingModelToSetting(ctx, model, base, &diags)
+	if diags.HasError() {
+		t.Fatalf("igmpSnoopingModelToSetting: %v", diags)
+	}
+	if !out.Enabled {
+		t.Error("Enabled not applied from model")
+	}
+	if len(out.NetworkIDs) != 2 || out.NetworkIDs[0] != "net-1" {
+		t.Errorf("NetworkIDs = %v, want [net-1 net-2]", out.NetworkIDs)
+	}
+	// Advanced fields must be preserved from base (not dropped).
+	if out.QuerierMode != "CUSTOM" || len(out.QuerierSwitches) != 1 || !out.FloodKnownProtocols {
+		t.Errorf("advanced fields not preserved: querier_mode=%q querier_switches=%v flood=%v",
+			out.QuerierMode, out.QuerierSwitches, out.FloodKnownProtocols)
+	}
+
+	// Read-back conversion.
+	m := r.igmpSnoopingSettingToModel(ctx, out, &diags)
+	if diags.HasError() {
+		t.Fatalf("igmpSnoopingSettingToModel: %v", diags)
+	}
+	if !m.Enabled.ValueBool() {
+		t.Error("model Enabled = false, want true")
+	}
+	var ids []string
+	if d := m.NetworkIDs.ElementsAs(ctx, &ids, false); d.HasError() {
+		t.Fatalf("reading model network_ids: %v", d)
+	}
+	if len(ids) != 2 {
+		t.Errorf("model network_ids = %v, want 2", ids)
+	}
 }

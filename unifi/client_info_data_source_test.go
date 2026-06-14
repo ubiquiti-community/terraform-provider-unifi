@@ -6,42 +6,9 @@ import (
 	"testing"
 
 	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccClientInfoListDataSource_basic(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccClientInfoListDataSourceConfig_basic(),
-				Check: resource.ComposeTestCheckFunc(
-					// Verify the data source has clients attribute
-					resource.TestCheckResourceAttrSet(
-						"data.unifi_client_info_list.test",
-						"clients.#",
-					),
-					// Verify site is set
-					resource.TestCheckResourceAttr(
-						"data.unifi_client_info_list.test",
-						"site",
-						"default",
-					),
-				),
-			},
-		},
-	})
-}
-
-func testAccClientInfoListDataSourceConfig_basic() string {
-	return `
-data "unifi_client_info_list" "test" {
-}
-`
-}
-
-func TestNewClientInfoListDataSource(t *testing.T) {
+func TestNewClientInfoDataSource(t *testing.T) {
 	tests := []struct {
 		name string
 		want fwdatasource.DataSource
@@ -50,14 +17,14 @@ func TestNewClientInfoListDataSource(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewClientInfoListDataSource(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewClientInfoListDataSource() = %v, want %v", got, tt.want)
+			if got := NewClientInfoDataSource(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewClientInfoDataSource() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func Test_clientInfoListDataSource_Metadata(t *testing.T) {
+func Test_clientInfoDataSource_Metadata(t *testing.T) {
 	type args struct {
 		ctx  context.Context
 		req  fwdatasource.MetadataRequest
@@ -65,7 +32,7 @@ func Test_clientInfoListDataSource_Metadata(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		d    *clientInfoListDataSource
+		d    *clientInfoDataSource
 		args args
 	}{
 		// TODO: Add test cases.
@@ -77,7 +44,7 @@ func Test_clientInfoListDataSource_Metadata(t *testing.T) {
 	}
 }
 
-func Test_clientInfoListDataSource_Schema(t *testing.T) {
+func Test_clientInfoDataSource_Schema(t *testing.T) {
 	type args struct {
 		ctx  context.Context
 		req  fwdatasource.SchemaRequest
@@ -85,7 +52,7 @@ func Test_clientInfoListDataSource_Schema(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		d    *clientInfoListDataSource
+		d    *clientInfoDataSource
 		args args
 	}{
 		// TODO: Add test cases.
@@ -97,7 +64,7 @@ func Test_clientInfoListDataSource_Schema(t *testing.T) {
 	}
 }
 
-func Test_clientInfoListDataSource_Configure(t *testing.T) {
+func Test_clientInfoDataSource_Configure(t *testing.T) {
 	type args struct {
 		ctx  context.Context
 		req  fwdatasource.ConfigureRequest
@@ -105,7 +72,7 @@ func Test_clientInfoListDataSource_Configure(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		d    *clientInfoListDataSource
+		d    *clientInfoDataSource
 		args args
 	}{
 		// TODO: Add test cases.
@@ -117,7 +84,7 @@ func Test_clientInfoListDataSource_Configure(t *testing.T) {
 	}
 }
 
-func Test_clientInfoListDataSource_Read(t *testing.T) {
+func Test_clientInfoDataSource_Read(t *testing.T) {
 	type args struct {
 		ctx  context.Context
 		req  fwdatasource.ReadRequest
@@ -125,7 +92,7 @@ func Test_clientInfoListDataSource_Read(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		d    *clientInfoListDataSource
+		d    *clientInfoDataSource
 		args args
 	}{
 		// TODO: Add test cases.
