@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -121,16 +123,17 @@ func (m portForwardDestinationIPModel) AttributeTypes() map[string]attr.Type {
 }
 
 type portForwardResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	Name           types.String `tfsdk:"name"`
-	Wan            types.Object `tfsdk:"wan"`
-	Forward        types.Object `tfsdk:"forward"`
-	SourceLimiting types.Object `tfsdk:"source_limiting"`
-	DestinationIPs types.List   `tfsdk:"destination_ips"`
-	Protocol       types.String `tfsdk:"protocol"`
-	Logging        types.Bool   `tfsdk:"logging"`
-	Enabled        types.Bool   `tfsdk:"enabled"`
+	ID             types.String   `tfsdk:"id"`
+	Site           types.String   `tfsdk:"site"`
+	Name           types.String   `tfsdk:"name"`
+	Wan            types.Object   `tfsdk:"wan"`
+	Forward        types.Object   `tfsdk:"forward"`
+	SourceLimiting types.Object   `tfsdk:"source_limiting"`
+	DestinationIPs types.List     `tfsdk:"destination_ips"`
+	Protocol       types.String   `tfsdk:"protocol"`
+	Logging        types.Bool     `tfsdk:"logging"`
+	Enabled        types.Bool     `tfsdk:"enabled"`
+	Timeouts       timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *portForwardResource) Metadata(
@@ -300,6 +303,10 @@ func (r *portForwardResource) Schema(
 				Default:             booldefault.StaticBool(true),
 				DeprecationMessage:  "This attribute will be removed in a future release. Instead of disabling a port forwarding rule you can remove it from your configuration.",
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -340,6 +347,14 @@ func (r *portForwardResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	portForward, diags := r.modelToPortForward(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -377,6 +392,14 @@ func (r *portForwardResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -420,6 +443,14 @@ func (r *portForwardResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	r.applyPlanToState(ctx, &plan, &state)
 
 	site := state.Site.ValueString()
@@ -445,6 +476,8 @@ func (r *portForwardResource) Update(
 
 	resp.Diagnostics.Append(r.portForwardToModel(ctx, updatedPortForward, &state, site)...)
 
+	state.Timeouts = plan.Timeouts
+
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -460,6 +493,14 @@ func (r *portForwardResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

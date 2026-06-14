@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -51,13 +53,14 @@ type wireguardPeerResource struct {
 
 // wireguardPeerResourceModel describes the resource data model.
 type wireguardPeerResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Site        types.String `tfsdk:"site"`
-	NetworkID   types.String `tfsdk:"network_id"`
-	Name        types.String `tfsdk:"name"`
-	InterfaceIP types.String `tfsdk:"interface_ip"`
-	PublicKey   types.String `tfsdk:"public_key"`
-	AllowedIPs  types.List   `tfsdk:"allowed_ips"`
+	ID          types.String   `tfsdk:"id"`
+	Site        types.String   `tfsdk:"site"`
+	NetworkID   types.String   `tfsdk:"network_id"`
+	Name        types.String   `tfsdk:"name"`
+	InterfaceIP types.String   `tfsdk:"interface_ip"`
+	PublicKey   types.String   `tfsdk:"public_key"`
+	AllowedIPs  types.List     `tfsdk:"allowed_ips"`
+	Timeouts    timeouts.Value `tfsdk:"timeouts"`
 }
 
 // wireguardPeerListConfigModel describes the list configuration model. Peers
@@ -159,6 +162,12 @@ func (r *wireguardPeerResource) Schema(
 					listvalidator.ValueStringsAre(validators.CIDRValidator()),
 				},
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Create: true,
+				Read:   true,
+				Update: true,
+				Delete: true,
+			}),
 		},
 	}
 }
@@ -199,6 +208,14 @@ func (r *wireguardPeerResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	peer, diags := r.modelToPeer(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -235,6 +252,14 @@ func (r *wireguardPeerResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -276,6 +301,14 @@ func (r *wireguardPeerResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := data.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	peer, diags := r.modelToPeer(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -313,6 +346,14 @@ func (r *wireguardPeerResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

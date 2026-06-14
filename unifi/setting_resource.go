@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -147,14 +148,15 @@ type settingIpsModel struct {
 }
 
 type settingResourceModel struct {
-	ID           types.String `tfsdk:"id"`
-	Site         types.String `tfsdk:"site"`
-	Doh          types.Object `tfsdk:"doh"`
-	Ips          types.Object `tfsdk:"ips"`
-	Mgmt         types.Object `tfsdk:"mgmt"`
-	Radius       types.Object `tfsdk:"radius"`
-	USG          types.Object `tfsdk:"usg"`
-	IgmpSnooping types.Object `tfsdk:"igmp_snooping"`
+	ID           types.String   `tfsdk:"id"`
+	Site         types.String   `tfsdk:"site"`
+	Doh          types.Object   `tfsdk:"doh"`
+	Ips          types.Object   `tfsdk:"ips"`
+	Mgmt         types.Object   `tfsdk:"mgmt"`
+	Radius       types.Object   `tfsdk:"radius"`
+	USG          types.Object   `tfsdk:"usg"`
+	IgmpSnooping types.Object   `tfsdk:"igmp_snooping"`
+	Timeouts     timeouts.Value `tfsdk:"timeouts"`
 }
 
 // settingIgmpSnoopingModel is the nested igmp_snooping block. On UniFi 10.3.x the
@@ -744,6 +746,10 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -834,6 +840,14 @@ func (r *settingResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -978,6 +992,14 @@ func (r *settingResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	site := data.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -1004,6 +1026,14 @@ func (r *settingResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	site := state.Site.ValueString()
 	if site == "" {

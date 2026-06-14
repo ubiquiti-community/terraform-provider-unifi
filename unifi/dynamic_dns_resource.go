@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -48,14 +50,15 @@ type dynamicDNSResource struct {
 
 // dynamicDNSResourceModel describes the resource data model.
 type dynamicDNSResourceModel struct {
-	ID        types.String `tfsdk:"id"`
-	Site      types.String `tfsdk:"site"`
-	Interface types.String `tfsdk:"interface"`
-	Service   types.String `tfsdk:"service"`
-	HostName  types.String `tfsdk:"host_name"`
-	Server    types.String `tfsdk:"server"`
-	Login     types.String `tfsdk:"login"`
-	Password  types.String `tfsdk:"password"`
+	ID        types.String   `tfsdk:"id"`
+	Site      types.String   `tfsdk:"site"`
+	Interface types.String   `tfsdk:"interface"`
+	Service   types.String   `tfsdk:"service"`
+	HostName  types.String   `tfsdk:"host_name"`
+	Server    types.String   `tfsdk:"server"`
+	Login     types.String   `tfsdk:"login"`
+	Password  types.String   `tfsdk:"password"`
+	Timeouts  timeouts.Value `tfsdk:"timeouts"`
 }
 
 // dynamicDNSResourceIdentityModel describes the resource identity data model.
@@ -145,6 +148,10 @@ func (r *dynamicDNSResource) Schema(
 				Optional:            true,
 				Sensitive:           true,
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -202,6 +209,14 @@ func (r *dynamicDNSResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	// Get site from request identity if provided, otherwise use provider default
 	site := r.client.Site
 	if !data.Site.IsNull() && !data.Site.IsUnknown() {
@@ -247,6 +262,14 @@ func (r *dynamicDNSResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	// Read identity, falling back to state for resources created before identity support
 	var identity dynamicDNSResourceIdentityModel
@@ -310,6 +333,14 @@ func (r *dynamicDNSResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Read identity, falling back to state for resources created before identity support
 	var identity dynamicDNSResourceIdentityModel
 	if !req.Identity.Raw.IsNull() {
@@ -349,6 +380,8 @@ func (r *dynamicDNSResource) Update(
 	// Update state with API response
 	r.dynamicDNSToModel(ctx, updatedDynamicDNS, &state, site)
 
+	state.Timeouts = plan.Timeouts
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 
@@ -368,6 +401,14 @@ func (r *dynamicDNSResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	// Read identity, falling back to state for resources created before identity support
 	var identity dynamicDNSResourceIdentityModel

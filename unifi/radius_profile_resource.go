@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -72,6 +73,7 @@ type radiusProfileResourceModel struct {
 	VlanWlanMode          types.String         `tfsdk:"vlan_wlan_mode"`
 	AuthServer            []radiusServerModel  `tfsdk:"auth_server"`
 	AcctServer            []radiusServerModel  `tfsdk:"acct_server"`
+	Timeouts              timeouts.Value       `tfsdk:"timeouts"`
 }
 
 // radiusProfileListConfigModel describes the list configuration model.
@@ -190,6 +192,10 @@ func (r *radiusProfileResource) Schema(
 					stringvalidator.OneOf("disabled", "optional", "required"),
 				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 		Blocks: map[string]schema.Block{
 			"auth_server": schema.ListNestedBlock{
@@ -324,6 +330,14 @@ func (r *radiusProfileResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	radiusProfile := r.modelToRadiusProfile(ctx, &data)
 
 	site := data.Site.ValueString()
@@ -357,6 +371,14 @@ func (r *radiusProfileResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -400,6 +422,14 @@ func (r *radiusProfileResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	r.applyPlanToState(ctx, &plan, &state)
 
 	site := state.Site.ValueString()
@@ -421,6 +451,8 @@ func (r *radiusProfileResource) Update(
 
 	r.radiusProfileToModel(ctx, updatedRadiusProfile, &state, site)
 
+	state.Timeouts = plan.Timeouts
+
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -436,6 +468,14 @@ func (r *radiusProfileResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

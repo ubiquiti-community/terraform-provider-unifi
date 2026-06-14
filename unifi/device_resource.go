@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -136,6 +137,8 @@ type deviceResourceModel struct {
 	Model   types.String `tfsdk:"model"`
 	Type    types.String `tfsdk:"type"`
 	State   types.Int64  `tfsdk:"state"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 // portOverrideModel describes the port override data model.
@@ -695,6 +698,11 @@ func (r *deviceResource) Schema(
 					},
 				},
 			},
+
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 
 		Blocks: map[string]schema.Block{
@@ -1009,6 +1017,14 @@ func (r *deviceResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	site := plan.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -1160,6 +1176,14 @@ func (r *deviceResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	// Preserve plan-only flags and port_override before reading API state.
 	// Port_override is a Set where ALL fields contribute to identity. The API
 	// returns all ports with all fields, but the user only configures a subset.
@@ -1253,6 +1277,14 @@ func (r *deviceResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	var state deviceResourceModel
 	diags = req.State.Get(ctx, &state)
@@ -1363,6 +1395,14 @@ func (r *deviceResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	if !state.ForgetOnDestroy.ValueBool() {
 		return

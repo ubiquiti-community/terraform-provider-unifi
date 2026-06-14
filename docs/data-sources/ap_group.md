@@ -40,8 +40,16 @@ output "ap_group_device_macs" {
 ### Optional
 
 - `site` (String) The name of the site the AP group is associated with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `device_macs` (List of String) List of device MAC addresses in the AP group.
 - `id` (String) The ID of this AP group.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

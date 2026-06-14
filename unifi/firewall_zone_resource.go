@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -58,12 +60,13 @@ type firewallZoneListFilterModel struct {
 
 // firewallZoneResourceModel describes the resource data model.
 type firewallZoneResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Site        types.String `tfsdk:"site"`
-	Name        types.String `tfsdk:"name"`
-	NetworkIDs  types.List   `tfsdk:"network_ids"`
-	ZoneKey     types.String `tfsdk:"zone_key"`
-	DefaultZone types.Bool   `tfsdk:"default_zone"`
+	ID          types.String   `tfsdk:"id"`
+	Site        types.String   `tfsdk:"site"`
+	Name        types.String   `tfsdk:"name"`
+	NetworkIDs  types.List     `tfsdk:"network_ids"`
+	ZoneKey     types.String   `tfsdk:"zone_key"`
+	DefaultZone types.Bool     `tfsdk:"default_zone"`
+	Timeouts    timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *firewallZoneResource) Metadata(
@@ -136,6 +139,10 @@ func (r *firewallZoneResource) Schema(
 				MarkdownDescription: "Whether this is a controller default zone.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -176,6 +183,14 @@ func (r *firewallZoneResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	zone, diags := r.modelToFirewallZone(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -209,6 +224,14 @@ func (r *firewallZoneResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -245,6 +268,14 @@ func (r *firewallZoneResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := data.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	zone, diags := r.modelToFirewallZone(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -279,6 +310,14 @@ func (r *firewallZoneResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

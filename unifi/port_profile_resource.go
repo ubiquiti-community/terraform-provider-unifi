@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -111,6 +112,7 @@ type portProfileResourceModel struct {
 	FecMode                    types.String         `tfsdk:"fec_mode"`
 	SettingPreference          types.String         `tfsdk:"setting_preference"`
 	PortKeepaliveEnabled       types.Bool           `tfsdk:"port_keepalive_enabled"`
+	Timeouts                   timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (r *portProfileResource) Metadata(
@@ -459,6 +461,10 @@ func (r *portProfileResource) Schema(
 				Computed:    true,
 				Default:     booldefault.StaticBool(false),
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -535,6 +541,14 @@ func (r *portProfileResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	site := plan.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -577,6 +591,14 @@ func (r *portProfileResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()
@@ -624,6 +646,14 @@ func (r *portProfileResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	site := plan.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -669,6 +699,8 @@ func (r *portProfileResource) Update(
 	// Update state from API response
 	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &state, site)...)
 
+	state.Timeouts = plan.Timeouts
+
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
@@ -685,6 +717,14 @@ func (r *portProfileResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()

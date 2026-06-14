@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -67,6 +68,7 @@ type clientInfoDataSourceModel struct {
 	LastUplinkRemotePort      types.Int64          `tfsdk:"last_uplink_remote_port"`
 	LastConnectionNetworkID   types.String         `tfsdk:"last_connection_network_id"`
 	LastConnectionNetworkName types.String         `tfsdk:"last_connection_network_name"`
+	Timeouts                  timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (d *clientInfoDataSource) Metadata(
@@ -82,10 +84,13 @@ func (d *clientInfoDataSource) Schema(
 	req datasource.SchemaRequest,
 	resp *datasource.SchemaResponse,
 ) {
+	attributes := models.ClientInfoDataSourceSchema()
+	attributes["timeouts"] = timeouts.Attributes(ctx)
+
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Retrieves information about a specific client by MAC address.",
 
-		Attributes: models.ClientInfoDataSourceSchema(),
+		Attributes: attributes,
 	}
 }
 
@@ -124,6 +129,14 @@ func (d *clientInfoDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -86,6 +87,7 @@ type siteToSiteVPNResourceModel struct {
 	PFS            types.Bool           `tfsdk:"pfs"`
 	DynamicRouting types.Bool           `tfsdk:"dynamic_routing"`
 	RouteDistance  types.Int64          `tfsdk:"route_distance"`
+	Timeouts       timeouts.Value       `tfsdk:"timeouts"`
 }
 
 // siteToSiteVPNListConfigModel describes the list configuration model.
@@ -324,6 +326,10 @@ func (r *siteToSiteVPNResource) Schema(
 				Validators:          []validator.Int64{int64validator.Between(1, 255)},
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -410,6 +416,14 @@ func (r *siteToSiteVPNResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	network, diags := r.modelToNetwork(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -449,6 +463,14 @@ func (r *siteToSiteVPNResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	site := r.siteOrDefault(data.Site)
 
 	network, err := r.client.GetNetwork(ctx, site, data.ID.ValueString())
@@ -480,6 +502,14 @@ func (r *siteToSiteVPNResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := data.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	network, diags := r.modelToNetwork(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -520,6 +550,14 @@ func (r *siteToSiteVPNResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := r.siteOrDefault(data.Site)
 

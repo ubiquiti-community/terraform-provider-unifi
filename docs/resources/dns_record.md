@@ -83,9 +83,20 @@ resource "unifi_dns_record" "sip_srv" {
 - `port` (Number) The port of the DNS record.
 - `priority` (Number) The priority of the DNS record.
 - `site` (String) The name of the site to associate the DNS record with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `ttl` (String) The TTL of the DNS record, as a Go duration string (e.g. `1h`, `300s`). The controller stores this value as whole seconds in the range 0–65535s (≈18h12m15s).
 - `weight` (Number) The weight of the DNS record.
 
 ### Read-Only
 
 - `id` (String) The ID of the DNS record.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

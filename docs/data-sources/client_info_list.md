@@ -28,10 +28,19 @@ output "total_clients" {
 ### Optional
 
 - `site` (String) The name of the site to retrieve clients from.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `clients` (Attributes List) List of active clients on the network. (see [below for nested schema](#nestedatt--clients))
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--clients"></a>
 ### Nested Schema for `clients`

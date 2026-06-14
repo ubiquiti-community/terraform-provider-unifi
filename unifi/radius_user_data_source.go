@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,6 +30,8 @@ type radiusUserDataSourceModel struct {
 	TunnelType       types.Int64  `tfsdk:"tunnel_type"`
 	TunnelMediumType types.Int64  `tfsdk:"tunnel_medium_type"`
 	NetworkID        types.String `tfsdk:"network_id"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *radiusUserDataSource) Metadata(
@@ -77,6 +81,7 @@ func (d *radiusUserDataSource) Schema(
 				MarkdownDescription: "ID of the network for this account.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -116,6 +121,14 @@ func (d *radiusUserDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

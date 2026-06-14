@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -48,11 +50,12 @@ type firewallGroupResource struct {
 
 // firewallGroupResourceModel describes the resource data model.
 type firewallGroupResourceModel struct {
-	ID      types.String `tfsdk:"id"`
-	Site    types.String `tfsdk:"site"`
-	Name    types.String `tfsdk:"name"`
-	Type    types.String `tfsdk:"type"`
-	Members types.Set    `tfsdk:"members"`
+	ID       types.String   `tfsdk:"id"`
+	Site     types.String   `tfsdk:"site"`
+	Name     types.String   `tfsdk:"name"`
+	Type     types.String   `tfsdk:"type"`
+	Members  types.Set      `tfsdk:"members"`
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 // firewallGroupListConfigModel describes the list configuration model.
@@ -131,6 +134,10 @@ func (r *firewallGroupResource) Schema(
 				Required:    true,
 				ElementType: types.StringType,
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -170,6 +177,14 @@ func (r *firewallGroupResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	site := plan.Site.ValueString()
 	if site == "" {
@@ -217,6 +232,14 @@ func (r *firewallGroupResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()
 	if site == "" {
@@ -262,6 +285,14 @@ func (r *firewallGroupResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	site := plan.Site.ValueString()
 	if site == "" {
@@ -319,6 +350,8 @@ func (r *firewallGroupResource) Update(
 	// Update state from API response
 	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, apiFirewallGroup, &state, site)...)
 
+	state.Timeouts = plan.Timeouts
+
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
@@ -335,6 +368,14 @@ func (r *firewallGroupResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()

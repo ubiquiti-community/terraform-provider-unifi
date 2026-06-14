@@ -66,6 +66,7 @@ resource "unifi_radius_user" "from_network" {
 
 - `network_id` (String) ID of the network for this account. When set and `vlan` is omitted, the account inherits that network's VLAN (so RADIUS/MAB VLAN assignment is applied).
 - `site` (String) The name of the site to associate the account with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `tunnel_config_type` (String) The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.
 - `tunnel_medium_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2
 - `tunnel_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. Valid values are 1-13; `13` (VLAN) is the most common.
@@ -74,6 +75,16 @@ resource "unifi_radius_user" "from_network" {
 ### Read-Only
 
 - `id` (String) The ID of the account.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 ## Import
 

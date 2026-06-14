@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -24,8 +26,9 @@ type clientInfoListDataSource struct {
 }
 
 type clientInfoListDataSourceModel struct {
-	Site    types.String `tfsdk:"site"`
-	Clients types.List   `tfsdk:"clients"`
+	Site     types.String   `tfsdk:"site"`
+	Clients  types.List     `tfsdk:"clients"`
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *clientInfoListDataSource) Metadata(
@@ -57,6 +60,7 @@ func (d *clientInfoListDataSource) Schema(
 					Attributes: models.Attributes(),
 				},
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -94,6 +98,14 @@ func (d *clientInfoListDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	// Track whether the site was explicitly set by the user. An explicit site

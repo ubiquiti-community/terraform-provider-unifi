@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -51,15 +53,16 @@ type radiusUserResource struct {
 
 // radiusUserResourceModel describes the resource data model.
 type radiusUserResourceModel struct {
-	ID               types.String `tfsdk:"id"`
-	Site             types.String `tfsdk:"site"`
-	Name             types.String `tfsdk:"name"`
-	Password         types.String `tfsdk:"password"`
-	TunnelType       types.Int64  `tfsdk:"tunnel_type"`
-	TunnelMediumType types.Int64  `tfsdk:"tunnel_medium_type"`
-	NetworkID        types.String `tfsdk:"network_id"`
-	VLAN             types.Int64  `tfsdk:"vlan"`
-	TunnelConfigType types.String `tfsdk:"tunnel_config_type"`
+	ID               types.String   `tfsdk:"id"`
+	Site             types.String   `tfsdk:"site"`
+	Name             types.String   `tfsdk:"name"`
+	Password         types.String   `tfsdk:"password"`
+	TunnelType       types.Int64    `tfsdk:"tunnel_type"`
+	TunnelMediumType types.Int64    `tfsdk:"tunnel_medium_type"`
+	NetworkID        types.String   `tfsdk:"network_id"`
+	VLAN             types.Int64    `tfsdk:"vlan"`
+	TunnelConfigType types.String   `tfsdk:"tunnel_config_type"`
+	Timeouts         timeouts.Value `tfsdk:"timeouts"`
 }
 
 // radiusUserListConfigModel describes the list configuration model.
@@ -179,6 +182,10 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 					stringvalidator.OneOf("vpn", "802.1x", "custom"),
 				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -219,6 +226,14 @@ func (r *radiusUserResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// Convert to unifi.Account
 	account := r.modelToRadiusUser(ctx, &data)
@@ -267,6 +282,14 @@ func (r *radiusUserResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	site := data.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -314,8 +337,17 @@ func (r *radiusUserResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
+	state.Timeouts = plan.Timeouts
 
 	site := state.Site.ValueString()
 	if site == "" {
@@ -364,6 +396,14 @@ func (r *radiusUserResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

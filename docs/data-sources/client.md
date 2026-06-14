@@ -44,6 +44,7 @@ output "client_qos_max_down" {
 ### Optional
 
 - `site` (String) The name of the site the client is associated with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -59,6 +60,14 @@ output "client_qos_max_down" {
 - `network_id` (String) The network ID for this client.
 - `note` (String) A note with additional information for the client.
 - `qos_rate` (Attributes) QoS rate limiting configuration from the client's group. (see [below for nested schema](#nestedatt--qos_rate))
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--qos_rate"></a>
 ### Nested Schema for `qos_rate`

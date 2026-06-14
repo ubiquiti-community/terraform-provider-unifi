@@ -54,6 +54,7 @@ data "unifi_radius_profile" "site_specific" {
 ### Optional
 
 - `site` (String) The name of the site the RADIUS profile is associated with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -65,3 +66,10 @@ data "unifi_radius_profile" "site_specific" {
 - `use_usg_auth_server` (Boolean) Whether to use USG as authentication server.
 - `vlan_enabled` (Boolean) Whether VLAN is enabled.
 - `vlan_wlan_mode` (String) The VLAN WLAN mode.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
