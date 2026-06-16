@@ -761,18 +761,35 @@ func modelToFirewallPolicy(
 	return fp, diags
 }
 
+// firewallPolicyMatchingTargetType ensures a concrete matching_target_type is
+// sent for a specific (non-ANY) match. The controller rejects an IP/NETWORK/etc.
+// match whose matching_target_type is empty (#293,
+// api.err.MissingFirewallPolicySourceMatchingTargetType) — which happens when a
+// source is switched from ANY to a specific target, leaving the round-tripped
+// type empty or a stale "ANY". A controller-assigned type (SPECIFIC/OBJECT/LIST)
+// is preserved.
+func firewallPolicyMatchingTargetType(matchingTarget, currentType string) string {
+	if matchingTarget != "" && matchingTarget != "ANY" &&
+		(currentType == "" || currentType == "ANY") {
+		return "SPECIFIC"
+	}
+	return currentType
+}
+
 func endpointModelToSource(
 	ctx context.Context,
 	m firewallPolicyEndpointModel,
 	diags *diag.Diagnostics,
 ) *unifi.FirewallPolicySource {
 	ep := &unifi.FirewallPolicySource{
-		ZoneID:             m.ZoneID.ValueString(),
-		MatchingTarget:     m.MatchingTarget.ValueString(),
-		MatchingTargetType: m.MatchingTargetType.ValueString(),
-		Port:               m.Port.ValueString(),
-		PortGroupID:        m.PortGroupID.ValueString(),
-		PortMatchingType:   m.PortMatchingType.ValueString(),
+		ZoneID:         m.ZoneID.ValueString(),
+		MatchingTarget: m.MatchingTarget.ValueString(),
+		MatchingTargetType: firewallPolicyMatchingTargetType(
+			m.MatchingTarget.ValueString(), m.MatchingTargetType.ValueString(),
+		),
+		Port:             m.Port.ValueString(),
+		PortGroupID:      m.PortGroupID.ValueString(),
+		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -795,12 +812,14 @@ func endpointModelToDestination(
 	diags *diag.Diagnostics,
 ) *unifi.FirewallPolicyDestination {
 	ep := &unifi.FirewallPolicyDestination{
-		ZoneID:             m.ZoneID.ValueString(),
-		MatchingTarget:     m.MatchingTarget.ValueString(),
-		MatchingTargetType: m.MatchingTargetType.ValueString(),
-		Port:               m.Port.ValueString(),
-		PortGroupID:        m.PortGroupID.ValueString(),
-		PortMatchingType:   m.PortMatchingType.ValueString(),
+		ZoneID:         m.ZoneID.ValueString(),
+		MatchingTarget: m.MatchingTarget.ValueString(),
+		MatchingTargetType: firewallPolicyMatchingTargetType(
+			m.MatchingTarget.ValueString(), m.MatchingTargetType.ValueString(),
+		),
+		Port:             m.Port.ValueString(),
+		PortGroupID:      m.PortGroupID.ValueString(),
+		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
