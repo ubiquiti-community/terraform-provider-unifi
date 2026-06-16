@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.52.1] - 2026-06-16
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting`: stop serializing `0` for unset numeric fields.** An unset Optional+Computed integer was sent as `0`, which the controller rejects (e.g. syslog `netconsole_port: 0` → `400 api.err.InvalidPayload`). The provider now omits `syslog.port`/`syslog.netconsole_port`, `lcm.brightness`/`lcm.idle_timeout`, and `ips` alert `gid`/`id` when unset (#303)
+
+---
+
 ## [v0.52.0] - 2026-06-16
 
 ### ✨ Features
