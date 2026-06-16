@@ -77,12 +77,18 @@ resource "unifi_setting" "radius_only" {
 ### Optional
 
 - `auto_speedtest` (Attributes) Periodic automated internet speed test settings. (see [below for nested schema](#nestedatt--auto_speedtest))
+- `country` (Attributes) Regulatory country settings. (see [below for nested schema](#nestedatt--country))
 - `doh` (Attributes) Encrypted DNS (DNS-over-HTTPS) settings. (see [below for nested schema](#nestedatt--doh))
+- `dpi` (Attributes) Deep Packet Inspection (DPI) settings. (see [below for nested schema](#nestedatt--dpi))
 - `igmp_snooping` (Attributes) Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates. (see [below for nested schema](#nestedatt--igmp_snooping))
 - `ips` (Attributes) Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset. (see [below for nested schema](#nestedatt--ips))
+- `lcm` (Attributes) LCD/display (LCM) settings for devices with a screen. (see [below for nested schema](#nestedatt--lcm))
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
+- `network_optimization` (Attributes) Automated network optimization settings. (see [below for nested schema](#nestedatt--network_optimization))
+- `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
 - `site` (String) The name of the site to associate the settings with.
+- `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `usg` (Attributes) USG settings. (see [below for nested schema](#nestedatt--usg))
 
@@ -97,6 +103,14 @@ Optional:
 
 - `cron_expr` (String) Cron expression controlling when the speed test runs (e.g. `0 * * * *`).
 - `enabled` (Boolean) Whether periodic automated speed tests are enabled.
+
+
+<a id="nestedatt--country"></a>
+### Nested Schema for `country`
+
+Required:
+
+- `code` (Number) Regulatory country code (ISO 3166-1 numeric).
 
 
 <a id="nestedatt--doh"></a>
@@ -120,6 +134,15 @@ Optional:
 
 - `enabled` (Boolean) Enable this custom server. Defaults to true.
 
+
+
+<a id="nestedatt--dpi"></a>
+### Nested Schema for `dpi`
+
+Optional:
+
+- `enabled` (Boolean) Whether DPI is enabled.
+- `fingerprinting_enabled` (Boolean) Whether device fingerprinting is enabled.
 
 
 <a id="nestedatt--igmp_snooping"></a>
@@ -168,6 +191,18 @@ Required:
 
 
 
+<a id="nestedatt--lcm"></a>
+### Nested Schema for `lcm`
+
+Optional:
+
+- `brightness` (Number) Display brightness (1-100).
+- `enabled` (Boolean) Whether the device display is enabled.
+- `idle_timeout` (Number) Seconds of inactivity before the display turns off (10-3600).
+- `sync` (Boolean) Sync display settings across devices.
+- `touch_event` (Boolean) Whether touch events on the display are enabled.
+
+
 <a id="nestedatt--mgmt"></a>
 ### Nested Schema for `mgmt`
 
@@ -192,6 +227,26 @@ Optional:
 
 
 
+<a id="nestedatt--network_optimization"></a>
+### Nested Schema for `network_optimization`
+
+Optional:
+
+- `enabled` (Boolean) Whether automated network optimization is enabled.
+
+
+<a id="nestedatt--ntp"></a>
+### Nested Schema for `ntp`
+
+Optional:
+
+- `ntp_server_1` (String) Primary NTP server.
+- `ntp_server_2` (String) Second NTP server.
+- `ntp_server_3` (String) Third NTP server.
+- `ntp_server_4` (String) Fourth NTP server.
+- `setting_preference` (String) Configuration mode: `auto` or `manual`.
+
+
 <a id="nestedatt--radius"></a>
 ### Nested Schema for `radius`
 
@@ -202,6 +257,24 @@ Optional:
 - `auth_port` (Number) RADIUS authentication port.
 - `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
 - `secret` (String, Sensitive) RADIUS shared secret.
+
+
+<a id="nestedatt--syslog"></a>
+### Nested Schema for `syslog`
+
+Optional:
+
+- `contents` (List of String) Logged facilities (e.g. `device`, `client`, `firewall_default_policy`, `triggers`, `updates`, `admin_activity`, `critical`, `security_detections`, `vpn`).
+- `debug` (Boolean) Enable debug logging.
+- `enabled` (Boolean) Whether remote syslog is enabled.
+- `ip` (String) Remote syslog server IP address.
+- `log_all_contents` (Boolean) Log all available facilities.
+- `netconsole_enabled` (Boolean) Whether netconsole logging is enabled.
+- `netconsole_host` (String) Netconsole host.
+- `netconsole_port` (Number) Netconsole port (1-65535).
+- `port` (Number) Remote syslog server port (1-65535).
+- `this_controller` (Boolean) Also log this controller's events.
+- `this_controller_encrypted_only` (Boolean) Only send this controller's logs over an encrypted channel.
 
 
 <a id="nestedatt--timeouts"></a>

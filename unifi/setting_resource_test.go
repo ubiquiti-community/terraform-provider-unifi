@@ -1282,3 +1282,50 @@ func TestAutoSpeedtestSettingRoundTrip(t *testing.T) {
 		t.Errorf("settingToModel = %+v, want enabled cron preserved", out)
 	}
 }
+
+// TestSettingBlocksRoundTrip covers the model<->go-unifi conversions for the
+// settings added in #273 (a representative scalar block and the list-bearing one).
+func TestSettingBlocksRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+
+	t.Run("ntp", func(t *testing.T) {
+		in := &settingNtpModel{
+			NtpServer1:        types.StringValue("pool.ntp.org"),
+			SettingPreference: types.StringValue("manual"),
+		}
+		out := r.ntpSettingToModel(r.ntpModelToSetting(in))
+		if out.NtpServer1.ValueString() != "pool.ntp.org" ||
+			out.SettingPreference.ValueString() != "manual" {
+			t.Errorf("ntp round-trip mismatch: %+v", out)
+		}
+	})
+
+	t.Run("syslog", func(t *testing.T) {
+		var diags diag.Diagnostics
+		contents, _ := types.ListValueFrom(ctx, types.StringType, []string{"device", "client"})
+		in := &settingSyslogModel{
+			Enabled:  types.BoolValue(true),
+			IP:       types.StringValue("10.0.0.9"),
+			Port:     types.Int64Value(514),
+			Contents: contents,
+		}
+		setting := r.syslogModelToSetting(ctx, in, &diags)
+		if diags.HasError() {
+			t.Fatalf("modelToSetting: %v", diags)
+		}
+		if !setting.Enabled || setting.IP != "10.0.0.9" || setting.Port == nil ||
+			*setting.Port != 514 || len(setting.Contents) != 2 {
+			t.Fatalf("syslog modelToSetting mismatch: %+v", setting)
+		}
+		out := r.syslogSettingToModel(ctx, setting, &diags)
+		if diags.HasError() {
+			t.Fatalf("settingToModel: %v", diags)
+		}
+		var gotContents []string
+		out.Contents.ElementsAs(ctx, &gotContents, false)
+		if out.IP.ValueString() != "10.0.0.9" || len(gotContents) != 2 {
+			t.Errorf("syslog round-trip mismatch: %+v", out)
+		}
+	})
+}
