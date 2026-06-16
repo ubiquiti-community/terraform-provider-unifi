@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.52.2] - 2026-06-16
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_policy`: set `matching_target_type` for specific matches.** Switching a `source`/`destination` from `matching_target = "ANY"` to a specific target (e.g. `"IP"`) left `matching_target_type` empty, so the update was rejected with `api.err.MissingFirewallPolicySourceMatchingTargetType (400)`. The provider now sends `SPECIFIC` for a non-ANY match (preserving a controller-assigned `OBJECT`/`LIST`) (#293)
+
+---
+
 ## [v0.52.1] - 2026-06-16
 
 ### 🐛 Bug Fixes
