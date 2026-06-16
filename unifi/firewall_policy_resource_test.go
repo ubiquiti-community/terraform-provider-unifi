@@ -1078,3 +1078,47 @@ func Test_firewallPolicyResource_ListResourceConfigSchema(t *testing.T) {
 		})
 	}
 }
+
+// TestFirewallPolicyMatchingTargetType guards #293: a specific (non-ANY) match
+// must carry a concrete matching_target_type — the controller rejects an empty
+// one (api.err.MissingFirewallPolicySourceMatchingTargetType) when a source is
+// switched from ANY to e.g. IP. A controller-assigned type is preserved.
+func TestFirewallPolicyMatchingTargetType(t *testing.T) {
+	cases := []struct {
+		matchingTarget, current, want string
+	}{
+		{"IP", "", "SPECIFIC"},         // ANY -> IP, type was dropped
+		{"IP", "ANY", "SPECIFIC"},      // ANY -> IP, stale "ANY" left over
+		{"IP", "SPECIFIC", "SPECIFIC"}, // already correct
+		{"IP", "OBJECT", "OBJECT"},     // controller-assigned object/group preserved
+		{"NETWORK", "", "SPECIFIC"},
+		{"ANY", "", ""}, // ANY source untouched
+		{"ANY", "ANY", "ANY"},
+	}
+	for _, c := range cases {
+		if got := firewallPolicyMatchingTargetType(c.matchingTarget, c.current); got != c.want {
+			t.Errorf("matchingTargetType(%q,%q) = %q, want %q",
+				c.matchingTarget, c.current, got, c.want)
+		}
+	}
+
+	// End-to-end: an IP source whose type was lost serializes SPECIFIC.
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	ips, _ := types.ListValueFrom(ctx, types.StringType, []string{"10.0.40.138"})
+	m := firewallPolicyEndpointModel{
+		ZoneID:             types.StringValue("z1"),
+		MatchingTarget:     types.StringValue("IP"),
+		IPs:                ips,
+		NetworkIDs:         types.ListNull(types.StringType),
+		ClientMACs:         types.ListNull(types.StringType),
+		WebDomains:         types.ListNull(types.StringType),
+		Port:               types.StringNull(),
+		PortGroupID:        types.StringNull(),
+		PortMatchingType:   types.StringValue("ANY"),
+		MatchingTargetType: types.StringValue("ANY"),
+	}
+	if got := endpointModelToSource(ctx, m, &diags).MatchingTargetType; got != "SPECIFIC" {
+		t.Errorf("source MatchingTargetType = %q, want SPECIFIC", got)
+	}
+}
