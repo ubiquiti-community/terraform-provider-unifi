@@ -44,6 +44,7 @@ var (
 	_ resource.ResourceWithImportState  = &wlanFrameworkResource{}
 	_ resource.ResourceWithIdentity     = &wlanFrameworkResource{}
 	_ resource.ResourceWithUpgradeState = &wlanFrameworkResource{}
+	_ resource.ResourceWithModifyPlan   = &wlanFrameworkResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -595,10 +596,14 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"enhanced_iot": schema.BoolAttribute{
-				MarkdownDescription: "Enable enhanced IoT connectivity.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Enable enhanced IoT connectivity. When `true`, the " +
+					"controller forces `iapp_enabled = true`, `wpa3_support = false`, " +
+					"`wpa3_transition = false`, `pmf_mode = \"disabled\"` and `dtim_ng = 1`; " +
+					"the provider pins those fields to match, so any conflicting values you " +
+					"set for them are ignored (this disables WPA3 on the SSID).",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
 			},
 			"hotspot2conf_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Enable Hotspot 2.0 configuration.",
@@ -751,6 +756,49 @@ func (r *wlanFrameworkResource) Configure(
 	}
 
 	r.client = client
+}
+
+// ModifyPlan reconciles the fields the controller forces when enhanced IoT is
+// enabled. With `enhanced_iot = true` the controller silently overrides
+// iapp_enabled, wpa3_support, wpa3_transition, pmf_mode and dtim_ng with fixed
+// values, so a plan that kept the configured/default values would fail the
+// post-apply consistency check (and re-propose them on every plan). Pin those
+// fields to what the controller will return. When enhanced_iot is false (the
+// common case) this is a no-op, so non-IoT WLANs are unaffected. See #283.
+func (r *wlanFrameworkResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	// No plan on destroy.
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan wlanFrameworkResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if applyEnhancedIotOverrides(&plan) {
+		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
+	}
+}
+
+// applyEnhancedIotOverrides pins the fields the controller forces when
+// enhanced IoT is enabled. Returns true if it changed the model. A no-op when
+// enhanced_iot is not true.
+func applyEnhancedIotOverrides(plan *wlanFrameworkResourceModel) bool {
+	if !plan.EnhancedIot.ValueBool() {
+		return false
+	}
+	plan.IappEnabled = types.BoolValue(true)
+	plan.WPA3Support = types.BoolValue(false)
+	plan.WPA3Transition = types.BoolValue(false)
+	plan.PMFMode = types.StringValue("disabled")
+	plan.DTIMNg = types.Int64Value(1)
+	return true
 }
 
 // setDefaultWLANGroupID populates wlan.WLANGroupID when it is empty. go-unifi

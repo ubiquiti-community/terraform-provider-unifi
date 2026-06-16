@@ -483,3 +483,53 @@ func TestWLANPrivatePresharedKeys_emptyIsNull(t *testing.T) {
 		t.Errorf("PrivatePresharedKeys = %v, want null", model.PrivatePresharedKeys)
 	}
 }
+
+// TestApplyEnhancedIotOverrides guards #283: when enhanced_iot is enabled the
+// controller forces iapp_enabled, wpa3_support, wpa3_transition, pmf_mode and
+// dtim_ng, so the provider pins them in the plan to avoid an inconsistent-result
+// error. When enhanced_iot is false it must be a no-op.
+func TestApplyEnhancedIotOverrides(t *testing.T) {
+	t.Run("enhanced_iot true forces the controller-managed fields", func(t *testing.T) {
+		m := &wlanFrameworkResourceModel{
+			EnhancedIot:    types.BoolValue(true),
+			IappEnabled:    types.BoolValue(false),
+			WPA3Support:    types.BoolValue(true),
+			WPA3Transition: types.BoolValue(true),
+			PMFMode:        types.StringValue("optional"),
+			DTIMNg:         types.Int64Value(3),
+		}
+		if !applyEnhancedIotOverrides(m) {
+			t.Fatal("expected overrides to be applied")
+		}
+		if !m.IappEnabled.ValueBool() {
+			t.Errorf("iapp_enabled = %v, want true", m.IappEnabled.ValueBool())
+		}
+		if m.WPA3Support.ValueBool() {
+			t.Errorf("wpa3_support = %v, want false", m.WPA3Support.ValueBool())
+		}
+		if m.WPA3Transition.ValueBool() {
+			t.Errorf("wpa3_transition = %v, want false", m.WPA3Transition.ValueBool())
+		}
+		if m.PMFMode.ValueString() != "disabled" {
+			t.Errorf("pmf_mode = %q, want disabled", m.PMFMode.ValueString())
+		}
+		if m.DTIMNg.ValueInt64() != 1 {
+			t.Errorf("dtim_ng = %d, want 1", m.DTIMNg.ValueInt64())
+		}
+	})
+
+	t.Run("enhanced_iot false is a no-op", func(t *testing.T) {
+		m := &wlanFrameworkResourceModel{
+			EnhancedIot: types.BoolValue(false),
+			WPA3Support: types.BoolValue(true),
+			PMFMode:     types.StringValue("optional"),
+		}
+		if applyEnhancedIotOverrides(m) {
+			t.Fatal("expected no overrides when enhanced_iot is false")
+		}
+		if !m.WPA3Support.ValueBool() || m.PMFMode.ValueString() != "optional" {
+			t.Errorf("non-IoT fields were modified: wpa3=%v pmf=%q",
+				m.WPA3Support.ValueBool(), m.PMFMode.ValueString())
+		}
+	})
+}

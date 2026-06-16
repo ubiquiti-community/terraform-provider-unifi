@@ -84,7 +84,7 @@ resource "unifi_wlan" "wifi" {
 - `dtim_na` (Number) DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
 - `dtim_ng` (Number) DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
 - `enabled` (Boolean) Enable or disable the WLAN.
-- `enhanced_iot` (Boolean) Enable enhanced IoT connectivity.
+- `enhanced_iot` (Boolean) Enable enhanced IoT connectivity. When `true`, the controller forces `iapp_enabled = true`, `wpa3_support = false`, `wpa3_transition = false`, `pmf_mode = "disabled"` and `dtim_ng = 1`; the provider pins those fields to match, so any conflicting values you set for them are ignored (this disables WPA3 on the SSID).
 - `fast_roaming_enabled` (Boolean) Enable fast roaming, aka 802.11r.
 - `group_rekey` (Number) Group rekey interval in seconds (0 to disable).
 - `hide_ssid` (Boolean) Indicates whether or not to hide the SSID from broadcast.
