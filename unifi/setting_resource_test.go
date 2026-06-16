@@ -713,7 +713,7 @@ func Test_settingResource_mgmtModelToSetting(t *testing.T) {
 			SSHEnabled:  types.BoolNull(),
 			SSHKeys:     types.ListNull(types.StringType),
 		}
-		got := r.mgmtModelToSetting(ctx, model)
+		got := r.mgmtModelToSetting(ctx, model, &settings.Mgmt{})
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
@@ -731,7 +731,7 @@ func Test_settingResource_mgmtModelToSetting(t *testing.T) {
 			SSHEnabled:  types.BoolValue(false),
 			SSHKeys:     types.ListNull(types.StringType),
 		}
-		got := r.mgmtModelToSetting(ctx, model)
+		got := r.mgmtModelToSetting(ctx, model, &settings.Mgmt{})
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
@@ -1328,4 +1328,46 @@ func TestSettingBlocksRoundTrip(t *testing.T) {
 			t.Errorf("syslog round-trip mismatch: %+v", out)
 		}
 	})
+}
+
+// TestMgmtNewFields guards #274: the new mgmt fields overlay onto the current
+// remote setting (read-base, so unmanaged fields aren't clobbered) and the
+// secret ssh_password is preserved from the plan (the controller never echoes it).
+func TestMgmtNewFields(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+
+	// Base has a field the user does NOT manage; it must survive.
+	base := &settings.Mgmt{WifimanEnabled: true}
+	model := &settingMgmtModel{
+		SSHUsername:            types.StringValue("admin"),
+		SSHPassword:            types.StringValue("s3cret"),
+		SSHAuthPasswordEnabled: types.BoolValue(true),
+		AdvancedFeatureEnabled: types.BoolValue(true),
+	}
+	setting := r.mgmtModelToSetting(ctx, model, base)
+	if !setting.WifimanEnabled {
+		t.Error("read-base field WifimanEnabled was clobbered")
+	}
+	if setting.SSHUsername != "admin" || setting.SSHPassword != "s3cret" ||
+		!setting.SSHAuthPasswordEnabled || !setting.AdvancedFeatureEnabled {
+		t.Errorf("overlay missing: %+v", setting)
+	}
+
+	// On read, ssh_password is preserved from the plan (API returns no plaintext).
+	plan := &settingMgmtModel{
+		SSHUsername: types.StringValue("admin"),
+		SSHPassword: types.StringValue("s3cret"),
+	}
+	out := r.mgmtSettingToModel(ctx, &settings.Mgmt{SSHUsername: "admin"}, plan)
+	if out.SSHPassword.ValueString() != "s3cret" {
+		t.Errorf("ssh_password not preserved: %q", out.SSHPassword.ValueString())
+	}
+	if out.SSHUsername.ValueString() != "admin" {
+		t.Errorf("ssh_username = %q, want admin", out.SSHUsername.ValueString())
+	}
+	// An unconfigured field stays null (no drift on unmanaged settings).
+	if !out.WifimanEnabled.IsNull() {
+		t.Error("unconfigured wifiman_enabled should be null")
+	}
 }

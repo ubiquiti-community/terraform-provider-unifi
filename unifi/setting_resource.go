@@ -50,9 +50,18 @@ type sshKeyModel struct {
 }
 
 type settingMgmtModel struct {
-	AutoUpgrade types.Bool `tfsdk:"auto_upgrade"`
-	SSHEnabled  types.Bool `tfsdk:"ssh_enabled"`
-	SSHKeys     types.List `tfsdk:"ssh_keys"`
+	AutoUpgrade            types.Bool   `tfsdk:"auto_upgrade"`
+	AutoUpgradeHour        types.Int64  `tfsdk:"auto_upgrade_hour"`
+	SSHEnabled             types.Bool   `tfsdk:"ssh_enabled"`
+	SSHKeys                types.List   `tfsdk:"ssh_keys"`
+	AdvancedFeatureEnabled types.Bool   `tfsdk:"advanced_feature_enabled"`
+	DebugToolsEnabled      types.Bool   `tfsdk:"debug_tools_enabled"`
+	DirectConnectEnabled   types.Bool   `tfsdk:"direct_connect_enabled"`
+	UnifiIdpEnabled        types.Bool   `tfsdk:"unifi_idp_enabled"`
+	WifimanEnabled         types.Bool   `tfsdk:"wifiman_enabled"`
+	SSHUsername            types.String `tfsdk:"ssh_username"`
+	SSHPassword            types.String `tfsdk:"ssh_password"`
+	SSHAuthPasswordEnabled types.Bool   `tfsdk:"ssh_auth_password_enabled"`
 }
 
 type settingRadiusModel struct {
@@ -230,6 +239,28 @@ var (
 	autoSpeedtestAttrTypes = map[string]attr.Type{
 		"enabled":   types.BoolType,
 		"cron_expr": types.StringType,
+	}
+	mgmtSSHKeyAttrTypes = map[string]attr.Type{
+		"name":    types.StringType,
+		"type":    types.StringType,
+		"key":     types.StringType,
+		"comment": types.StringType,
+	}
+	mgmtAttrTypes = map[string]attr.Type{
+		"auto_upgrade":      types.BoolType,
+		"auto_upgrade_hour": types.Int64Type,
+		"ssh_enabled":       types.BoolType,
+		"ssh_keys": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes},
+		},
+		"advanced_feature_enabled":  types.BoolType,
+		"debug_tools_enabled":       types.BoolType,
+		"direct_connect_enabled":    types.BoolType,
+		"unifi_idp_enabled":         types.BoolType,
+		"wifiman_enabled":           types.BoolType,
+		"ssh_username":              types.StringType,
+		"ssh_password":              types.StringType,
+		"ssh_auth_password_enabled": types.BoolType,
 	}
 	countryAttrTypes = map[string]attr.Type{
 		"code": types.Int64Type,
@@ -744,6 +775,53 @@ func (r *settingResource) Schema(
 					},
 					"ssh_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable SSH authentication.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"auto_upgrade_hour": schema.Int64Attribute{
+						MarkdownDescription: "Hour of day (0-23) for automatic firmware upgrades.",
+						Optional:            true,
+						Computed:            true,
+						Validators:          []validator.Int64{int64validator.Between(0, 23)},
+					},
+					"advanced_feature_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable advanced features.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"debug_tools_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable debug tools.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"direct_connect_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable Direct Connect (remote access).",
+						Optional:            true,
+						Computed:            true,
+					},
+					"unifi_idp_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable the UniFi Identity Provider.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"wifiman_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable WiFiman.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"ssh_username": schema.StringAttribute{
+						MarkdownDescription: "SSH username for device access.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"ssh_password": schema.StringAttribute{
+						MarkdownDescription: "SSH password for device access. Sensitive — the controller " +
+							"stores only a hash, so this value is kept from configuration and not read back.",
+						Optional:  true,
+						Sensitive: true,
+					},
+					"ssh_auth_password_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Allow SSH password authentication (in addition to keys).",
 						Optional:            true,
 						Computed:            true,
 					},
@@ -1311,7 +1389,18 @@ func (r *settingResource) Create(
 			return
 		}
 
-		setting := r.mgmtModelToSetting(ctx, &mgmt)
+		// Read current remote settings as the base so unset fields keep their values.
+		_, currentMgmt, err := ui.GetSetting[*settings.Mgmt](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading Mgmt Setting", err.Error())
+				return
+			}
+			currentMgmt = &settings.Mgmt{}
+		}
+
+		setting := r.mgmtModelToSetting(ctx, &mgmt, currentMgmt)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Mgmt Setting", err.Error())
 			return
@@ -1591,7 +1680,18 @@ func (r *settingResource) Update(
 			return
 		}
 
-		setting := r.mgmtModelToSetting(ctx, &mgmt)
+		// Read current remote settings as the base so unset fields keep their values.
+		_, currentMgmt, err := ui.GetSetting[*settings.Mgmt](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading Mgmt Setting", err.Error())
+				return
+			}
+			currentMgmt = &settings.Mgmt{}
+		}
+
+		setting := r.mgmtModelToSetting(ctx, &mgmt, currentMgmt)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Mgmt Setting", err.Error())
 			return
@@ -1898,40 +1998,14 @@ func (r *settingResource) readSettings(
 		}
 
 		mgmtModel := r.mgmtSettingToModel(ctx, mgmtSetting, &planMgmt)
-		objValue, d := types.ObjectValueFrom(ctx, map[string]attr.Type{
-			"auto_upgrade": types.BoolType,
-			"ssh_enabled":  types.BoolType,
-			"ssh_keys": types.ListType{
-				ElemType: types.ObjectType{
-					AttrTypes: map[string]attr.Type{
-						"name":    types.StringType,
-						"type":    types.StringType,
-						"key":     types.StringType,
-						"comment": types.StringType,
-					},
-				},
-			},
-		}, mgmtModel)
+		objValue, d := types.ObjectValueFrom(ctx, mgmtAttrTypes, mgmtModel)
 		diags.Append(d...)
 		if diags.HasError() {
 			return
 		}
 		data.Mgmt = objValue
 	} else {
-		data.Mgmt = types.ObjectNull(map[string]attr.Type{
-			"auto_upgrade": types.BoolType,
-			"ssh_enabled":  types.BoolType,
-			"ssh_keys": types.ListType{
-				ElemType: types.ObjectType{
-					AttrTypes: map[string]attr.Type{
-						"name":    types.StringType,
-						"type":    types.StringType,
-						"key":     types.StringType,
-						"comment": types.StringType,
-					},
-				},
-			},
-		})
+		data.Mgmt = types.ObjectNull(mgmtAttrTypes)
 	}
 
 	// Radius settings
@@ -2111,17 +2185,46 @@ func (r *settingResource) readSettings(
 func (r *settingResource) mgmtModelToSetting(
 	ctx context.Context,
 	model *settingMgmtModel,
+	base *settings.Mgmt,
 ) *settings.Mgmt {
-	setting := &settings.Mgmt{}
+	setting := base
 
-	if !model.AutoUpgrade.IsNull() {
+	if !model.AutoUpgrade.IsNull() && !model.AutoUpgrade.IsUnknown() {
 		setting.AutoUpgrade = model.AutoUpgrade.ValueBool()
 	}
-	if !model.SSHEnabled.IsNull() {
+	if !model.AutoUpgradeHour.IsNull() && !model.AutoUpgradeHour.IsUnknown() {
+		setting.AutoUpgradeHour = model.AutoUpgradeHour.ValueInt64Pointer()
+	}
+	if !model.SSHEnabled.IsNull() && !model.SSHEnabled.IsUnknown() {
 		setting.SSHEnabled = model.SSHEnabled.ValueBool()
+	}
+	if !model.AdvancedFeatureEnabled.IsNull() && !model.AdvancedFeatureEnabled.IsUnknown() {
+		setting.AdvancedFeatureEnabled = model.AdvancedFeatureEnabled.ValueBool()
+	}
+	if !model.DebugToolsEnabled.IsNull() && !model.DebugToolsEnabled.IsUnknown() {
+		setting.DebugToolsEnabled = model.DebugToolsEnabled.ValueBool()
+	}
+	if !model.DirectConnectEnabled.IsNull() && !model.DirectConnectEnabled.IsUnknown() {
+		setting.DirectConnectEnabled = model.DirectConnectEnabled.ValueBool()
+	}
+	if !model.UnifiIdpEnabled.IsNull() && !model.UnifiIdpEnabled.IsUnknown() {
+		setting.UniFiIdentityProviderEnabled = model.UnifiIdpEnabled.ValueBool()
+	}
+	if !model.WifimanEnabled.IsNull() && !model.WifimanEnabled.IsUnknown() {
+		setting.WifimanEnabled = model.WifimanEnabled.ValueBool()
+	}
+	if !model.SSHUsername.IsNull() && !model.SSHUsername.IsUnknown() {
+		setting.SSHUsername = model.SSHUsername.ValueString()
+	}
+	if !model.SSHPassword.IsNull() && !model.SSHPassword.IsUnknown() {
+		setting.SSHPassword = model.SSHPassword.ValueString()
+	}
+	if !model.SSHAuthPasswordEnabled.IsNull() && !model.SSHAuthPasswordEnabled.IsUnknown() {
+		setting.SSHAuthPasswordEnabled = model.SSHAuthPasswordEnabled.ValueBool()
 	}
 
 	if !model.SSHKeys.IsNull() && !model.SSHKeys.IsUnknown() {
+		setting.SSHKeys = nil
 		var sshKeys []sshKeyModel
 		model.SSHKeys.ElementsAs(ctx, &sshKeys, false)
 		for _, sshKey := range sshKeys {
@@ -2144,18 +2247,43 @@ func (r *settingResource) mgmtSettingToModel(
 ) *settingMgmtModel {
 	model := &settingMgmtModel{}
 
-	// Only populate fields that were explicitly configured in the plan
-	if !plan.AutoUpgrade.IsNull() && !plan.AutoUpgrade.IsUnknown() {
-		model.AutoUpgrade = types.BoolValue(setting.AutoUpgrade)
-	} else {
-		model.AutoUpgrade = types.BoolNull()
+	// Only populate fields that were explicitly configured in the plan, so the
+	// resource doesn't report drift on settings the user doesn't manage.
+	boolOrNull := func(planVal types.Bool, apiVal bool) types.Bool {
+		if !planVal.IsNull() && !planVal.IsUnknown() {
+			return types.BoolValue(apiVal)
+		}
+		return types.BoolNull()
 	}
 
-	if !plan.SSHEnabled.IsNull() && !plan.SSHEnabled.IsUnknown() {
-		model.SSHEnabled = types.BoolValue(setting.SSHEnabled)
+	model.AutoUpgrade = boolOrNull(plan.AutoUpgrade, setting.AutoUpgrade)
+	model.SSHEnabled = boolOrNull(plan.SSHEnabled, setting.SSHEnabled)
+	model.AdvancedFeatureEnabled = boolOrNull(
+		plan.AdvancedFeatureEnabled, setting.AdvancedFeatureEnabled,
+	)
+	model.DebugToolsEnabled = boolOrNull(plan.DebugToolsEnabled, setting.DebugToolsEnabled)
+	model.DirectConnectEnabled = boolOrNull(plan.DirectConnectEnabled, setting.DirectConnectEnabled)
+	model.UnifiIdpEnabled = boolOrNull(plan.UnifiIdpEnabled, setting.UniFiIdentityProviderEnabled)
+	model.WifimanEnabled = boolOrNull(plan.WifimanEnabled, setting.WifimanEnabled)
+	model.SSHAuthPasswordEnabled = boolOrNull(
+		plan.SSHAuthPasswordEnabled, setting.SSHAuthPasswordEnabled,
+	)
+
+	if !plan.AutoUpgradeHour.IsNull() && !plan.AutoUpgradeHour.IsUnknown() {
+		model.AutoUpgradeHour = types.Int64PointerValue(setting.AutoUpgradeHour)
 	} else {
-		model.SSHEnabled = types.BoolNull()
+		model.AutoUpgradeHour = types.Int64Null()
 	}
+
+	if !plan.SSHUsername.IsNull() && !plan.SSHUsername.IsUnknown() {
+		model.SSHUsername = util.StringValueOrNull(setting.SSHUsername)
+	} else {
+		model.SSHUsername = types.StringNull()
+	}
+
+	// The controller never returns the plaintext SSH password (only hashes), so
+	// preserve the configured value to avoid a perpetual diff.
+	model.SSHPassword = plan.SSHPassword
 
 	if !plan.SSHKeys.IsNull() && !plan.SSHKeys.IsUnknown() {
 		if len(setting.SSHKeys) > 0 {
@@ -2168,34 +2296,15 @@ func (r *settingResource) mgmtSettingToModel(
 					Comment: types.StringValue(sshKey.Comment),
 				})
 			}
-			listValue, _ := types.ListValueFrom(ctx, types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"name":    types.StringType,
-					"type":    types.StringType,
-					"key":     types.StringType,
-					"comment": types.StringType,
-				},
-			}, sshKeys)
+			listValue, _ := types.ListValueFrom(
+				ctx, types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes}, sshKeys,
+			)
 			model.SSHKeys = listValue
 		} else {
-			model.SSHKeys = types.ListNull(types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"name":    types.StringType,
-					"type":    types.StringType,
-					"key":     types.StringType,
-					"comment": types.StringType,
-				},
-			})
+			model.SSHKeys = types.ListNull(types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes})
 		}
 	} else {
-		model.SSHKeys = types.ListNull(types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"name":    types.StringType,
-				"type":    types.StringType,
-				"key":     types.StringType,
-				"comment": types.StringType,
-			},
-		})
+		model.SSHKeys = types.ListNull(types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes})
 	}
 
 	return model
