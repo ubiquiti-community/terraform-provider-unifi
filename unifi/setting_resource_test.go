@@ -1426,3 +1426,50 @@ func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
 		t.Errorf("read-back alerts mismatch: %+v", outAlerts)
 	}
 }
+
+// TestSyslogOmitsUnsetPorts guards #303: an unset port / netconsole_port must be
+// omitted (nil pointer), not serialized as 0 — the controller rejects port 0.
+func TestSyslogOmitsUnsetPorts(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	r := &settingResource{}
+
+	m := &settingSyslogModel{
+		Enabled:        types.BoolValue(true),
+		IP:             types.StringValue("10.0.10.15"),
+		Port:           types.Int64Value(1514),
+		NetconsolePort: types.Int64Null(), // netconsole disabled / unset
+		Contents:       types.ListNull(types.StringType),
+	}
+	setting := r.syslogModelToSetting(ctx, m, &diags)
+	if diags.HasError() {
+		t.Fatalf("modelToSetting: %v", diags)
+	}
+	if setting.NetconsolePort != nil {
+		t.Errorf("netconsole_port must be omitted when unset, got %d", *setting.NetconsolePort)
+	}
+	if setting.Port == nil || *setting.Port != 1514 {
+		t.Errorf("port = %v, want 1514", setting.Port)
+	}
+
+	// Unknown (Optional+Computed at create) must also omit, not send 0.
+	m.Port = types.Int64Unknown()
+	setting = r.syslogModelToSetting(ctx, m, &diags)
+	if setting.Port != nil {
+		t.Errorf("unknown port must be omitted, got %d", *setting.Port)
+	}
+}
+
+// TestLcmOmitsUnsetInts guards the same #303 pattern for the lcm block.
+func TestLcmOmitsUnsetInts(t *testing.T) {
+	r := &settingResource{}
+	setting := r.lcmModelToSetting(&settingLcmModel{
+		Enabled:     types.BoolValue(true),
+		Brightness:  types.Int64Null(),
+		IdleTimeout: types.Int64Unknown(),
+	})
+	if setting.Brightness != nil || setting.IDleTimeout != nil {
+		t.Errorf("unset lcm ints must be omitted: brightness=%v idle=%v",
+			setting.Brightness, setting.IDleTimeout)
+	}
+}

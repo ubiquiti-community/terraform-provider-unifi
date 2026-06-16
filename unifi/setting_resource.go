@@ -2958,13 +2958,20 @@ func (r *settingResource) dpiSettingToModel(s *settings.Dpi) settingDpiModel {
 }
 
 func (r *settingResource) lcmModelToSetting(m *settingLcmModel) *settings.Lcm {
-	return &settings.Lcm{
-		Enabled:     m.Enabled.ValueBool(),
-		Brightness:  m.Brightness.ValueInt64Pointer(),
-		IDleTimeout: m.IdleTimeout.ValueInt64Pointer(),
-		Sync:        m.Sync.ValueBool(),
-		TouchEvent:  m.TouchEvent.ValueBool(),
+	setting := &settings.Lcm{
+		Enabled:    m.Enabled.ValueBool(),
+		Sync:       m.Sync.ValueBool(),
+		TouchEvent: m.TouchEvent.ValueBool(),
 	}
+	// Guard the optional ints: an unknown (unset Optional+Computed) value yields a
+	// 0 pointer, which the controller rejects as out of range (cf. #288/#303).
+	if !m.Brightness.IsNull() && !m.Brightness.IsUnknown() {
+		setting.Brightness = m.Brightness.ValueInt64Pointer()
+	}
+	if !m.IdleTimeout.IsNull() && !m.IdleTimeout.IsUnknown() {
+		setting.IDleTimeout = m.IdleTimeout.ValueInt64Pointer()
+	}
+	return setting
 }
 
 func (r *settingResource) lcmSettingToModel(s *settings.Lcm) settingLcmModel {
@@ -3018,13 +3025,19 @@ func (r *settingResource) syslogModelToSetting(
 		Enabled:                     m.Enabled.ValueBool(),
 		Debug:                       m.Debug.ValueBool(),
 		IP:                          m.IP.ValueString(),
-		Port:                        m.Port.ValueInt64Pointer(),
 		LogAllContents:              m.LogAllContents.ValueBool(),
 		NetconsoleEnabled:           m.NetconsoleEnabled.ValueBool(),
 		NetconsoleHost:              m.NetconsoleHost.ValueString(),
-		NetconsolePort:              m.NetconsolePort.ValueInt64Pointer(),
 		ThisController:              m.ThisController.ValueBool(),
 		ThisControllerEncryptedOnly: m.ThisControllerEncryptedOnly.ValueBool(),
+	}
+	// Guard the optional ports: an unknown (unset Optional+Computed) value yields a
+	// 0 pointer, which the controller rejects as an out-of-range port (#303, cf. #288).
+	if !m.Port.IsNull() && !m.Port.IsUnknown() {
+		setting.Port = m.Port.ValueInt64Pointer()
+	}
+	if !m.NetconsolePort.IsNull() && !m.NetconsolePort.IsUnknown() {
+		setting.NetconsolePort = m.NetconsolePort.ValueInt64Pointer()
 	}
 	if !m.Contents.IsNull() && !m.Contents.IsUnknown() {
 		diags.Append(m.Contents.ElementsAs(ctx, &setting.Contents, false)...)
@@ -3229,10 +3242,15 @@ func (r *settingResource) ipsModelToSetting(
 		for _, a := range alerts {
 			alert := settings.SettingIpsAlerts{
 				Category:  a.Category.ValueString(),
-				Gid:       a.Gid.ValueInt64Pointer(),
-				ID:        a.ID.ValueInt64Pointer(),
 				Signature: a.Signature.ValueString(),
 				Type:      a.Type.ValueString(),
+			}
+			// Omit gid/id when unset rather than sending 0 (cf. #303).
+			if !a.Gid.IsNull() && !a.Gid.IsUnknown() {
+				alert.Gid = a.Gid.ValueInt64Pointer()
+			}
+			if !a.ID.IsNull() && !a.ID.IsUnknown() {
+				alert.ID = a.ID.ValueInt64Pointer()
 			}
 			if !a.Tracking.IsNull() && !a.Tracking.IsUnknown() {
 				var tracking []settingIpsTrackingModel
