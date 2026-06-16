@@ -457,9 +457,6 @@ func TestNew(t *testing.T) {
 	if p == nil {
 		t.Fatal("New() returned nil")
 	}
-	if _, ok := p.(fwprovider.Provider); !ok {
-		t.Error("New() does not implement provider.Provider")
-	}
 }
 
 func Test_unifiProvider_Metadata(t *testing.T) {

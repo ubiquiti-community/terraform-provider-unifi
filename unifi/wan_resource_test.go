@@ -202,9 +202,6 @@ func TestNewWANResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewWANResource() returned nil")
 	}
-	if _, ok := got.(fwresource.Resource); !ok {
-		t.Errorf("NewWANResource() does not implement fwresource.Resource")
-	}
 	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
 		t.Errorf("NewWANResource() does not implement fwresource.ResourceWithImportState")
 	}
@@ -217,9 +214,6 @@ func TestNewWANListResource(t *testing.T) {
 	got := NewWANListResource()
 	if got == nil {
 		t.Fatal("NewWANListResource() returned nil")
-	}
-	if _, ok := got.(fwlist.ListResource); !ok {
-		t.Errorf("NewWANListResource() does not implement fwlist.ListResource")
 	}
 	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
 		t.Errorf("NewWANListResource() does not implement fwlist.ListResourceWithConfigure")
@@ -495,11 +489,6 @@ func Test_dhcpWanModel_AttributeTypes(t *testing.T) {
 }
 
 func Test_wanResource_Metadata(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.MetadataRequest
-		resp *fwresource.MetadataResponse
-	}
 	tests := []struct {
 		name             string
 		providerTypeName string
@@ -528,11 +517,6 @@ func Test_wanResource_Metadata(t *testing.T) {
 }
 
 func Test_wanResource_IdentitySchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwresource.IdentitySchemaRequest
-		resp *fwresource.IdentitySchemaResponse
-	}
 	t.Run("does not panic and returns identity attributes", func(t *testing.T) {
 		r := &wanResource{}
 		resp := &fwresource.IdentitySchemaResponse{}
@@ -547,11 +531,6 @@ func Test_wanResource_IdentitySchema(t *testing.T) {
 }
 
 func Test_wanResource_Schema(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.SchemaRequest
-		resp *fwresource.SchemaResponse
-	}
 	t.Run("returns schema with key attributes", func(t *testing.T) {
 		r := &wanResource{}
 		resp := &fwresource.SchemaResponse{}
@@ -568,11 +547,6 @@ func Test_wanResource_Schema(t *testing.T) {
 }
 
 func Test_wanResource_Configure(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ConfigureRequest
-		resp *fwresource.ConfigureResponse
-	}
 	t.Run("nil provider data is not an error", func(t *testing.T) {
 		r := &wanResource{}
 		resp := &fwresource.ConfigureResponse{}
@@ -609,82 +583,38 @@ func Test_wanResource_Configure(t *testing.T) {
 }
 
 func Test_wanResource_Create(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.CreateRequest
-		resp *fwresource.CreateResponse
-	}
 	t.Skip("requires terraform state machinery")
 }
 
 func Test_wanResource_adoptExistingWAN(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		site    string
-		network *unifi.Network
-	}
 	t.Skip("requires configured client")
 }
 
 func Test_wanResource_overlayConfig(t *testing.T) {
-	type args struct {
-		state  *wanResourceModel
-		config *wanResourceModel
-		plan   *wanResourceModel
-	}
 	t.Skip("requires complex state setup")
 }
 
 func Test_wanResource_Read(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ReadRequest
-		resp *fwresource.ReadResponse
-	}
 	t.Skip("requires terraform state machinery")
 }
 
 func Test_wanResource_Update(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.UpdateRequest
-		resp *fwresource.UpdateResponse
-	}
 	t.Skip("requires terraform state machinery")
 }
 
 func Test_wanResource_applyPlanToState(t *testing.T) {
-	type args struct {
-		in0   context.Context
-		plan  *wanResourceModel
-		state *wanResourceModel
-	}
 	t.Skip("requires complex state setup")
 }
 
 func Test_wanResource_Delete(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.DeleteRequest
-		resp *fwresource.DeleteResponse
-	}
 	t.Skip("requires terraform state machinery")
 }
 
 func Test_wanResource_ImportState(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		req  fwresource.ImportStateRequest
-		resp *fwresource.ImportStateResponse
-	}
 	t.Skip("requires terraform state machinery")
 }
 
 func Test_wanResource_modelToNetwork(t *testing.T) {
-	type args struct {
-		ctx   context.Context
-		model *wanResourceModel
-	}
 	t.Run("minimal model converts correctly", func(t *testing.T) {
 		r := &wanResource{}
 		ctx := context.Background()
@@ -735,12 +665,6 @@ func Test_wanResource_modelToNetwork(t *testing.T) {
 }
 
 func Test_wanResource_networkToModel(t *testing.T) {
-	type args struct {
-		ctx     context.Context
-		network *unifi.Network
-		model   *wanResourceModel
-		site    string
-	}
 	t.Run("converts API network back to model", func(t *testing.T) {
 		r := &wanResource{}
 		ctx := context.Background()
@@ -775,9 +699,6 @@ func Test_wanResource_networkToModel(t *testing.T) {
 }
 
 func Test_applyWANDefaults(t *testing.T) {
-	type args struct {
-		model *wanResourceModel
-	}
 	t.Run("applies defaults to empty model", func(t *testing.T) {
 		model := &wanResourceModel{}
 		applyWANDefaults(model)
@@ -800,11 +721,6 @@ func Test_applyWANDefaults(t *testing.T) {
 }
 
 func Test_wanResource_ListResourceConfigSchema(t *testing.T) {
-	type args struct {
-		in0  context.Context
-		in1  fwlist.ListResourceSchemaRequest
-		resp *fwlist.ListResourceSchemaResponse
-	}
 	t.Run("does not panic", func(t *testing.T) {
 		r := &wanResource{}
 		resp := &fwlist.ListResourceSchemaResponse{}
@@ -816,10 +732,5 @@ func Test_wanResource_ListResourceConfigSchema(t *testing.T) {
 }
 
 func Test_wanResource_List(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		req    fwlist.ListRequest
-		stream *fwlist.ListResultsStream
-	}
 	t.Skip("requires configured client")
 }

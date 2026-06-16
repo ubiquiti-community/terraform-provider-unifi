@@ -695,9 +695,6 @@ func TestNewFirewallRuleListResource(t *testing.T) {
 	if r == nil {
 		t.Fatal("NewFirewallRuleListResource() returned nil")
 	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("resource does not implement ListResource")
-	}
 }
 
 func Test_firewallRuleResource_Metadata(t *testing.T) {

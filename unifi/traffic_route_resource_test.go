@@ -498,9 +498,6 @@ func TestNewTrafficRouteListResource(t *testing.T) {
 	if r == nil {
 		t.Fatal("NewTrafficRouteListResource() returned nil")
 	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("expected fwlist.ListResource interface")
-	}
 }
 
 func Test_destinationIPModel_AttributeTypes(t *testing.T) {

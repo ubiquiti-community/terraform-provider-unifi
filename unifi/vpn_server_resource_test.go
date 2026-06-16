@@ -635,9 +635,6 @@ func TestNewVPNServerListResource(t *testing.T) {
 	if r == nil {
 		t.Fatal("NewVPNServerListResource() returned nil")
 	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("expected fwlist.ListResource interface")
-	}
 }
 
 func Test_vpnServerDNSModel_AttributeTypes(t *testing.T) {

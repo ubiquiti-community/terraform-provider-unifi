@@ -103,8 +103,12 @@ func TestNewFirewallGroupFrameworkResource(t *testing.T) {
 		t.Fatal("NewFirewallGroupFrameworkResource() returned nil")
 	}
 	_ = got
-	_ = got.(fwresource.ResourceWithImportState)
-	_ = got.(fwresource.ResourceWithIdentity)
+	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
+		t.Errorf("does not implement fwresource.ResourceWithImportState")
+	}
+	if _, ok := got.(fwresource.ResourceWithIdentity); !ok {
+		t.Errorf("does not implement fwresource.ResourceWithIdentity")
+	}
 }
 
 func TestNewFirewallGroupListResource(t *testing.T) {

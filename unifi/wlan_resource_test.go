@@ -102,9 +102,15 @@ func TestNewWLANFrameworkResource(t *testing.T) {
 	}
 	// Verify interface compliance
 	_ = got
-	_ = got.(fwresource.ResourceWithImportState)
-	_ = got.(fwresource.ResourceWithIdentity)
-	_ = got.(fwresource.ResourceWithUpgradeState)
+	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
+		t.Errorf("does not implement fwresource.ResourceWithImportState")
+	}
+	if _, ok := got.(fwresource.ResourceWithIdentity); !ok {
+		t.Errorf("does not implement fwresource.ResourceWithIdentity")
+	}
+	if _, ok := got.(fwresource.ResourceWithUpgradeState); !ok {
+		t.Errorf("does not implement fwresource.ResourceWithUpgradeState")
+	}
 }
 
 func TestNewWLANListResource(t *testing.T) {
@@ -113,7 +119,9 @@ func TestNewWLANListResource(t *testing.T) {
 		t.Fatal("NewWLANListResource() returned nil")
 	}
 	_ = got
-	_ = got.(fwlist.ListResourceWithConfigure)
+	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
+		t.Errorf("does not implement fwlist.ListResourceWithConfigure")
+	}
 }
 
 func Test_wlanPrivatePresharedKeyModel_AttributeTypes(t *testing.T) {
@@ -239,9 +247,6 @@ func Test_wlanFrameworkResource_Schema(t *testing.T) {
 }
 
 func Test_wlanFrameworkResource_UpgradeState(t *testing.T) {
-	type args struct {
-		ctx context.Context
-	}
 	r := &wlanFrameworkResource{}
 	got := r.UpgradeState(context.Background())
 	if got == nil {
@@ -286,11 +291,6 @@ func Test_wlanFrameworkResource_Configure(t *testing.T) {
 }
 
 func Test_wlanFrameworkResource_setDefaultWLANGroupID(t *testing.T) {
-	type args struct {
-		ctx  context.Context
-		site string
-		wlan *unifi.WLAN
-	}
 	t.Skip("requires configured client")
 }
 

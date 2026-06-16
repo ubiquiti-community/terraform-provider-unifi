@@ -605,9 +605,6 @@ func TestNewPortForwardResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewPortForwardResource() returned nil")
 	}
-	if _, ok := got.(fwresource.Resource); !ok {
-		t.Errorf("NewPortForwardResource() does not implement resource.Resource")
-	}
 	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
 		t.Errorf("NewPortForwardResource() does not implement resource.ResourceWithImportState")
 	}
@@ -620,9 +617,6 @@ func TestNewPortForwardListResource(t *testing.T) {
 	got := NewPortForwardListResource()
 	if got == nil {
 		t.Fatal("NewPortForwardListResource() returned nil")
-	}
-	if _, ok := got.(fwlist.ListResource); !ok {
-		t.Errorf("NewPortForwardListResource() does not implement list.ListResource")
 	}
 	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
 		t.Errorf("NewPortForwardListResource() does not implement list.ListResourceWithConfigure")

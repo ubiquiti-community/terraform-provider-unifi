@@ -75,9 +75,6 @@ func TestNewDynamicDNSListResource(t *testing.T) {
 	if r == nil {
 		t.Fatal("returned nil")
 	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("expected ListResource")
-	}
 	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
 		t.Error("expected ListResourceWithConfigure")
 	}
