@@ -65,6 +65,7 @@ resource "unifi_client" "test" {
 
 - `hostname` (String) The hostname of the client.
 - `id` (String) The ID of the client.
+- `last_ip` (String) The most recent IP address the controller has seen for this client (read-only).
 
 <a id="nestedatt--qos_rate"></a>
 ### Nested Schema for `qos_rate`

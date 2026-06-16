@@ -108,6 +108,7 @@ type clientResourceModel struct {
 
 	// Computed attributes
 	Hostname types.String `tfsdk:"hostname"`
+	LastIP   types.String `tfsdk:"last_ip"`
 
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
@@ -310,6 +311,13 @@ Clients are created in the controller when observed on the network, so the resou
 				Default:             booldefault.StaticBool(defaultSkipForgetOnDestroy),
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"last_ip": schema.StringAttribute{
+				MarkdownDescription: "The most recent IP address the controller has seen for this client (read-only).",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"hostname": schema.StringAttribute{
@@ -1100,6 +1108,7 @@ func (r *clientResource) clientToModel(
 
 	// Computed attributes
 	model.Hostname = util.StringValueOrNull(client.Hostname)
+	model.LastIP = util.StringValueOrNull(client.LastIP)
 
 	return diags
 }
