@@ -1182,7 +1182,8 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.autoSpeedtestModelToSetting(&as)); err != nil {
+		setting := r.autoSpeedtestModelToSetting(&as)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Auto Speedtest Setting", err.Error())
 			return
 		}
@@ -1194,7 +1195,8 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.countryModelToSetting(&m)); err != nil {
+		setting := r.countryModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Country Setting", err.Error())
 			return
 		}
@@ -1206,7 +1208,8 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.dpiModelToSetting(&m)); err != nil {
+		setting := r.dpiModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating DPI Setting", err.Error())
 			return
 		}
@@ -1218,7 +1221,8 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.lcmModelToSetting(&m)); err != nil {
+		setting := r.lcmModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating LCM Setting", err.Error())
 			return
 		}
@@ -1230,7 +1234,8 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.networkOptimizationModelToSetting(&m)); err != nil {
+		setting := r.networkOptimizationModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Network Optimization Setting", err.Error())
 			return
 		}
@@ -1242,7 +1247,8 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.ntpModelToSetting(&m)); err != nil {
+		setting := r.ntpModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating NTP Setting", err.Error())
 			return
 		}
@@ -1456,7 +1462,8 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.autoSpeedtestModelToSetting(&as)); err != nil {
+		setting := r.autoSpeedtestModelToSetting(&as)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Auto Speedtest Setting", err.Error())
 			return
 		}
@@ -1468,7 +1475,8 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.countryModelToSetting(&m)); err != nil {
+		setting := r.countryModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Country Setting", err.Error())
 			return
 		}
@@ -1480,7 +1488,8 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.dpiModelToSetting(&m)); err != nil {
+		setting := r.dpiModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating DPI Setting", err.Error())
 			return
 		}
@@ -1492,7 +1501,8 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.lcmModelToSetting(&m)); err != nil {
+		setting := r.lcmModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating LCM Setting", err.Error())
 			return
 		}
@@ -1504,7 +1514,8 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.networkOptimizationModelToSetting(&m)); err != nil {
+		setting := r.networkOptimizationModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Network Optimization Setting", err.Error())
 			return
 		}
@@ -1516,7 +1527,8 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, r.ntpModelToSetting(&m)); err != nil {
+		setting := r.ntpModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating NTP Setting", err.Error())
 			return
 		}
