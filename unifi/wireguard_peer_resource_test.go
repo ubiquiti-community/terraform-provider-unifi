@@ -167,9 +167,6 @@ func TestNewWireguardPeerListResource(t *testing.T) {
 	if r == nil {
 		t.Fatal("NewWireguardPeerListResource() returned nil")
 	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("expected fwlist.ListResource interface")
-	}
 	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
 		t.Error("expected fwlist.ListResourceWithConfigure interface")
 	}

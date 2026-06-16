@@ -40,7 +40,7 @@ func testAccDNSRecordCheckDestroy(s *terraform.State) error {
 		})
 		if err != nil {
 			// If we can't build a client, skip the check.
-			return nil
+			return nil //nolint:nilerr // best-effort check; skip when no live client
 		}
 		client.ApiClient = apiClient
 		_, err = client.GetDNSRecord(ctx, site, id)
@@ -115,9 +115,6 @@ func TestNewDNSRecordListResource(t *testing.T) {
 	r := NewDNSRecordListResource()
 	if r == nil {
 		t.Fatal("returned nil")
-	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("expected ListResource")
 	}
 	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
 		t.Error("expected ListResourceWithConfigure")

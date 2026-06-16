@@ -35,7 +35,7 @@ func testAccStaticRouteCheckDestroy(s *terraform.State) error {
 		AllowInsecure: true,
 	})
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // best-effort check; skip when no live client
 	}
 	c := &Client{ApiClient: apiClient, Site: "default"}
 	for _, rs := range s.RootModule().Resources {
@@ -291,9 +291,6 @@ func TestNewStaticRouteListResource(t *testing.T) {
 	r := NewStaticRouteListResource()
 	if r == nil {
 		t.Fatal("returned nil")
-	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("expected ListResource")
 	}
 	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
 		t.Error("expected ListResourceWithConfigure")

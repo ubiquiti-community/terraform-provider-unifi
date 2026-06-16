@@ -76,9 +76,6 @@ func TestNewFirewallZoneResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewFirewallZoneResource() returned nil")
 	}
-	if _, ok := got.(fwresource.Resource); !ok {
-		t.Errorf("NewFirewallZoneResource() does not implement resource.Resource")
-	}
 	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
 		t.Errorf("NewFirewallZoneResource() does not implement resource.ResourceWithImportState")
 	}
@@ -91,9 +88,6 @@ func TestNewFirewallZoneListResource(t *testing.T) {
 	got := NewFirewallZoneListResource()
 	if got == nil {
 		t.Fatal("NewFirewallZoneListResource() returned nil")
-	}
-	if _, ok := got.(fwlist.ListResource); !ok {
-		t.Errorf("NewFirewallZoneListResource() does not implement list.ListResource")
 	}
 	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
 		t.Errorf("NewFirewallZoneListResource() does not implement list.ListResourceWithConfigure")

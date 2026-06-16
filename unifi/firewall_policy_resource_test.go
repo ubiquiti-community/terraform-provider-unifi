@@ -365,9 +365,6 @@ func TestNewFirewallPolicyResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewFirewallPolicyResource() returned nil")
 	}
-	if _, ok := got.(fwresource.Resource); !ok {
-		t.Errorf("NewFirewallPolicyResource() does not implement resource.Resource")
-	}
 	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
 		t.Errorf("NewFirewallPolicyResource() does not implement resource.ResourceWithImportState")
 	}
@@ -380,9 +377,6 @@ func TestNewFirewallPolicyListResource(t *testing.T) {
 	got := NewFirewallPolicyListResource()
 	if got == nil {
 		t.Fatal("NewFirewallPolicyListResource() returned nil")
-	}
-	if _, ok := got.(fwlist.ListResource); !ok {
-		t.Errorf("NewFirewallPolicyListResource() does not implement list.ListResource")
 	}
 	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
 		t.Errorf(

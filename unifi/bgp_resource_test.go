@@ -197,25 +197,37 @@ func Test_bgpResource_Schema(t *testing.T) {
 			}
 
 			// Verify id is computed
-			idAttr := s.Attributes["id"].(schema.StringAttribute)
+			idAttr, ok := s.Attributes["id"].(schema.StringAttribute)
+			if !ok {
+				t.Fatalf("attribute is not a schema.StringAttribute")
+			}
 			if !idAttr.Computed {
 				t.Error("id should be Computed")
 			}
 
 			// Verify config is optional+computed
-			configAttr := s.Attributes["config"].(schema.StringAttribute)
+			configAttr, ok := s.Attributes["config"].(schema.StringAttribute)
+			if !ok {
+				t.Fatalf("attribute is not a schema.StringAttribute")
+			}
 			if !configAttr.Optional || !configAttr.Computed {
 				t.Error("config should be Optional and Computed")
 			}
 
 			// Verify asn is optional
-			asnAttr := s.Attributes["asn"].(schema.Int64Attribute)
+			asnAttr, ok := s.Attributes["asn"].(schema.Int64Attribute)
+			if !ok {
+				t.Fatalf("attribute is not a schema.Int64Attribute")
+			}
 			if !asnAttr.Optional {
 				t.Error("asn should be Optional")
 			}
 
 			// Verify enabled is optional+computed (has default)
-			enabledAttr := s.Attributes["enabled"].(schema.BoolAttribute)
+			enabledAttr, ok := s.Attributes["enabled"].(schema.BoolAttribute)
+			if !ok {
+				t.Fatalf("attribute is not a schema.BoolAttribute")
+			}
 			if !enabledAttr.Optional || !enabledAttr.Computed {
 				t.Error("enabled should be Optional and Computed")
 			}

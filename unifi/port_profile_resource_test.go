@@ -101,9 +101,6 @@ func TestNewPortProfileFrameworkResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewPortProfileFrameworkResource() returned nil")
 	}
-	if _, ok := got.(fwresource.Resource); !ok {
-		t.Errorf("NewPortProfileFrameworkResource() does not implement fwresource.Resource")
-	}
 	if _, ok := got.(fwresource.ResourceWithImportState); !ok {
 		t.Errorf(
 			"NewPortProfileFrameworkResource() does not implement fwresource.ResourceWithImportState",
@@ -125,9 +122,6 @@ func TestNewPortProfileListResource(t *testing.T) {
 	got := NewPortProfileListResource()
 	if got == nil {
 		t.Fatal("NewPortProfileListResource() returned nil")
-	}
-	if _, ok := got.(fwlist.ListResource); !ok {
-		t.Errorf("NewPortProfileListResource() does not implement fwlist.ListResource")
 	}
 	if _, ok := got.(fwlist.ListResourceWithConfigure); !ok {
 		t.Errorf("NewPortProfileListResource() does not implement fwlist.ListResourceWithConfigure")

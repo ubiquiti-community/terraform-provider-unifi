@@ -117,9 +117,6 @@ func TestNewPowerSupervisorListResource(t *testing.T) {
 	if r == nil {
 		t.Fatal("NewPowerSupervisorListResource() returned nil")
 	}
-	if _, ok := r.(fwlist.ListResource); !ok {
-		t.Error("expected fwlist.ListResource interface")
-	}
 	if _, ok := r.(fwlist.ListResourceWithConfigure); !ok {
 		t.Error("expected fwlist.ListResourceWithConfigure interface")
 	}

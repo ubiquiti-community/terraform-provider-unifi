@@ -575,18 +575,12 @@ func TestNewNetworkResource(t *testing.T) {
 	if got == nil {
 		t.Fatal("NewNetworkResource() returned nil")
 	}
-	if _, ok := got.(fwresource.Resource); !ok {
-		t.Errorf("NewNetworkResource() does not implement fwresource.Resource")
-	}
 }
 
 func TestNewNetworkListResource(t *testing.T) {
 	got := NewNetworkListResource()
 	if got == nil {
 		t.Fatal("NewNetworkListResource() returned nil")
-	}
-	if _, ok := got.(fwlist.ListResource); !ok {
-		t.Errorf("NewNetworkListResource() does not implement fwlist.ListResource")
 	}
 }
 
