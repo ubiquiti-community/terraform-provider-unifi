@@ -208,9 +208,18 @@ Optional:
 
 Optional:
 
+- `advanced_feature_enabled` (Boolean) Enable advanced features.
 - `auto_upgrade` (Boolean) Automatically upgrade device firmware.
+- `auto_upgrade_hour` (Number) Hour of day (0-23) for automatic firmware upgrades.
+- `debug_tools_enabled` (Boolean) Enable debug tools.
+- `direct_connect_enabled` (Boolean) Enable Direct Connect (remote access).
+- `ssh_auth_password_enabled` (Boolean) Allow SSH password authentication (in addition to keys).
 - `ssh_enabled` (Boolean) Enable SSH authentication.
 - `ssh_keys` (Attributes List) SSH keys. (see [below for nested schema](#nestedatt--mgmt--ssh_keys))
+- `ssh_password` (String, Sensitive) SSH password for device access. Sensitive — the controller stores only a hash, so this value is kept from configuration and not read back.
+- `ssh_username` (String) SSH username for device access.
+- `unifi_idp_enabled` (Boolean) Enable the UniFi Identity Provider.
+- `wifiman_enabled` (Boolean) Enable WiFiman.
 
 <a id="nestedatt--mgmt--ssh_keys"></a>
 ### Nested Schema for `mgmt.ssh_keys`
