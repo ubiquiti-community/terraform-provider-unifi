@@ -191,6 +191,21 @@ type settingIpsWhitelistModel struct {
 	Value     types.String `tfsdk:"value"`
 }
 
+type settingIpsTrackingModel struct {
+	Direction types.String `tfsdk:"direction"`
+	Mode      types.String `tfsdk:"mode"`
+	Value     types.String `tfsdk:"value"`
+}
+
+type settingIpsAlertModel struct {
+	Category  types.String `tfsdk:"category"`
+	Gid       types.Int64  `tfsdk:"gid"`
+	ID        types.Int64  `tfsdk:"id"`
+	Signature types.String `tfsdk:"signature"`
+	Type      types.String `tfsdk:"type"`
+	Tracking  types.List   `tfsdk:"tracking"`
+}
+
 type settingIpsModel struct {
 	AdvancedFilteringPreference         types.String `tfsdk:"advanced_filtering_preference"`
 	ContentFilteringBlockingPageEnabled types.Bool   `tfsdk:"content_filtering_blocking_page_enabled"`
@@ -202,6 +217,7 @@ type settingIpsModel struct {
 	MemoryOptimized                     types.Bool   `tfsdk:"memory_optimized"`
 	RestrictTorrents                    types.Bool   `tfsdk:"restrict_torrents"`
 	SuppressionWhitelist                types.List   `tfsdk:"suppression_whitelist"`
+	SuppressionAlerts                   types.List   `tfsdk:"suppression_alerts"`
 }
 
 type settingResourceModel struct {
@@ -321,6 +337,19 @@ var (
 		"mode":      types.StringType,
 		"value":     types.StringType,
 	}
+	ipsTrackingAttrTypes = map[string]attr.Type{
+		"direction": types.StringType,
+		"mode":      types.StringType,
+		"value":     types.StringType,
+	}
+	ipsAlertAttrTypes = map[string]attr.Type{
+		"category":  types.StringType,
+		"gid":       types.Int64Type,
+		"id":        types.Int64Type,
+		"signature": types.StringType,
+		"type":      types.StringType,
+		"tracking":  types.ListType{ElemType: types.ObjectType{AttrTypes: ipsTrackingAttrTypes}},
+	}
 	ipsAttrTypes = map[string]attr.Type{
 		"advanced_filtering_preference":           types.StringType,
 		"content_filtering_blocking_page_enabled": types.BoolType,
@@ -335,6 +364,9 @@ var (
 		"restrict_torrents": types.BoolType,
 		"suppression_whitelist": types.ListType{
 			ElemType: types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
+		},
+		"suppression_alerts": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: ipsAlertAttrTypes},
 		},
 	}
 	igmpSnoopingAttrTypes = map[string]attr.Type{
@@ -729,6 +761,74 @@ func (r *settingResource) Schema(
 						Computed:            true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("manual", "disabled"),
+						},
+					},
+					"suppression_alerts": schema.ListNestedAttribute{
+						MarkdownDescription: "IPS signature alert suppression entries — silence specific signatures or categories.",
+						Optional:            true,
+						Computed:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"category": schema.StringAttribute{
+									MarkdownDescription: "Alert suppression signature category.",
+									Optional:            true,
+									Computed:            true,
+								},
+								"gid": schema.Int64Attribute{
+									MarkdownDescription: "Signature Generator ID (GID).",
+									Optional:            true,
+									Computed:            true,
+								},
+								"id": schema.Int64Attribute{
+									MarkdownDescription: "Signature ID.",
+									Optional:            true,
+									Computed:            true,
+								},
+								"signature": schema.StringAttribute{
+									MarkdownDescription: "Suppression signature name.",
+									Optional:            true,
+									Computed:            true,
+								},
+								"type": schema.StringAttribute{
+									MarkdownDescription: "Suppression type: `all` (everywhere) or `track` (only the tracked sources/destinations).",
+									Optional:            true,
+									Computed:            true,
+									Validators: []validator.String{
+										stringvalidator.OneOf("all", "track"),
+									},
+								},
+								"tracking": schema.ListNestedAttribute{
+									MarkdownDescription: "Tracking specifications (used when `type` is `track`).",
+									Optional:            true,
+									Computed:            true,
+									NestedObject: schema.NestedAttributeObject{
+										Attributes: map[string]schema.Attribute{
+											"direction": schema.StringAttribute{
+												MarkdownDescription: "Match direction: both, src, or dest.",
+												Required:            true,
+												Validators: []validator.String{
+													stringvalidator.OneOf("both", "src", "dest"),
+												},
+											},
+											"mode": schema.StringAttribute{
+												MarkdownDescription: "Match mode: ip, subnet, or network.",
+												Required:            true,
+												Validators: []validator.String{
+													stringvalidator.OneOf(
+														"ip",
+														"subnet",
+														"network",
+													),
+												},
+											},
+											"value": schema.StringAttribute{
+												MarkdownDescription: "IP address, CIDR subnet, or network ID to match.",
+												Required:            true,
+											},
+										},
+									},
+								},
+							},
 						},
 					},
 					"suppression_whitelist": schema.ListNestedAttribute{
@@ -3117,6 +3217,37 @@ func (r *settingResource) ipsModelToSetting(
 			)
 		}
 	}
+	if !model.SuppressionAlerts.IsNull() && !model.SuppressionAlerts.IsUnknown() {
+		var alerts []settingIpsAlertModel
+		diags.Append(model.SuppressionAlerts.ElementsAs(ctx, &alerts, false)...)
+		if diags.HasError() {
+			return setting
+		}
+		if setting.Suppression == nil {
+			setting.Suppression = &settings.SettingIpsSuppression{}
+		}
+		for _, a := range alerts {
+			alert := settings.SettingIpsAlerts{
+				Category:  a.Category.ValueString(),
+				Gid:       a.Gid.ValueInt64Pointer(),
+				ID:        a.ID.ValueInt64Pointer(),
+				Signature: a.Signature.ValueString(),
+				Type:      a.Type.ValueString(),
+			}
+			if !a.Tracking.IsNull() && !a.Tracking.IsUnknown() {
+				var tracking []settingIpsTrackingModel
+				diags.Append(a.Tracking.ElementsAs(ctx, &tracking, false)...)
+				for _, t := range tracking {
+					alert.Tracking = append(alert.Tracking, settings.SettingIpsTracking{
+						Direction: t.Direction.ValueString(),
+						Mode:      t.Mode.ValueString(),
+						Value:     t.Value.ValueString(),
+					})
+				}
+			}
+			setting.Suppression.Alerts = append(setting.Suppression.Alerts, alert)
+		}
+	}
 
 	return setting
 }
@@ -3233,6 +3364,41 @@ func (r *settingResource) ipsSettingToModel(
 		model.SuppressionWhitelist = listVal
 	} else {
 		model.SuppressionWhitelist = types.ListNull(whitelistType)
+	}
+
+	trackingType := types.ObjectType{AttrTypes: ipsTrackingAttrTypes}
+	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
+	if !plan.SuppressionAlerts.IsNull() && !plan.SuppressionAlerts.IsUnknown() {
+		var alerts []settings.SettingIpsAlerts
+		if setting.Suppression != nil {
+			alerts = setting.Suppression.Alerts
+		}
+		entries := make([]settingIpsAlertModel, 0, len(alerts))
+		for _, a := range alerts {
+			tracking := make([]settingIpsTrackingModel, 0, len(a.Tracking))
+			for _, t := range a.Tracking {
+				tracking = append(tracking, settingIpsTrackingModel{
+					Direction: types.StringValue(t.Direction),
+					Mode:      types.StringValue(t.Mode),
+					Value:     types.StringValue(t.Value),
+				})
+			}
+			trackingList, d := types.ListValueFrom(ctx, trackingType, tracking)
+			diags.Append(d...)
+			entries = append(entries, settingIpsAlertModel{
+				Category:  util.StringValueOrNull(a.Category),
+				Gid:       types.Int64PointerValue(a.Gid),
+				ID:        types.Int64PointerValue(a.ID),
+				Signature: util.StringValueOrNull(a.Signature),
+				Type:      util.StringValueOrNull(a.Type),
+				Tracking:  trackingList,
+			})
+		}
+		listVal, d := types.ListValueFrom(ctx, alertType, entries)
+		diags.Append(d...)
+		model.SuppressionAlerts = listVal
+	} else {
+		model.SuppressionAlerts = types.ListNull(alertType)
 	}
 
 	return model

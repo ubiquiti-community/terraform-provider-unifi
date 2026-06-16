@@ -1371,3 +1371,58 @@ func TestMgmtNewFields(t *testing.T) {
 		t.Error("unconfigured wifiman_enabled should be null")
 	}
 }
+
+// TestIpsSuppressionAlertsRoundTrip guards #275: signature alert suppression
+// (incl. gid/id pointers and the nested tracking list) round-trips model<->setting.
+func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	r := &settingResource{}
+
+	tracking, _ := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: ipsTrackingAttrTypes},
+		[]settingIpsTrackingModel{{
+			Direction: types.StringValue("both"),
+			Mode:      types.StringValue("ip"),
+			Value:     types.StringValue("10.0.0.5"),
+		}})
+	alerts, _ := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: ipsAlertAttrTypes},
+		[]settingIpsAlertModel{{
+			Category:  types.StringValue("malware"),
+			Gid:       types.Int64Value(1),
+			ID:        types.Int64Value(2001),
+			Signature: types.StringValue("ET MALWARE"),
+			Type:      types.StringValue("track"),
+			Tracking:  tracking,
+		}})
+
+	model := &settingIpsModel{
+		EnabledCategories:    types.ListNull(types.StringType),
+		EnabledNetworks:      types.ListNull(types.StringType),
+		Honeypot:             types.ListNull(types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}),
+		SuppressionWhitelist: types.ListNull(types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}),
+		SuppressionAlerts:    alerts,
+	}
+	setting := r.ipsModelToSetting(ctx, model, &diags)
+	if diags.HasError() {
+		t.Fatalf("modelToSetting: %v", diags)
+	}
+	if setting.Suppression == nil || len(setting.Suppression.Alerts) != 1 {
+		t.Fatalf("alerts not built: %+v", setting.Suppression)
+	}
+	a := setting.Suppression.Alerts[0]
+	if a.Category != "malware" || a.Gid == nil || *a.Gid != 1 || a.ID == nil || *a.ID != 2001 ||
+		a.Type != "track" || len(a.Tracking) != 1 || a.Tracking[0].Value != "10.0.0.5" {
+		t.Fatalf("alert mismatch: %+v", a)
+	}
+
+	out := r.ipsSettingToModel(ctx, setting, model, &diags)
+	if diags.HasError() {
+		t.Fatalf("settingToModel: %v", diags)
+	}
+	var outAlerts []settingIpsAlertModel
+	out.SuppressionAlerts.ElementsAs(ctx, &outAlerts, false)
+	if len(outAlerts) != 1 || outAlerts[0].Signature.ValueString() != "ET MALWARE" ||
+		outAlerts[0].Gid.ValueInt64() != 1 {
+		t.Errorf("read-back alerts mismatch: %+v", outAlerts)
+	}
+}

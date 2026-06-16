@@ -168,6 +168,7 @@ Optional:
 - `ips_mode` (String) IPS operating mode: ids (detect only), ips (detect and block), ipsInline, or disabled.
 - `memory_optimized` (Boolean) Use memory-optimized IPS ruleset (reduced rule set for low-memory devices).
 - `restrict_torrents` (Boolean) Block BitTorrent traffic.
+- `suppression_alerts` (Attributes List) IPS signature alert suppression entries — silence specific signatures or categories. (see [below for nested schema](#nestedatt--ips--suppression_alerts))
 - `suppression_whitelist` (Attributes List) IPS suppression whitelist entries — sources/destinations to exclude from inspection. (see [below for nested schema](#nestedatt--ips--suppression_whitelist))
 
 <a id="nestedatt--ips--honeypot"></a>
@@ -178,6 +179,29 @@ Required:
 - `ip_address` (String) IP address to use as a honeypot.
 - `network_id` (String) Network ID this honeypot IP belongs to.
 - `version` (String) IP version: v4 or v6.
+
+
+<a id="nestedatt--ips--suppression_alerts"></a>
+### Nested Schema for `ips.suppression_alerts`
+
+Optional:
+
+- `category` (String) Alert suppression signature category.
+- `gid` (Number) Signature Generator ID (GID).
+- `id` (Number) Signature ID.
+- `signature` (String) Suppression signature name.
+- `tracking` (Attributes List) Tracking specifications (used when `type` is `track`). (see [below for nested schema](#nestedatt--ips--suppression_alerts--tracking))
+- `type` (String) Suppression type: `all` (everywhere) or `track` (only the tracked sources/destinations).
+
+<a id="nestedatt--ips--suppression_alerts--tracking"></a>
+### Nested Schema for `ips.suppression_alerts.tracking`
+
+Required:
+
+- `direction` (String) Match direction: both, src, or dest.
+- `mode` (String) Match mode: ip, subnet, or network.
+- `value` (String) IP address, CIDR subnet, or network ID to match.
+
 
 
 <a id="nestedatt--ips--suppression_whitelist"></a>
