@@ -116,6 +116,11 @@ type settingDohCustomServerModel struct {
 	ServerName types.String `tfsdk:"server_name"`
 }
 
+type settingAutoSpeedtestModel struct {
+	Enabled  types.Bool   `tfsdk:"enabled"`
+	CronExpr types.String `tfsdk:"cron_expr"`
+}
+
 type settingDohModel struct {
 	CustomServers types.List   `tfsdk:"custom_servers"`
 	ServerNames   types.List   `tfsdk:"server_names"`
@@ -148,15 +153,16 @@ type settingIpsModel struct {
 }
 
 type settingResourceModel struct {
-	ID           types.String   `tfsdk:"id"`
-	Site         types.String   `tfsdk:"site"`
-	Doh          types.Object   `tfsdk:"doh"`
-	Ips          types.Object   `tfsdk:"ips"`
-	Mgmt         types.Object   `tfsdk:"mgmt"`
-	Radius       types.Object   `tfsdk:"radius"`
-	USG          types.Object   `tfsdk:"usg"`
-	IgmpSnooping types.Object   `tfsdk:"igmp_snooping"`
-	Timeouts     timeouts.Value `tfsdk:"timeouts"`
+	ID            types.String   `tfsdk:"id"`
+	Site          types.String   `tfsdk:"site"`
+	AutoSpeedtest types.Object   `tfsdk:"auto_speedtest"`
+	Doh           types.Object   `tfsdk:"doh"`
+	Ips           types.Object   `tfsdk:"ips"`
+	Mgmt          types.Object   `tfsdk:"mgmt"`
+	Radius        types.Object   `tfsdk:"radius"`
+	USG           types.Object   `tfsdk:"usg"`
+	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
+	Timeouts      timeouts.Value `tfsdk:"timeouts"`
 }
 
 // settingIgmpSnoopingModel is the nested igmp_snooping block. On UniFi 10.3.x the
@@ -172,6 +178,10 @@ type settingIgmpSnoopingModel struct {
 // are referenced from both readSettings and the *SettingToModel conversion
 // helpers, so they live at package level to avoid drift between the two.
 var (
+	autoSpeedtestAttrTypes = map[string]attr.Type{
+		"enabled":   types.BoolType,
+		"cron_expr": types.StringType,
+	}
 	dohCustomServerAttrTypes = map[string]attr.Type{
 		"enabled":     types.BoolType,
 		"sdns_stamp":  types.StringType,
@@ -250,6 +260,27 @@ func (r *settingResource) Schema(
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"auto_speedtest": schema.SingleNestedAttribute{
+				MarkdownDescription: "Periodic automated internet speed test settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether periodic automated speed tests are enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"cron_expr": schema.StringAttribute{
+						MarkdownDescription: "Cron expression controlling when the speed test runs (e.g. `0 * * * *`).",
+						Optional:            true,
+						Computed:            true,
+					},
 				},
 			},
 			"doh": schema.SingleNestedAttribute{
@@ -855,6 +886,18 @@ func (r *settingResource) Create(
 	}
 
 	// Update each configured setting type
+	if !data.AutoSpeedtest.IsNull() && !data.AutoSpeedtest.IsUnknown() {
+		var as settingAutoSpeedtestModel
+		resp.Diagnostics.Append(data.AutoSpeedtest.As(ctx, &as, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, r.autoSpeedtestModelToSetting(&as)); err != nil {
+			resp.Diagnostics.AddError("Error Creating Auto Speedtest Setting", err.Error())
+			return
+		}
+	}
+
 	if !data.Doh.IsNull() && !data.Doh.IsUnknown() {
 		var doh settingDohModel
 		resp.Diagnostics.Append(data.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
@@ -1041,6 +1084,18 @@ func (r *settingResource) Update(
 	}
 
 	// Update each configured setting type
+	if !plan.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsUnknown() {
+		var as settingAutoSpeedtestModel
+		resp.Diagnostics.Append(plan.AutoSpeedtest.As(ctx, &as, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, r.autoSpeedtestModelToSetting(&as)); err != nil {
+			resp.Diagnostics.AddError("Error Updating Auto Speedtest Setting", err.Error())
+			return
+		}
+	}
+
 	if !plan.Doh.IsNull() && !plan.Doh.IsUnknown() {
 		var doh settingDohModel
 		resp.Diagnostics.Append(plan.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
@@ -1197,6 +1252,25 @@ func (r *settingResource) readSettings(
 	data.Site = types.StringValue(site)
 
 	// Only read settings that were configured in the plan, set others to null
+
+	// Auto speedtest settings
+	if !data.AutoSpeedtest.IsNull() && !data.AutoSpeedtest.IsUnknown() {
+		_, asSetting, err := ui.GetSetting[*settings.AutoSpeedtest](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Auto Speedtest Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx, autoSpeedtestAttrTypes, r.autoSpeedtestSettingToModel(asSetting),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.AutoSpeedtest = objValue
+	} else {
+		data.AutoSpeedtest = types.ObjectNull(autoSpeedtestAttrTypes)
+	}
 
 	// DoH settings
 	if !data.Doh.IsNull() && !data.Doh.IsUnknown() {
@@ -2070,6 +2144,28 @@ func (r *settingResource) igmpSnoopingSettingToModel(
 }
 
 // DoH conversion functions.
+func (r *settingResource) autoSpeedtestModelToSetting(
+	model *settingAutoSpeedtestModel,
+) *settings.AutoSpeedtest {
+	setting := &settings.AutoSpeedtest{}
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		setting.Enabled = model.Enabled.ValueBool()
+	}
+	if !model.CronExpr.IsNull() && !model.CronExpr.IsUnknown() {
+		setting.CronExpr = model.CronExpr.ValueString()
+	}
+	return setting
+}
+
+func (r *settingResource) autoSpeedtestSettingToModel(
+	setting *settings.AutoSpeedtest,
+) settingAutoSpeedtestModel {
+	return settingAutoSpeedtestModel{
+		Enabled:  types.BoolValue(setting.Enabled),
+		CronExpr: util.StringValueOrNull(setting.CronExpr),
+	}
+}
+
 func (r *settingResource) dohModelToSetting(
 	ctx context.Context,
 	model *settingDohModel,

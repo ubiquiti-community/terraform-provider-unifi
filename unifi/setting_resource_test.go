@@ -1264,3 +1264,21 @@ func TestIgmpSnoopingModelMerge(t *testing.T) {
 		t.Errorf("model network_ids = %v, want 2", ids)
 	}
 }
+
+// TestAutoSpeedtestSettingRoundTrip is a unit round-trip for the auto_speedtest
+// setting block (#272): model -> go-unifi setting -> model preserves the fields.
+func TestAutoSpeedtestSettingRoundTrip(t *testing.T) {
+	r := &settingResource{}
+	in := &settingAutoSpeedtestModel{
+		Enabled:  types.BoolValue(true),
+		CronExpr: types.StringValue("0 3 * * *"),
+	}
+	setting := r.autoSpeedtestModelToSetting(in)
+	if !setting.Enabled || setting.CronExpr != "0 3 * * *" {
+		t.Fatalf("modelToSetting = %+v, want enabled cron=0 3 * * *", setting)
+	}
+	out := r.autoSpeedtestSettingToModel(setting)
+	if !out.Enabled.ValueBool() || out.CronExpr.ValueString() != "0 3 * * *" {
+		t.Errorf("settingToModel = %+v, want enabled cron preserved", out)
+	}
+}
