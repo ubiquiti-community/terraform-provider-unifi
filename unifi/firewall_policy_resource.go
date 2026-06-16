@@ -3,11 +3,12 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
-	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -30,9 +31,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = &firewallPolicyResource{}
-	_ resource.ResourceWithImportState = &firewallPolicyResource{}
-	_ resource.ResourceWithIdentity    = &firewallPolicyResource{}
+	_ resource.Resource                 = &firewallPolicyResource{}
+	_ resource.ResourceWithImportState  = &firewallPolicyResource{}
+	_ resource.ResourceWithIdentity     = &firewallPolicyResource{}
+	_ resource.ResourceWithUpgradeState = &firewallPolicyResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -98,7 +100,7 @@ type firewallPolicyEndpointModel struct {
 	ClientMACs       types.List   `tfsdk:"client_macs"`
 	IPs              types.List   `tfsdk:"ips"`
 	WebDomains       types.List   `tfsdk:"web_domains"`
-	Port             types.Int64  `tfsdk:"port"`
+	Port             types.String `tfsdk:"port"`
 	PortGroupID      types.String `tfsdk:"port_group_id"`
 	PortMatchingType types.String `tfsdk:"port_matching_type"`
 	// Firmware-managed; round-tripped so updates keep it (a PUT that omits
@@ -114,7 +116,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"client_macs":          types.ListType{ElemType: types.StringType},
 		"ips":                  types.ListType{ElemType: types.StringType},
 		"web_domains":          types.ListType{ElemType: types.StringType},
-		"port":                 types.Int64Type,
+		"port":                 types.StringType,
 		"port_group_id":        types.StringType,
 		"port_matching_type":   types.StringType,
 		"matching_target_type": types.StringType,
@@ -185,15 +187,21 @@ func (r *firewallPolicyResource) Schema(
 			Computed:            true,
 			ElementType:         types.StringType,
 		},
-		"port": schema.Int64Attribute{
-			MarkdownDescription: "Specific port to match. Used when `port_matching_type` is `SPECIFIC`.",
-			Optional:            true,
-			Computed:            true,
-			Validators: []validator.Int64{
-				int64validator.Between(1, 65535),
+		"port": schema.StringAttribute{
+			MarkdownDescription: "Port(s) to match when `port_matching_type` is `SPECIFIC`. " +
+				"A single port (`161`) or a comma-separated list of ports/ranges " +
+				"(`80,443`, `8000-8100`). Leave unset for no port match.",
+			Optional: true,
+			Computed: true,
+			Validators: []validator.String{
+				stringvalidator.RegexMatches(
+					regexp.MustCompile(`^[0-9]{1,5}(-[0-9]{1,5})?(,[0-9]{1,5}(-[0-9]{1,5})?)*$`),
+					"must be a port number or a comma-separated list of ports/ranges "+
+						`(e.g. "80,443" or "8000-8100")`,
+				),
 			},
-			PlanModifiers: []planmodifier.Int64{
-				int64planmodifier.UseStateForUnknown(),
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.UseStateForUnknown(),
 			},
 		},
 		"port_group_id": schema.StringAttribute{
@@ -221,6 +229,7 @@ func (r *firewallPolicyResource) Schema(
 	}
 
 	resp.Schema = schema.Schema{
+		Version: 1,
 		MarkdownDescription: "Manages a UniFi zone-based firewall policy (UniFi Network 8.x+). " +
 			"Zone-based firewall policies replace the legacy firewall rules and are displayed " +
 			"under Settings → Security → Firewall Policies in the UniFi UI.",
@@ -568,6 +577,136 @@ func (r *firewallPolicyResource) ImportState(
 }
 
 // ---------------------------------------------------------------------------
+// State upgrade (schema v0 -> v1: port int64 -> string)
+// ---------------------------------------------------------------------------
+
+// firewallPolicyEndpointModelV0 mirrors firewallPolicyEndpointModel but with the
+// pre-v1 integer `port`. It exists only to decode prior state during upgrade.
+type firewallPolicyEndpointModelV0 struct {
+	ZoneID             types.String `tfsdk:"zone_id"`
+	MatchingTarget     types.String `tfsdk:"matching_target"`
+	NetworkIDs         types.List   `tfsdk:"network_ids"`
+	ClientMACs         types.List   `tfsdk:"client_macs"`
+	IPs                types.List   `tfsdk:"ips"`
+	WebDomains         types.List   `tfsdk:"web_domains"`
+	Port               types.Int64  `tfsdk:"port"`
+	PortGroupID        types.String `tfsdk:"port_group_id"`
+	PortMatchingType   types.String `tfsdk:"port_matching_type"`
+	MatchingTargetType types.String `tfsdk:"matching_target_type"`
+}
+
+func (r *firewallPolicyResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	// Build the prior (v0) schema from the current one and swap the
+	// source/destination `port` back to an integer — that is the only
+	// structural difference. Deriving it from the live schema keeps the
+	// upgrader correct as the rest of the schema evolves.
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	priorSchema := schemaResp.Schema
+	priorSchema.Version = 0
+	for _, key := range []string{"source", "destination"} {
+		nested, ok := priorSchema.Attributes[key].(schema.SingleNestedAttribute)
+		if !ok {
+			continue
+		}
+		attrs := make(map[string]schema.Attribute, len(nested.Attributes))
+		for k, v := range nested.Attributes {
+			attrs[k] = v
+		}
+		attrs["port"] = schema.Int64Attribute{Optional: true, Computed: true}
+		nested.Attributes = attrs
+		priorSchema.Attributes[key] = nested
+	}
+
+	return map[int64]resource.StateUpgrader{
+		// v0 modeled `port` as an integer, which both dropped multi-port values
+		// (#286) and serialized portless endpoints as the invalid "0" (#288).
+		// v1 models it as a string; convert the stored number, treating 0/null
+		// as "no port".
+		0: {
+			PriorSchema: &priorSchema,
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				var state firewallPolicyModel
+				resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				state.Source = upgradeFirewallPolicyEndpointV0(
+					ctx, state.Source, &resp.Diagnostics,
+				)
+				state.Destination = upgradeFirewallPolicyEndpointV0(
+					ctx, state.Destination, &resp.Diagnostics,
+				)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+			},
+		},
+	}
+}
+
+func upgradeFirewallPolicyEndpointV0(
+	ctx context.Context,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) types.Object {
+	newTypes := firewallPolicyEndpointModel{}.AttributeTypes()
+	if obj.IsNull() {
+		return types.ObjectNull(newTypes)
+	}
+	if obj.IsUnknown() {
+		return types.ObjectUnknown(newTypes)
+	}
+
+	var v0 firewallPolicyEndpointModelV0
+	diags.Append(obj.As(ctx, &v0, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return obj
+	}
+
+	port := types.StringNull()
+	if !v0.Port.IsNull() && !v0.Port.IsUnknown() && v0.Port.ValueInt64() != 0 {
+		port = types.StringValue(strconv.FormatInt(v0.Port.ValueInt64(), 10))
+	}
+
+	upgraded := firewallPolicyEndpointModel{
+		ZoneID:             v0.ZoneID,
+		MatchingTarget:     v0.MatchingTarget,
+		NetworkIDs:         v0.NetworkIDs,
+		ClientMACs:         v0.ClientMACs,
+		IPs:                v0.IPs,
+		WebDomains:         v0.WebDomains,
+		Port:               port,
+		PortGroupID:        v0.PortGroupID,
+		PortMatchingType:   v0.PortMatchingType,
+		MatchingTargetType: v0.MatchingTargetType,
+	}
+
+	newObj, d := types.ObjectValueFrom(ctx, newTypes, upgraded)
+	diags.Append(d...)
+	return newObj
+}
+
+// portToStringValue maps the API port string to a Terraform value. The API
+// returns "" for a portless endpoint and historically "0" for policies created
+// by older provider versions (#288); both map to null so plans stay clean.
+func portToStringValue(p string) types.String {
+	if p == "" || p == "0" {
+		return types.StringNull()
+	}
+	return types.StringValue(p)
+}
+
+// ---------------------------------------------------------------------------
 // Conversion helpers
 // ---------------------------------------------------------------------------
 
@@ -631,7 +770,7 @@ func endpointModelToSource(
 		ZoneID:             m.ZoneID.ValueString(),
 		MatchingTarget:     m.MatchingTarget.ValueString(),
 		MatchingTargetType: m.MatchingTargetType.ValueString(),
-		Port:               m.Port.ValueInt64Pointer(),
+		Port:               m.Port.ValueString(),
 		PortGroupID:        m.PortGroupID.ValueString(),
 		PortMatchingType:   m.PortMatchingType.ValueString(),
 	}
@@ -659,7 +798,7 @@ func endpointModelToDestination(
 		ZoneID:             m.ZoneID.ValueString(),
 		MatchingTarget:     m.MatchingTarget.ValueString(),
 		MatchingTargetType: m.MatchingTargetType.ValueString(),
-		Port:               m.Port.ValueInt64Pointer(),
+		Port:               m.Port.ValueString(),
 		PortGroupID:        m.PortGroupID.ValueString(),
 		PortMatchingType:   m.PortMatchingType.ValueString(),
 	}
@@ -739,7 +878,7 @@ func apiSourceToEndpointModel(
 		ZoneID:             types.StringValue(src.ZoneID),
 		MatchingTarget:     types.StringValue(src.MatchingTarget),
 		MatchingTargetType: types.StringValue(src.MatchingTargetType),
-		Port:               types.Int64PointerValue(src.Port),
+		Port:               portToStringValue(src.Port),
 		PortGroupID:        types.StringValue(src.PortGroupID),
 		PortMatchingType:   types.StringValue(src.PortMatchingType),
 	}
@@ -771,7 +910,7 @@ func apiDestinationToEndpointModel(
 		ZoneID:             types.StringValue(dst.ZoneID),
 		MatchingTarget:     types.StringValue(dst.MatchingTarget),
 		MatchingTargetType: types.StringValue(dst.MatchingTargetType),
-		Port:               types.Int64PointerValue(dst.Port),
+		Port:               portToStringValue(dst.Port),
 		PortGroupID:        types.StringValue(dst.PortGroupID),
 		PortMatchingType:   types.StringValue(dst.PortMatchingType),
 	}

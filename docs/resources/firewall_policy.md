@@ -212,7 +212,7 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
-- `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
+- `port` (String) Port(s) to match when `port_matching_type` is `SPECIFIC`. A single port (`161`) or a comma-separated list of ports/ranges (`80,443`, `8000-8100`). Leave unset for no port match.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
 - `web_domains` (List of String) List of domains/FQDNs to match. Used when `matching_target` is `WEB`.
@@ -235,7 +235,7 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
-- `port` (Number) Specific port to match. Used when `port_matching_type` is `SPECIFIC`.
+- `port` (String) Port(s) to match when `port_matching_type` is `SPECIFIC`. A single port (`161`) or a comma-separated list of ports/ranges (`80,443`, `8000-8100`). Leave unset for no port match.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
 - `port_matching_type` (String) How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).
 - `web_domains` (List of String) List of domains/FQDNs to match. Used when `matching_target` is `WEB`.
