@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.51.0] - 2026-06-16
+
+### ✨ Features
+
+- **`unifi_client`: new read-only `last_ip` attribute** — the most recent IP the controller has seen for the client (#287)
+- **`unifi_setting`: new `auto_speedtest` block** — periodic internet speed test (`enabled`, `cron_expr`) (#272)
+- **`unifi_setting`: six more setting categories** (#273):
+  - `dpi` — Deep Packet Inspection (`enabled`, `fingerprinting_enabled`)
+  - `lcm` — device display (`enabled`, `brightness`, `idle_timeout`, `sync`, `touch_event`)
+  - `network_optimization` — automated network optimization (`enabled`)
+  - `ntp` — time servers (`ntp_server_1..4`, `setting_preference`)
+  - `syslog` — remote rsyslog (`enabled`, `ip`, `port`, `contents`, `log_all_contents`, `debug`, `this_controller`/`this_controller_encrypted_only`, `netconsole_*`)
+  - `country` — regulatory `code`
+
+---
+
 ## [v0.50.0] - 2026-06-16
 
 ### ⚠️ Breaking Changes
