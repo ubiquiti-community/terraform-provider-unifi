@@ -33,7 +33,7 @@ func TestFirewallPolicyEndpointSpecificPort(t *testing.T) {
 		NetworkIDs:       types.ListNull(types.StringType),
 		ClientMACs:       types.ListNull(types.StringType),
 		IPs:              types.ListNull(types.StringType),
-		Port:             types.Int64Value(443),
+		Port:             types.StringValue("443"),
 		PortGroupID:      types.StringNull(),
 		PortMatchingType: types.StringValue("SPECIFIC"),
 	}
@@ -42,23 +42,80 @@ func TestFirewallPolicyEndpointSpecificPort(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("source conversion errored: %v", diags)
 	}
-	if src.Port == nil || *src.Port != 443 {
-		t.Errorf("source Port = %v, want 443", src.Port)
+	if src.Port != "443" {
+		t.Errorf("source Port = %q, want 443", src.Port)
 	}
 	if src.PortMatchingType != "SPECIFIC" {
 		t.Errorf("source PortMatchingType = %q, want SPECIFIC", src.PortMatchingType)
 	}
 
-	m.Port = types.Int64Value(8080)
+	m.Port = types.StringValue("8080")
 	dst := endpointModelToDestination(ctx, m, &diags)
 	if diags.HasError() {
 		t.Fatalf("destination conversion errored: %v", diags)
 	}
-	if dst.Port == nil || *dst.Port != 8080 {
-		t.Errorf("destination Port = %v, want 8080", dst.Port)
+	if dst.Port != "8080" {
+		t.Errorf("destination Port = %q, want 8080", dst.Port)
 	}
 	if dst.PortMatchingType != "SPECIFIC" {
 		t.Errorf("destination PortMatchingType = %q, want SPECIFIC", dst.PortMatchingType)
+	}
+}
+
+// TestFirewallPolicyPortStringHandling guards #288 and #286. A portless endpoint
+// must serialize no port at all (an empty Go string the go-unifi marshaler drops)
+// — not "0", which freezes the gateway firewall config (#288). A comma-separated
+// list must survive (#286). On read, the controller's "" and the legacy "0" both
+// map back to a null port so plans stay clean.
+func TestFirewallPolicyPortStringHandling(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+
+	base := firewallPolicyEndpointModel{
+		ZoneID:           types.StringValue("z1"),
+		MatchingTarget:   types.StringValue("ANY"),
+		NetworkIDs:       types.ListNull(types.StringType),
+		ClientMACs:       types.ListNull(types.StringType),
+		IPs:              types.ListNull(types.StringType),
+		WebDomains:       types.ListNull(types.StringType),
+		PortGroupID:      types.StringNull(),
+		PortMatchingType: types.StringValue("ANY"),
+	}
+
+	// Portless endpoint: model -> API must produce an empty port (omitted, never "0").
+	for _, port := range []types.String{types.StringNull(), types.StringValue("")} {
+		m := base
+		m.Port = port
+		if got := endpointModelToSource(ctx, m, &diags).Port; got != "" {
+			t.Errorf("portless source Port = %q, want empty", got)
+		}
+	}
+
+	// Comma-separated list survives (#286).
+	m := base
+	m.Port = types.StringValue("80,443")
+	m.PortMatchingType = types.StringValue("SPECIFIC")
+	if got := endpointModelToDestination(ctx, m, &diags).Port; got != "80,443" {
+		t.Errorf("multi-port destination Port = %q, want 80,443", got)
+	}
+	if diags.HasError() {
+		t.Fatalf("conversion errored: %v", diags)
+	}
+
+	// API -> model: "" and the legacy "0" both become null; a real list survives.
+	cases := map[string]bool{"": true, "0": true, "161": false, "1812,1813": false}
+	for apiPort, wantNull := range cases {
+		got := apiSourceToEndpointModel(
+			ctx,
+			&unifi.FirewallPolicySource{ZoneID: "z1", MatchingTarget: "IP", Port: apiPort},
+			&diags,
+		)
+		if got.Port.IsNull() != wantNull {
+			t.Errorf("read port %q: IsNull = %v, want %v", apiPort, got.Port.IsNull(), wantNull)
+		}
+		if !wantNull && got.Port.ValueString() != apiPort {
+			t.Errorf("read port %q: ValueString = %q", apiPort, got.Port.ValueString())
+		}
 	}
 }
 
@@ -91,7 +148,7 @@ func TestFirewallPolicyPreservesFirmwareFields(t *testing.T) {
 			MatchingTarget:     "IP",
 			MatchingTargetType: "OBJECT",
 			PortMatchingType:   "SPECIFIC",
-			Port:               ptrInt64(161),
+			Port:               "161",
 		},
 	}
 
@@ -130,7 +187,7 @@ func TestFirewallPolicyPreservesFirmwareFields(t *testing.T) {
 	if out.Destination == nil || out.Destination.MatchingTargetType != "OBJECT" {
 		t.Errorf("PUT destination MatchingTargetType not preserved: %+v", out.Destination)
 	}
-	if out.Destination == nil || out.Destination.Port == nil || *out.Destination.Port != 161 {
+	if out.Destination == nil || out.Destination.Port != "161" {
 		t.Errorf("PUT destination Port not preserved: %+v", out.Destination)
 	}
 }
@@ -206,7 +263,7 @@ func TestFirewallPolicyEndpointListFieldsRoundTrip(t *testing.T) {
 		ClientMACs:       clientMACs,
 		IPs:              types.ListNull(types.StringType),
 		WebDomains:       webDomains,
-		Port:             types.Int64Null(),
+		Port:             types.StringNull(),
 		PortGroupID:      types.StringNull(),
 		PortMatchingType: types.StringValue("ANY"),
 	}
@@ -350,7 +407,7 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 				"client_macs":          types.ListType{ElemType: types.StringType},
 				"ips":                  types.ListType{ElemType: types.StringType},
 				"web_domains":          types.ListType{ElemType: types.StringType},
-				"port":                 types.Int64Type,
+				"port":                 types.StringType,
 				"port_group_id":        types.StringType,
 				"port_matching_type":   types.StringType,
 				"matching_target_type": types.StringType,
@@ -549,7 +606,7 @@ func Test_modelToFirewallPolicy(t *testing.T) {
 						ClientMACs:         types.ListNull(types.StringType),
 						IPs:                types.ListNull(types.StringType),
 						WebDomains:         types.ListNull(types.StringType),
-						Port:               types.Int64Null(),
+						Port:               types.StringNull(),
 						PortGroupID:        types.StringNull(),
 						PortMatchingType:   types.StringValue("ANY"),
 					}
@@ -566,7 +623,7 @@ func Test_modelToFirewallPolicy(t *testing.T) {
 						ClientMACs:         types.ListNull(types.StringType),
 						IPs:                types.ListNull(types.StringType),
 						WebDomains:         types.ListNull(types.StringType),
-						Port:               types.Int64Null(),
+						Port:               types.StringNull(),
 						PortGroupID:        types.StringNull(),
 						PortMatchingType:   types.StringValue("ANY"),
 					}
@@ -657,7 +714,7 @@ func Test_endpointModelToSource(t *testing.T) {
 						ClientMACs:         types.ListNull(types.StringType),
 						IPs:                ips,
 						WebDomains:         types.ListNull(types.StringType),
-						Port:               types.Int64Null(),
+						Port:               types.StringNull(),
 						PortGroupID:        types.StringNull(),
 						PortMatchingType:   types.StringValue("ANY"),
 					}
@@ -715,7 +772,7 @@ func Test_endpointModelToDestination(t *testing.T) {
 						ClientMACs:         types.ListNull(types.StringType),
 						IPs:                ips,
 						WebDomains:         types.ListNull(types.StringType),
-						Port:               types.Int64Value(80),
+						Port:               types.StringValue("80"),
 						PortGroupID:        types.StringNull(),
 						PortMatchingType:   types.StringValue("SPECIFIC"),
 					}
@@ -725,7 +782,7 @@ func Test_endpointModelToDestination(t *testing.T) {
 				ZoneID:             "z2",
 				MatchingTarget:     "IP",
 				MatchingTargetType: "OBJECT",
-				Port:               ptrInt64(80),
+				Port:               "80",
 				PortMatchingType:   "SPECIFIC",
 				IPs:                []string{"192.168.1.1"},
 			},
@@ -832,7 +889,7 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 					MatchingTargetType: "OBJECT",
 					IPs:                []string{"10.0.0.1"},
 					PortMatchingType:   "SPECIFIC",
-					Port:               ptrInt64(443),
+					Port:               "443",
 				},
 			},
 			want: func() firewallPolicyEndpointModel {
@@ -849,7 +906,7 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 					NetworkIDs:         networkIDs,
 					ClientMACs:         clientMACs,
 					WebDomains:         webDomains,
-					Port:               types.Int64Value(443),
+					Port:               types.StringValue("443"),
 					PortGroupID:        types.StringValue(""),
 					PortMatchingType:   types.StringValue("SPECIFIC"),
 				}
@@ -893,7 +950,7 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 					MatchingTarget:     "ANY",
 					MatchingTargetType: "OBJECT",
 					PortMatchingType:   "SPECIFIC",
-					Port:               ptrInt64(8080),
+					Port:               "8080",
 				},
 			},
 			want: func() firewallPolicyEndpointModel {
@@ -910,7 +967,7 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 					NetworkIDs:         networkIDs,
 					ClientMACs:         clientMACs,
 					WebDomains:         webDomains,
-					Port:               types.Int64Value(8080),
+					Port:               types.StringValue("8080"),
 					PortGroupID:        types.StringValue(""),
 					PortMatchingType:   types.StringValue("SPECIFIC"),
 				}
