@@ -116,6 +116,54 @@ type settingDohCustomServerModel struct {
 	ServerName types.String `tfsdk:"server_name"`
 }
 
+type settingAutoSpeedtestModel struct {
+	Enabled  types.Bool   `tfsdk:"enabled"`
+	CronExpr types.String `tfsdk:"cron_expr"`
+}
+
+type settingCountryModel struct {
+	Code types.Int64 `tfsdk:"code"`
+}
+
+type settingDpiModel struct {
+	Enabled               types.Bool `tfsdk:"enabled"`
+	FingerprintingEnabled types.Bool `tfsdk:"fingerprinting_enabled"`
+}
+
+type settingLcmModel struct {
+	Enabled     types.Bool  `tfsdk:"enabled"`
+	Brightness  types.Int64 `tfsdk:"brightness"`
+	IdleTimeout types.Int64 `tfsdk:"idle_timeout"`
+	Sync        types.Bool  `tfsdk:"sync"`
+	TouchEvent  types.Bool  `tfsdk:"touch_event"`
+}
+
+type settingNetworkOptimizationModel struct {
+	Enabled types.Bool `tfsdk:"enabled"`
+}
+
+type settingNtpModel struct {
+	NtpServer1        types.String `tfsdk:"ntp_server_1"`
+	NtpServer2        types.String `tfsdk:"ntp_server_2"`
+	NtpServer3        types.String `tfsdk:"ntp_server_3"`
+	NtpServer4        types.String `tfsdk:"ntp_server_4"`
+	SettingPreference types.String `tfsdk:"setting_preference"`
+}
+
+type settingSyslogModel struct {
+	Enabled                     types.Bool   `tfsdk:"enabled"`
+	Contents                    types.List   `tfsdk:"contents"`
+	Debug                       types.Bool   `tfsdk:"debug"`
+	IP                          types.String `tfsdk:"ip"`
+	Port                        types.Int64  `tfsdk:"port"`
+	LogAllContents              types.Bool   `tfsdk:"log_all_contents"`
+	NetconsoleEnabled           types.Bool   `tfsdk:"netconsole_enabled"`
+	NetconsoleHost              types.String `tfsdk:"netconsole_host"`
+	NetconsolePort              types.Int64  `tfsdk:"netconsole_port"`
+	ThisController              types.Bool   `tfsdk:"this_controller"`
+	ThisControllerEncryptedOnly types.Bool   `tfsdk:"this_controller_encrypted_only"`
+}
+
 type settingDohModel struct {
 	CustomServers types.List   `tfsdk:"custom_servers"`
 	ServerNames   types.List   `tfsdk:"server_names"`
@@ -148,15 +196,22 @@ type settingIpsModel struct {
 }
 
 type settingResourceModel struct {
-	ID           types.String   `tfsdk:"id"`
-	Site         types.String   `tfsdk:"site"`
-	Doh          types.Object   `tfsdk:"doh"`
-	Ips          types.Object   `tfsdk:"ips"`
-	Mgmt         types.Object   `tfsdk:"mgmt"`
-	Radius       types.Object   `tfsdk:"radius"`
-	USG          types.Object   `tfsdk:"usg"`
-	IgmpSnooping types.Object   `tfsdk:"igmp_snooping"`
-	Timeouts     timeouts.Value `tfsdk:"timeouts"`
+	ID            types.String   `tfsdk:"id"`
+	Site          types.String   `tfsdk:"site"`
+	AutoSpeedtest types.Object   `tfsdk:"auto_speedtest"`
+	Country       types.Object   `tfsdk:"country"`
+	Dpi           types.Object   `tfsdk:"dpi"`
+	Lcm           types.Object   `tfsdk:"lcm"`
+	NetworkOpt    types.Object   `tfsdk:"network_optimization"`
+	Ntp           types.Object   `tfsdk:"ntp"`
+	Syslog        types.Object   `tfsdk:"syslog"`
+	Doh           types.Object   `tfsdk:"doh"`
+	Ips           types.Object   `tfsdk:"ips"`
+	Mgmt          types.Object   `tfsdk:"mgmt"`
+	Radius        types.Object   `tfsdk:"radius"`
+	USG           types.Object   `tfsdk:"usg"`
+	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
+	Timeouts      timeouts.Value `tfsdk:"timeouts"`
 }
 
 // settingIgmpSnoopingModel is the nested igmp_snooping block. On UniFi 10.3.x the
@@ -172,6 +227,47 @@ type settingIgmpSnoopingModel struct {
 // are referenced from both readSettings and the *SettingToModel conversion
 // helpers, so they live at package level to avoid drift between the two.
 var (
+	autoSpeedtestAttrTypes = map[string]attr.Type{
+		"enabled":   types.BoolType,
+		"cron_expr": types.StringType,
+	}
+	countryAttrTypes = map[string]attr.Type{
+		"code": types.Int64Type,
+	}
+	dpiAttrTypes = map[string]attr.Type{
+		"enabled":                types.BoolType,
+		"fingerprinting_enabled": types.BoolType,
+	}
+	lcmAttrTypes = map[string]attr.Type{
+		"enabled":      types.BoolType,
+		"brightness":   types.Int64Type,
+		"idle_timeout": types.Int64Type,
+		"sync":         types.BoolType,
+		"touch_event":  types.BoolType,
+	}
+	networkOptimizationAttrTypes = map[string]attr.Type{
+		"enabled": types.BoolType,
+	}
+	ntpAttrTypes = map[string]attr.Type{
+		"ntp_server_1":       types.StringType,
+		"ntp_server_2":       types.StringType,
+		"ntp_server_3":       types.StringType,
+		"ntp_server_4":       types.StringType,
+		"setting_preference": types.StringType,
+	}
+	syslogAttrTypes = map[string]attr.Type{
+		"enabled":                        types.BoolType,
+		"contents":                       types.ListType{ElemType: types.StringType},
+		"debug":                          types.BoolType,
+		"ip":                             types.StringType,
+		"port":                           types.Int64Type,
+		"log_all_contents":               types.BoolType,
+		"netconsole_enabled":             types.BoolType,
+		"netconsole_host":                types.StringType,
+		"netconsole_port":                types.Int64Type,
+		"this_controller":                types.BoolType,
+		"this_controller_encrypted_only": types.BoolType,
+	}
 	dohCustomServerAttrTypes = map[string]attr.Type{
 		"enabled":     types.BoolType,
 		"sdns_stamp":  types.StringType,
@@ -250,6 +346,231 @@ func (r *settingResource) Schema(
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"auto_speedtest": schema.SingleNestedAttribute{
+				MarkdownDescription: "Periodic automated internet speed test settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether periodic automated speed tests are enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"cron_expr": schema.StringAttribute{
+						MarkdownDescription: "Cron expression controlling when the speed test runs (e.g. `0 * * * *`).",
+						Optional:            true,
+						Computed:            true,
+					},
+				},
+			},
+			"country": schema.SingleNestedAttribute{
+				MarkdownDescription: "Regulatory country settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"code": schema.Int64Attribute{
+						MarkdownDescription: "Regulatory country code (ISO 3166-1 numeric).",
+						Required:            true,
+					},
+				},
+			},
+			"dpi": schema.SingleNestedAttribute{
+				MarkdownDescription: "Deep Packet Inspection (DPI) settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether DPI is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"fingerprinting_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether device fingerprinting is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+				},
+			},
+			"lcm": schema.SingleNestedAttribute{
+				MarkdownDescription: "LCD/display (LCM) settings for devices with a screen.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether the device display is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(true),
+					},
+					"brightness": schema.Int64Attribute{
+						MarkdownDescription: "Display brightness (1-100).",
+						Optional:            true,
+						Computed:            true,
+						Validators:          []validator.Int64{int64validator.Between(1, 100)},
+					},
+					"idle_timeout": schema.Int64Attribute{
+						MarkdownDescription: "Seconds of inactivity before the display turns off (10-3600).",
+						Optional:            true,
+						Computed:            true,
+						Validators:          []validator.Int64{int64validator.Between(10, 3600)},
+					},
+					"sync": schema.BoolAttribute{
+						MarkdownDescription: "Sync display settings across devices.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"touch_event": schema.BoolAttribute{
+						MarkdownDescription: "Whether touch events on the display are enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(true),
+					},
+				},
+			},
+			"network_optimization": schema.SingleNestedAttribute{
+				MarkdownDescription: "Automated network optimization settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether automated network optimization is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+				},
+			},
+			"ntp": schema.SingleNestedAttribute{
+				MarkdownDescription: "NTP (time server) settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"setting_preference": schema.StringAttribute{
+						MarkdownDescription: "Configuration mode: `auto` or `manual`.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("auto", "manual"),
+						},
+					},
+					"ntp_server_1": schema.StringAttribute{
+						MarkdownDescription: "Primary NTP server.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"ntp_server_2": schema.StringAttribute{
+						MarkdownDescription: "Second NTP server.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"ntp_server_3": schema.StringAttribute{
+						MarkdownDescription: "Third NTP server.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"ntp_server_4": schema.StringAttribute{
+						MarkdownDescription: "Fourth NTP server.",
+						Optional:            true,
+						Computed:            true,
+					},
+				},
+			},
+			"syslog": schema.SingleNestedAttribute{
+				MarkdownDescription: "Remote syslog (rsyslogd) settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether remote syslog is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"ip": schema.StringAttribute{
+						MarkdownDescription: "Remote syslog server IP address.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"port": schema.Int64Attribute{
+						MarkdownDescription: "Remote syslog server port (1-65535).",
+						Optional:            true,
+						Computed:            true,
+						Validators:          []validator.Int64{int64validator.Between(1, 65535)},
+					},
+					"contents": schema.ListAttribute{
+						MarkdownDescription: "Logged facilities (e.g. `device`, `client`, `firewall_default_policy`, `triggers`, `updates`, `admin_activity`, `critical`, `security_detections`, `vpn`).",
+						Optional:            true,
+						Computed:            true,
+						ElementType:         types.StringType,
+					},
+					"log_all_contents": schema.BoolAttribute{
+						MarkdownDescription: "Log all available facilities.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"debug": schema.BoolAttribute{
+						MarkdownDescription: "Enable debug logging.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"this_controller": schema.BoolAttribute{
+						MarkdownDescription: "Also log this controller's events.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"this_controller_encrypted_only": schema.BoolAttribute{
+						MarkdownDescription: "Only send this controller's logs over an encrypted channel.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"netconsole_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether netconsole logging is enabled.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"netconsole_host": schema.StringAttribute{
+						MarkdownDescription: "Netconsole host.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"netconsole_port": schema.Int64Attribute{
+						MarkdownDescription: "Netconsole port (1-65535).",
+						Optional:            true,
+						Computed:            true,
+						Validators:          []validator.Int64{int64validator.Between(1, 65535)},
+					},
 				},
 			},
 			"doh": schema.SingleNestedAttribute{
@@ -855,6 +1176,100 @@ func (r *settingResource) Create(
 	}
 
 	// Update each configured setting type
+	if !data.AutoSpeedtest.IsNull() && !data.AutoSpeedtest.IsUnknown() {
+		var as settingAutoSpeedtestModel
+		resp.Diagnostics.Append(data.AutoSpeedtest.As(ctx, &as, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.autoSpeedtestModelToSetting(&as)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating Auto Speedtest Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.Country.IsNull() && !data.Country.IsUnknown() {
+		var m settingCountryModel
+		resp.Diagnostics.Append(data.Country.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.countryModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating Country Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.Dpi.IsNull() && !data.Dpi.IsUnknown() {
+		var m settingDpiModel
+		resp.Diagnostics.Append(data.Dpi.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.dpiModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating DPI Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.Lcm.IsNull() && !data.Lcm.IsUnknown() {
+		var m settingLcmModel
+		resp.Diagnostics.Append(data.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.lcmModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating LCM Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.NetworkOpt.IsNull() && !data.NetworkOpt.IsUnknown() {
+		var m settingNetworkOptimizationModel
+		resp.Diagnostics.Append(data.NetworkOpt.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.networkOptimizationModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating Network Optimization Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.Ntp.IsNull() && !data.Ntp.IsUnknown() {
+		var m settingNtpModel
+		resp.Diagnostics.Append(data.Ntp.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.ntpModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating NTP Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.Syslog.IsNull() && !data.Syslog.IsUnknown() {
+		var m settingSyslogModel
+		resp.Diagnostics.Append(data.Syslog.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.syslogModelToSetting(ctx, &m, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating Syslog Setting", err.Error())
+			return
+		}
+	}
+
 	if !data.Doh.IsNull() && !data.Doh.IsUnknown() {
 		var doh settingDohModel
 		resp.Diagnostics.Append(data.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
@@ -1041,6 +1456,100 @@ func (r *settingResource) Update(
 	}
 
 	// Update each configured setting type
+	if !plan.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsUnknown() {
+		var as settingAutoSpeedtestModel
+		resp.Diagnostics.Append(plan.AutoSpeedtest.As(ctx, &as, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.autoSpeedtestModelToSetting(&as)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating Auto Speedtest Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.Country.IsNull() && !plan.Country.IsUnknown() {
+		var m settingCountryModel
+		resp.Diagnostics.Append(plan.Country.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.countryModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating Country Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.Dpi.IsNull() && !plan.Dpi.IsUnknown() {
+		var m settingDpiModel
+		resp.Diagnostics.Append(plan.Dpi.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.dpiModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating DPI Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() {
+		var m settingLcmModel
+		resp.Diagnostics.Append(plan.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.lcmModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating LCM Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.NetworkOpt.IsNull() && !plan.NetworkOpt.IsUnknown() {
+		var m settingNetworkOptimizationModel
+		resp.Diagnostics.Append(plan.NetworkOpt.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.networkOptimizationModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating Network Optimization Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() {
+		var m settingNtpModel
+		resp.Diagnostics.Append(plan.Ntp.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.ntpModelToSetting(&m)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating NTP Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.Syslog.IsNull() && !plan.Syslog.IsUnknown() {
+		var m settingSyslogModel
+		resp.Diagnostics.Append(plan.Syslog.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting := r.syslogModelToSetting(ctx, &m, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating Syslog Setting", err.Error())
+			return
+		}
+	}
+
 	if !plan.Doh.IsNull() && !plan.Doh.IsUnknown() {
 		var doh settingDohModel
 		resp.Diagnostics.Append(plan.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
@@ -1197,6 +1706,131 @@ func (r *settingResource) readSettings(
 	data.Site = types.StringValue(site)
 
 	// Only read settings that were configured in the plan, set others to null
+
+	// Auto speedtest settings
+	if !data.AutoSpeedtest.IsNull() && !data.AutoSpeedtest.IsUnknown() {
+		_, asSetting, err := ui.GetSetting[*settings.AutoSpeedtest](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Auto Speedtest Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx, autoSpeedtestAttrTypes, r.autoSpeedtestSettingToModel(asSetting),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.AutoSpeedtest = objValue
+	} else {
+		data.AutoSpeedtest = types.ObjectNull(autoSpeedtestAttrTypes)
+	}
+
+	// Country settings
+	if !data.Country.IsNull() && !data.Country.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.Country](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Country Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(ctx, countryAttrTypes, r.countrySettingToModel(s))
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Country = objValue
+	} else {
+		data.Country = types.ObjectNull(countryAttrTypes)
+	}
+
+	// DPI settings
+	if !data.Dpi.IsNull() && !data.Dpi.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.Dpi](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading DPI Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(ctx, dpiAttrTypes, r.dpiSettingToModel(s))
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Dpi = objValue
+	} else {
+		data.Dpi = types.ObjectNull(dpiAttrTypes)
+	}
+
+	// LCM settings
+	if !data.Lcm.IsNull() && !data.Lcm.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.Lcm](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading LCM Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(ctx, lcmAttrTypes, r.lcmSettingToModel(s))
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Lcm = objValue
+	} else {
+		data.Lcm = types.ObjectNull(lcmAttrTypes)
+	}
+
+	// Network optimization settings
+	if !data.NetworkOpt.IsNull() && !data.NetworkOpt.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.NetworkOptimization](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Network Optimization Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx, networkOptimizationAttrTypes, r.networkOptimizationSettingToModel(s),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.NetworkOpt = objValue
+	} else {
+		data.NetworkOpt = types.ObjectNull(networkOptimizationAttrTypes)
+	}
+
+	// NTP settings
+	if !data.Ntp.IsNull() && !data.Ntp.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.Ntp](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading NTP Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(ctx, ntpAttrTypes, r.ntpSettingToModel(s))
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Ntp = objValue
+	} else {
+		data.Ntp = types.ObjectNull(ntpAttrTypes)
+	}
+
+	// Syslog settings
+	if !data.Syslog.IsNull() && !data.Syslog.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.Rsyslogd](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Syslog Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx, syslogAttrTypes, r.syslogSettingToModel(ctx, s, diags),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Syslog = objValue
+	} else {
+		data.Syslog = types.ObjectNull(syslogAttrTypes)
+	}
 
 	// DoH settings
 	if !data.Doh.IsNull() && !data.Doh.IsUnknown() {
@@ -2070,6 +2704,147 @@ func (r *settingResource) igmpSnoopingSettingToModel(
 }
 
 // DoH conversion functions.
+func (r *settingResource) autoSpeedtestModelToSetting(
+	model *settingAutoSpeedtestModel,
+) *settings.AutoSpeedtest {
+	setting := &settings.AutoSpeedtest{}
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		setting.Enabled = model.Enabled.ValueBool()
+	}
+	if !model.CronExpr.IsNull() && !model.CronExpr.IsUnknown() {
+		setting.CronExpr = model.CronExpr.ValueString()
+	}
+	return setting
+}
+
+func (r *settingResource) autoSpeedtestSettingToModel(
+	setting *settings.AutoSpeedtest,
+) settingAutoSpeedtestModel {
+	return settingAutoSpeedtestModel{
+		Enabled:  types.BoolValue(setting.Enabled),
+		CronExpr: util.StringValueOrNull(setting.CronExpr),
+	}
+}
+
+func (r *settingResource) countryModelToSetting(m *settingCountryModel) *settings.Country {
+	return &settings.Country{Code: m.Code.ValueInt64Pointer()}
+}
+
+func (r *settingResource) countrySettingToModel(s *settings.Country) settingCountryModel {
+	return settingCountryModel{Code: types.Int64PointerValue(s.Code)}
+}
+
+func (r *settingResource) dpiModelToSetting(m *settingDpiModel) *settings.Dpi {
+	return &settings.Dpi{
+		Enabled:               m.Enabled.ValueBool(),
+		FingerprintingEnabled: m.FingerprintingEnabled.ValueBool(),
+	}
+}
+
+func (r *settingResource) dpiSettingToModel(s *settings.Dpi) settingDpiModel {
+	return settingDpiModel{
+		Enabled:               types.BoolValue(s.Enabled),
+		FingerprintingEnabled: types.BoolValue(s.FingerprintingEnabled),
+	}
+}
+
+func (r *settingResource) lcmModelToSetting(m *settingLcmModel) *settings.Lcm {
+	return &settings.Lcm{
+		Enabled:     m.Enabled.ValueBool(),
+		Brightness:  m.Brightness.ValueInt64Pointer(),
+		IDleTimeout: m.IdleTimeout.ValueInt64Pointer(),
+		Sync:        m.Sync.ValueBool(),
+		TouchEvent:  m.TouchEvent.ValueBool(),
+	}
+}
+
+func (r *settingResource) lcmSettingToModel(s *settings.Lcm) settingLcmModel {
+	return settingLcmModel{
+		Enabled:     types.BoolValue(s.Enabled),
+		Brightness:  types.Int64PointerValue(s.Brightness),
+		IdleTimeout: types.Int64PointerValue(s.IDleTimeout),
+		Sync:        types.BoolValue(s.Sync),
+		TouchEvent:  types.BoolValue(s.TouchEvent),
+	}
+}
+
+func (r *settingResource) networkOptimizationModelToSetting(
+	m *settingNetworkOptimizationModel,
+) *settings.NetworkOptimization {
+	return &settings.NetworkOptimization{Enabled: m.Enabled.ValueBool()}
+}
+
+func (r *settingResource) networkOptimizationSettingToModel(
+	s *settings.NetworkOptimization,
+) settingNetworkOptimizationModel {
+	return settingNetworkOptimizationModel{Enabled: types.BoolValue(s.Enabled)}
+}
+
+func (r *settingResource) ntpModelToSetting(m *settingNtpModel) *settings.Ntp {
+	return &settings.Ntp{
+		NtpServer1:        m.NtpServer1.ValueString(),
+		NtpServer2:        m.NtpServer2.ValueString(),
+		NtpServer3:        m.NtpServer3.ValueString(),
+		NtpServer4:        m.NtpServer4.ValueString(),
+		SettingPreference: m.SettingPreference.ValueString(),
+	}
+}
+
+func (r *settingResource) ntpSettingToModel(s *settings.Ntp) settingNtpModel {
+	return settingNtpModel{
+		NtpServer1:        util.StringValueOrNull(s.NtpServer1),
+		NtpServer2:        util.StringValueOrNull(s.NtpServer2),
+		NtpServer3:        util.StringValueOrNull(s.NtpServer3),
+		NtpServer4:        util.StringValueOrNull(s.NtpServer4),
+		SettingPreference: util.StringValueOrNull(s.SettingPreference),
+	}
+}
+
+func (r *settingResource) syslogModelToSetting(
+	ctx context.Context,
+	m *settingSyslogModel,
+	diags *diag.Diagnostics,
+) *settings.Rsyslogd {
+	setting := &settings.Rsyslogd{
+		Enabled:                     m.Enabled.ValueBool(),
+		Debug:                       m.Debug.ValueBool(),
+		IP:                          m.IP.ValueString(),
+		Port:                        m.Port.ValueInt64Pointer(),
+		LogAllContents:              m.LogAllContents.ValueBool(),
+		NetconsoleEnabled:           m.NetconsoleEnabled.ValueBool(),
+		NetconsoleHost:              m.NetconsoleHost.ValueString(),
+		NetconsolePort:              m.NetconsolePort.ValueInt64Pointer(),
+		ThisController:              m.ThisController.ValueBool(),
+		ThisControllerEncryptedOnly: m.ThisControllerEncryptedOnly.ValueBool(),
+	}
+	if !m.Contents.IsNull() && !m.Contents.IsUnknown() {
+		diags.Append(m.Contents.ElementsAs(ctx, &setting.Contents, false)...)
+	}
+	return setting
+}
+
+func (r *settingResource) syslogSettingToModel(
+	ctx context.Context,
+	s *settings.Rsyslogd,
+	diags *diag.Diagnostics,
+) settingSyslogModel {
+	contents, d := types.ListValueFrom(ctx, types.StringType, s.Contents)
+	diags.Append(d...)
+	return settingSyslogModel{
+		Enabled:                     types.BoolValue(s.Enabled),
+		Contents:                    contents,
+		Debug:                       types.BoolValue(s.Debug),
+		IP:                          util.StringValueOrNull(s.IP),
+		Port:                        types.Int64PointerValue(s.Port),
+		LogAllContents:              types.BoolValue(s.LogAllContents),
+		NetconsoleEnabled:           types.BoolValue(s.NetconsoleEnabled),
+		NetconsoleHost:              util.StringValueOrNull(s.NetconsoleHost),
+		NetconsolePort:              types.Int64PointerValue(s.NetconsolePort),
+		ThisController:              types.BoolValue(s.ThisController),
+		ThisControllerEncryptedOnly: types.BoolValue(s.ThisControllerEncryptedOnly),
+	}
+}
+
 func (r *settingResource) dohModelToSetting(
 	ctx context.Context,
 	model *settingDohModel,
