@@ -39,6 +39,11 @@ jobs:
         uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
         with:
           version: latest
+          # The action tracks golangci-lint `latest`, so new checks can appear
+          # without any code change and flag pre-existing debt. Gate PRs on the
+          # issues they actually introduce; pre-existing findings are paid down
+          # separately rather than blocking every PR.
+          only-new-issues: true
 
   build:
     name: Build
