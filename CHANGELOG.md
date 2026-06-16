@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.52.0] - 2026-06-16
+
+### ✨ Features
+
+- **`unifi_setting` `mgmt` block — full management settings** (#274): `advanced_feature_enabled`, `auto_upgrade_hour`, `debug_tools_enabled`, `direct_connect_enabled`, `unifi_idp_enabled`, `wifiman_enabled`, `ssh_username`, `ssh_password` (sensitive), `ssh_auth_password_enabled`. Configured fields are overlaid onto the controller's current settings, so unset fields are preserved.
+- **`unifi_setting` `ips` block — signature alert suppression** (#275): new `suppression_alerts` list (`category`, `gid`, `id`, `signature`, `type`) with a nested `tracking` list (`direction`, `mode`, `value`).
+
+---
+
 ## [v0.51.0] - 2026-06-16
 
 ### ✨ Features
