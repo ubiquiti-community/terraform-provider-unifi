@@ -122,7 +122,7 @@ resource "unifi_network" "third_party" {
 - `network_isolation` (Boolean) Specifies whether network isolation is enabled.
 - `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the network with.
-- `subnet` (String) The IPv4 subnet of the network in CIDR notation. Optional: it is not required for `vlan_only` networks (`third_party_gateway = true`), where the UniFi controller does not manage the subnet.
+- `subnet` (String) The network's gateway IP and prefix in CIDR notation. The host portion is the gateway address the controller assigns — it need not be the first usable address: `10.0.10.1/24` uses gateway `10.0.10.1`, while `10.0.10.254/24` uses gateway `10.0.10.254` on the same subnet. Optional: it is not required for `vlan_only` networks (`third_party_gateway = true`), where the UniFi controller does not manage the subnet.
 - `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `vlan` (Number) The VLAN ID for the network.
