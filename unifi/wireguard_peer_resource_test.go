@@ -410,7 +410,6 @@ func TestAccWireguardPeerList_basic(t *testing.T) {
 				Query: true,
 				ConfigFile: config.TestStepConfigFunc(func(_ config.TestStepConfigRequest) string {
 					content := fmt.Sprintf(`
-provider "unifi" {}
 list "unifi_wireguard_peer" "test" {
   provider = unifi
   config {
