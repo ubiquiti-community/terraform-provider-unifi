@@ -347,9 +347,12 @@ func (r *networkResource) Schema(
 				Default:             booldefault.StaticBool(true),
 			},
 			"subnet": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 subnet of the network in CIDR notation. Optional: it is " +
-					"not required for `vlan_only` networks (`third_party_gateway = true`), where the " +
-					"UniFi controller does not manage the subnet.",
+				MarkdownDescription: "The network's gateway IP and prefix in CIDR notation. The host " +
+					"portion is the gateway address the controller assigns — it need not be the first " +
+					"usable address: `10.0.10.1/24` uses gateway `10.0.10.1`, while `10.0.10.254/24` " +
+					"uses gateway `10.0.10.254` on the same subnet. Optional: it is not required for " +
+					"`vlan_only` networks (`third_party_gateway = true`), where the UniFi controller " +
+					"does not manage the subnet.",
 				Optional:   true,
 				CustomType: cidrtypes.IPv4PrefixType{},
 			},
