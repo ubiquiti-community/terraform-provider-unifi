@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.52.4] - 2026-06-17
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_zone`: create no longer fails with "Unrecognized field default_zone" (400) on UniFi Network 10.4.x.** The server-computed `default_zone` was always serialized into the create request; it is now omitted (modeled as `*bool` in go-unifi) and only read back as a computed attribute (#310)
+
+### 📚 Documentation
+
+- **`unifi_network`: clarify that `subnet` sets the gateway IP.** A custom gateway is already supported — the host portion of `subnet` is the gateway (e.g. `10.0.10.254/24` → gateway `.254`); it need not be the first usable address (#308, #309)
+
+## [v0.52.3] - 2026-06-17
+
+### 🐛 Bug Fixes
+
+- Fix operation timeouts for the list resources, and add acceptance tests for them
+
 ## [v0.52.2] - 2026-06-16
 
 ### 🐛 Bug Fixes
