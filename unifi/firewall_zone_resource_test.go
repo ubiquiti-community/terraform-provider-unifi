@@ -11,6 +11,8 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
+func boolPtr(b bool) *bool { return &b }
+
 // TestFirewallZoneModelRoundTrip validates the model <-> go-unifi struct
 // conversion for the unifi_firewall_zone resource (#214). It is a unit test
 // rather than an acceptance test because zone-based firewall is not available
@@ -44,7 +46,7 @@ func TestFirewallZoneModelRoundTrip(t *testing.T) {
 		Name:        "DMZ",
 		NetworkIDs:  []string{"net-a", "net-b"},
 		ZoneKey:     "dmz",
-		DefaultZone: false,
+		DefaultZone: boolPtr(false),
 	}
 	var out firewallZoneResourceModel
 	if diags := r.firewallZoneToModel(ctx, apiZone, &out, "default"); diags.HasError() {
@@ -354,7 +356,7 @@ func Test_firewallZoneResource_firewallZoneToModel(t *testing.T) {
 				ID:          "z1",
 				Name:        "LAN",
 				ZoneKey:     "lan",
-				DefaultZone: true,
+				DefaultZone: boolPtr(true),
 				NetworkIDs:  []string{"n1"},
 			},
 			site:            "default",
@@ -370,7 +372,7 @@ func Test_firewallZoneResource_firewallZoneToModel(t *testing.T) {
 				ID:          "z2",
 				Name:        "DMZ",
 				ZoneKey:     "dmz",
-				DefaultZone: false,
+				DefaultZone: boolPtr(false),
 				NetworkIDs:  []string{},
 			},
 			site:            "site1",

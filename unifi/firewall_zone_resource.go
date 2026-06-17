@@ -379,7 +379,7 @@ func (r *firewallZoneResource) firewallZoneToModel(
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(zone.Name)
 	model.ZoneKey = types.StringValue(zone.ZoneKey)
-	model.DefaultZone = types.BoolValue(zone.DefaultZone)
+	model.DefaultZone = types.BoolPointerValue(zone.DefaultZone)
 
 	networkIDs, diags := types.ListValueFrom(ctx, types.StringType, zone.NetworkIDs)
 	model.NetworkIDs = networkIDs
