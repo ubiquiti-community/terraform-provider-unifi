@@ -552,6 +552,7 @@ func (r *wireguardPeerResource) List(
 			var model wireguardPeerResourceModel
 			result.Diagnostics.Append(r.peerToModel(ctx, &peer, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

@@ -2013,6 +2013,7 @@ func (r *wanResource) List(
 			var model wanResourceModel
 			result.Diagnostics.Append(r.networkToModel(ctx, &network, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

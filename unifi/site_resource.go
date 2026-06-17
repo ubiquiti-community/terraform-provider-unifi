@@ -546,6 +546,7 @@ func (r *siteFrameworkResource) List(
 			var model siteFrameworkResourceModel
 			result.Diagnostics.Append(r.siteToModel(ctx, &site, &model)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

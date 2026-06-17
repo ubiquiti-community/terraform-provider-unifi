@@ -1556,6 +1556,7 @@ func (r *clientResource) List(
 			var model clientResourceModel
 			result.Diagnostics.Append(r.clientToModel(ctx, &client, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

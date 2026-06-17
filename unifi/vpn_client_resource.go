@@ -946,6 +946,7 @@ func (r *vpnClientResource) List(
 			result.Diagnostics.Append(
 				r.networkToModel(ctx, &network, &model, site, &vpnClientResourceModel{})...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

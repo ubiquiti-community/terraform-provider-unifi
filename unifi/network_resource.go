@@ -2049,6 +2049,7 @@ func (r *networkResource) List(
 			result.Diagnostics.Append(
 				r.networkToModel(ctx, &network, &model, site, &networkResourceModel{})...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

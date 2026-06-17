@@ -1883,6 +1883,7 @@ func (r *wlanFrameworkResource) List(
 			var model wlanFrameworkResourceModel
 			result.Diagnostics.Append(r.wlanToModel(ctx, &wlan, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

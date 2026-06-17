@@ -1014,6 +1014,7 @@ func (r *firewallRuleResource) List(
 			var model firewallRuleResourceModel
 			ruleCopy := rule
 			r.firewallRuleToModel(ctx, &ruleCopy, &model, site)
+			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 
 			if !push(result) {

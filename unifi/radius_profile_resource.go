@@ -739,6 +739,7 @@ func (r *radiusProfileResource) List(
 			// Convert to model.
 			var model radiusProfileResourceModel
 			r.radiusProfileToModel(ctx, &profile, &model, site)
+			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 
 			if !push(result) {

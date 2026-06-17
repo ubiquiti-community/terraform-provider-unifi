@@ -670,6 +670,7 @@ func (r *powerSupervisorResource) List(
 			var model powerSupervisorResourceModel
 			result.Diagnostics.Append(r.powerSupervisorToModel(&supervisor, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

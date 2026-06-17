@@ -1093,6 +1093,7 @@ func (r *firewallPolicyResource) List(
 			var model firewallPolicyModel
 			result.Diagnostics.Append(r.firewallPolicyListToModel(ctx, &p, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

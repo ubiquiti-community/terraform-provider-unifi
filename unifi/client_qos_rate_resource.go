@@ -585,6 +585,7 @@ func (r *clientQosRateResource) List(
 			model.ID = types.StringValue(clientGroup.ID)
 			result.Diagnostics.Append(r.clientQosRateToModel(ctx, &clientGroup, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

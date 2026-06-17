@@ -706,6 +706,7 @@ func (r *dnsRecordFrameworkResource) List(
 			// Convert to model.
 			var model dnsRecordFrameworkResourceModel
 			r.dnsRecordToModel(ctx, &record, &model, site)
+			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 
 			if !push(result) {

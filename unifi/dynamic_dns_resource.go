@@ -663,6 +663,7 @@ func (r *dynamicDNSResource) List(
 			// Convert to model.
 			var model dynamicDNSResourceModel
 			r.dynamicDNSToModel(ctx, &entry, &model, site)
+			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 
 			if !push(result) {

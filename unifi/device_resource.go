@@ -3093,6 +3093,7 @@ func (r *deviceResource) List(
 			var model deviceResourceModel
 			result.Diagnostics.Append(r.deviceListToModel(ctx, &d, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

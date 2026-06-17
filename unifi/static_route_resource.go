@@ -770,6 +770,7 @@ func (r *staticRouteFrameworkResource) List(
 			var model staticRouteFrameworkResourceModel
 			routingCopy := routing
 			r.routingToModel(ctx, &routingCopy, &model, site)
+			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 
 			if !push(result) {

@@ -489,6 +489,7 @@ func (r *firewallZoneResource) List(
 			zoneCopy := zone
 			result.Diagnostics.Append(r.firewallZoneToModel(ctx, &zoneCopy, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

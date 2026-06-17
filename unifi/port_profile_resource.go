@@ -1229,6 +1229,7 @@ func (r *portProfileResource) List(
 				r.portProfileToModel(ctx, &profile, &model, site)...,
 			)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 
