@@ -3,13 +3,18 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -386,4 +391,51 @@ func Test_wireguardPeerResource_ListResourceConfigSchema(t *testing.T) {
 	if _, ok := resp.Schema.Attributes["network_id"]; !ok {
 		t.Error("ListResourceConfigSchema() missing 'network_id' attribute")
 	}
+}
+
+func TestAccWireguardPeerList_basic(t *testing.T) {
+	var serverID string
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_14_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWireguardPeerConfig_basic(),
+				Check:  testAccCaptureResourceID("unifi_vpn_server.test", &serverID),
+			},
+			{
+				Query: true,
+				ConfigFile: config.TestStepConfigFunc(func(_ config.TestStepConfigRequest) string {
+					content := fmt.Sprintf(`
+provider "unifi" {}
+list "unifi_wireguard_peer" "test" {
+  provider = unifi
+  config {
+    network_id = %q
+    filter {
+      name  = "name"
+      value = "tfacc-wg-peer"
+    }
+  }
+}
+`, serverID)
+					dir, err := os.MkdirTemp("", "tf-acc-wg-peer-*")
+					if err != nil {
+						panic(err)
+					}
+					path := filepath.Join(dir, "main.tf")
+					if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+						panic(err)
+					}
+					return path
+				}),
+				QueryResultChecks: []querycheck.QueryResultCheck{
+					querycheck.ExpectLengthAtLeast("unifi_wireguard_peer.test", 1),
+				},
+			},
+		},
+	})
 }

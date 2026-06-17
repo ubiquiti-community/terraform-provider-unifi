@@ -10,6 +10,8 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -1019,4 +1021,37 @@ func Test_generateWireGuardPrivateKey(t *testing.T) {
 	if len(raw) != 32 {
 		t.Errorf("key length = %d bytes, want 32", len(raw))
 	}
+}
+
+func TestAccVPNServerList_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_14_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVPNServerConfig_wireguard_basic(),
+			},
+			{
+				Query: true,
+				Config: `
+					provider "unifi" {}
+					list "unifi_vpn_server" "test" {
+						provider = unifi
+						config {
+							filter {
+								name  = "name"
+								value = "tfacc-wg-server"
+						  }
+					  }
+					}
+				`,
+				QueryResultChecks: []querycheck.QueryResultCheck{
+					querycheck.ExpectLengthAtLeast("unifi_vpn_server.test", 1),
+				},
+			},
+		},
+	})
 }

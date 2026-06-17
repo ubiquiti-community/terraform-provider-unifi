@@ -8,6 +8,8 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -810,4 +812,37 @@ func Test_radiusProfileResource_ListResourceConfigSchema(t *testing.T) {
 	if _, ok := resp.Schema.Attributes["site"]; !ok {
 		t.Error("ListResourceConfigSchema missing 'site' attribute")
 	}
+}
+
+func TestAccRadiusProfileList_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_14_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccRadiusProfileConfig_basic(),
+			},
+			{
+				Query: true,
+				Config: `
+					provider "unifi" {}
+					list "unifi_radius_profile" "test" {
+						provider = unifi
+						config {
+							filter {
+								name  = "name"
+								value = "tfacc-radius-profile"
+						  }
+					  }
+					}
+				`,
+				QueryResultChecks: []querycheck.QueryResultCheck{
+					querycheck.ExpectLengthAtLeast("unifi_radius_profile.test", 1),
+				},
+			},
+		},
+	})
 }

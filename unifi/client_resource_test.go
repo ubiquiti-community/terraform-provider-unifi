@@ -13,6 +13,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -989,4 +992,40 @@ func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
 	if et := list.ElementType(context.Background()); !et.Equal(types.StringType) {
 		t.Errorf("expected tagged_networkconf_ids element type to be string, got %v", et)
 	}
+}
+
+func TestAccClientList_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_14_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccClientFrameworkConfig_basic(),
+			},
+			{
+				Query: true,
+				Config: `
+					provider "unifi" {}
+					list "unifi_client" "test" {
+						provider = unifi
+						config {
+							filter {
+								name  = "name"
+								value = "tfacc-client"
+						  }
+					  }
+					}
+				`,
+				QueryResultChecks: []querycheck.QueryResultCheck{
+					querycheck.ExpectLengthAtLeast("unifi_client.test", 1),
+					querycheck.ExpectIdentity("unifi_client.test", map[string]knownvalue.Check{
+						"mac": knownvalue.StringExact("01:23:45:67:89:ab"),
+					}),
+				},
+			},
+		},
+	})
 }

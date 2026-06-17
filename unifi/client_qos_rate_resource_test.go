@@ -10,6 +10,8 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -574,4 +576,37 @@ func Test_clientQosRateResource_List(t *testing.T) {
 			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
 		})
 	}
+}
+
+func TestAccClientQosRateList_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_14_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccClientQosRateConfig_basic(),
+			},
+			{
+				Query: true,
+				Config: `
+					provider "unifi" {}
+					list "unifi_client_qos_rate" "test" {
+						provider = unifi
+						config {
+							filter {
+								name  = "name"
+								value = "tfacc-group"
+						  }
+					  }
+					}
+				`,
+				QueryResultChecks: []querycheck.QueryResultCheck{
+					querycheck.ExpectLengthAtLeast("unifi_client_qos_rate.test", 1),
+				},
+			},
+		},
+	})
 }

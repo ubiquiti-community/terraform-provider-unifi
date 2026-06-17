@@ -12,6 +12,8 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -1063,4 +1065,37 @@ func Test_portForwardResource_ListResourceConfigSchema(t *testing.T) {
 			tt.r.ListResourceConfigSchema(tt.args.in0, tt.args.in1, tt.args.resp)
 		})
 	}
+}
+
+func TestAccPortForwardList_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_14_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPortForwardConfig_basic(),
+			},
+			{
+				Query: true,
+				Config: `
+					provider "unifi" {}
+					list "unifi_port_forward" "test" {
+						provider = unifi
+						config {
+							filter {
+								name  = "name"
+								value = "tfacc-port-forward"
+						  }
+					  }
+					}
+				`,
+				QueryResultChecks: []querycheck.QueryResultCheck{
+					querycheck.ExpectLengthAtLeast("unifi_port_forward.test", 1),
+				},
+			},
+		},
+	})
 }

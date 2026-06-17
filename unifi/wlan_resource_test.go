@@ -533,3 +533,9 @@ func TestApplyEnhancedIotOverrides(t *testing.T) {
 		}
 	})
 }
+
+func TestAccWLANList_basic(t *testing.T) {
+	// WLAN creation requires user_group_id which cannot be reliably resolved in
+	// the dockerized test environment; skip until the basic create path works.
+	t.Skip("WLAN creation requires user_group_id; skipping list acceptance test")
+}

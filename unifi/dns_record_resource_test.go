@@ -12,7 +12,9 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -485,4 +487,49 @@ func Test_dnsRecordFrameworkResource_ListResourceConfigSchema(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testAccDNSRecordListConfig_basic() string {
+	return `
+resource "unifi_dns_record" "test" {
+  name        = "test-record.example.com"
+  enabled     = true
+  record_type = "A"
+  ttl         = "5m0s"
+  value       = "192.168.1.100"
+}
+`
+}
+
+func TestAccDNSRecordList_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_14_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDNSRecordListConfig_basic(),
+			},
+			{
+				Query: true,
+				Config: `
+					provider "unifi" {}
+					list "unifi_dns_record" "test" {
+						provider = unifi
+						config {
+							filter {
+								name  = "name"
+								value = "test-record.example.com"
+						  }
+					  }
+					}
+				`,
+				QueryResultChecks: []querycheck.QueryResultCheck{
+					querycheck.ExpectLengthAtLeast("unifi_dns_record.test", 1),
+				},
+			},
+		},
+	})
 }
