@@ -1,5 +1,5 @@
 # unifi_dns_record manages local DNS records served by the UniFi gateway.
-# record_type must be one of: A, AAAA, CNAME, MX, TXT, SRV, PTR.
+# record_type must be one of: A, AAAA, CNAME, MX, TXT, SRV, PTR, NS.
 
 # A record: maps a hostname to an IPv4 address.
 resource "unifi_dns_record" "host_a" {
@@ -51,4 +51,11 @@ resource "unifi_dns_record" "sip_srv" {
   weight      = 60
   port        = 5060
   ttl         = "1h"
+}
+
+# NS record: delegates a domain or subdomain to a name server.
+resource "unifi_dns_record" "forward_ns" {
+  name        = "nas.example.com"
+  record_type = "NS"
+  value       = "ns1.example.com"
 }
