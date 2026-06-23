@@ -2,9 +2,8 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
@@ -393,6 +392,18 @@ func Test_wireguardPeerResource_ListResourceConfigSchema(t *testing.T) {
 	}
 }
 
+// lazyStringVariable implements config.Variable by reading a *string at JSON
+// marshal time. The testing framework marshals ConfigVariables when each step
+// runs, so this lets a query step reference a value captured by an earlier
+// step (e.g. a resource ID) that is not yet known when the steps are built.
+type lazyStringVariable struct {
+	value *string
+}
+
+func (v lazyStringVariable) MarshalJSON() ([]byte, error) {
+	return json.Marshal(*v.value)
+}
+
 func TestAccWireguardPeerList_basic(t *testing.T) {
 	var serverID string
 	resource.Test(t, resource.TestCase{
@@ -407,30 +418,32 @@ func TestAccWireguardPeerList_basic(t *testing.T) {
 				Check:  testAccCaptureResourceID("unifi_vpn_server.test", &serverID),
 			},
 			{
+				// Query steps only honor the inline Config (Raw) field;
+				// ConfigFile/ConfigDirectory are ignored by the query runner.
+				// The network_id is injected via an auto-loaded tfvars file so
+				// the value captured in the previous step can be referenced.
 				Query: true,
-				ConfigFile: config.TestStepConfigFunc(func(_ config.TestStepConfigRequest) string {
-					content := fmt.Sprintf(`
+				Config: `
+provider "unifi" {}
+
+variable "network_id" {
+  type = string
+}
+
 list "unifi_wireguard_peer" "test" {
   provider = unifi
   config {
-    network_id = %q
+    network_id = var.network_id
     filter {
       name  = "name"
       value = "tfacc-wg-peer"
     }
   }
 }
-`, serverID)
-					dir, err := os.MkdirTemp("", "tf-acc-wg-peer-*")
-					if err != nil {
-						panic(err)
-					}
-					path := filepath.Join(dir, "main.tf")
-					if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-						panic(err)
-					}
-					return path
-				}),
+`,
+				ConfigVariables: config.Variables{
+					"network_id": lazyStringVariable{value: &serverID},
+				},
 				QueryResultChecks: []querycheck.QueryResultCheck{
 					querycheck.ExpectLengthAtLeast("unifi_wireguard_peer.test", 1),
 				},
