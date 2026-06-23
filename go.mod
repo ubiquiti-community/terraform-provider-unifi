@@ -14,7 +14,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.42.0
-	github.com/ubiquiti-community/go-unifi v1.33.43-0.20260617194535-a4efb77d2dbe
+	github.com/ubiquiti-community/go-unifi v1.33.43-0.20260623124022-456574d06fff
 )
 
 require (
