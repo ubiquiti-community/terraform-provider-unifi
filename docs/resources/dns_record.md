@@ -20,7 +20,7 @@ resource "unifi_dns_record" "host_a" {
   name        = "nas.example.com"
   record_type = "A"
   value       = "192.168.1.100"
-  ttl         = 300
+  ttl         = "5m"
 }
 
 # AAAA record: maps a hostname to an IPv6 address.
@@ -28,7 +28,7 @@ resource "unifi_dns_record" "host_aaaa" {
   name        = "nas.example.com"
   record_type = "AAAA"
   value       = "2001:db8::100"
-  ttl         = 300
+  ttl         = "5m"
 }
 
 # CNAME record: aliases one name to another.
@@ -36,7 +36,7 @@ resource "unifi_dns_record" "www_cname" {
   name        = "www.example.com"
   record_type = "CNAME"
   value       = "nas.example.com"
-  ttl         = 3600
+  ttl         = "1h"
 }
 
 # TXT record: arbitrary text, e.g. an SPF policy.
@@ -44,7 +44,7 @@ resource "unifi_dns_record" "spf_txt" {
   name        = "example.com"
   record_type = "TXT"
   value       = "v=spf1 mx -all"
-  ttl         = 3600
+  ttl         = "1h"
 }
 
 # MX record: mail exchanger with a priority.
@@ -53,7 +53,7 @@ resource "unifi_dns_record" "mail_mx" {
   record_type = "MX"
   value       = "mail.example.com"
   priority    = 10
-  ttl         = 3600
+  ttl         = "1h"
 }
 
 # SRV record: service location with priority, weight, and port.
@@ -64,7 +64,7 @@ resource "unifi_dns_record" "sip_srv" {
   priority    = 10
   weight      = 60
   port        = 5060
-  ttl         = 3600
+  ttl         = "1h"
 }
 ```
 

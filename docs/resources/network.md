@@ -40,8 +40,8 @@ resource "unifi_network" "dual_stack" {
   ipv6_static_subnet         = "fd00:1::1/64"
   ipv6_ra                    = true
   ipv6_ra_priority           = "high"
-  ipv6_ra_valid_lifetime     = 86400
-  ipv6_ra_preferred_lifetime = 14400
+  ipv6_ra_valid_lifetime     = "24h"
+  ipv6_ra_preferred_lifetime = "4h"
 
   dhcp_v6_server = {
     enabled  = true

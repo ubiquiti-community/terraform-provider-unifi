@@ -5,7 +5,7 @@ resource "unifi_radius_profile" "external" {
 
   accounting_enabled      = true
   interim_update_enabled  = true
-  interim_update_interval = 3600
+  interim_update_interval = "1h"
 
   vlan_enabled   = true
   vlan_wlan_mode = "required"

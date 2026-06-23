@@ -43,7 +43,7 @@ resource "unifi_setting" "combined" {
     accounting_enabled      = true
     auth_port               = 1812
     acct_port               = 1813
-    interim_update_interval = 600
+    interim_update_interval = "10m"
     secret                  = "my-radius-secret"
   }
 
