@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - **`unifi_firewall_policy`: fix `inconsistent result after apply` on `source`/`destination` `matching_target_type` when updating a policy (e.g. changing `action`).** This field is firmware-derived: the controller (and the provider's own derivation for #293) may set it to a concrete value during the update PUT (e.g. `""` → `"SPECIFIC"` for a non-ANY match), which the planned value cannot anticipate when the prior state still carries an empty type. The update path now re-asserts the planned value on the post-apply state, leaving the next refresh to reconcile it with the controller (#324)
+- **`unifi_wlan`: fix `inconsistent result after apply` on controller-managed fields.** `minimum_data_rate_2g_kbps`/`minimum_data_rate_5g_kbps` defaulted to `0`, but the controller assigns its own value in `auto` mode (e.g. `1000`/`6000`); they are now `Computed` (via `UseStateForUnknown`) instead of statically defaulted. `radius_profile_id` and `bc_filter_list` were `Optional`-only yet the controller populates them on its own, so they too became `Optional + Computed`. When these are left unset, the controller's value is now accepted instead of conflicting with a `0`/`null` plan (#323)
 
 ## [v0.52.4] - 2026-06-17
 

@@ -27,6 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -414,8 +415,13 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"radius_profile_id": schema.StringAttribute{
-				MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`.",
-				Optional:            true,
+				MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`. " +
+					"The controller may assign a default profile, so this is computed when unset.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"nas_identifier_type": schema.StringAttribute{
 				MarkdownDescription: "NAS identifier type for RADIUS.",
@@ -463,10 +469,14 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"minimum_data_rate_2g_kbps": schema.Int64Attribute{
-				MarkdownDescription: "Minimum data rate for 2G clients in Kbps.",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(0),
+				MarkdownDescription: "Minimum data rate for 2G clients in Kbps. " +
+					"When unset, the controller assigns a value (e.g. `1000` in `auto` mode), " +
+					"so this is computed rather than defaulted to `0`.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.OneOf(
 						0,
@@ -486,10 +496,14 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"minimum_data_rate_5g_kbps": schema.Int64Attribute{
-				MarkdownDescription: "Minimum data rate for 5G clients in Kbps.",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(0),
+				MarkdownDescription: "Minimum data rate for 5G clients in Kbps. " +
+					"When unset, the controller assigns a value (e.g. `6000` in `auto` mode), " +
+					"so this is computed rather than defaulted to `0`.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.OneOf(0, 6000, 9000, 12000, 18000, 24000, 36000, 48000, 54000),
 				},
@@ -618,9 +632,14 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"bc_filter_list": schema.SetAttribute{
-				MarkdownDescription: "List of MAC addresses for the broadcast filter.",
-				Optional:            true,
-				ElementType:         types.StringType,
+				MarkdownDescription: "List of MAC addresses for the broadcast filter. " +
+					"The controller may populate this on its own, so it is computed when unset.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Set{
 					setvalidator.ValueStringsAre(validators.MACAddressValidator()),
 				},
