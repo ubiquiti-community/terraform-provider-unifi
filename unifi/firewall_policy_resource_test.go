@@ -404,6 +404,7 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 				"web_domains":          types.ListType{ElemType: types.StringType},
 				"port":                 types.StringType,
 				"port_group_id":        types.StringType,
+				"ip_group_id":          types.StringType,
 				"port_matching_type":   types.StringType,
 				"matching_target_type": types.StringType,
 			},
@@ -903,6 +904,7 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 					WebDomains:         webDomains,
 					Port:               types.StringValue("443"),
 					PortGroupID:        types.StringValue(""),
+					IPGroupID:          types.StringValue(""),
 					PortMatchingType:   types.StringValue("SPECIFIC"),
 				}
 			}(),
@@ -964,6 +966,7 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 					WebDomains:         webDomains,
 					Port:               types.StringValue("8080"),
 					PortGroupID:        types.StringValue(""),
+					IPGroupID:          types.StringValue(""),
 					PortMatchingType:   types.StringValue("SPECIFIC"),
 				}
 			}(),
@@ -1186,5 +1189,57 @@ func TestFirewallPolicyPreserveMatchingTargetType(t *testing.T) {
 	if out.Port.ValueString() != "443" || out.PortMatchingType.ValueString() != "SPECIFIC" {
 		t.Errorf("withMatchingTargetType clobbered other fields: port=%q pmt=%q",
 			out.Port.ValueString(), out.PortMatchingType.ValueString())
+	}
+}
+
+// TestFirewallPolicyIPGroupIDRoundTrip guards #316: a source/destination may
+// match an address-group firewall group via ip_group_id, returned by the
+// controller alongside port_group_id. It must round-trip both directions.
+func TestFirewallPolicyIPGroupIDRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+
+	m := firewallPolicyEndpointModel{
+		ZoneID:             types.StringValue("zone-1"),
+		MatchingTarget:     types.StringValue("IP"),
+		NetworkIDs:         types.ListNull(types.StringType),
+		ClientMACs:         types.ListNull(types.StringType),
+		IPs:                types.ListNull(types.StringType),
+		WebDomains:         types.ListNull(types.StringType),
+		Port:               types.StringNull(),
+		PortGroupID:        types.StringValue(""),
+		IPGroupID:          types.StringValue("68945578bfcb5d2e51dd0f10"),
+		PortMatchingType:   types.StringValue("ANY"),
+		MatchingTargetType: types.StringValue("OBJECT"),
+	}
+
+	// model -> API (PUT path)
+	src := endpointModelToSource(ctx, m, &diags)
+	if diags.HasError() {
+		t.Fatalf("source conversion errored: %v", diags)
+	}
+	if src.IPGroupID != "68945578bfcb5d2e51dd0f10" {
+		t.Errorf("source IPGroupID = %q, want 68945578bfcb5d2e51dd0f10", src.IPGroupID)
+	}
+	dst := endpointModelToDestination(ctx, m, &diags)
+	if dst.IPGroupID != "68945578bfcb5d2e51dd0f10" {
+		t.Errorf("destination IPGroupID = %q, want 68945578bfcb5d2e51dd0f10", dst.IPGroupID)
+	}
+
+	// API -> model (read path)
+	got := apiSourceToEndpointModel(
+		ctx,
+		&unifi.FirewallPolicySource{
+			ZoneID:         "zone-1",
+			MatchingTarget: "IP",
+			IPGroupID:      "abc123",
+		},
+		&diags,
+	)
+	if diags.HasError() {
+		t.Fatalf("apiSourceToEndpointModel errored: %v", diags)
+	}
+	if got.IPGroupID.ValueString() != "abc123" {
+		t.Errorf("read IPGroupID = %q, want abc123", got.IPGroupID.ValueString())
 	}
 }

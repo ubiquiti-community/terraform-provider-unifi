@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### ✨ Features
+
+- **`unifi_firewall_policy`: match an IP group on `source`/`destination`.** A new `ip_group_id` attribute references a `unifi_firewall_group` of type address-group (used with `matching_target = "IP"` and `matching_target_type = "OBJECT"`), alongside the existing `port_group_id`. Backed by a go-unifi change adding the `ip_group_id` field to the firewall-policy source/destination structs (#316)
+
 ### 🐛 Bug Fixes
 
 - **`unifi_firewall_policy`: fix `inconsistent result after apply` on `source`/`destination` `matching_target_type` when updating a policy (e.g. changing `action`).** This field is firmware-derived: the controller (and the provider's own derivation for #293) may set it to a concrete value during the update PUT (e.g. `""` → `"SPECIFIC"` for a non-ANY match), which the planned value cannot anticipate when the prior state still carries an empty type. The update path now re-asserts the planned value on the post-apply state, leaving the next refresh to reconcile it with the controller (#324)
