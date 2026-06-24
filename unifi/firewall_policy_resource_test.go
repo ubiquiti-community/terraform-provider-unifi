@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -175,6 +176,69 @@ func TestFirewallPolicyConnectionStatesRoundTrip(t *testing.T) {
 	if len(out.ConnectionStates) != 2 || out.ConnectionStates[0] != "NEW" ||
 		out.ConnectionStates[1] != "ESTABLISHED" {
 		t.Errorf("PUT dropped connection_states: %v, want [NEW ESTABLISHED]", out.ConnectionStates)
+	}
+}
+
+// TestFirewallPolicyPreserveMatchingTargetType guards #324: matching_target_type
+// is firmware-derived and may change during an update PUT (e.g. "" -> "SPECIFIC"
+// when a SPECIFIC port is present). The Update path captures the planned value
+// and re-asserts it on the post-apply state so Terraform's consistency check
+// passes. This exercises the extract/replace helpers that implement that.
+func TestFirewallPolicyPreserveMatchingTargetType(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+
+	// A source object as it would appear in the plan, with matching_target_type
+	// carried over from prior state as "".
+	planned := firewallPolicyEndpointModel{
+		ZoneID:             types.StringValue("zone-1"),
+		MatchingTarget:     types.StringValue("ANY"),
+		NetworkIDs:         types.ListNull(types.StringType),
+		ClientMACs:         types.ListNull(types.StringType),
+		IPs:                types.ListNull(types.StringType),
+		WebDomains:         types.ListNull(types.StringType),
+		Port:               types.Int64Value(443),
+		PortGroupID:        types.StringNull(),
+		PortMatchingType:   types.StringValue("SPECIFIC"),
+		MatchingTargetType: types.StringValue(""),
+	}
+	plannedObj, d := types.ObjectValueFrom(
+		ctx,
+		firewallPolicyEndpointModel{}.AttributeTypes(),
+		planned,
+	)
+	diags.Append(d...)
+
+	if got := endpointMatchingTargetType(ctx, plannedObj, &diags); got.ValueString() != "" {
+		t.Errorf("endpointMatchingTargetType = %q, want \"\"", got.ValueString())
+	}
+
+	// The controller re-derived matching_target_type to "SPECIFIC" on the apply
+	// response. We must re-assert the planned "" to keep the result consistent.
+	applied := planned
+	applied.MatchingTargetType = types.StringValue("SPECIFIC")
+	appliedObj, d2 := types.ObjectValueFrom(
+		ctx,
+		firewallPolicyEndpointModel{}.AttributeTypes(),
+		applied,
+	)
+	diags.Append(d2...)
+
+	fixed := withMatchingTargetType(ctx, appliedObj, types.StringValue(""), &diags)
+	if diags.HasError() {
+		t.Fatalf("helpers errored: %v", diags)
+	}
+
+	var out firewallPolicyEndpointModel
+	fixed.As(ctx, &out, basetypes.ObjectAsOptions{})
+	if out.MatchingTargetType.ValueString() != "" {
+		t.Errorf("after withMatchingTargetType, matching_target_type = %q, want \"\"",
+			out.MatchingTargetType.ValueString())
+	}
+	// Every other attribute must survive untouched.
+	if out.Port.ValueInt64() != 443 || out.PortMatchingType.ValueString() != "SPECIFIC" {
+		t.Errorf("withMatchingTargetType clobbered other fields: port=%v pmt=%q",
+			out.Port.ValueInt64(), out.PortMatchingType.ValueString())
 	}
 }
 
