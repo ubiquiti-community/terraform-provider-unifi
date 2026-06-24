@@ -542,7 +542,12 @@ func (r *firewallPolicyResource) Update(
 		plan.Source = withMatchingTargetType(ctx, plan.Source, plannedSrcMTT, &resp.Diagnostics)
 	}
 	if !plannedDstMTT.IsNull() && !plannedDstMTT.IsUnknown() {
-		plan.Destination = withMatchingTargetType(ctx, plan.Destination, plannedDstMTT, &resp.Diagnostics)
+		plan.Destination = withMatchingTargetType(
+			ctx,
+			plan.Destination,
+			plannedDstMTT,
+			&resp.Diagnostics,
+		)
 	}
 
 	plan.Site = types.StringValue(site)
