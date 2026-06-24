@@ -102,6 +102,7 @@ type firewallPolicyEndpointModel struct {
 	WebDomains       types.List   `tfsdk:"web_domains"`
 	Port             types.String `tfsdk:"port"`
 	PortGroupID      types.String `tfsdk:"port_group_id"`
+	IPGroupID        types.String `tfsdk:"ip_group_id"`
 	PortMatchingType types.String `tfsdk:"port_matching_type"`
 	// Firmware-managed; round-tripped so updates keep it (a PUT that omits
 	// source/destination matching_target_type is rejected with HTTP 400).
@@ -118,6 +119,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"web_domains":          types.ListType{ElemType: types.StringType},
 		"port":                 types.StringType,
 		"port_group_id":        types.StringType,
+		"ip_group_id":          types.StringType,
 		"port_matching_type":   types.StringType,
 		"matching_target_type": types.StringType,
 	}
@@ -206,6 +208,12 @@ func (r *firewallPolicyResource) Schema(
 		},
 		"port_group_id": schema.StringAttribute{
 			MarkdownDescription: "ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.",
+			Optional:            true,
+			Computed:            true,
+			Default:             stringdefault.StaticString(""),
+		},
+		"ip_group_id": schema.StringAttribute{
+			MarkdownDescription: "ID of a `unifi_firewall_group` (address-group type) to match. Used when `matching_target` is `IP` with `matching_target_type = OBJECT`.",
 			Optional:            true,
 			Computed:            true,
 			Default:             stringdefault.StaticString(""),
@@ -619,6 +627,7 @@ type firewallPolicyEndpointModelV0 struct {
 	WebDomains         types.List   `tfsdk:"web_domains"`
 	Port               types.Int64  `tfsdk:"port"`
 	PortGroupID        types.String `tfsdk:"port_group_id"`
+	IPGroupID          types.String `tfsdk:"ip_group_id"`
 	PortMatchingType   types.String `tfsdk:"port_matching_type"`
 	MatchingTargetType types.String `tfsdk:"matching_target_type"`
 }
@@ -715,6 +724,7 @@ func upgradeFirewallPolicyEndpointV0(
 		WebDomains:         v0.WebDomains,
 		Port:               port,
 		PortGroupID:        v0.PortGroupID,
+		IPGroupID:          v0.IPGroupID,
 		PortMatchingType:   v0.PortMatchingType,
 		MatchingTargetType: v0.MatchingTargetType,
 	}
@@ -817,6 +827,7 @@ func endpointModelToSource(
 		),
 		Port:             m.Port.ValueString(),
 		PortGroupID:      m.PortGroupID.ValueString(),
+		IPGroupID:        m.IPGroupID.ValueString(),
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
@@ -847,6 +858,7 @@ func endpointModelToDestination(
 		),
 		Port:             m.Port.ValueString(),
 		PortGroupID:      m.PortGroupID.ValueString(),
+		IPGroupID:        m.IPGroupID.ValueString(),
 		PortMatchingType: m.PortMatchingType.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
@@ -965,6 +977,7 @@ func apiSourceToEndpointModel(
 		MatchingTargetType: types.StringValue(src.MatchingTargetType),
 		Port:               portToStringValue(src.Port),
 		PortGroupID:        types.StringValue(src.PortGroupID),
+		IPGroupID:          types.StringValue(src.IPGroupID),
 		PortMatchingType:   types.StringValue(src.PortMatchingType),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, src.NetworkIDs)
@@ -997,6 +1010,7 @@ func apiDestinationToEndpointModel(
 		MatchingTargetType: types.StringValue(dst.MatchingTargetType),
 		Port:               portToStringValue(dst.Port),
 		PortGroupID:        types.StringValue(dst.PortGroupID),
+		IPGroupID:          types.StringValue(dst.IPGroupID),
 		PortMatchingType:   types.StringValue(dst.PortMatchingType),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, dst.NetworkIDs)
