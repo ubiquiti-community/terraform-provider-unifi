@@ -84,7 +84,7 @@ resource "unifi_device" "us_24_poe" {
 - `led_override_color_brightness` (Number) LED brightness (0-100).
 - `locked` (Boolean) Specifies whether the device is locked.
 - `mac` (String) The MAC address of the device. This can be specified so that the provider can take control of a device (since devices are created through adoption).
-- `mgmt_network_id` (String) Management network ID.
+- `mgmt_network_id` (String) Management network ID. The network this device uses for its own management traffic (the UI's Network Override). When set, the device tags its management onto this network's VLAN, so that VLAN must already be tagged on the device's upstream switch port(s) before this attribute is applied. Otherwise the device loses its management path, drops off, and the apply fails with an inconsistent-result error. Apply in two steps: tag the VLAN on the uplink (a port_override tagged_networkconf_ids entry) first, then set mgmt_network_id. Leave unset to manage on the uplink's native (untagged) network.
 - `name` (String) The name of the device.
 - `outdoor_mode_override` (String) Outdoor mode override; valid values are `default`, `on`, and `off`.
 - `outlet_enabled` (Boolean) Enable outlet control.

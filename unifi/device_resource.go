@@ -540,7 +540,7 @@ func (r *deviceResource) Schema(
 
 			// Management
 			"mgmt_network_id": schema.StringAttribute{
-				Description: "Management network ID.",
+				Description: "Management network ID. The network this device uses for its own management traffic (the UI's Network Override). When set, the device tags its management onto this network's VLAN, so that VLAN must already be tagged on the device's upstream switch port(s) before this attribute is applied. Otherwise the device loses its management path, drops off, and the apply fails with an inconsistent-result error. Apply in two steps: tag the VLAN on the uplink (a port_override tagged_networkconf_ids entry) first, then set mgmt_network_id. Leave unset to manage on the uplink's native (untagged) network.",
 				Optional:    true,
 				Computed:    true,
 			},
