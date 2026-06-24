@@ -512,6 +512,18 @@ func (r *firewallPolicyResource) Update(
 		return
 	}
 
+	// matching_target_type is firmware-derived: the controller (and the
+	// provider's own firewallPolicyMatchingTargetType helper) may set it to a
+	// concrete value during the PUT (e.g. "" -> "SPECIFIC" for a non-ANY match),
+	// which the planned value cannot anticipate. It is Computed +
+	// UseStateForUnknown, so the planned value is the prior-state value; capture
+	// it now and re-assert it on the post-apply state so Terraform's
+	// "inconsistent result after apply" check passes for policies whose state
+	// still carries an empty type (#324). The next Read reconciles state with the
+	// controller's value.
+	plannedSrcMTT := endpointMatchingTargetType(ctx, plan.Source, &resp.Diagnostics)
+	plannedDstMTT := endpointMatchingTargetType(ctx, plan.Destination, &resp.Diagnostics)
+
 	updated, err := r.client.UpdateFirewallPolicy(ctx, site, fp)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -522,6 +534,22 @@ func (r *firewallPolicyResource) Update(
 	}
 
 	resp.Diagnostics.Append(firewallPolicyToModel(ctx, updated, &plan)...)
+
+	// Only re-assert when the plan carried a known value: if it was unknown
+	// (an in-block field changed), the attribute is known-after-apply and the
+	// controller's value is accepted as-is.
+	if !plannedSrcMTT.IsNull() && !plannedSrcMTT.IsUnknown() {
+		plan.Source = withMatchingTargetType(ctx, plan.Source, plannedSrcMTT, &resp.Diagnostics)
+	}
+	if !plannedDstMTT.IsNull() && !plannedDstMTT.IsUnknown() {
+		plan.Destination = withMatchingTargetType(
+			ctx,
+			plan.Destination,
+			plannedDstMTT,
+			&resp.Diagnostics,
+		)
+	}
+
 	plan.Site = types.StringValue(site)
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -834,6 +862,44 @@ func endpointModelToDestination(
 		diags.Append(m.WebDomains.ElementsAs(ctx, &ep.WebDomains, false)...)
 	}
 	return ep
+}
+
+// endpointMatchingTargetType extracts the matching_target_type out of a
+// source/destination object, or a null string if the object is null/unknown.
+func endpointMatchingTargetType(
+	ctx context.Context,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) types.String {
+	if obj.IsNull() || obj.IsUnknown() {
+		return types.StringNull()
+	}
+	var m firewallPolicyEndpointModel
+	diags.Append(obj.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+	return m.MatchingTargetType
+}
+
+// withMatchingTargetType returns obj with its matching_target_type replaced by
+// mtt, leaving every other attribute untouched.
+func withMatchingTargetType(
+	ctx context.Context,
+	obj types.Object,
+	mtt types.String,
+	diags *diag.Diagnostics,
+) types.Object {
+	if obj.IsNull() || obj.IsUnknown() {
+		return obj
+	}
+	var m firewallPolicyEndpointModel
+	diags.Append(obj.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+	m.MatchingTargetType = mtt
+	newObj, d := types.ObjectValueFrom(
+		ctx,
+		firewallPolicyEndpointModel{}.AttributeTypes(),
+		m,
+	)
+	diags.Append(d...)
+	return newObj
 }
 
 func firewallPolicyToModel(
