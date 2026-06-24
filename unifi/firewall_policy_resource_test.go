@@ -404,6 +404,7 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 				"web_domains":          types.ListType{ElemType: types.StringType},
 				"port":                 types.StringType,
 				"port_group_id":        types.StringType,
+				"ip_group_id":          types.StringType,
 				"port_matching_type":   types.StringType,
 				"matching_target_type": types.StringType,
 			},
@@ -903,6 +904,7 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 					WebDomains:         webDomains,
 					Port:               types.StringValue("443"),
 					PortGroupID:        types.StringValue(""),
+					IPGroupID:          types.StringValue(""),
 					PortMatchingType:   types.StringValue("SPECIFIC"),
 				}
 			}(),
@@ -964,6 +966,7 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 					WebDomains:         webDomains,
 					Port:               types.StringValue("8080"),
 					PortGroupID:        types.StringValue(""),
+					IPGroupID:          types.StringValue(""),
 					PortMatchingType:   types.StringValue("SPECIFIC"),
 				}
 			}(),
