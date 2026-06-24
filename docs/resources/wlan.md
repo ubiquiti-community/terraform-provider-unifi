@@ -77,7 +77,7 @@ resource "unifi_wlan" "wifi" {
 
 - `ap_group_ids` (Set of String) List of AP group IDs to apply this WLAN to.
 - `ap_group_mode` (String) Access point group mode.
-- `bc_filter_list` (Set of String) List of MAC addresses for the broadcast filter.
+- `bc_filter_list` (Set of String) List of MAC addresses for the broadcast filter. The controller may populate this on its own, so it is computed when unset.
 - `bss_transition` (Boolean) Improves client roaming by providing connection details of nearby APs.
 - `dtim_6e` (Number) DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
 - `dtim_mode` (String) DTIM mode. Can be one of `default` or `custom`. Use `custom` together with `dtim_ng`/`dtim_na`/`dtim_6e`.
@@ -93,8 +93,8 @@ resource "unifi_wlan" "wifi" {
 - `is_guest` (Boolean) Indicates that this is a guest WLAN and should use guest behaviors.
 - `l2_isolation` (Boolean) Isolates stations on layer 2 (ethernet) level.
 - `mac_filter` (Attributes) MAC address filtering configuration. (see [below for nested schema](#nestedatt--mac_filter))
-- `minimum_data_rate_2g_kbps` (Number) Minimum data rate for 2G clients in Kbps.
-- `minimum_data_rate_5g_kbps` (Number) Minimum data rate for 5G clients in Kbps.
+- `minimum_data_rate_2g_kbps` (Number) Minimum data rate for 2G clients in Kbps. When unset, the controller assigns a value (e.g. `1000` in `auto` mode), so this is computed rather than defaulted to `0`.
+- `minimum_data_rate_5g_kbps` (Number) Minimum data rate for 5G clients in Kbps. When unset, the controller assigns a value (e.g. `6000` in `auto` mode), so this is computed rather than defaulted to `0`.
 - `minrate_setting_preference` (String) Minimum rate setting preference.
 - `mlo_enabled` (Boolean) Enable Multi-Link Operation (6 GHz).
 - `multicast_enhance` (Boolean) Indicates whether or not Multicast Enhance is turned of for the network.
@@ -108,7 +108,7 @@ resource "unifi_wlan" "wifi" {
 - `private_preshared_keys_enabled` (Boolean) Whether per-key (PPSK) passphrases are enabled for this WLAN. Requires `security = wpapsk`.
 - `proxy_arp` (Boolean) Reduces airtime usage by allowing APs to "proxy" common broadcast frames as unicast.
 - `radius_mac_auth_enabled` (Boolean) Enable RADIUS MAC authentication.
-- `radius_profile_id` (String) ID of the RADIUS profile to use when security `wpaeap`.
+- `radius_profile_id` (String) ID of the RADIUS profile to use when security `wpaeap`. The controller may assign a default profile, so this is computed when unset.
 - `schedule` (Block List) Start and stop schedules for the WLAN (see [below for nested schema](#nestedblock--schedule))
 - `site` (String) The name of the site to associate the WLAN with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))

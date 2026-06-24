@@ -246,6 +246,33 @@ func Test_wlanFrameworkResource_Schema(t *testing.T) {
 	}
 }
 
+// Test_wlanFrameworkResource_Schema_computedControllerFields guards #323: fields
+// the controller assigns on its own must be Computed so a controller-supplied
+// value doesn't trip "inconsistent result after apply". minimum_data_rate_*_kbps
+// previously defaulted to 0 (rejected/overridden by the controller in auto mode);
+// radius_profile_id and bc_filter_list were Optional-only and got populated by
+// the controller.
+func Test_wlanFrameworkResource_Schema_computedControllerFields(t *testing.T) {
+	resp := &fwresource.SchemaResponse{}
+	(&wlanFrameworkResource{}).Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	for _, key := range []string{
+		"minimum_data_rate_2g_kbps",
+		"minimum_data_rate_5g_kbps",
+		"radius_profile_id",
+		"bc_filter_list",
+	} {
+		attr, ok := resp.Schema.Attributes[key]
+		if !ok {
+			t.Errorf("Schema missing attribute %q", key)
+			continue
+		}
+		if !attr.IsComputed() {
+			t.Errorf("attribute %q must be Computed (controller-managed, #323)", key)
+		}
+	}
+}
+
 func Test_wlanFrameworkResource_UpgradeState(t *testing.T) {
 	r := &wlanFrameworkResource{}
 	got := r.UpgradeState(context.Background())

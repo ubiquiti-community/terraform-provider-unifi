@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_wlan`: fix `inconsistent result after apply` on controller-managed fields.** `minimum_data_rate_2g_kbps`/`minimum_data_rate_5g_kbps` defaulted to `0`, but the controller assigns its own value in `auto` mode (e.g. `1000`/`6000`); they are now `Computed` (via `UseStateForUnknown`) instead of statically defaulted. `radius_profile_id` and `bc_filter_list` were `Optional`-only yet the controller populates them on its own, so they too became `Optional + Computed`. When these are left unset, the controller's value is now accepted instead of conflicting with a `0`/`null` plan (#323)
+
 ## [v0.52.4] - 2026-06-17
 
 ### 🐛 Bug Fixes
