@@ -1562,6 +1562,13 @@ func (r *deviceResource) ImportState(
 // LED overrides MUST be included: omitting them makes the controller keep the
 // old values, so the post-apply read conflicts with the plan (#337). All of the
 // LED fields are `omitempty`, so unset ones are dropped from the body.
+//
+// mgmt_network_id (the UI "Network Override") is likewise user-configurable and
+// must be carried here: the earlier hand-listed body dropped it, so the
+// controller never received the value and the per-device management VLAN could
+// not be set through the provider (#329). modelToAPIDevice only sets it when
+// configured, and it is `omitempty`, so a null value stays off the wire and
+// never reintroduces the #177 zero-value rejection.
 func buildMinimalUpdateDevice(
 	deviceReq, currentDevice *unifi.Device,
 	portOverrides []unifi.DevicePortOverrides,
@@ -1572,6 +1579,7 @@ func buildMinimalUpdateDevice(
 		MAC:                        deviceReq.MAC,
 		Name:                       deviceReq.Name,
 		PortOverrides:              portOverrides,
+		MgmtNetworkID:              deviceReq.MgmtNetworkID,
 		LedOverride:                deviceReq.LedOverride,
 		LedOverrideColor:           deviceReq.LedOverrideColor,
 		LedOverrideColorBrightness: deviceReq.LedOverrideColorBrightness,

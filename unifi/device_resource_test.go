@@ -2,7 +2,9 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,6 +75,58 @@ func indexOverrides(pos []unifi.DevicePortOverrides) map[int64]unifi.DevicePortO
 		}
 	}
 	return m
+}
+
+// Test_buildMinimalUpdateDevice_mgmtNetworkID guards #329: a configured
+// mgmt_network_id (the UI "Network Override") must travel in the minimal PUT body,
+// and a null value must stay off the wire so it never reintroduces the #177
+// zero-value rejection. modelToAPIDevice sets deviceReq.MgmtNetworkID only when
+// configured, so nullness is represented here by an empty value on deviceReq.
+func Test_buildMinimalUpdateDevice_mgmtNetworkID(t *testing.T) {
+	t.Run("configured mgmt_network_id is sent in the PUT body", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:            "dev-1",
+			Type:          "usw",
+			MAC:           "aa:bb:cc:dd:ee:ff",
+			Name:          "Test Switch",
+			MgmtNetworkID: "net-mgmt",
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		if body.MgmtNetworkID != "net-mgmt" {
+			t.Fatalf(
+				"MgmtNetworkID = %q, want %q (override dropped from PUT, #329)",
+				body.MgmtNetworkID,
+				"net-mgmt",
+			)
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if !strings.Contains(string(raw), `"mgmt_network_id":"net-mgmt"`) {
+			t.Errorf("PUT body missing mgmt_network_id: %s", raw)
+		}
+	})
+
+	t.Run("null mgmt_network_id stays off the wire (no #177 regression)", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:   "dev-1",
+			Type: "usw",
+			MAC:  "aa:bb:cc:dd:ee:ff",
+			Name: "Test Switch",
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		if body.MgmtNetworkID != "" {
+			t.Errorf("MgmtNetworkID = %q, want empty for a null override", body.MgmtNetworkID)
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(raw), "mgmt_network_id") {
+			t.Errorf("null mgmt_network_id leaked into PUT body: %s", raw)
+		}
+	})
 }
 
 func TestAccDeviceFramework_basic(t *testing.T) {
