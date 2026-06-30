@@ -62,9 +62,10 @@ type wanResource struct {
 
 // wanResourceModel describes the resource data model.
 type wanResourceModel struct {
-	ID   types.String `tfsdk:"id"`
-	Site types.String `tfsdk:"site"`
-	Name types.String `tfsdk:"name"`
+	ID           types.String `tfsdk:"id"`
+	Site         types.String `tfsdk:"site"`
+	Name         types.String `tfsdk:"name"`
+	NetworkGroup types.String `tfsdk:"networkgroup"`
 
 	// WAN Type Settings
 	Type   types.String `tfsdk:"type"`
@@ -343,6 +344,26 @@ func (r *wanResource) Schema(
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the WAN network",
+			},
+			"networkgroup": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "The WAN network group this interface belongs to " +
+					"(`WAN`, `WAN2`, …). The primary uplink is `WAN`; a secondary/SFP " +
+					"uplink is `WAN2`. Computed from the controller when unset (so an " +
+					"imported `WAN2` is preserved), defaulting to `WAN` on create. " +
+					"Required to manage multi-WAN (WAN2+) setups, where a hard-coded " +
+					"`WAN` collides with the primary " +
+					"(`api.err.WanConfigurationForNetworkGroupAlreadyExists`).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^WAN([2-9])?$|^WAN_LTE_FAILOVER$`),
+						"must be WAN, WAN2-WAN9, or WAN_LTE_FAILOVER",
+					),
+				},
 			},
 			"type": schema.StringAttribute{
 				Optional:            true,
@@ -967,16 +988,26 @@ func (r *wanResource) adoptExistingWAN(
 		return nil, fmt.Errorf("listing networks: %w", err)
 	}
 
+	// Match the WAN that owns the same network group we are creating (WAN, WAN2,
+	// …), not just the primary "WAN" — otherwise a WAN2 conflict adopts the wrong
+	// interface (#334).
+	wantGroup := "WAN"
+	if network.WANNetworkGroup != nil && *network.WANNetworkGroup != "" {
+		wantGroup = *network.WANNetworkGroup
+	}
 	var existing *unifi.Network
 	for _, n := range networks {
 		if n.Purpose == unifi.PurposeWAN && n.WANNetworkGroup != nil &&
-			*n.WANNetworkGroup == "WAN" {
+			*n.WANNetworkGroup == wantGroup {
 			existing = &n
 			break
 		}
 	}
 	if existing == nil {
-		return nil, fmt.Errorf("existing WAN network not found despite creation conflict")
+		return nil, fmt.Errorf(
+			"existing WAN network (group %s) not found despite creation conflict",
+			wantGroup,
+		)
 	}
 
 	network.ID = existing.ID
@@ -1307,11 +1338,21 @@ func (r *wanResource) modelToNetwork(
 ) (*unifi.Network, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
+	// Preserve the interface's WAN network group (WAN, WAN2, …). Hard-coding "WAN"
+	// breaks a secondary uplink: its PUT collides with the primary WAN and the
+	// controller rejects it (WanConfigurationForNetworkGroupAlreadyExists) (#334).
+	// attr_hidden_id mirrors the group. Defaults to "WAN" via the schema default.
+	networkGroup := "WAN"
+	if !model.NetworkGroup.IsNull() && !model.NetworkGroup.IsUnknown() &&
+		model.NetworkGroup.ValueString() != "" {
+		networkGroup = model.NetworkGroup.ValueString()
+	}
+
 	network := &unifi.Network{
 		Name:            model.Name.ValueStringPointer(),
 		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
-		WANNetworkGroup: util.Ptr("WAN"),  // Statically set to "WAN"
-		HiddenID:        "WAN",            // Statically set to "WAN"
+		WANNetworkGroup: util.Ptr(networkGroup),
+		HiddenID:        networkGroup,
 		Enabled:         model.Enabled.ValueBool(),
 	}
 
@@ -1572,6 +1613,14 @@ func (r *wanResource) networkToModel(
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringPointerValue(network.Name)
+
+	// Preserve the WAN network group (WAN, WAN2, …) so updates target the right
+	// interface instead of always defaulting to "WAN" (#334).
+	if network.WANNetworkGroup != nil && *network.WANNetworkGroup != "" {
+		model.NetworkGroup = types.StringValue(*network.WANNetworkGroup)
+	} else {
+		model.NetworkGroup = types.StringValue("WAN")
+	}
 
 	// WAN Type Settings — only overwrite when API returns a value
 	if network.WANType != nil {
