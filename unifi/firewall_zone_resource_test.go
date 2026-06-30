@@ -2,7 +2,9 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
@@ -70,6 +72,27 @@ func TestFirewallZoneModelRoundTrip(t *testing.T) {
 	}
 	if len(gotNids) != 2 {
 		t.Errorf("network_ids round-trip = %v, want 2 entries", gotNids)
+	}
+}
+
+// TestFirewallZoneCreateBodyAlwaysSendsNetworkIDs guards #314. On a ZBF-migrated
+// controller, a create POST that omits network_ids triggers a server-side NPE and a
+// generic HTTP 500 (a name-only body fails; the same body with "network_ids":[]
+// succeeds). go-unifi once tagged the field `json:"network_ids,omitempty"`, which
+// dropped the resource's empty []string{} from the payload and produced exactly that
+// bad body. The tag must stay non-omitempty so an empty zone still serializes an
+// explicit empty array — verified live against Network 10.4.57.
+func TestFirewallZoneCreateBodyAlwaysSendsNetworkIDs(t *testing.T) {
+	zone := &unifi.FirewallZone{Name: "ZBF-Probe", NetworkIDs: []string{}}
+	body, err := json.Marshal(zone)
+	if err != nil {
+		t.Fatalf("marshal firewall zone: %v", err)
+	}
+	if !strings.Contains(string(body), `"network_ids":[]`) {
+		t.Errorf(
+			"create body must always include network_ids (empty array), got %s",
+			body,
+		)
 	}
 }
 
