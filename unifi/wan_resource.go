@@ -1548,6 +1548,18 @@ func (r *wanResource) modelToNetwork(
 	return network, diags
 }
 
+// dnsAddrValue maps a controller WAN DNS address pointer to a Terraform value,
+// treating both a nil pointer and an empty string as null. The DNS address
+// fields are Optional (not Computed), so when no server is configured the
+// controller persists and returns "" — which would otherwise conflict with the
+// planned null and fail the consistency check (#333).
+func dnsAddrValue(p *string) types.String {
+	if p == nil || *p == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(*p)
+}
+
 // networkToModel converts from unifi.Network to Terraform model.
 func (r *wanResource) networkToModel(
 	ctx context.Context,
@@ -1618,16 +1630,16 @@ func (r *wanResource) networkToModel(
 			diags.Append(d...)
 		}
 		if network.WANDNS1 != nil {
-			currentDNS.Primary = types.StringValue(*network.WANDNS1)
+			currentDNS.Primary = dnsAddrValue(network.WANDNS1)
 		}
 		if network.WANDNS2 != nil {
-			currentDNS.Secondary = types.StringValue(*network.WANDNS2)
+			currentDNS.Secondary = dnsAddrValue(network.WANDNS2)
 		}
 		if network.WANIPV6DNS1 != nil {
-			currentDNS.IPv6Primary = types.StringValue(*network.WANIPV6DNS1)
+			currentDNS.IPv6Primary = dnsAddrValue(network.WANIPV6DNS1)
 		}
 		if network.WANIPV6DNS2 != nil {
-			currentDNS.IPv6Secondary = types.StringValue(*network.WANIPV6DNS2)
+			currentDNS.IPv6Secondary = dnsAddrValue(network.WANIPV6DNS2)
 		}
 		if network.WANDNSPreference != nil {
 			currentDNS.Preference = types.StringValue(*network.WANDNSPreference)

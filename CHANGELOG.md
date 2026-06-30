@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - **`unifi_device`: fix LED updates failing with `inconsistent result after apply`.** The update PUT body was assembled as a minimal device that dropped the LED override fields (`led_override`, `led_override_color`, `led_override_color_brightness`), so the controller kept the old values and the post-apply read conflicted with the plan. They are now included in the PUT, and — because the controller applies LED changes to APs asynchronously — the update path also re-asserts the planned LED values on the post-apply state, leaving the next refresh to reconcile with the controller (#337)
+- **`unifi_wan`: fix `inconsistent result after apply` on `dns` address fields (`primary`, `secondary`, `ipv6_primary`, `ipv6_secondary`).** When no DNS server is configured the controller persists and returns an empty string `""`, but these Optional fields plan as `null`, so the post-apply read conflicted with the plan (e.g. after import with IPv6 DNS preference `auto`). The read now normalizes `""` (and a nil pointer) to `null`, so unset addresses stay null and a real address still round-trips (#333)
 
 ## [v0.53.0] - 2026-06-24
 
