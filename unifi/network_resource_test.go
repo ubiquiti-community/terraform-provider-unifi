@@ -1245,7 +1245,8 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 		prev := base()
 		prev.MulticastDNS = types.BoolValue(true)
 		var model networkResourceModel
-		if d := r.networkToModel(context.Background(), network, &model, "default", prev); d.HasError() {
+		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		if d.HasError() {
 			t.Fatalf("networkToModel: %v", d)
 		}
 		if !model.MulticastDNS.ValueBool() {
@@ -1257,7 +1258,8 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 		prev := base()
 		prev.MulticastDNS = types.BoolUnknown()
 		var model networkResourceModel
-		if d := r.networkToModel(context.Background(), network, &model, "default", prev); d.HasError() {
+		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		if d.HasError() {
 			t.Fatalf("networkToModel: %v", d)
 		}
 		if model.MulticastDNS.ValueBool() {
