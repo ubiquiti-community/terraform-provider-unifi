@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -1241,5 +1242,31 @@ func TestFirewallPolicyIPGroupIDRoundTrip(t *testing.T) {
 	}
 	if got.IPGroupID.ValueString() != "abc123" {
 		t.Errorf("read IPGroupID = %q, want abc123", got.IPGroupID.ValueString())
+	}
+}
+
+// TestFirewallPolicyEndpointListsUseStateForUnknown guards #338: the Computed
+// match-list attributes (network_ids, client_macs, ips, web_domains) must carry
+// a plan modifier so they keep their prior value when an unrelated field (index,
+// protocol, …) changes, instead of churning to "known after apply".
+func TestFirewallPolicyEndpointListsUseStateForUnknown(t *testing.T) {
+	resp := &fwresource.SchemaResponse{}
+	(&firewallPolicyResource{}).Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	for _, ep := range []string{"source", "destination"} {
+		nested, ok := resp.Schema.Attributes[ep].(schema.SingleNestedAttribute)
+		if !ok {
+			t.Fatalf("%s is not a SingleNestedAttribute", ep)
+		}
+		for _, key := range []string{"network_ids", "client_macs", "ips", "web_domains"} {
+			la, ok := nested.Attributes[key].(schema.ListAttribute)
+			if !ok {
+				t.Errorf("%s.%s is not a ListAttribute", ep, key)
+				continue
+			}
+			if len(la.PlanModifiers) == 0 {
+				t.Errorf("%s.%s must have a plan modifier (UseStateForUnknown) (#338)", ep, key)
+			}
+		}
 	}
 }

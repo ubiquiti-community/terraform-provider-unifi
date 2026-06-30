@@ -170,24 +170,36 @@ func (r *firewallPolicyResource) Schema(
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
+			PlanModifiers: []planmodifier.List{
+				listplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"client_macs": schema.ListAttribute{
 			MarkdownDescription: "List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.",
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
+			PlanModifiers: []planmodifier.List{
+				listplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"ips": schema.ListAttribute{
 			MarkdownDescription: "List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.",
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
+			PlanModifiers: []planmodifier.List{
+				listplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"web_domains": schema.ListAttribute{
 			MarkdownDescription: "List of domains/FQDNs to match. Used when `matching_target` is `WEB`.",
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
+			PlanModifiers: []planmodifier.List{
+				listplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"port": schema.StringAttribute{
 			MarkdownDescription: "Port(s) to match when `port_matching_type` is `SPECIFIC`. " +
