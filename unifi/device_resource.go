@@ -1348,6 +1348,15 @@ func (r *deviceResource) Update(
 	// Save planned port overrides for post-update restore
 	plannedPortOverride := plan.PortOverride
 
+	// Save planned LED overrides too. The controller applies these to APs
+	// asynchronously, so the immediate post-update read can still report the old
+	// values, which would conflict with the plan (#337). Re-assert the planned
+	// value (when known) after the read; the next refresh reconciles state with
+	// the controller once the AP has applied it.
+	plannedLedOverride := plan.LedOverride
+	plannedLedOverrideColor := plan.LedOverrideColor
+	plannedLedOverrideColorBrightness := plan.LedOverrideColorBrightness
+
 	// Update the device with only user-configured fields
 	diags = r.updateDevice(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -1369,6 +1378,20 @@ func (r *deviceResource) Update(
 
 	// Restore port_override from plan (API returns all ports, plan has subset)
 	plan.PortOverride = plannedPortOverride
+
+	// Re-assert the planned LED values when the user configured them, so an
+	// asynchronously-applied controller value doesn't trip the consistency
+	// check (#337). The next Read converges state with the controller.
+	if !plannedLedOverride.IsNull() && !plannedLedOverride.IsUnknown() {
+		plan.LedOverride = plannedLedOverride
+	}
+	if !plannedLedOverrideColor.IsNull() && !plannedLedOverrideColor.IsUnknown() {
+		plan.LedOverrideColor = plannedLedOverrideColor
+	}
+	if !plannedLedOverrideColorBrightness.IsNull() &&
+		!plannedLedOverrideColorBrightness.IsUnknown() {
+		plan.LedOverrideColorBrightness = plannedLedOverrideColorBrightness
+	}
 	// allow_adoption / forget_on_destroy were resolved before the update and are
 	// not touched by setResourceData; ensure a concrete value (default true)
 	// rather than overwriting the planned value with prior state.
@@ -1533,6 +1556,33 @@ func (r *deviceResource) ImportState(
 
 // Helper methods
 
+// buildMinimalUpdateDevice assembles the Device sent in an update PUT. The full
+// Device struct carries computed fields (adopted, state, …) whose Go zero-values
+// the API rejects, so only the user-configured / API-required fields are sent.
+// LED overrides MUST be included: omitting them makes the controller keep the
+// old values, so the post-apply read conflicts with the plan (#337). All of the
+// LED fields are `omitempty`, so unset ones are dropped from the body.
+func buildMinimalUpdateDevice(
+	deviceReq, currentDevice *unifi.Device,
+	portOverrides []unifi.DevicePortOverrides,
+) *unifi.Device {
+	minimalDevice := &unifi.Device{
+		ID:                         deviceReq.ID,
+		Type:                       deviceReq.Type,
+		MAC:                        deviceReq.MAC,
+		Name:                       deviceReq.Name,
+		PortOverrides:              portOverrides,
+		LedOverride:                deviceReq.LedOverride,
+		LedOverrideColor:           deviceReq.LedOverrideColor,
+		LedOverrideColorBrightness: deviceReq.LedOverrideColorBrightness,
+	}
+	if currentDevice != nil {
+		minimalDevice.State = currentDevice.State
+		minimalDevice.Adopted = currentDevice.Adopted
+	}
+	return minimalDevice
+}
+
 func (r *deviceResource) updateDevice(
 	ctx context.Context,
 	model *deviceResourceModel,
@@ -1587,20 +1637,7 @@ func (r *deviceResource) updateDevice(
 		)
 	}
 
-	// Build a minimal Device for the PUT request. The full Device struct includes
-	// computed fields (adopted, state, etc.) with Go zero-values that the API rejects.
-	// Only send fields that the user configured or that the API requires.
-	minimalDevice := &unifi.Device{
-		ID:            deviceReq.ID,
-		Type:          deviceReq.Type,
-		MAC:           deviceReq.MAC,
-		Name:          deviceReq.Name,
-		PortOverrides: portOverrides,
-	}
-	if currentDevice != nil {
-		minimalDevice.State = currentDevice.State
-		minimalDevice.Adopted = currentDevice.Adopted
-	}
+	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, portOverrides)
 
 	if reqJSON, jsonErr := json.Marshal(minimalDevice); jsonErr == nil {
 		tflog.Info(ctx, "Sending device update", map[string]any{

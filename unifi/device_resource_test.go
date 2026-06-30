@@ -389,6 +389,58 @@ func Test_deviceResource_ImportState(t *testing.T) {
 	}
 }
 
+// Test_buildMinimalUpdateDevice guards #337: the update PUT body must carry the
+// LED override fields. They used to be filled by modelToAPIDevice but dropped
+// when assembling the minimal PUT payload, so the controller kept the old LED
+// values and the post-apply read conflicted with the plan.
+func Test_buildMinimalUpdateDevice(t *testing.T) {
+	deviceReq := &unifi.Device{
+		ID:                         "dev-1",
+		Type:                       "uap",
+		MAC:                        "00:11:22:33:44:55",
+		Name:                       "AP-Hallway",
+		LedOverride:                "on",
+		LedOverrideColor:           "#00ff00",
+		LedOverrideColorBrightness: ptrInt64(20),
+	}
+	current := &unifi.Device{State: 1, Adopted: true}
+	overrides := []unifi.DevicePortOverrides{{PortIDX: ptrInt64(1)}}
+
+	got := buildMinimalUpdateDevice(deviceReq, current, overrides)
+
+	if got.LedOverride != "on" {
+		t.Errorf("LedOverride = %q, want on", got.LedOverride)
+	}
+	if got.LedOverrideColor != "#00ff00" {
+		t.Errorf("LedOverrideColor = %q, want #00ff00", got.LedOverrideColor)
+	}
+	if got.LedOverrideColorBrightness == nil || *got.LedOverrideColorBrightness != 20 {
+		t.Errorf("LedOverrideColorBrightness = %v, want 20", got.LedOverrideColorBrightness)
+	}
+	// State/Adopted carried over from the current device; other fields preserved.
+	if got.State != 1 || !got.Adopted {
+		t.Errorf(
+			"State/Adopted not carried from current: state=%v adopted=%v",
+			got.State,
+			got.Adopted,
+		)
+	}
+	if got.Name != "AP-Hallway" || len(got.PortOverrides) != 1 {
+		t.Errorf(
+			"unexpected name/overrides: name=%q overrides=%d",
+			got.Name,
+			len(got.PortOverrides),
+		)
+	}
+
+	// Unset LED fields stay zero-valued (omitempty drops them from the PUT body).
+	bare := buildMinimalUpdateDevice(&unifi.Device{ID: "d2"}, nil, nil)
+	if bare.LedOverride != "" || bare.LedOverrideColorBrightness != nil {
+		t.Errorf("unset LED fields should be zero: %q %v",
+			bare.LedOverride, bare.LedOverrideColorBrightness)
+	}
+}
+
 func Test_deviceResource_updateDevice(t *testing.T) {
 	type args struct {
 		ctx   context.Context
