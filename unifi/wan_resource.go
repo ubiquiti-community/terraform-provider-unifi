@@ -1059,6 +1059,15 @@ func (r *wanResource) overlayConfig(
 	if !config.IPv6SettingPreference.IsNull() {
 		state.IPv6SettingPreference = plan.IPv6SettingPreference
 	}
+	// The controller can force wan_dslite_remote_host_auto back to `true`
+	// server-side; keep the user's value so the create result matches the plan
+	// (#281).
+	if !config.DsliteRemoteHostAuto.IsNull() {
+		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
+	}
+	if !config.DsliteRemoteHost.IsNull() {
+		state.DsliteRemoteHost = plan.DsliteRemoteHost
+	}
 }
 
 func (r *wanResource) Read(
@@ -1183,6 +1192,20 @@ func (r *wanResource) Update(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// Step 6: Re-assert the planned DS-Lite values. The controller overrides
+	// wan_dslite_remote_host_auto server-side (it forces `true` when the AFTR is
+	// auto-detected for the interface), so the post-apply read returns `true`
+	// where the plan set `false` and the consistency check fails (#281). Keep the
+	// planned value when the user set it; the next Read reconciles state with the
+	// controller. (networkToModel runs after applyPlanToState, so its value would
+	// otherwise win.)
+	if !plan.DsliteRemoteHostAuto.IsNull() && !plan.DsliteRemoteHostAuto.IsUnknown() {
+		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
+	}
+	if !plan.DsliteRemoteHost.IsNull() && !plan.DsliteRemoteHost.IsUnknown() {
+		state.DsliteRemoteHost = plan.DsliteRemoteHost
 	}
 
 	// Save updated data into Terraform state

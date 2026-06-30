@@ -381,6 +381,35 @@ func Test_wanResource_networkGroup(t *testing.T) {
 	})
 }
 
+// Test_wanResource_overlayConfig_dslite guards #281: the controller forces
+// wan_dslite_remote_host_auto back to true server-side, so the API value in
+// state would conflict with a user-configured false. overlayConfig must keep the
+// user's planned value when it was set in config, and leave the controller value
+// when it wasn't.
+func Test_wanResource_overlayConfig_dslite(t *testing.T) {
+	r := &wanResource{}
+
+	t.Run("configured false overrides controller true", func(t *testing.T) {
+		state := wanResourceModel{DsliteRemoteHostAuto: types.BoolValue(true)}
+		config := wanResourceModel{DsliteRemoteHostAuto: types.BoolValue(false)}
+		plan := wanResourceModel{DsliteRemoteHostAuto: types.BoolValue(false)}
+		r.overlayConfig(&state, &config, &plan)
+		if state.DsliteRemoteHostAuto.ValueBool() {
+			t.Errorf("DsliteRemoteHostAuto = true, want false (planned value)")
+		}
+	})
+
+	t.Run("unset keeps controller value", func(t *testing.T) {
+		state := wanResourceModel{DsliteRemoteHostAuto: types.BoolValue(true)}
+		config := wanResourceModel{DsliteRemoteHostAuto: types.BoolNull()}
+		plan := wanResourceModel{DsliteRemoteHostAuto: types.BoolValue(false)}
+		r.overlayConfig(&state, &config, &plan)
+		if !state.DsliteRemoteHostAuto.ValueBool() {
+			t.Errorf("DsliteRemoteHostAuto = false, want true (controller value kept)")
+		}
+	})
+}
+
 // Test_dnsAddrValue guards #333: the controller persists an unset WAN DNS
 // address as "" and returns it, but the Optional address fields plan as null.
 // "" (and a nil pointer) must map to null so the post-apply read matches the
