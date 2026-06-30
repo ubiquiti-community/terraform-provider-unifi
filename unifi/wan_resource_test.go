@@ -336,6 +336,51 @@ func Test_dhcpOptionModel_AttributeTypes(t *testing.T) {
 	}
 }
 
+// Test_wanResource_networkGroup guards #334: the WAN network group must be
+// preserved in the update PUT (and attr_hidden_id mirror it), instead of being
+// hard-coded to "WAN" — otherwise a secondary uplink (WAN2) collides with the
+// primary and the controller rejects it.
+func Test_wanResource_networkGroup(t *testing.T) {
+	r := &wanResource{}
+	ctx := context.Background()
+
+	base := wanResourceModel{
+		Name:    types.StringValue("CC Internet SFP"),
+		Enabled: types.BoolValue(true),
+		Type:    types.StringValue("dhcp"),
+	}
+
+	t.Run("WAN2 is preserved and mirrored to hidden id", func(t *testing.T) {
+		m := base
+		m.NetworkGroup = types.StringValue("WAN2")
+		n, d := r.modelToNetwork(ctx, &m)
+		if d.HasError() {
+			t.Fatalf("modelToNetwork: %v", d)
+		}
+		if n.WANNetworkGroup == nil || *n.WANNetworkGroup != "WAN2" {
+			t.Errorf("WANNetworkGroup = %v, want WAN2", n.WANNetworkGroup)
+		}
+		if n.HiddenID != "WAN2" {
+			t.Errorf("HiddenID = %q, want WAN2", n.HiddenID)
+		}
+	})
+
+	t.Run("unset defaults to WAN", func(t *testing.T) {
+		m := base
+		m.NetworkGroup = types.StringNull()
+		n, d := r.modelToNetwork(ctx, &m)
+		if d.HasError() {
+			t.Fatalf("modelToNetwork: %v", d)
+		}
+		if n.WANNetworkGroup == nil || *n.WANNetworkGroup != "WAN" {
+			t.Errorf("WANNetworkGroup = %v, want WAN", n.WANNetworkGroup)
+		}
+		if n.HiddenID != "WAN" {
+			t.Errorf("HiddenID = %q, want WAN", n.HiddenID)
+		}
+	})
+}
+
 // Test_dnsAddrValue guards #333: the controller persists an unset WAN DNS
 // address as "" and returns it, but the Optional address fields plan as null.
 // "" (and a nil pointer) must map to null so the post-apply read matches the
