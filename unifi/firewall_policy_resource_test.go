@@ -684,6 +684,58 @@ func Test_modelToFirewallPolicy(t *testing.T) {
 	}
 }
 
+// index is controller-assigned and read-only (#348): even when the model carries a
+// value, modelToFirewallPolicy must never put it on the API struct, otherwise the
+// controller's append-at-end behaviour produces an inconsistent-result/perpetual diff.
+func TestFirewallPolicyIndexNotSent(t *testing.T) {
+	ctx := context.Background()
+	endpoint := func(zone string) types.Object {
+		obj, _ := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(),
+			firewallPolicyEndpointModel{
+				ZoneID:             types.StringValue(zone),
+				MatchingTarget:     types.StringValue("ANY"),
+				MatchingTargetType: types.StringNull(),
+				NetworkIDs:         types.ListNull(types.StringType),
+				ClientMACs:         types.ListNull(types.StringType),
+				IPs:                types.ListNull(types.StringType),
+				WebDomains:         types.ListNull(types.StringType),
+				Port:               types.StringNull(),
+				PortGroupID:        types.StringNull(),
+				PortMatchingType:   types.StringValue("ANY"),
+			})
+		return obj
+	}
+	model := firewallPolicyModel{
+		Name:                types.StringValue("allow-lan"),
+		Action:              types.StringValue("ALLOW"),
+		Enabled:             types.BoolValue(true),
+		Protocol:            types.StringValue("all"),
+		Description:         types.StringNull(),
+		Logging:             types.BoolValue(false),
+		Index:               types.Int64Value(10010), // pinned by user, must be ignored
+		CreateAllowRespond:  types.BoolValue(false),
+		IPVersion:           types.StringNull(),
+		ConnectionStateType: types.StringNull(),
+		ConnectionStates:    types.ListNull(types.StringType),
+		ICMPTypename:        types.StringNull(),
+		ICMPV6Typename:      types.StringNull(),
+		Source:              endpoint("z1"),
+		Destination:         endpoint("z2"),
+		ID:                  types.StringNull(),
+		Site:                types.StringNull(),
+	}
+	got, diags := modelToFirewallPolicy(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToFirewallPolicy() unexpected diagnostics: %v", diags)
+	}
+	if got.Index != nil {
+		t.Errorf(
+			"modelToFirewallPolicy() sent Index = %d, want nil (index is read-only)",
+			*got.Index,
+		)
+	}
+}
+
 func Test_endpointModelToSource(t *testing.T) {
 	type args struct {
 		ctx   context.Context
