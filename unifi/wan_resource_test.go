@@ -336,6 +336,39 @@ func Test_dhcpOptionModel_AttributeTypes(t *testing.T) {
 	}
 }
 
+// Test_dnsAddrValue guards #333: the controller persists an unset WAN DNS
+// address as "" and returns it, but the Optional address fields plan as null.
+// "" (and a nil pointer) must map to null so the post-apply read matches the
+// plan; a real address must round-trip.
+func Test_dnsAddrValue(t *testing.T) {
+	empty := ""
+	addr := "2001:4860:4860::8888"
+	v4 := "8.8.8.8"
+
+	cases := []struct {
+		name     string
+		in       *string
+		wantNull bool
+		wantStr  string
+	}{
+		{"nil pointer -> null", nil, true, ""},
+		{"empty string -> null", &empty, true, ""},
+		{"ipv6 address survives", &addr, false, addr},
+		{"ipv4 address survives", &v4, false, v4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := dnsAddrValue(c.in)
+			if got.IsNull() != c.wantNull {
+				t.Errorf("IsNull = %v, want %v", got.IsNull(), c.wantNull)
+			}
+			if !c.wantNull && got.ValueString() != c.wantStr {
+				t.Errorf("ValueString = %q, want %q", got.ValueString(), c.wantStr)
+			}
+		})
+	}
+}
+
 func Test_dnsModel_AttributeTypes(t *testing.T) {
 	tests := []struct {
 		name string
