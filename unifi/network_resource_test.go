@@ -1210,3 +1210,60 @@ func TestAccNetworkList_basic(t *testing.T) {
 		},
 	})
 }
+
+// Test_networkResource_networkToModel_multicastDNS guards #282: a corporate
+// network's multicast_dns is overridden to false server-side by some controllers
+// (UniFi OS gateways), so a user-configured true would fail the consistency
+// check. The configured/known value must be preserved; an unset (unknown) value
+// falls back to the controller's value.
+func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
+	r := &networkResource{}
+	base := func() *networkResourceModel {
+		return &networkResourceModel{
+			DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:   types.ListNull(types.StringType),
+			IPv6Aliases: types.ListNull(types.StringType),
+		}
+	}
+	// Corporate network (not vlan-only); controller forces mdns false.
+	network := &unifi.Network{
+		ID:          "net-1",
+		Name:        strPtr("IoT"),
+		Purpose:     unifi.PurposeCorporate,
+		Enabled:     true,
+		IPSubnet:    strPtr("10.0.2.1/24"),
+		MdnsEnabled: false,
+	}
+
+	t.Run("configured true is preserved", func(t *testing.T) {
+		prev := base()
+		prev.MulticastDNS = types.BoolValue(true)
+		var model networkResourceModel
+		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+		if !model.MulticastDNS.ValueBool() {
+			t.Errorf("configured multicast_dns=true not preserved: %v", model.MulticastDNS)
+		}
+	})
+
+	t.Run("unset falls back to controller value", func(t *testing.T) {
+		prev := base()
+		prev.MulticastDNS = types.BoolUnknown()
+		var model networkResourceModel
+		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+		if model.MulticastDNS.ValueBool() {
+			t.Errorf("unset multicast_dns should reflect controller false, got true")
+		}
+	})
+}
