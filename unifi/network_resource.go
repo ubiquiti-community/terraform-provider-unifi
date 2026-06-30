@@ -1673,7 +1673,18 @@ func (r *networkResource) networkToModel(
 		}
 		model.SettingPreference = types.StringPointerValue(network.SettingPreference)
 		model.InternetAccess = types.BoolValue(network.InternetAccessEnabled)
-		model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
+		// Some controllers (notably UniFi OS gateways) ignore mdns_enabled
+		// per-network and always store false, so a configured `true` would fail
+		// the consistency check (#282; the vlan-only branch above already does
+		// this). Preserve the configured/known value; fall back to the
+		// controller's value only when it wasn't set by the user (unknown/null,
+		// e.g. on Read or List).
+		if previousModel != nil && !previousModel.MulticastDNS.IsNull() &&
+			!previousModel.MulticastDNS.IsUnknown() {
+			model.MulticastDNS = previousModel.MulticastDNS
+		} else {
+			model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
+		}
 		model.GatewayType = types.StringPointerValue(network.GatewayType)
 		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
 		model.IPv6ClientAddressAssignment = types.StringPointerValue(
