@@ -247,6 +247,7 @@ type networkResourceModel struct {
 	IPAliases                   types.List           `tfsdk:"ip_aliases"`
 	IPv6Aliases                 types.List           `tfsdk:"ipv6_aliases"`
 	ThirdPartyGateway           types.Bool           `tfsdk:"third_party_gateway"`
+	Purpose                     types.String         `tfsdk:"purpose"`
 	DhcpGuarding                types.Object         `tfsdk:"dhcp_guarding"`
 	DhcpServer                  types.Object         `tfsdk:"dhcp_server"`
 	DhcpV6Server                types.Object         `tfsdk:"dhcp_v6_server"`
@@ -560,6 +561,21 @@ func (r *networkResource) Schema(
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
+			},
+			"purpose": schema.StringAttribute{
+				MarkdownDescription: "The network purpose: `corporate` (default), `guest`, or `vlan-only`. Leave unset to let the controller manage it (a `third_party_gateway` network is always `vlan-only`). **Note:** on Zone-Based-Firewall controllers the purpose is coupled to the firewall zone — a `guest` network only keeps `purpose = \"guest\"` while it belongs to the guest/Hotspot zone (assign it there via `unifi_firewall_zone`), otherwise the controller rewrites it back to `corporate` and the apply fails with an inconsistent-result error.",
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(
+						unifi.PurposeCorporate,
+						unifi.PurposeGuest,
+						unifi.PurposeVLANOnly,
+					),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dhcp_guarding": schema.SingleNestedAttribute{
 				MarkdownDescription: "DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network.",
@@ -1219,7 +1235,13 @@ func (r *networkResource) modelToNetwork(
 		IPAliases:                 []string{},
 	}
 
-	// Handle third-party gateway mode
+	// Purpose: default corporate, honor an explicitly configured value (guest,
+	// vlan-only, corporate). third_party_gateway is the legacy way to request
+	// vlan-only and takes precedence so existing configs keep working.
+	if !model.Purpose.IsNull() && !model.Purpose.IsUnknown() &&
+		model.Purpose.ValueString() != "" {
+		network.Purpose = model.Purpose.ValueString()
+	}
 	if model.ThirdPartyGateway.ValueBool() {
 		network.Purpose = unifi.PurposeVLANOnly
 	}
@@ -1580,6 +1602,18 @@ func (r *networkResource) networkToModel(
 	// Set third_party_gateway based on API purpose
 	isVLANOnly := network.Purpose == unifi.PurposeVLANOnly
 	model.ThirdPartyGateway = types.BoolValue(isVLANOnly)
+
+	// Reflect the controller's actual purpose. On ZBF controllers the purpose is
+	// driven by the network's firewall zone (e.g. guest ⇄ Hotspot zone), so we
+	// read it back rather than assume the configured value: an unset purpose
+	// (Computed) resolves to whatever the controller reports, and a configured
+	// value that the controller rejects surfaces as an inconsistent-result error
+	// instead of silently drifting.
+	if network.Purpose != "" {
+		model.Purpose = types.StringValue(network.Purpose)
+	} else {
+		model.Purpose = types.StringValue(unifi.PurposeCorporate)
+	}
 
 	// For vlan-only networks, the API does not return fields like subnet, gateway_type,
 	// setting_preference, etc. Preserve the plan/state values for these irrelevant fields
@@ -2031,8 +2065,9 @@ func (r *networkResource) List(
 
 	stream.Results = func(push func(list.ListResult) bool) {
 		for _, network := range networks {
-			// Filter by purpose: only corporate and vlan-only networks.
+			// Filter by purpose: only corporate, guest and vlan-only networks.
 			if network.Purpose != unifi.PurposeCorporate &&
+				network.Purpose != unifi.PurposeGuest &&
 				network.Purpose != unifi.PurposeVLANOnly {
 				continue
 			}

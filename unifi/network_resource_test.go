@@ -1267,3 +1267,86 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 		}
 	})
 }
+
+// Test_networkResource_purpose covers #276: purpose must be author-settable
+// (guest/vlan-only/corporate) on write and reflected from the controller on read.
+func Test_networkResource_purpose(t *testing.T) {
+	r := &networkResource{}
+
+	baseModel := func() *networkResourceModel {
+		return &networkResourceModel{
+			Name:              types.StringValue("test-net"),
+			Subnet:            cidrtypes.NewIPv4PrefixValue("10.0.0.0/24"),
+			ThirdPartyGateway: types.BoolValue(false),
+			Purpose:           types.StringNull(),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:    types.ListNull(types.StringType),
+			IPv6Aliases:  types.ListNull(types.StringType),
+			DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+		}
+	}
+
+	t.Run("write: unset defaults to corporate", func(t *testing.T) {
+		got, d := r.modelToNetwork(context.Background(), baseModel())
+		if d.HasError() {
+			t.Fatalf("modelToNetwork: %v", d)
+		}
+		if got.Purpose != unifi.PurposeCorporate {
+			t.Errorf("Purpose = %q, want %q", got.Purpose, unifi.PurposeCorporate)
+		}
+	})
+
+	t.Run("write: configured guest is sent", func(t *testing.T) {
+		m := baseModel()
+		m.Purpose = types.StringValue(unifi.PurposeGuest)
+		got, d := r.modelToNetwork(context.Background(), m)
+		if d.HasError() {
+			t.Fatalf("modelToNetwork: %v", d)
+		}
+		if got.Purpose != unifi.PurposeGuest {
+			t.Errorf("Purpose = %q, want %q", got.Purpose, unifi.PurposeGuest)
+		}
+	})
+
+	t.Run("write: third_party_gateway forces vlan-only over purpose", func(t *testing.T) {
+		m := baseModel()
+		m.Purpose = types.StringValue(unifi.PurposeGuest)
+		m.ThirdPartyGateway = types.BoolValue(true)
+		got, d := r.modelToNetwork(context.Background(), m)
+		if d.HasError() {
+			t.Fatalf("modelToNetwork: %v", d)
+		}
+		if got.Purpose != unifi.PurposeVLANOnly {
+			t.Errorf(
+				"Purpose = %q, want %q (third_party_gateway precedence)",
+				got.Purpose,
+				unifi.PurposeVLANOnly,
+			)
+		}
+	})
+
+	t.Run("read: controller guest is reflected", func(t *testing.T) {
+		network := &unifi.Network{
+			ID:       "net-guest",
+			Name:     strPtr("Guest"),
+			Purpose:  unifi.PurposeGuest,
+			Enabled:  true,
+			IPSubnet: strPtr("10.0.9.1/24"),
+		}
+		prev := baseModel()
+		prev.Purpose = types.StringValue(unifi.PurposeGuest)
+		var model networkResourceModel
+		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+		if model.Purpose.ValueString() != unifi.PurposeGuest {
+			t.Errorf("Purpose = %q, want %q", model.Purpose.ValueString(), unifi.PurposeGuest)
+		}
+	})
+}
