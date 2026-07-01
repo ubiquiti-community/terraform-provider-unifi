@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### ✨ Features
 
+- **`unifi_firewall_policy`: make `connection_state_type` / `connection_states` author-settable.** Both attributes were `Computed`-only, so setting them returned `Invalid Configuration for Read-Only Attribute` — you could not author a policy scoped to a specific connection state. They are now `Optional + Computed`: leave them unset and the controller manages them as before, or set `connection_state_type = "CUSTOM"` with `connection_states = ["NEW", …]` (or `RESPOND_ONLY`) to author, for example, a `NEW`-only logging/deny policy that coexists with stateful returns in a zone-based firewall. Values are validated (`ALL`/`RESPOND_ONLY`/`CUSTOM`; states `NEW`/`ESTABLISHED`/`RELATED`/`INVALID`) and still round-trip on update (#351)
 - **`unifi_wan`: expose `networkgroup` (`WAN`, `WAN2`, …).** A new computed-by-default attribute identifying which WAN group an interface belongs to. The provider previously hard-coded `wan_networkgroup`/`attr_hidden_id` to `WAN`, so updating a **secondary** uplink (`WAN2`) collided with the primary and the controller rejected the PUT (`api.err.WanConfigurationForNetworkGroupAlreadyExists`). The group is now read from the controller and preserved in the update payload (`UseStateForUnknown`, so an imported `WAN2` needs no explicit config), making multi-WAN setups manageable (#334)
 
 ### 🐛 Bug Fixes

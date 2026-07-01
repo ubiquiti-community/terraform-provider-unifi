@@ -515,6 +515,28 @@ func Test_firewallPolicyResource_Schema(t *testing.T) {
 	}
 }
 
+// TestFirewallPolicyConnectionStatesSettable guards #351: connection_state_type
+// and connection_states must be author-settable (Optional+Computed) so a policy
+// can be scoped to NEW-only / RESPOND_ONLY connections, not just read back.
+func TestFirewallPolicyConnectionStatesSettable(t *testing.T) {
+	r := &firewallPolicyResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	for _, key := range []string{"connection_state_type", "connection_states"} {
+		attr, ok := resp.Schema.Attributes[key]
+		if !ok {
+			t.Fatalf("Schema missing %q attribute", key)
+		}
+		if !attr.IsOptional() {
+			t.Errorf("%q must be Optional (author-settable), got Optional=false", key)
+		}
+		if !attr.IsComputed() {
+			t.Errorf("%q must stay Computed (round-trip), got Computed=false", key)
+		}
+	}
+}
+
 func Test_firewallPolicyResource_Configure(t *testing.T) {
 	type args struct {
 		ctx  context.Context

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -340,16 +341,26 @@ func (r *firewallPolicyResource) Schema(
 				},
 			},
 			"connection_state_type": schema.StringAttribute{
-				MarkdownDescription: "Connection-state matching mode (`ALL`, `RESPOND_ONLY`, or `CUSTOM`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+				MarkdownDescription: "Connection-state matching mode: `ALL` (any state), `RESPOND_ONLY` (established/related returns), or `CUSTOM` (match the states listed in `connection_states`). Optional: if omitted the controller assigns it (defaults to `ALL`) and the provider round-trips the value so updates are accepted.",
+				Optional:            true,
 				Computed:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("ALL", "RESPOND_ONLY", "CUSTOM"),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"connection_states": schema.ListAttribute{
-				MarkdownDescription: "Connection states matched when `connection_state_type` is `CUSTOM` (e.g. `NEW`, `ESTABLISHED`, `RELATED`, `INVALID`). Managed by the UniFi controller; the provider round-trips it so a `CUSTOM` policy's states are not dropped on update (which the firmware rejects with HTTP 400).",
+				MarkdownDescription: "Connection states matched when `connection_state_type` is `CUSTOM` (`NEW`, `ESTABLISHED`, `RELATED`, `INVALID`). Optional: leave unset for `ALL`/`RESPOND_ONLY` and the controller manages it; the provider round-trips the value so a `CUSTOM` policy's states are not dropped on update (which the firmware rejects with HTTP 400).",
 				ElementType:         types.StringType,
+				Optional:            true,
 				Computed:            true,
+				Validators: []validator.List{
+					listvalidator.ValueStringsAre(
+						stringvalidator.OneOf("NEW", "ESTABLISHED", "RELATED", "INVALID"),
+					),
+				},
 				PlanModifiers: []planmodifier.List{
 					listplanmodifier.UseStateForUnknown(),
 				},
