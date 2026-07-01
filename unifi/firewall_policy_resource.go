@@ -313,9 +313,13 @@ func (r *firewallPolicyResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"index": schema.Int64Attribute{
-				MarkdownDescription: "The ordering index of the policy. UniFi auto-assigns this if not set.",
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "The ordering index of the policy within its zone-pair, " +
+					"assigned by the controller. **Read-only:** UniFi does not accept a " +
+					"client-supplied index on create or update (the policy is always appended " +
+					"to the end of its source/destination zone-pair), and the supported API " +
+					"exposes no reorder operation, so policy ordering cannot be managed through " +
+					"this provider. Reorder policies in the UniFi UI if needed.",
+				Computed: true,
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
@@ -791,10 +795,9 @@ func modelToFirewallPolicy(
 		diags.Append(model.ConnectionStates.ElementsAs(ctx, &fp.ConnectionStates, false)...)
 	}
 
-	if !model.Index.IsNull() && !model.Index.IsUnknown() {
-		idx := model.Index.ValueInt64()
-		fp.Index = &idx
-	}
+	// index is controller-assigned and read-only: UniFi ignores a client-supplied
+	// value on create/update (the policy is appended to the end of its zone-pair) and
+	// the supported API exposes no reorder operation, so we never send it (#348).
 
 	var srcModel firewallPolicyEndpointModel
 	diags.Append(model.Source.As(ctx, &srcModel, basetypes.ObjectAsOptions{})...)

@@ -123,7 +123,6 @@ resource "unifi_firewall_policy" "lan_dmz_ping" {
   action   = "ALLOW"
   protocol = "icmp"
   enabled  = true
-  index    = 2000
 
   source = {
     zone_id         = unifi_firewall_zone.lan.id

@@ -137,7 +137,6 @@ resource "unifi_firewall_policy" "lan_dmz_ping" {
   action   = "ALLOW"
   protocol = "icmp"
   enabled  = true
-  index    = 2000
 
   source = {
     zone_id         = unifi_firewall_zone.lan.id
@@ -184,7 +183,6 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `create_allow_respond` (Boolean) When `true`, UniFi automatically creates a matching rule to allow established/related return traffic. Recommended for `ALLOW` policies. Defaults to `false`.
 - `description` (String) A description for the policy.
 - `enabled` (Boolean) Whether the policy is enabled. Defaults to `true`.
-- `index` (Number) The ordering index of the policy. UniFi auto-assigns this if not set.
 - `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.
 - `logging` (Boolean) Whether to log packets matching this policy. Defaults to `false`.
 - `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, `icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` policies the controller rejects `create_allow_respond = true` (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy if you need the reply.
@@ -198,6 +196,7 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `icmp_typename` (String) ICMP type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `icmp_v6_typename` (String) ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `id` (String) The ID of the firewall policy.
+- `index` (Number) The ordering index of the policy within its zone-pair, assigned by the controller. **Read-only:** UniFi does not accept a client-supplied index on create or update (the policy is always appended to the end of its source/destination zone-pair), and the supported API exposes no reorder operation, so policy ordering cannot be managed through this provider. Reorder policies in the UniFi UI if needed.
 
 <a id="nestedatt--destination"></a>
 ### Nested Schema for `destination`
