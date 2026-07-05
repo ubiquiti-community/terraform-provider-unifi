@@ -784,6 +784,29 @@ func Test_radiusProfileResource_radiusProfileToModel(t *testing.T) {
 		}
 	})
 
+	// #356: the controller-managed default profile returns a server entry with no
+	// IP. It must map to a null (not "") IP so, with ip now Optional, importing then
+	// re-declaring the profile doesn't fail with "ip is required" or churn a diff.
+	t.Run("server without IP maps to null", func(t *testing.T) {
+		port := int64(1812)
+		profile := &unifi.RADIUSProfile{
+			ID:               "prof-default",
+			Name:             "Default",
+			UseUsgAuthServer: true,
+			AuthServers: []unifi.RADIUSProfileAuthServers{
+				{IP: "", Port: &port, Secret: "shhh"},
+			},
+		}
+		model := &radiusProfileResourceModel{}
+		r.radiusProfileToModel(ctx, profile, model, "default")
+		if len(model.AuthServer) != 1 {
+			t.Fatalf("AuthServer length = %d, want 1", len(model.AuthServer))
+		}
+		if !model.AuthServer[0].IP.IsNull() {
+			t.Errorf("AuthServer IP = %q, want null", model.AuthServer[0].IP.ValueString())
+		}
+	})
+
 	t.Run("empty servers produce empty slices not nil", func(t *testing.T) {
 		profile := &unifi.RADIUSProfile{
 			ID:          "prof-2",

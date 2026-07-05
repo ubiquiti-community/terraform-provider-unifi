@@ -89,11 +89,11 @@ resource "unifi_wlan" "corp" {
 
 Required:
 
-- `ip` (String) IP address of accounting service server.
 - `secret` (String, Sensitive) Shared secret for accounting server.
 
 Optional:
 
+- `ip` (String) IP address of the accounting server. Optional: the controller-managed default profile returns a server entry without an IP, so importing it must not force one.
 - `port` (Number) Port of accounting service.
 
 
@@ -102,11 +102,11 @@ Optional:
 
 Required:
 
-- `ip` (String) IP address of authentication service server.
 - `secret` (String, Sensitive) Shared secret for authentication server.
 
 Optional:
 
+- `ip` (String) IP address of the authentication server. Optional: the controller-managed default profile (e.g. the one created when a gateway RADIUS/VPN service is enabled, with `use_usg_auth_server = true`) returns a server entry without an IP, so importing it must not force one.
 - `port` (Number) Port of authentication service.
 
 

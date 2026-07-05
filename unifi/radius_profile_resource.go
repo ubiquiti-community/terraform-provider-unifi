@@ -203,8 +203,12 @@ func (r *radiusProfileResource) Schema(
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"ip": schema.StringAttribute{
-							MarkdownDescription: "IP address of authentication service server.",
-							Required:            true,
+							MarkdownDescription: "IP address of the authentication server. " +
+								"Optional: the controller-managed default profile (e.g. the " +
+								"one created when a gateway RADIUS/VPN service is enabled, with " +
+								"`use_usg_auth_server = true`) returns a server entry without an " +
+								"IP, so importing it must not force one.",
+							Optional: true,
 							Validators: []validator.String{
 								validators.IPv4Validator(),
 							},
@@ -231,8 +235,10 @@ func (r *radiusProfileResource) Schema(
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"ip": schema.StringAttribute{
-							MarkdownDescription: "IP address of accounting service server.",
-							Required:            true,
+							MarkdownDescription: "IP address of the accounting server. " +
+								"Optional: the controller-managed default profile returns a " +
+								"server entry without an IP, so importing it must not force one.",
+							Optional: true,
 							Validators: []validator.String{
 								validators.IPv4Validator(),
 							},
@@ -622,7 +628,7 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	model.AuthServer = []radiusServerModel{}
 	for _, authServer := range radiusProfile.AuthServers {
 		model.AuthServer = append(model.AuthServer, radiusServerModel{
-			IP:     types.StringValue(authServer.IP),
+			IP:     util.StringValueOrNull(authServer.IP),
 			Port:   types.Int64PointerValue(authServer.Port),
 			Secret: types.StringValue(authServer.Secret),
 		})
@@ -631,7 +637,7 @@ func (r *radiusProfileResource) radiusProfileToModel(
 	model.AcctServer = []radiusServerModel{}
 	for _, acctServer := range radiusProfile.AcctServers {
 		model.AcctServer = append(model.AcctServer, radiusServerModel{
-			IP:     types.StringValue(acctServer.IP),
+			IP:     util.StringValueOrNull(acctServer.IP),
 			Port:   types.Int64PointerValue(acctServer.Port),
 			Secret: types.StringValue(acctServer.Secret),
 		})
