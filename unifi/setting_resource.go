@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -592,6 +593,9 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 						ElementType:         types.StringType,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"log_all_contents": schema.BoolAttribute{
 						MarkdownDescription: "Log all available facilities.",
@@ -657,6 +661,9 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 						ElementType:         types.StringType,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"custom_servers": schema.ListNestedAttribute{
 						MarkdownDescription: "Custom DNS servers specified via DNS stamp.",
@@ -704,12 +711,18 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 						ElementType:         types.StringType,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"enabled_networks": schema.ListAttribute{
 						MarkdownDescription: "Network IDs to apply IPS inspection to.",
 						Optional:            true,
 						Computed:            true,
 						ElementType:         types.StringType,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"honeypot_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable honeypot to detect internal port scans.",
@@ -1242,6 +1255,9 @@ func (r *settingResource) Schema(
 						ElementType:         types.StringType,
 						Optional:            true,
 						Computed:            true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
 					},
 				},
 			},

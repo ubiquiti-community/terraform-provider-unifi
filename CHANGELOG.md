@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - **`unifi_ap_group`: manage AP group membership.** Full CRUD, complementing the existing read-only data source. Which APs belong to a group was fixed in the controller UI: the data source could read a group, but nothing could create or edit one, so `unifi_wlan.ap_group_ids` could only reference groups built by hand. The resource writes membership through the v2 `apgroups` API. `device_macs` reuses the `unifi_client` MAC type, so `AA-BB-…` and `aa:bb:…` read back equal rather than churning the plan on every refresh. Import takes the group ID, or `site:id` for a non-default site (#359, go-unifi#52).
 
+### 🐛 Bug Fixes
+
+- **`unifi_device` / `unifi_setting`: stop controller-managed lists churning to "known after apply" on unrelated edits.** Several `Optional + Computed` lists were replanned as `(known after apply)` whenever any other field on the same resource changed — a spurious diff (the same class as #338). They now use `UseStateForUnknown`, keeping their prior value unless explicitly changed: `unifi_device` `radio_table` and `outlet_overrides`, and `unifi_setting` `contents` (syslog facilities), `server_names` (DoH), `enabled_categories` / `enabled_networks` (IPS), and `network_ids` (IGMP snooping).
+
 ## [v0.54.1] - 2026-07-05
 
 ### 🐛 Bug Fixes
