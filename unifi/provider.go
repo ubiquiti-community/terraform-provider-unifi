@@ -282,6 +282,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 	return []func() resource.Resource{
 		NewRadiusUserResource,
 		NewDeprecatedAccountResource,
+		NewAPGroupResource,
 		NewBGPResource,
 		NewDeviceFrameworkResource,
 		NewDNSRecordFrameworkResource,
@@ -345,6 +346,7 @@ func (p *unifiProvider) Actions(
 // ListResources implements [provider.ProviderWithListResources].
 func (p *unifiProvider) ListResources(context.Context) []func() list.ListResource {
 	return []func() list.ListResource{
+		NewAPGroupListResource,
 		NewClientListResource,
 		NewNetworkListResource,
 		NewVPNClientListResource,

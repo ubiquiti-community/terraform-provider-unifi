@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.55.0] - 2026-07-05
+
+### ✨ Features
+
+- **`unifi_ap_group`: manage AP group membership.** Full CRUD, complementing the existing read-only data source. Which APs belong to a group was fixed in the controller UI: the data source could read a group, but nothing could create or edit one, so `unifi_wlan.ap_group_ids` could only reference groups built by hand. The resource writes membership through the v2 `apgroups` API. `device_macs` reuses the `unifi_client` MAC type, so `AA-BB-…` and `aa:bb:…` read back equal rather than churning the plan on every refresh. Import takes the group ID, or `site:id` for a non-default site. Requires the AP-group `Get`/`Update`/`Delete` client methods from `ubiquiti-community/go-unifi#52`.
+
+---
+
 ## [v0.54.1] - 2026-07-05
 
 ### 🐛 Bug Fixes
