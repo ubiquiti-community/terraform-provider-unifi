@@ -1582,6 +1582,12 @@ func (r *deviceResource) ImportState(
 // not be set through the provider (#329). modelToAPIDevice only sets it when
 // configured, and it is `omitempty`, so a null value stays off the wire and
 // never reintroduces the #177 zero-value rejection.
+//
+// switch_vlan_enabled (the UI "Port VLAN" toggle, needed on APs with a built-in
+// switch to make VLAN tagging take effect on the built-in ports) is the same
+// story: the hand-listed body dropped it, so the controller kept its old value
+// and the post-apply read conflicted with a configured `true`. It is `omitempty`,
+// so a `false` stays off the wire and doesn't disturb the controller default.
 func buildMinimalUpdateDevice(
 	deviceReq, currentDevice *unifi.Device,
 	portOverrides []unifi.DevicePortOverrides,
@@ -1596,6 +1602,7 @@ func buildMinimalUpdateDevice(
 		LedOverride:                deviceReq.LedOverride,
 		LedOverrideColor:           deviceReq.LedOverrideColor,
 		LedOverrideColorBrightness: deviceReq.LedOverrideColorBrightness,
+		SwitchVLANEnabled:          deviceReq.SwitchVLANEnabled,
 	}
 	if currentDevice != nil {
 		minimalDevice.State = currentDevice.State

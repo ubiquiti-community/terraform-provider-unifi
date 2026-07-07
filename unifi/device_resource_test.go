@@ -129,6 +129,54 @@ func Test_buildMinimalUpdateDevice_mgmtNetworkID(t *testing.T) {
 	})
 }
 
+// Test_buildMinimalUpdateDevice_switchVLANEnabled guards the switch_vlan_enabled
+// bug class: a configured "Port VLAN" toggle (true) must travel in the minimal
+// PUT body, else the controller keeps its old value and the post-apply read
+// conflicts with the plan. Being `omitempty`, a false stays off the wire and
+// doesn't disturb the controller default.
+func Test_buildMinimalUpdateDevice_switchVLANEnabled(t *testing.T) {
+	t.Run("configured switch_vlan_enabled is sent in the PUT body", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:                "dev-1",
+			Type:              "uap",
+			MAC:               "aa:bb:cc:dd:ee:ff",
+			Name:              "Test AP",
+			SwitchVLANEnabled: true,
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		if !body.SwitchVLANEnabled {
+			t.Fatal("SwitchVLANEnabled = false, want true (toggle dropped from PUT)")
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if !strings.Contains(string(raw), `"switch_vlan_enabled":true`) {
+			t.Errorf("PUT body missing switch_vlan_enabled: %s", raw)
+		}
+	})
+
+	t.Run("false switch_vlan_enabled stays off the wire (omitempty)", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:   "dev-1",
+			Type: "uap",
+			MAC:  "aa:bb:cc:dd:ee:ff",
+			Name: "Test AP",
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		if body.SwitchVLANEnabled {
+			t.Errorf("SwitchVLANEnabled = true, want false when unconfigured")
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(raw), "switch_vlan_enabled") {
+			t.Errorf("false switch_vlan_enabled leaked into PUT body: %s", raw)
+		}
+	})
+}
+
 func TestAccDeviceFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },

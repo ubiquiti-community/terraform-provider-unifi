@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **`unifi_device`: carry `switch_vlan_enabled` (Port VLAN) in the update PUT.** The update PUT was assembled from a minimal `Device` that dropped a configured `switch_vlan_enabled`, so the controller never received it: every apply on a device with `switch_vlan_enabled = true` (e.g. an AP with a built-in switch, where the toggle is what makes VLAN tagging take effect on the built-in ports) failed with `inconsistent result after apply` (`was cty.True, but now cty.False`). The field is now carried in the PUT body when configured. `omitempty` keeps a `false` off the wire, so it never disturbs the controller default. Verified against a real controller (#363)
 - **`unifi_device` / `unifi_setting`: stop controller-managed lists churning to "known after apply" on unrelated edits.** Several `Optional + Computed` lists were replanned as `(known after apply)` whenever any other field on the same resource changed — a spurious diff (the same class as #338). They now use `UseStateForUnknown`, keeping their prior value unless explicitly changed: `unifi_device` `radio_table` and `outlet_overrides`, and `unifi_setting` `contents` (syslog facilities), `server_names` (DoH), `enabled_categories` / `enabled_networks` (IPS), and `network_ids` (IGMP snooping).
 
 ## [v0.54.1] - 2026-07-05
