@@ -177,6 +177,134 @@ func Test_buildMinimalUpdateDevice_switchVLANEnabled(t *testing.T) {
 	})
 }
 
+// Test_buildMinimalUpdateDevice_vwireEnabled guards the radio_table[].vwire_enabled
+// bug class (the UI "Mesh Parent" toggle): the hand-listed minimal PUT never
+// copied radio_table across, so every radio sub-field — vwire_enabled included —
+// was dropped, the controller kept its old value, and the post-apply read
+// conflicted with the plan. Being `omitempty` at every level, an empty
+// radio_table stays off the wire and doesn't disturb the controller default.
+func Test_buildMinimalUpdateDevice_vwireEnabled(t *testing.T) {
+	t.Run("configured vwire_enabled is sent in the PUT body", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:   "dev-1",
+			Type: "uap",
+			MAC:  "aa:bb:cc:dd:ee:ff",
+			Name: "Test AP",
+			RadioTable: []unifi.DeviceRadioTable{
+				{Name: "wifi0", Radio: "ng", VwireEnabled: true},
+				{Name: "wifi1", Radio: "na", VwireEnabled: true},
+			},
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		if len(body.RadioTable) != 2 {
+			t.Fatalf(
+				"RadioTable len = %d, want 2 (radio_table dropped from PUT)",
+				len(body.RadioTable),
+			)
+		}
+		for _, radio := range body.RadioTable {
+			if !radio.VwireEnabled {
+				t.Fatalf(
+					"radio %q VwireEnabled = false, want true (toggle dropped from PUT)",
+					radio.Name,
+				)
+			}
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if !strings.Contains(string(raw), `"vwire_enabled":true`) {
+			t.Errorf("PUT body missing vwire_enabled: %s", raw)
+		}
+	})
+
+	t.Run("false vwire_enabled stays off the wire (omitempty)", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:   "dev-1",
+			Type: "uap",
+			MAC:  "aa:bb:cc:dd:ee:ff",
+			Name: "Test AP",
+			RadioTable: []unifi.DeviceRadioTable{
+				{Name: "wifi0", Radio: "ng"},
+			},
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(raw), "vwire_enabled") {
+			t.Errorf("false vwire_enabled leaked into PUT body: %s", raw)
+		}
+	})
+
+	t.Run("nil radio_table stays off the wire (omitempty)", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:   "dev-1",
+			Type: "usw",
+			MAC:  "aa:bb:cc:dd:ee:ff",
+			Name: "Test Switch",
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(raw), "radio_table") {
+			t.Errorf("empty radio_table leaked into PUT body: %s", raw)
+		}
+	})
+}
+
+// Test_buildMinimalUpdateDevice_meshStaVapEnabled guards the top-level
+// mesh_sta_vap_enabled bug class (the UI "Mesh Connect" toggle): a configured
+// true must travel in the minimal PUT body, else the controller keeps its old
+// value and the post-apply read conflicts with the plan. Being `omitempty`, a
+// false stays off the wire and doesn't disturb the controller default.
+func Test_buildMinimalUpdateDevice_meshStaVapEnabled(t *testing.T) {
+	t.Run("configured mesh_sta_vap_enabled is sent in the PUT body", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:                "dev-1",
+			Type:              "uap",
+			MAC:               "aa:bb:cc:dd:ee:ff",
+			Name:              "Test AP",
+			MeshStaVapEnabled: true,
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		if !body.MeshStaVapEnabled {
+			t.Fatal("MeshStaVapEnabled = false, want true (toggle dropped from PUT)")
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if !strings.Contains(string(raw), `"mesh_sta_vap_enabled":true`) {
+			t.Errorf("PUT body missing mesh_sta_vap_enabled: %s", raw)
+		}
+	})
+
+	t.Run("false mesh_sta_vap_enabled stays off the wire (omitempty)", func(t *testing.T) {
+		deviceReq := &unifi.Device{
+			ID:   "dev-1",
+			Type: "uap",
+			MAC:  "aa:bb:cc:dd:ee:ff",
+			Name: "Test AP",
+		}
+		body := buildMinimalUpdateDevice(deviceReq, nil, nil)
+		if body.MeshStaVapEnabled {
+			t.Errorf("MeshStaVapEnabled = true, want false when unconfigured")
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(raw), "mesh_sta_vap_enabled") {
+			t.Errorf("false mesh_sta_vap_enabled leaked into PUT body: %s", raw)
+		}
+	})
+}
+
 func TestAccDeviceFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
