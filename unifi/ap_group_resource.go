@@ -7,7 +7,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
-	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -105,7 +104,7 @@ func (r *apGroupResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
-		Description: "`unifi_ap_group` manages a group of access points, which can be referenced from wireless networks (`unifi_wlan`) to control where an SSID is broadcast.",
+		Description: "`unifi_ap_group` manages a group of access points, which can be referenced from wireless networks (`unifi_wlan`) to control where an SSID is broadcast. The controller's built-in default group (\"All APs\") is read-only; updating or deleting it through this resource fails with a controller error.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -132,15 +131,12 @@ func (r *apGroupResource) Schema(
 				},
 			},
 			"device_macs": schema.SetAttribute{
-				Description: "The MAC addresses of the access points that are members of the group.",
+				Description: "The MAC addresses of the access points that are members of the group. May be empty — the controller accepts a group with no members.",
 				Required:    true,
 				// hwtypes.MACAddressType gives each element semantic equality so
 				// case and separator differences (e.g. AA-BB-.. vs aa:bb:..) do
 				// not produce spurious diffs.
 				ElementType: hwtypes.MACAddressType{},
-				Validators: []validator.Set{
-					setvalidator.SizeAtLeast(1),
-				},
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
@@ -320,7 +316,10 @@ func (r *apGroupResource) Update(
 	}
 
 	// Apply current API values to state
-	r.setResourceData(ctx, currentAPGroup, &state, site)
+	resp.Diagnostics.Append(r.apGroupToModel(ctx, currentAPGroup, &state, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Apply plan changes to the state (merge pattern)
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -448,17 +447,9 @@ func (r *apGroupResource) modelToAPIAPGroup(
 	}, nil
 }
 
-func (r *apGroupResource) setResourceData(
-	ctx context.Context,
-	apGroup *unifi.APGroup,
-	model *apGroupResourceModel,
-	site string,
-) {
-	r.apGroupToModel(ctx, apGroup, model, site)
-}
-
 // apGroupToModel populates the resource model from the API struct, setting every
-// schema field. It is the reusable API->model converter shared by Read and List.
+// schema field. It is the reusable API->model converter shared by Read, Update,
+// and List.
 func (r *apGroupResource) apGroupToModel(
 	ctx context.Context,
 	api *unifi.APGroup,
@@ -479,13 +470,15 @@ func (r *apGroupResource) apGroupToModel(
 		model.Name = types.StringValue(api.Name)
 	}
 
-	if len(api.DeviceMacs) == 0 {
-		model.DeviceMacs = types.SetNull(hwtypes.MACAddressType{})
-	} else {
-		macsSet, d := types.SetValueFrom(ctx, hwtypes.MACAddressType{}, api.DeviceMacs)
-		diags.Append(d...)
-		model.DeviceMacs = macsSet
+	// Map an empty membership to an empty set (not null) so a config with
+	// device_macs = [] round-trips cleanly instead of showing an empty-vs-null diff.
+	macs := api.DeviceMacs
+	if macs == nil {
+		macs = []string{}
 	}
+	macsSet, d := types.SetValueFrom(ctx, hwtypes.MACAddressType{}, macs)
+	diags.Append(d...)
+	model.DeviceMacs = macsSet
 
 	return diags
 }

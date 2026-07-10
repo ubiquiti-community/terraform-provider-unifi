@@ -2,12 +2,12 @@
 page_title: Ap Group (Resource)
 subcategory: ""
 description: |-
-  unifi_ap_group manages a group of access points, which can be referenced from wireless networks (unifi_wlan) to control where an SSID is broadcast.
+  unifi_ap_group manages a group of access points, which can be referenced from wireless networks (unifi_wlan) to control where an SSID is broadcast. The controller's built-in default group ("All APs") is read-only; updating or deleting it through this resource fails with a controller error.
 ---
 
 # Ap Group (Resource)
 
-`unifi_ap_group` manages a group of access points, which can be referenced from wireless networks (`unifi_wlan`) to control where an SSID is broadcast.
+`unifi_ap_group` manages a group of access points, which can be referenced from wireless networks (`unifi_wlan`) to control where an SSID is broadcast. The controller's built-in default group ("All APs") is read-only; updating or deleting it through this resource fails with a controller error.
 
 ## Example Usage
 
@@ -33,7 +33,7 @@ resource "unifi_ap_group" "example" {
 
 ### Required
 
-- `device_macs` (Set of String) The MAC addresses of the access points that are members of the group.
+- `device_macs` (Set of String) The MAC addresses of the access points that are members of the group. May be empty — the controller accepts a group with no members.
 - `name` (String) The name of the AP group.
 
 ### Optional
