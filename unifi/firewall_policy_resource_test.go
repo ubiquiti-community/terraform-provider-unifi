@@ -799,6 +799,117 @@ func Test_endpointModelToSource(t *testing.T) {
 				IPs:                []string{"10.0.0.1"},
 			},
 		},
+		{
+			name: "source with IP group ref and empty type derives OBJECT",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z1"),
+					MatchingTarget:     types.StringValue("IP"),
+					MatchingTargetType: types.StringNull(),
+					NetworkIDs:         types.ListNull(types.StringType),
+					ClientMACs:         types.ListNull(types.StringType),
+					IPs:                types.ListNull(types.StringType),
+					WebDomains:         types.ListNull(types.StringType),
+					Port:               types.StringNull(),
+					PortGroupID:        types.StringNull(),
+					IPGroupID:          types.StringValue("689ff798c4b72577507ae001"),
+					PortMatchingType:   types.StringValue("ANY"),
+				},
+			},
+			want: &unifi.FirewallPolicySource{
+				ZoneID:             "z1",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "OBJECT",
+				IPGroupID:          "689ff798c4b72577507ae001",
+				PortMatchingType:   "ANY",
+			},
+		},
+		{
+			name: "source with literal ips and empty type derives SPECIFIC",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: func() firewallPolicyEndpointModel {
+					ctx := context.Background()
+					ips, _ := types.ListValueFrom(ctx, types.StringType, []string{"10.0.0.1"})
+					return firewallPolicyEndpointModel{
+						ZoneID:             types.StringValue("z1"),
+						MatchingTarget:     types.StringValue("IP"),
+						MatchingTargetType: types.StringNull(),
+						NetworkIDs:         types.ListNull(types.StringType),
+						ClientMACs:         types.ListNull(types.StringType),
+						IPs:                ips,
+						WebDomains:         types.ListNull(types.StringType),
+						Port:               types.StringNull(),
+						PortGroupID:        types.StringNull(),
+						PortMatchingType:   types.StringValue("ANY"),
+					}
+				}(),
+			},
+			want: &unifi.FirewallPolicySource{
+				ZoneID:             "z1",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "SPECIFIC",
+				PortMatchingType:   "ANY",
+				IPs:                []string{"10.0.0.1"},
+			},
+		},
+		{
+			name: "source with IP group ref overrides stale SPECIFIC to OBJECT",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z1"),
+					MatchingTarget:     types.StringValue("IP"),
+					MatchingTargetType: types.StringValue("SPECIFIC"),
+					NetworkIDs:         types.ListNull(types.StringType),
+					ClientMACs:         types.ListNull(types.StringType),
+					IPs:                types.ListNull(types.StringType),
+					WebDomains:         types.ListNull(types.StringType),
+					Port:               types.StringNull(),
+					PortGroupID:        types.StringNull(),
+					IPGroupID:          types.StringValue("689ff798c4b72577507ae001"),
+					PortMatchingType:   types.StringValue("ANY"),
+				},
+			},
+			want: &unifi.FirewallPolicySource{
+				ZoneID:             "z1",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "OBJECT",
+				IPGroupID:          "689ff798c4b72577507ae001",
+				PortMatchingType:   "ANY",
+			},
+		},
+		{
+			name: "source preserves controller-assigned LIST",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z1"),
+					MatchingTarget:     types.StringValue("IP"),
+					MatchingTargetType: types.StringValue("LIST"),
+					NetworkIDs:         types.ListNull(types.StringType),
+					ClientMACs:         types.ListNull(types.StringType),
+					IPs:                types.ListNull(types.StringType),
+					WebDomains:         types.ListNull(types.StringType),
+					Port:               types.StringNull(),
+					PortGroupID:        types.StringNull(),
+					IPGroupID:          types.StringValue("689ff798c4b72577507ae001"),
+					PortMatchingType:   types.StringValue("ANY"),
+				},
+			},
+			want: &unifi.FirewallPolicySource{
+				ZoneID:             "z1",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "LIST",
+				IPGroupID:          "689ff798c4b72577507ae001",
+				PortMatchingType:   "ANY",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -856,6 +967,117 @@ func Test_endpointModelToDestination(t *testing.T) {
 				Port:               "80",
 				PortMatchingType:   "SPECIFIC",
 				IPs:                []string{"192.168.1.1"},
+			},
+		},
+		{
+			name: "destination with IP group ref and empty type derives OBJECT",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z2"),
+					MatchingTarget:     types.StringValue("IP"),
+					MatchingTargetType: types.StringNull(),
+					NetworkIDs:         types.ListNull(types.StringType),
+					ClientMACs:         types.ListNull(types.StringType),
+					IPs:                types.ListNull(types.StringType),
+					WebDomains:         types.ListNull(types.StringType),
+					Port:               types.StringNull(),
+					PortGroupID:        types.StringNull(),
+					IPGroupID:          types.StringValue("689ff798c4b72577507ae001"),
+					PortMatchingType:   types.StringValue("ANY"),
+				},
+			},
+			want: &unifi.FirewallPolicyDestination{
+				ZoneID:             "z2",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "OBJECT",
+				IPGroupID:          "689ff798c4b72577507ae001",
+				PortMatchingType:   "ANY",
+			},
+		},
+		{
+			name: "destination with literal ips and empty type derives SPECIFIC",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: func() firewallPolicyEndpointModel {
+					ctx := context.Background()
+					ips, _ := types.ListValueFrom(ctx, types.StringType, []string{"192.168.1.1"})
+					return firewallPolicyEndpointModel{
+						ZoneID:             types.StringValue("z2"),
+						MatchingTarget:     types.StringValue("IP"),
+						MatchingTargetType: types.StringNull(),
+						NetworkIDs:         types.ListNull(types.StringType),
+						ClientMACs:         types.ListNull(types.StringType),
+						IPs:                ips,
+						WebDomains:         types.ListNull(types.StringType),
+						Port:               types.StringNull(),
+						PortGroupID:        types.StringNull(),
+						PortMatchingType:   types.StringValue("ANY"),
+					}
+				}(),
+			},
+			want: &unifi.FirewallPolicyDestination{
+				ZoneID:             "z2",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "SPECIFIC",
+				PortMatchingType:   "ANY",
+				IPs:                []string{"192.168.1.1"},
+			},
+		},
+		{
+			name: "destination with IP group ref overrides stale SPECIFIC to OBJECT",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z2"),
+					MatchingTarget:     types.StringValue("IP"),
+					MatchingTargetType: types.StringValue("SPECIFIC"),
+					NetworkIDs:         types.ListNull(types.StringType),
+					ClientMACs:         types.ListNull(types.StringType),
+					IPs:                types.ListNull(types.StringType),
+					WebDomains:         types.ListNull(types.StringType),
+					Port:               types.StringNull(),
+					PortGroupID:        types.StringNull(),
+					IPGroupID:          types.StringValue("689ff798c4b72577507ae001"),
+					PortMatchingType:   types.StringValue("ANY"),
+				},
+			},
+			want: &unifi.FirewallPolicyDestination{
+				ZoneID:             "z2",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "OBJECT",
+				IPGroupID:          "689ff798c4b72577507ae001",
+				PortMatchingType:   "ANY",
+			},
+		},
+		{
+			name: "destination preserves controller-assigned LIST",
+			args: args{
+				ctx:   context.Background(),
+				diags: &diag.Diagnostics{},
+				m: firewallPolicyEndpointModel{
+					ZoneID:             types.StringValue("z2"),
+					MatchingTarget:     types.StringValue("IP"),
+					MatchingTargetType: types.StringValue("LIST"),
+					NetworkIDs:         types.ListNull(types.StringType),
+					ClientMACs:         types.ListNull(types.StringType),
+					IPs:                types.ListNull(types.StringType),
+					WebDomains:         types.ListNull(types.StringType),
+					Port:               types.StringNull(),
+					PortGroupID:        types.StringNull(),
+					IPGroupID:          types.StringValue("689ff798c4b72577507ae001"),
+					PortMatchingType:   types.StringValue("ANY"),
+				},
+			},
+			want: &unifi.FirewallPolicyDestination{
+				ZoneID:             "z2",
+				MatchingTarget:     "IP",
+				MatchingTargetType: "LIST",
+				IPGroupID:          "689ff798c4b72577507ae001",
+				PortMatchingType:   "ANY",
 			},
 		},
 	}
@@ -1164,20 +1386,33 @@ func Test_firewallPolicyResource_ListResourceConfigSchema(t *testing.T) {
 // switched from ANY to e.g. IP. A controller-assigned type is preserved.
 func TestFirewallPolicyMatchingTargetType(t *testing.T) {
 	cases := []struct {
-		matchingTarget, current, want string
+		matchingTarget, current, ipGroupID, want string
 	}{
-		{"IP", "", "SPECIFIC"},         // ANY -> IP, type was dropped
-		{"IP", "ANY", "SPECIFIC"},      // ANY -> IP, stale "ANY" left over
-		{"IP", "SPECIFIC", "SPECIFIC"}, // already correct
-		{"IP", "OBJECT", "OBJECT"},     // controller-assigned object/group preserved
-		{"NETWORK", "", "SPECIFIC"},
-		{"ANY", "", ""}, // ANY source untouched
-		{"ANY", "ANY", "ANY"},
+		{"IP", "", "", "SPECIFIC"},         // ANY -> IP, type was dropped
+		{"IP", "ANY", "", "SPECIFIC"},      // ANY -> IP, stale "ANY" left over
+		{"IP", "SPECIFIC", "", "SPECIFIC"}, // already correct
+		{"IP", "OBJECT", "", "OBJECT"},     // controller-assigned object/group preserved
+		{"NETWORK", "", "", "SPECIFIC"},
+		{"ANY", "", "", ""}, // ANY source untouched
+		{"ANY", "ANY", "", "ANY"},
+		// ip_group_id set (#316): the group reference requires OBJECT. On create
+		// the type is empty; on an update from literal ips a stale
+		// ""/"ANY"/"SPECIFIC" may ride along — all must derive OBJECT.
+		{"IP", "", "gid1", "OBJECT"},
+		{"IP", "ANY", "gid1", "OBJECT"},
+		{"IP", "SPECIFIC", "gid1", "OBJECT"},
+		{"IP", "OBJECT", "gid1", "OBJECT"}, // already correct
+		{"IP", "LIST", "gid1", "LIST"},     // controller-assigned LIST preserved
+		// The group check ignores matching_target: a non-empty ip_group_id
+		// derives OBJECT even for targets that shouldn't carry one (the schema
+		// has no cross-field validation either way; pinned as documentation).
+		{"ANY", "", "gid1", "OBJECT"},
+		{"NETWORK", "", "gid1", "OBJECT"},
 	}
 	for _, c := range cases {
-		if got := firewallPolicyMatchingTargetType(c.matchingTarget, c.current); got != c.want {
-			t.Errorf("matchingTargetType(%q,%q) = %q, want %q",
-				c.matchingTarget, c.current, got, c.want)
+		if got := firewallPolicyMatchingTargetType(c.matchingTarget, c.current, c.ipGroupID); got != c.want {
+			t.Errorf("matchingTargetType(%q,%q,%q) = %q, want %q",
+				c.matchingTarget, c.current, c.ipGroupID, got, c.want)
 		}
 	}
 

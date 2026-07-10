@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **`unifi_firewall_policy`: fix creating a policy that matches an IP group failing with `api.err.EmptyFirewallDestinationIps` (400).** A `source`/`destination` referencing an address group via `ip_group_id` (#316) must be sent with `matching_target_type = "OBJECT"`, but the #293 derivation back-filled an empty type as `SPECIFIC` for any non-ANY match — and on create the type is never controller-assigned, so every create with `ip_group_id` was rejected and only literal `ips` worked. A group reference now derives `OBJECT`, also overriding a stale `""`/`"ANY"`/`"SPECIFIC"` carried in state so switching an existing policy from literal `ips` to a group reference works on update too; a controller-assigned `OBJECT`/`LIST` is still preserved (#365, #316, #293)
 - **`unifi_device` / `unifi_setting`: stop controller-managed lists churning to "known after apply" on unrelated edits.** Several `Optional + Computed` lists were replanned as `(known after apply)` whenever any other field on the same resource changed — a spurious diff (the same class as #338). They now use `UseStateForUnknown`, keeping their prior value unless explicitly changed: `unifi_device` `radio_table` and `outlet_overrides`, and `unifi_setting` `contents` (syslog facilities), `server_names` (DoH), `enabled_categories` / `enabled_networks` (IPS), and `network_ids` (IGMP snooping).
 
 ## [v0.54.1] - 2026-07-05
