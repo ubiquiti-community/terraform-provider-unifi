@@ -1410,7 +1410,8 @@ func TestFirewallPolicyMatchingTargetType(t *testing.T) {
 		{"NETWORK", "", "gid1", "OBJECT"},
 	}
 	for _, c := range cases {
-		if got := firewallPolicyMatchingTargetType(c.matchingTarget, c.current, c.ipGroupID); got != c.want {
+		got := firewallPolicyMatchingTargetType(c.matchingTarget, c.current, c.ipGroupID)
+		if got != c.want {
 			t.Errorf("matchingTargetType(%q,%q,%q) = %q, want %q",
 				c.matchingTarget, c.current, c.ipGroupID, got, c.want)
 		}
