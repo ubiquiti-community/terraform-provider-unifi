@@ -830,9 +830,17 @@ func modelToFirewallPolicy(
 // match whose matching_target_type is empty (#293,
 // api.err.MissingFirewallPolicySourceMatchingTargetType) — which happens when a
 // source is switched from ANY to a specific target, leaving the round-tripped
-// type empty or a stale "ANY". A controller-assigned type (SPECIFIC/OBJECT/LIST)
-// is preserved.
-func firewallPolicyMatchingTargetType(matchingTarget, currentType string) string {
+// type empty or a stale "ANY". A match that references an IP group via
+// ip_group_id (#316) requires "OBJECT" instead: the controller rejects a group
+// reference sent with "SPECIFIC" (api.err.EmptyFirewallDestinationIps), and on
+// create the type is never controller-assigned, so a group reference derives
+// "OBJECT" — overriding a stale ""/"ANY"/"SPECIFIC" from state (e.g. when a
+// policy is switched from literal ips to a group). A controller-assigned
+// "OBJECT"/"LIST" is preserved.
+func firewallPolicyMatchingTargetType(matchingTarget, currentType, ipGroupID string) string {
+	if ipGroupID != "" && currentType != "OBJECT" && currentType != "LIST" {
+		return "OBJECT"
+	}
 	if matchingTarget != "" && matchingTarget != "ANY" &&
 		(currentType == "" || currentType == "ANY") {
 		return "SPECIFIC"
@@ -850,6 +858,7 @@ func endpointModelToSource(
 		MatchingTarget: m.MatchingTarget.ValueString(),
 		MatchingTargetType: firewallPolicyMatchingTargetType(
 			m.MatchingTarget.ValueString(), m.MatchingTargetType.ValueString(),
+			m.IPGroupID.ValueString(),
 		),
 		Port:             m.Port.ValueString(),
 		PortGroupID:      m.PortGroupID.ValueString(),
@@ -881,6 +890,7 @@ func endpointModelToDestination(
 		MatchingTarget: m.MatchingTarget.ValueString(),
 		MatchingTargetType: firewallPolicyMatchingTargetType(
 			m.MatchingTarget.ValueString(), m.MatchingTargetType.ValueString(),
+			m.IPGroupID.ValueString(),
 		),
 		Port:             m.Port.ValueString(),
 		PortGroupID:      m.PortGroupID.ValueString(),
