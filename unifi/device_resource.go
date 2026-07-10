@@ -110,6 +110,9 @@ type deviceResourceModel struct {
 	// VLAN
 	SwitchVLANEnabled types.Bool `tfsdk:"switch_vlan_enabled"`
 
+	// Mesh
+	MeshStaVapEnabled types.Bool `tfsdk:"mesh_sta_vap_enabled"`
+
 	// Radio settings
 	RadioTable types.List `tfsdk:"radio_table"`
 
@@ -472,6 +475,19 @@ func (r *deviceResource) Schema(
 				Description: "Enable VLAN support on the switch.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+
+			// Mesh
+			"mesh_sta_vap_enabled": schema.BoolAttribute{
+				Description: "Enable the mesh station VAP (the UI \"Mesh Connect\" toggle), letting this AP uplink wirelessly to a mesh parent.",
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Advanced features
@@ -1582,6 +1598,24 @@ func (r *deviceResource) ImportState(
 // not be set through the provider (#329). modelToAPIDevice only sets it when
 // configured, and it is `omitempty`, so a null value stays off the wire and
 // never reintroduces the #177 zero-value rejection.
+//
+// switch_vlan_enabled (the UI "Port VLAN" toggle, needed on APs with a built-in
+// switch to make VLAN tagging take effect on the built-in ports) is the same
+// story: the hand-listed body dropped it, so the controller kept its old value
+// and the post-apply read conflicted with a configured `true`. It is `omitempty`,
+// so a `false` stays off the wire and doesn't disturb the controller default.
+//
+// radio_table and mesh_sta_vap_enabled are the same bug class for the mesh
+// toggles. radio_table[].vwire_enabled (the UI "Mesh Parent" toggle) is fully
+// wired through the schema and converters, but the hand-listed body never copied
+// radio_table across, so every radio_table sub-field — vwire_enabled included —
+// was dropped from the PUT. mesh_sta_vap_enabled (the top-level "Mesh Connect"
+// toggle) is likewise carried here. Both are `omitempty` (radio_table at the
+// device level, and every DeviceRadioTable sub-field), so an unset table or a
+// false/zero sub-field stays off the wire. Note that when radio_table is in the
+// plan (user-configured, or state-inherited via the list's UseStateForUnknown),
+// its non-zero sub-fields (channel, tx_power, …) also travel in the PUT; sending
+// back the values the controller already returned is idempotent.
 func buildMinimalUpdateDevice(
 	deviceReq, currentDevice *unifi.Device,
 	portOverrides []unifi.DevicePortOverrides,
@@ -1596,6 +1630,9 @@ func buildMinimalUpdateDevice(
 		LedOverride:                deviceReq.LedOverride,
 		LedOverrideColor:           deviceReq.LedOverrideColor,
 		LedOverrideColorBrightness: deviceReq.LedOverrideColorBrightness,
+		SwitchVLANEnabled:          deviceReq.SwitchVLANEnabled,
+		MeshStaVapEnabled:          deviceReq.MeshStaVapEnabled,
+		RadioTable:                 deviceReq.RadioTable,
 	}
 	if currentDevice != nil {
 		minimalDevice.State = currentDevice.State
@@ -1793,6 +1830,9 @@ func (r *deviceResource) setResourceData(
 	// VLAN
 	model.SwitchVLANEnabled = types.BoolValue(device.SwitchVLANEnabled)
 
+	// Mesh
+	model.MeshStaVapEnabled = types.BoolValue(device.MeshStaVapEnabled)
+
 	// Advanced features
 	if device.OutdoorModeOverride == "" {
 		model.OutdoorModeOverride = types.StringNull()
@@ -1923,6 +1963,9 @@ func (r *deviceResource) modelToAPIDevice(
 
 	// VLAN
 	device.SwitchVLANEnabled = model.SwitchVLANEnabled.ValueBool()
+
+	// Mesh
+	device.MeshStaVapEnabled = model.MeshStaVapEnabled.ValueBool()
 
 	// Advanced features
 	if !model.OutdoorModeOverride.IsNull() {
