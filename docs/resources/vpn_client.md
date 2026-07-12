@@ -50,6 +50,33 @@ resource "unifi_vpn_client" "wireguard_manual" {
   }
 }
 
+variable "wireguard_private_key" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
+resource "unifi_vpn_client" "wireguard_write_only" {
+  name          = "my-write-only-wireguard"
+  enabled       = true
+  subnet        = "10.0.2.2/24"
+  default_route = false
+  pull_dns      = true
+
+  wireguard = {
+    private_key_wo         = var.wireguard_private_key
+    private_key_wo_version = 1
+    interface              = "wan"
+    dns_servers            = ["1.1.1.1"]
+
+    peer = {
+      ip         = "203.0.113.1"
+      port       = 51820
+      public_key = "your_peer_public_key_here"
+    }
+  }
+}
+
 resource "unifi_vpn_client" "wireguard_with_psk" {
   name          = "secure-wireguard"
   enabled       = true
@@ -97,10 +124,6 @@ resource "unifi_vpn_client" "wireguard_with_psk" {
 <a id="nestedatt--wireguard"></a>
 ### Nested Schema for `wireguard`
 
-Required:
-
-- `private_key` (String, Sensitive) WireGuard private key for this client.
-
 Optional:
 
 - `configuration` (Attributes) File-based WireGuard configuration. Provide a complete WireGuard .conf file. (see [below for nested schema](#nestedatt--wireguard--configuration))
@@ -109,6 +132,9 @@ Optional:
 - `peer` (Attributes) Manual WireGuard peer configuration. Specify peer endpoint and public key. (see [below for nested schema](#nestedatt--wireguard--peer))
 - `preshared_key` (String, Sensitive) WireGuard preshared key. Required when preshared_key_enabled is true.
 - `preshared_key_enabled` (Boolean) Specifies whether to use a preshared key for additional security.
+- `private_key` (String, Sensitive) WireGuard private key for this client. Stored in state; use `private_key_wo` to avoid persisting the secret.
+- `private_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `private_key` (Terraform 1.11+). Used at apply time but never written to state. Mutually exclusive with `private_key`.
+- `private_key_wo_version` (Number) Version counter for `private_key_wo`. Increment this value to trigger a private key update.
 
 <a id="nestedatt--wireguard--configuration"></a>
 ### Nested Schema for `wireguard.configuration`
