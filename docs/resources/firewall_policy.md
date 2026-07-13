@@ -155,18 +155,6 @@ resource "unifi_firewall_policy" "block_web_domains" {
   action   = "BLOCK"
   protocol = "all"
 
-  # Apply this policy during weekday evening hours. Use ALWAYS to make a
-  # policy continuously active, EVERY_DAY for a daily time range,
-  # ONE_TIME_ONLY with date and an explicit time range, or CUSTOM with
-  # date_start/date_end. Active modes require an explicit time_all_day value.
-  schedule = {
-    mode             = "EVERY_WEEK"
-    repeat_on_days   = ["mon", "tue", "wed", "thu", "fri"]
-    time_all_day     = false
-    time_range_start = "18:00"
-    time_range_end   = "23:00"
-  }
-
   source = {
     zone_id         = unifi_firewall_zone.lan.id
     matching_target = "ANY"
@@ -200,7 +188,6 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.
 - `logging` (Boolean) Whether to log packets matching this policy. Defaults to `false`.
 - `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, `icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` policies the controller rejects `create_allow_respond = true` (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy if you need the reply.
-- `schedule` (Attributes) When the policy is active. The complete controller value is round-tripped so updating another policy field does not reset its schedule. Modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, and `CUSTOM`. `EVERY_DAY`, `EVERY_WEEK`, and `CUSTOM` require an explicit `time_all_day`; when false, both time-range fields are required. `EVERY_WEEK` also needs weekdays; `ONE_TIME_ONLY` needs `date`, `time_all_day = false`, and an explicit time range; and `CUSTOM` needs `date_start`, `date_end`, and weekdays. Extra controller-returned fields are preserved by default. (see [below for nested schema](#nestedatt--schedule))
 - `site` (String) The name of the UniFi site. Defaults to the site configured in the provider.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
@@ -257,22 +244,6 @@ Optional:
 Read-Only:
 
 - `matching_target_type` (String) How the matching target is specified (`ANY`, `SPECIFIC`, `LIST`, `OBJECT`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
-
-
-<a id="nestedatt--schedule"></a>
-### Nested Schema for `schedule`
-
-Optional:
-
-- `date` (String) Date used by `ONE_TIME_ONLY`, in `YYYY-MM-DD` format.
-- `date_end` (String) End date used by `CUSTOM`, in `YYYY-MM-DD` format.
-- `date_start` (String) Start date used by `CUSTOM`, in `YYYY-MM-DD` format.
-- `mode` (String) Schedule mode: `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, or `CUSTOM`.
-- `normalize` (Boolean) Clear inherited schedule fields that are not used by the selected mode. Defaults to `false`, preserving controller-returned metadata. When true, omit unused fields from configuration.
-- `repeat_on_days` (Set of String) Weekdays on which the policy is active: `mon` through `sun`.
-- `time_all_day` (Boolean) Whether the policy is active all day on matching dates. Set explicitly for active modes; use false for `ONE_TIME_ONLY`; omit for canonical `ALWAYS` schedules.
-- `time_range_end` (String) End time in 24-hour `HH:MM` format.
-- `time_range_start` (String) Start time in 24-hour `HH:MM` format.
 
 
 <a id="nestedatt--timeouts"></a>

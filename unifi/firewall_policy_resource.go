@@ -10,7 +10,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -21,12 +20,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -40,7 +37,6 @@ var (
 	_ resource.Resource                 = &firewallPolicyResource{}
 	_ resource.ResourceWithImportState  = &firewallPolicyResource{}
 	_ resource.ResourceWithIdentity     = &firewallPolicyResource{}
-	_ resource.ResourceWithModifyPlan   = &firewallPolicyResource{}
 	_ resource.ResourceWithUpgradeState = &firewallPolicyResource{}
 )
 
@@ -108,7 +104,6 @@ type firewallPolicyScheduleModel struct {
 	DateStart      types.String `tfsdk:"date_start"`
 	DateEnd        types.String `tfsdk:"date_end"`
 	Mode           types.String `tfsdk:"mode"`
-	Normalize      types.Bool   `tfsdk:"normalize"`
 	RepeatOnDays   types.Set    `tfsdk:"repeat_on_days"`
 	TimeAllDay     types.Bool   `tfsdk:"time_all_day"`
 	TimeRangeStart types.String `tfsdk:"time_range_start"`
@@ -121,11 +116,26 @@ func (m firewallPolicyScheduleModel) AttributeTypes() map[string]attr.Type {
 		"date_start":       types.StringType,
 		"date_end":         types.StringType,
 		"mode":             types.StringType,
-		"normalize":        types.BoolType,
 		"repeat_on_days":   types.SetType{ElemType: types.StringType},
 		"time_all_day":     types.BoolType,
 		"time_range_start": types.StringType,
 		"time_range_end":   types.StringType,
+	}
+}
+
+func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"date":       schema.StringAttribute{Computed: true},
+		"date_start": schema.StringAttribute{Computed: true},
+		"date_end":   schema.StringAttribute{Computed: true},
+		"mode":       schema.StringAttribute{Computed: true},
+		"repeat_on_days": schema.SetAttribute{
+			Computed:    true,
+			ElementType: types.StringType,
+		},
+		"time_all_day":     schema.BoolAttribute{Computed: true},
+		"time_range_start": schema.StringAttribute{Computed: true},
+		"time_range_end":   schema.StringAttribute{Computed: true},
 	}
 }
 
@@ -416,139 +426,14 @@ func (r *firewallPolicyResource) Schema(
 				},
 			},
 			"schedule": schema.SingleNestedAttribute{
-				MarkdownDescription: "When the policy is active. The complete controller value is " +
-					"round-tripped so updating another policy field does not reset its schedule. " +
-					"Modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, and `CUSTOM`. " +
-					"`EVERY_DAY`, `EVERY_WEEK`, and `CUSTOM` require an explicit `time_all_day`; " +
-					"when false, both time-range fields are required. `EVERY_WEEK` also needs weekdays; " +
-					"`ONE_TIME_ONLY` needs `date`, `time_all_day = false`, and an explicit time range; " +
-					"and `CUSTOM` needs `date_start`, `date_end`, and weekdays. Extra controller-returned " +
-					"fields are preserved by default.",
-				Optional: true,
+				MarkdownDescription: "Schedule returned by the UniFi controller. It is " +
+					"preserved in state so importing a scheduled policy or updating another " +
+					"field does not replace the existing schedule.",
 				Computed: true,
 				PlanModifiers: []planmodifier.Object{
 					objectplanmodifier.UseStateForUnknown(),
 				},
-				Validators: []validator.Object{
-					firewallPolicyScheduleValidator{},
-				},
-				Attributes: map[string]schema.Attribute{
-					"date": schema.StringAttribute{
-						MarkdownDescription: "Date used by `ONE_TIME_ONLY`, in `YYYY-MM-DD` format.",
-						Optional:            true,
-						Computed:            true,
-						Validators: []validator.String{
-							stringvalidator.RegexMatches(
-								regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`),
-								"must use YYYY-MM-DD format",
-							),
-						},
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"date_start": schema.StringAttribute{
-						MarkdownDescription: "Start date used by `CUSTOM`, in `YYYY-MM-DD` format.",
-						Optional:            true,
-						Computed:            true,
-						Validators: []validator.String{
-							stringvalidator.RegexMatches(
-								regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`),
-								"must use YYYY-MM-DD format",
-							),
-						},
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"date_end": schema.StringAttribute{
-						MarkdownDescription: "End date used by `CUSTOM`, in `YYYY-MM-DD` format.",
-						Optional:            true,
-						Computed:            true,
-						Validators: []validator.String{
-							stringvalidator.RegexMatches(
-								regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`),
-								"must use YYYY-MM-DD format",
-							),
-						},
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"mode": schema.StringAttribute{
-						MarkdownDescription: "Schedule mode: `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, or `CUSTOM`.",
-						Optional:            true,
-						Computed:            true,
-						Validators: []validator.String{
-							stringvalidator.OneOf(
-								"ALWAYS", "EVERY_DAY", "EVERY_WEEK", "ONE_TIME_ONLY", "CUSTOM",
-							),
-						},
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"normalize": schema.BoolAttribute{
-						MarkdownDescription: "Clear inherited schedule fields that are not used by the " +
-							"selected mode. Defaults to `false`, preserving controller-returned metadata. " +
-							"When true, omit unused fields from configuration.",
-						Optional: true,
-						Computed: true,
-						Default:  booldefault.StaticBool(false),
-					},
-					"repeat_on_days": schema.SetAttribute{
-						MarkdownDescription: "Weekdays on which the policy is active: `mon` through `sun`.",
-						Optional:            true,
-						Computed:            true,
-						ElementType:         types.StringType,
-						Validators: []validator.Set{
-							setvalidator.ValueStringsAre(
-								stringvalidator.OneOf("mon", "tue", "wed", "thu", "fri", "sat", "sun"),
-							),
-						},
-						PlanModifiers: []planmodifier.Set{
-							setplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"time_all_day": schema.BoolAttribute{
-						MarkdownDescription: "Whether the policy is active all day on matching dates. " +
-							"Set explicitly for active modes; use false for `ONE_TIME_ONLY`; omit for " +
-							"canonical `ALWAYS` schedules.",
-						Optional: true,
-						Computed: true,
-						PlanModifiers: []planmodifier.Bool{
-							boolplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"time_range_start": schema.StringAttribute{
-						MarkdownDescription: "Start time in 24-hour `HH:MM` format.",
-						Optional:            true,
-						Computed:            true,
-						Validators: []validator.String{
-							stringvalidator.RegexMatches(
-								regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`),
-								"must use 24-hour HH:MM format",
-							),
-						},
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-					"time_range_end": schema.StringAttribute{
-						MarkdownDescription: "End time in 24-hour `HH:MM` format.",
-						Optional:            true,
-						Computed:            true,
-						Validators: []validator.String{
-							stringvalidator.RegexMatches(
-								regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`),
-								"must use 24-hour HH:MM format",
-							),
-						},
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-					},
-				},
+				Attributes: firewallPolicyScheduleAttributes(),
 			},
 			"source": schema.SingleNestedAttribute{
 				MarkdownDescription: "The source endpoint of the policy.",
@@ -590,39 +475,6 @@ func (r *firewallPolicyResource) Configure(
 	}
 
 	r.client = client
-}
-
-// ModifyPlan makes explicit schedule normalization visible in the reviewed
-// plan. Without this step, Optional+Computed fields omitted from configuration
-// inherit their prior state, while normalize=true removes them from the API
-// payload. The controller then returns null and Terraform correctly reports an
-// inconsistent post-apply result because the provider changed a known value.
-func (r *firewallPolicyResource) ModifyPlan(
-	ctx context.Context,
-	req resource.ModifyPlanRequest,
-	resp *resource.ModifyPlanResponse,
-) {
-	if req.Plan.Raw.IsNull() {
-		return
-	}
-
-	var schedule types.Object
-	resp.Diagnostics.Append(
-		req.Plan.GetAttribute(ctx, path.Root("schedule"), &schedule)...,
-	)
-	if resp.Diagnostics.HasError() || schedule.IsNull() || schedule.IsUnknown() {
-		return
-	}
-
-	normalized, changed, diags := normalizeFirewallPolicySchedulePlan(ctx, schedule)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() || !changed {
-		return
-	}
-
-	resp.Diagnostics.Append(
-		resp.Plan.SetAttribute(ctx, path.Root("schedule"), normalized)...,
-	)
 }
 
 func (r *firewallPolicyResource) Create(
@@ -1023,10 +875,6 @@ func modelToFirewallPolicy(
 			if !schedule.RepeatOnDays.IsNull() && !schedule.RepeatOnDays.IsUnknown() {
 				diags.Append(schedule.RepeatOnDays.ElementsAs(ctx, &fp.Schedule.RepeatOnDays, false)...)
 			}
-			if !schedule.Normalize.IsNull() && !schedule.Normalize.IsUnknown() &&
-				schedule.Normalize.ValueBool() {
-				normalizeFirewallPolicySchedule(fp.Schedule)
-			}
 		}
 	}
 
@@ -1205,17 +1053,6 @@ func firewallPolicyToModel(
 	if fp.Schedule == nil {
 		model.Schedule = types.ObjectNull(firewallPolicyScheduleModel{}.AttributeTypes())
 	} else {
-		normalize := types.BoolValue(false)
-		if !model.Schedule.IsNull() && !model.Schedule.IsUnknown() {
-			var priorSchedule firewallPolicyScheduleModel
-			priorDiags := model.Schedule.As(
-				ctx, &priorSchedule, basetypes.ObjectAsOptions{},
-			)
-			diags.Append(priorDiags...)
-			if !priorSchedule.Normalize.IsNull() && !priorSchedule.Normalize.IsUnknown() {
-				normalize = priorSchedule.Normalize
-			}
-		}
 		repeatOnDays := types.SetValueMust(types.StringType, []attr.Value{})
 		if fp.Schedule.RepeatOnDays != nil {
 			var scheduleDiags diag.Diagnostics
@@ -1229,7 +1066,6 @@ func firewallPolicyToModel(
 			DateStart:      util.StringValueOrNull(fp.Schedule.DateStart),
 			DateEnd:        util.StringValueOrNull(fp.Schedule.DateEnd),
 			Mode:           util.StringValueOrNull(fp.Schedule.Mode),
-			Normalize:      normalize,
 			RepeatOnDays:   repeatOnDays,
 			TimeAllDay:     types.BoolPointerValue(fp.Schedule.TimeAllDay),
 			TimeRangeStart: util.StringValueOrNull(fp.Schedule.TimeRangeStart),
@@ -1269,106 +1105,6 @@ func firewallPolicyToModel(
 	}
 
 	return diags
-}
-
-// normalizeFirewallPolicySchedule removes fields that do not participate in
-// the selected mode. Preservation is the default because controllers can keep
-// legacy metadata; normalization is an explicit user choice.
-func normalizeFirewallPolicySchedule(schedule *unifi.FirewallPolicySchedule) {
-	if schedule == nil {
-		return
-	}
-
-	switch schedule.Mode {
-	case "ALWAYS":
-		schedule.Date = ""
-		schedule.DateStart = ""
-		schedule.DateEnd = ""
-		schedule.RepeatOnDays = nil
-		schedule.TimeAllDay = nil
-		schedule.TimeRangeStart = ""
-		schedule.TimeRangeEnd = ""
-	case "EVERY_DAY":
-		schedule.Date = ""
-		schedule.DateStart = ""
-		schedule.DateEnd = ""
-		schedule.RepeatOnDays = nil
-	case "EVERY_WEEK":
-		schedule.Date = ""
-		schedule.DateStart = ""
-		schedule.DateEnd = ""
-	case "ONE_TIME_ONLY":
-		schedule.DateStart = ""
-		schedule.DateEnd = ""
-		schedule.RepeatOnDays = nil
-	case "CUSTOM":
-		schedule.Date = ""
-	}
-
-	if schedule.TimeAllDay != nil && *schedule.TimeAllDay {
-		schedule.TimeRangeStart = ""
-		schedule.TimeRangeEnd = ""
-	}
-}
-
-// normalizeFirewallPolicySchedulePlan mirrors normalizeFirewallPolicySchedule
-// for Terraform values so the plan and the controller's response agree.
-func normalizeFirewallPolicySchedulePlan(
-	ctx context.Context,
-	value types.Object,
-) (types.Object, bool, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	if value.IsNull() || value.IsUnknown() {
-		return value, false, diags
-	}
-
-	var schedule firewallPolicyScheduleModel
-	diags.Append(value.As(ctx, &schedule, basetypes.ObjectAsOptions{})...)
-	if diags.HasError() || schedule.Normalize.IsNull() || schedule.Normalize.IsUnknown() ||
-		!schedule.Normalize.ValueBool() || schedule.Mode.IsNull() || schedule.Mode.IsUnknown() {
-		return value, false, diags
-	}
-
-	emptyDays := types.SetValueMust(types.StringType, []attr.Value{})
-	switch schedule.Mode.ValueString() {
-	case "ALWAYS":
-		schedule.Date = types.StringNull()
-		schedule.DateStart = types.StringNull()
-		schedule.DateEnd = types.StringNull()
-		schedule.RepeatOnDays = emptyDays
-		schedule.TimeAllDay = types.BoolNull()
-		schedule.TimeRangeStart = types.StringNull()
-		schedule.TimeRangeEnd = types.StringNull()
-	case "EVERY_DAY":
-		schedule.Date = types.StringNull()
-		schedule.DateStart = types.StringNull()
-		schedule.DateEnd = types.StringNull()
-		schedule.RepeatOnDays = emptyDays
-	case "EVERY_WEEK":
-		schedule.Date = types.StringNull()
-		schedule.DateStart = types.StringNull()
-		schedule.DateEnd = types.StringNull()
-	case "ONE_TIME_ONLY":
-		schedule.DateStart = types.StringNull()
-		schedule.DateEnd = types.StringNull()
-		schedule.RepeatOnDays = emptyDays
-	case "CUSTOM":
-		schedule.Date = types.StringNull()
-	}
-
-	if !schedule.TimeAllDay.IsNull() && !schedule.TimeAllDay.IsUnknown() &&
-		schedule.TimeAllDay.ValueBool() {
-		schedule.TimeRangeStart = types.StringNull()
-		schedule.TimeRangeEnd = types.StringNull()
-	}
-
-	normalized, objectDiags := types.ObjectValueFrom(
-		ctx,
-		firewallPolicyScheduleModel{}.AttributeTypes(),
-		schedule,
-	)
-	diags.Append(objectDiags...)
-	return normalized, !diags.HasError() && !normalized.Equal(value), diags
 }
 
 func apiSourceToEndpointModel(

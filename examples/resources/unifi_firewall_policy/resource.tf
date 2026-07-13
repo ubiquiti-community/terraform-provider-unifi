@@ -141,18 +141,6 @@ resource "unifi_firewall_policy" "block_web_domains" {
   action   = "BLOCK"
   protocol = "all"
 
-  # Apply this policy during weekday evening hours. Use ALWAYS to make a
-  # policy continuously active, EVERY_DAY for a daily time range,
-  # ONE_TIME_ONLY with date and an explicit time range, or CUSTOM with
-  # date_start/date_end. Active modes require an explicit time_all_day value.
-  schedule = {
-    mode             = "EVERY_WEEK"
-    repeat_on_days   = ["mon", "tue", "wed", "thu", "fri"]
-    time_all_day     = false
-    time_range_start = "18:00"
-    time_range_end   = "23:00"
-  }
-
   source = {
     zone_id         = unifi_firewall_zone.lan.id
     matching_target = "ANY"
