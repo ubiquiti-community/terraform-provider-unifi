@@ -25,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -104,6 +105,8 @@ func (m wireguardPeerModel) AttributeTypes() map[string]attr.Type {
 // wireguardModel describes the WireGuard VPN configuration.
 type wireguardModel struct {
 	PrivateKey          types.String `tfsdk:"private_key"`
+	PrivateKeyWO        types.String `tfsdk:"private_key_wo"`
+	PrivateKeyWOVersion types.Int64  `tfsdk:"private_key_wo_version"`
 	Configuration       types.Object `tfsdk:"configuration"`
 	Peer                types.Object `tfsdk:"peer"`
 	PresharedKeyEnabled types.Bool   `tfsdk:"preshared_key_enabled"`
@@ -114,7 +117,9 @@ type wireguardModel struct {
 
 func (m wireguardModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"private_key": types.StringType,
+		"private_key":            types.StringType,
+		"private_key_wo":         types.StringType,
+		"private_key_wo_version": types.Int64Type,
 		"configuration": types.ObjectType{
 			AttrTypes: wireguardConfigurationModel{}.AttributeTypes(),
 		},
@@ -219,9 +224,43 @@ func (r *vpnClientResource) Schema(
 				Required:            true,
 				Attributes: map[string]schema.Attribute{
 					"private_key": schema.StringAttribute{
-						MarkdownDescription: "WireGuard private key for this client.",
-						Required:            true,
+						MarkdownDescription: "WireGuard private key for this client. Stored in state; use `private_key_wo` to avoid persisting the secret.",
+						Optional:            true,
 						Sensitive:           true,
+						Validators: []validator.String{
+							stringvalidator.AtLeastOneOf(
+								path.MatchRelative().AtParent().AtName("private_key"),
+								path.MatchRelative().AtParent().AtName("private_key_wo"),
+							),
+							stringvalidator.ConflictsWith(
+								path.MatchRelative().AtParent().AtName("private_key_wo"),
+							),
+						},
+					},
+					"private_key_wo": schema.StringAttribute{
+						MarkdownDescription: "Write-only equivalent of `private_key` (Terraform 1.11+). Used at apply time but never written to state. Mutually exclusive with `private_key`.",
+						Optional:            true,
+						Sensitive:           true,
+						WriteOnly:           true,
+						Validators: []validator.String{
+							stringvalidator.AtLeastOneOf(
+								path.MatchRelative().AtParent().AtName("private_key"),
+								path.MatchRelative().AtParent().AtName("private_key_wo"),
+							),
+							stringvalidator.ConflictsWith(
+								path.MatchRelative().AtParent().AtName("private_key"),
+							),
+						},
+					},
+					"private_key_wo_version": schema.Int64Attribute{
+						MarkdownDescription: "Version counter for `private_key_wo`. Increment this value to trigger a private key update.",
+						Optional:            true,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AlsoRequires(
+								path.MatchRelative().AtParent().AtName("private_key_wo"),
+							),
+						},
 					},
 					"configuration": schema.SingleNestedAttribute{
 						MarkdownDescription: "File-based WireGuard configuration. Provide a complete WireGuard .conf file.",
@@ -355,6 +394,13 @@ func (r *vpnClientResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	privateKeyWO := r.readPrivateKeyWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !privateKeyWO.IsNull() && !privateKeyWO.IsUnknown() {
+		network.WireguardPrivateKey = privateKeyWO.ValueStringPointer()
+	}
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -486,6 +532,13 @@ func (r *vpnClientResource) Update(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	privateKeyWO := r.readPrivateKeyWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !privateKeyWO.IsNull() && !privateKeyWO.IsUnknown() {
+		network.WireguardPrivateKey = privateKeyWO.ValueStringPointer()
 	}
 
 	site := data.Site.ValueString()
@@ -807,6 +860,7 @@ func (r *vpnClientResource) networkToModel(
 	// For private key and preshared key: when file mode was used, preserve the
 	// values from prior state since the API may return different representations.
 	privateKeyVal := strPtrToType(network.WireguardPrivateKey)
+	privateKeyWOVersion := types.Int64Null()
 	presharedKeyVal := strPtrToType(network.WireguardClientPresharedKey)
 	presharedKeyEnabled := types.BoolValue(network.WireguardClientPresharedKeyEnabled)
 
@@ -821,8 +875,25 @@ func (r *vpnClientResource) networkToModel(
 		}
 	}
 
+	// A null private_key in prior state means the write-only alternative was
+	// used. Never copy the controller's echoed private key into state.
+	if priorState != nil && !priorState.Wireguard.IsNull() &&
+		!priorState.Wireguard.IsUnknown() {
+		var priorWG wireguardModel
+		d := priorState.Wireguard.As(ctx, &priorWG, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
+		if !diags.HasError() && priorWG.PrivateKey.IsNull() {
+			privateKeyVal = types.StringNull()
+		}
+		if !diags.HasError() {
+			privateKeyWOVersion = priorWG.PrivateKeyWOVersion
+		}
+	}
+
 	wireguardValue := wireguardModel{
 		PrivateKey:          privateKeyVal,
+		PrivateKeyWO:        types.StringNull(),
+		PrivateKeyWOVersion: privateKeyWOVersion,
 		Configuration:       configurationObj,
 		Peer:                peerObj,
 		PresharedKeyEnabled: presharedKeyEnabled,
@@ -840,6 +911,22 @@ func (r *vpnClientResource) networkToModel(
 	model.Wireguard = wireguardObj
 
 	return diags
+}
+
+// readPrivateKeyWO reads the write-only key from configuration. Write-only
+// values are never available through plan or state.
+func (r *vpnClientResource) readPrivateKeyWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var privateKeyWO types.String
+	diags.Append(config.GetAttribute(
+		ctx,
+		path.Root("wireguard").AtName("private_key_wo"),
+		&privateKeyWO,
+	)...)
+	return privateKeyWO
 }
 
 // ListResourceConfigSchema implements [list.ListResource].

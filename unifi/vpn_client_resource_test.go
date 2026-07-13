@@ -2,13 +2,16 @@ package unifi
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
@@ -149,6 +152,58 @@ func TestAccVPNClient_with_preshared_key(t *testing.T) {
 	})
 }
 
+func TestAccVPNClient_write_only_private_key(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVPNClientConfig_write_only_private_key(
+					1,
+					"WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg=",
+				),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_vpn_client.test", "enabled", "false"),
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key",
+					),
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo_version",
+						"1",
+					),
+				),
+			},
+			{
+				Config: testAccVPNClientConfig_write_only_private_key(
+					2,
+					"uGEwDKZ2Hf2s2Dg59c9K+qYzJEBN5s8fNWVTxZx9kUo=",
+				),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key",
+					),
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo_version",
+						"2",
+					),
+				),
+			},
+		},
+	})
+}
+
 func testAccVPNClientConfig_file_mode() string {
 	return `
 resource "unifi_vpn_client" "test" {
@@ -221,6 +276,31 @@ resource "unifi_vpn_client" "test" {
 `
 }
 
+func testAccVPNClientConfig_write_only_private_key(version int, privateKey string) string {
+	return fmt.Sprintf(`
+resource "unifi_vpn_client" "test" {
+  name          = "test-wireguard-write-only"
+  enabled       = false
+  subnet        = "10.0.3.2/24"
+  default_route = false
+  pull_dns      = false
+
+  wireguard = {
+    private_key_wo         = %q
+    private_key_wo_version = %d
+    interface              = "wan"
+    dns_servers            = ["8.8.8.8"]
+
+    peer = {
+      ip         = "192.0.2.1"
+      port       = 51820
+      public_key = "7B+2Z3odPbDNsfVr+F8invj6/mBKLVaolOHXZoCaBA0="
+    }
+  }
+}
+`, privateKey, version)
+}
+
 func TestNewVPNClientResource(t *testing.T) {
 	r := NewVPNClientResource()
 	if r == nil {
@@ -284,7 +364,7 @@ func Test_wireguardModel_AttributeTypes(t *testing.T) {
 	m := wireguardModel{}
 	got := m.AttributeTypes()
 	for _, key := range []string{
-		"private_key", "configuration", "peer",
+		"private_key", "private_key_wo", "private_key_wo_version", "configuration", "peer",
 		"preshared_key_enabled", "preshared_key", "interface", "dns_servers",
 	} {
 		if _, ok := got[key]; !ok {
@@ -443,6 +523,37 @@ func Test_vpnClientResource_modelToNetwork(t *testing.T) {
 	})
 }
 
+func Test_vpnClientResource_privateKeyWriteOnlySchema(t *testing.T) {
+	ctx := context.Background()
+	r := &vpnClientResource{}
+	var resp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("schema diagnostics: %v", resp.Diagnostics)
+	}
+
+	wg, ok := resp.Schema.Attributes["wireguard"].(schema.SingleNestedAttribute)
+	if !ok {
+		t.Fatal("wireguard is not a single nested attribute")
+	}
+	privateKeyWO, ok := wg.Attributes["private_key_wo"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("wireguard.private_key_wo is not a string attribute")
+	}
+	privateKeyWOVersion, ok := wg.Attributes["private_key_wo_version"].(schema.Int64Attribute)
+	if !ok || !privateKeyWOVersion.Optional {
+		t.Fatal("wireguard.private_key_wo_version is not an optional int64 attribute")
+	}
+	if !privateKeyWO.WriteOnly || !privateKeyWO.Sensitive || !privateKeyWO.Optional {
+		t.Fatalf(
+			"private_key_wo flags = write-only:%t sensitive:%t optional:%t",
+			privateKeyWO.WriteOnly,
+			privateKeyWO.Sensitive,
+			privateKeyWO.Optional,
+		)
+	}
+}
+
 func Test_vpnClientResource_networkToModel(t *testing.T) {
 	ctx := context.Background()
 	r := &vpnClientResource{}
@@ -478,6 +589,61 @@ func Test_vpnClientResource_networkToModel(t *testing.T) {
 		}
 		if model.Wireguard.IsNull() {
 			t.Error("Wireguard should not be null")
+		}
+	})
+
+	t.Run("write-only private key is not copied from API into state", func(t *testing.T) {
+		mode := "manual"
+		ip := "1.2.3.4"
+		port := int64(51820)
+		pubKey := "pubkey=="
+		apiPrivateKey := "must-not-enter-state=="
+		subnet := "10.0.0.2/24"
+		name := "write-only-vpn"
+		network := &unifi.Network{
+			ID:                           "net-wo",
+			Name:                         &name,
+			Enabled:                      true,
+			IPSubnet:                     &subnet,
+			WireguardClientMode:          &mode,
+			WireguardClientPeerIP:        &ip,
+			WireguardClientPeerPort:      &port,
+			WireguardClientPeerPublicKey: &pubKey,
+			WireguardPrivateKey:          &apiPrivateKey,
+		}
+
+		priorWG := wireguardModel{
+			PrivateKey:          types.StringNull(),
+			PrivateKeyWO:        types.StringNull(),
+			PrivateKeyWOVersion: types.Int64Value(7),
+			Configuration:       types.ObjectNull(wireguardConfigurationModel{}.AttributeTypes()),
+			Peer:                types.ObjectNull(wireguardPeerModel{}.AttributeTypes()),
+			PresharedKeyEnabled: types.BoolValue(false),
+			PresharedKey:        types.StringNull(),
+			Interface:           types.StringValue("wan"),
+			DnsServers:          types.ListNull(types.StringType),
+		}
+		priorWGObj, d := types.ObjectValueFrom(ctx, priorWG.AttributeTypes(), priorWG)
+		if d.HasError() {
+			t.Fatalf("building prior wireguard state: %v", d)
+		}
+		prior := &vpnClientResourceModel{Wireguard: priorWGObj}
+
+		var model vpnClientResourceModel
+		diags := r.networkToModel(ctx, network, &model, "default", prior)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		var gotWG wireguardModel
+		diags = model.Wireguard.As(ctx, &gotWG, basetypes.ObjectAsOptions{})
+		if diags.HasError() {
+			t.Fatalf("reading wireguard state: %v", diags)
+		}
+		if !gotWG.PrivateKey.IsNull() {
+			t.Fatalf("private key entered state: %q", gotWG.PrivateKey.ValueString())
+		}
+		if gotWG.PrivateKeyWOVersion.ValueInt64() != 7 {
+			t.Fatalf("private key version = %d, want 7", gotWG.PrivateKeyWOVersion.ValueInt64())
 		}
 	})
 
