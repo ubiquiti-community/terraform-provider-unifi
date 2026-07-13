@@ -158,20 +158,46 @@ func TestAccVPNClient_write_only_private_key(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccVPNClientConfig_write_only_private_key(1, "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="),
+				Config: testAccVPNClientConfig_write_only_private_key(
+					1,
+					"WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg=",
+				),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_vpn_client.test", "enabled", "false"),
-					resource.TestCheckNoResourceAttr("unifi_vpn_client.test", "wireguard.private_key"),
-					resource.TestCheckNoResourceAttr("unifi_vpn_client.test", "wireguard.private_key_wo"),
-					resource.TestCheckResourceAttr("unifi_vpn_client.test", "wireguard.private_key_wo_version", "1"),
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key",
+					),
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo_version",
+						"1",
+					),
 				),
 			},
 			{
-				Config: testAccVPNClientConfig_write_only_private_key(2, "uGEwDKZ2Hf2s2Dg59c9K+qYzJEBN5s8fNWVTxZx9kUo="),
+				Config: testAccVPNClientConfig_write_only_private_key(
+					2,
+					"uGEwDKZ2Hf2s2Dg59c9K+qYzJEBN5s8fNWVTxZx9kUo=",
+				),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckNoResourceAttr("unifi_vpn_client.test", "wireguard.private_key"),
-					resource.TestCheckNoResourceAttr("unifi_vpn_client.test", "wireguard.private_key_wo"),
-					resource.TestCheckResourceAttr("unifi_vpn_client.test", "wireguard.private_key_wo_version", "2"),
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key",
+					),
+					resource.TestCheckNoResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_client.test",
+						"wireguard.private_key_wo_version",
+						"2",
+					),
 				),
 			},
 		},
