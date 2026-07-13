@@ -873,7 +873,9 @@ func modelToFirewallPolicy(
 				TimeRangeEnd:   schedule.TimeRangeEnd.ValueString(),
 			}
 			if !schedule.RepeatOnDays.IsNull() && !schedule.RepeatOnDays.IsUnknown() {
-				diags.Append(schedule.RepeatOnDays.ElementsAs(ctx, &fp.Schedule.RepeatOnDays, false)...)
+				diags.Append(
+					schedule.RepeatOnDays.ElementsAs(ctx, &fp.Schedule.RepeatOnDays, false)...,
+				)
 			}
 		}
 	}

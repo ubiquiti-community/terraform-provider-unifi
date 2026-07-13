@@ -197,6 +197,7 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `icmp_v6_typename` (String) ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `id` (String) The ID of the firewall policy.
 - `index` (Number) The ordering index of the policy within its zone-pair, assigned by the controller. **Read-only:** UniFi does not accept a client-supplied index on create or update (the policy is always appended to the end of its source/destination zone-pair), and the supported API exposes no reorder operation, so policy ordering cannot be managed through this provider. Reorder policies in the UniFi UI if needed.
+- `schedule` (Attributes) Schedule returned by the UniFi controller. It is preserved in state so importing a scheduled policy or updating another field does not replace the existing schedule. (see [below for nested schema](#nestedatt--schedule))
 
 <a id="nestedatt--destination"></a>
 ### Nested Schema for `destination`
@@ -255,6 +256,21 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--schedule"></a>
+### Nested Schema for `schedule`
+
+Read-Only:
+
+- `date` (String)
+- `date_end` (String)
+- `date_start` (String)
+- `mode` (String)
+- `repeat_on_days` (Set of String)
+- `time_all_day` (Boolean)
+- `time_range_end` (String)
+- `time_range_start` (String)
 
 ## Import
 

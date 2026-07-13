@@ -28,7 +28,11 @@ func TestFirewallPolicySchemaExposesComputedSchedule(t *testing.T) {
 		t.Fatalf("schedule schema type = %T, want schema.SingleNestedAttribute", attribute)
 	}
 	if schedule.Optional || !schedule.Computed {
-		t.Fatalf("schedule Optional=%v Computed=%v, want computed-only", schedule.Optional, schedule.Computed)
+		t.Fatalf(
+			"schedule Optional=%v Computed=%v, want computed-only",
+			schedule.Optional,
+			schedule.Computed,
+		)
 	}
 	for name, attribute := range schedule.Attributes {
 		switch field := attribute.(type) {
@@ -97,7 +101,9 @@ func TestFirewallPolicyOmittedScheduleFallsBackToAlways(t *testing.T) {
 func assertFirewallPolicyScheduleRoundTrip(t *testing.T, want *api.FirewallPolicySchedule) {
 	t.Helper()
 	var model firewallPolicyModel
-	if diags := firewallPolicyToModel(context.Background(), testScheduledFirewallPolicy(want), &model); diags.HasError() {
+	if diags := firewallPolicyToModel(
+		context.Background(), testScheduledFirewallPolicy(want), &model,
+	); diags.HasError() {
 		t.Fatalf("API to resource model conversion failed: %v", diags)
 	}
 	roundTripped, diags := modelToFirewallPolicy(context.Background(), model)
@@ -105,7 +111,11 @@ func assertFirewallPolicyScheduleRoundTrip(t *testing.T, want *api.FirewallPolic
 		t.Fatalf("resource model to API conversion failed: %v", diags)
 	}
 	if !reflect.DeepEqual(roundTripped.Schedule, want) {
-		t.Fatalf("schedule changed during round-trip:\n got: %#v\nwant: %#v", roundTripped.Schedule, want)
+		t.Fatalf(
+			"schedule changed during round-trip:\n got: %#v\nwant: %#v",
+			roundTripped.Schedule,
+			want,
+		)
 	}
 }
 
