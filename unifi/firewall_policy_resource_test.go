@@ -8,10 +8,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -372,6 +375,126 @@ func TestNewFirewallPolicyResource(t *testing.T) {
 	}
 	if _, ok := got.(fwresource.ResourceWithIdentity); !ok {
 		t.Errorf("NewFirewallPolicyResource() does not implement resource.ResourceWithIdentity")
+	}
+}
+
+func TestFirewallPolicyImportStateByID(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallPolicyResource{}
+	resp := newFirewallPolicyImportResponse(ctx, r)
+
+	r.ImportState(ctx, fwresource.ImportStateRequest{
+		ID: "default:policy-id",
+	}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+	}
+
+	assertFirewallPolicyImportString(t, ctx, resp.State, "site", "default")
+	assertFirewallPolicyImportString(
+		t,
+		ctx,
+		resp.State,
+		"id",
+		"policy-id",
+	)
+	assertFirewallPolicyImportIdentity(
+		t,
+		ctx,
+		resp.Identity,
+		"policy-id",
+	)
+}
+
+func TestFirewallPolicyImportStateByIdentity(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallPolicyResource{}
+	resp := newFirewallPolicyImportResponse(ctx, r)
+	const id = "policy-id"
+
+	reqIdentity := &tfsdk.ResourceIdentity{
+		Raw:    resp.Identity.Raw.Copy(),
+		Schema: resp.Identity.Schema,
+	}
+	diags := reqIdentity.SetAttribute(ctx, path.Root("id"), id)
+	if diags.HasError() {
+		t.Fatalf("setting request identity: %v", diags)
+	}
+	resp.Identity = &tfsdk.ResourceIdentity{
+		Raw:    reqIdentity.Raw.Copy(),
+		Schema: reqIdentity.Schema,
+	}
+
+	r.ImportState(ctx, fwresource.ImportStateRequest{Identity: reqIdentity}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+	}
+	assertFirewallPolicyImportString(t, ctx, resp.State, "id", id)
+	assertFirewallPolicyImportIdentity(t, ctx, resp.Identity, id)
+}
+
+func newFirewallPolicyImportResponse(
+	ctx context.Context,
+	r *firewallPolicyResource,
+) *fwresource.ImportStateResponse {
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	var identityResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &identityResp)
+
+	return &fwresource.ImportStateResponse{
+		State: tfsdk.State{
+			Raw: tftypes.NewValue(
+				schemaResp.Schema.Type().TerraformType(ctx),
+				nil,
+			),
+			Schema: schemaResp.Schema,
+		},
+		Identity: &tfsdk.ResourceIdentity{
+			Raw: tftypes.NewValue(
+				identityResp.IdentitySchema.Type().TerraformType(ctx),
+				nil,
+			),
+			Schema: identityResp.IdentitySchema,
+		},
+	}
+}
+
+func assertFirewallPolicyImportString(
+	t *testing.T,
+	ctx context.Context,
+	state tfsdk.State,
+	attribute string,
+	want string,
+) {
+	t.Helper()
+	var got types.String
+	diags := state.GetAttribute(ctx, path.Root(attribute), &got)
+	if diags.HasError() {
+		t.Fatalf("reading state attribute %q: %v", attribute, diags)
+	}
+	if got.ValueString() != want {
+		t.Errorf("state attribute %q = %q, want %q", attribute, got.ValueString(), want)
+	}
+}
+
+func assertFirewallPolicyImportIdentity(
+	t *testing.T,
+	ctx context.Context,
+	identity *tfsdk.ResourceIdentity,
+	want string,
+) {
+	t.Helper()
+	var got types.String
+	diags := identity.GetAttribute(ctx, path.Root("id"), &got)
+	if diags.HasError() {
+		t.Fatalf("reading identity: %v", diags)
+	}
+	if got.ValueString() != want {
+		t.Errorf("identity id = %q, want %q", got.ValueString(), want)
 	}
 }
 
