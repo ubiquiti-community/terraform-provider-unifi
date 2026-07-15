@@ -1693,6 +1693,12 @@ func (r *deviceResource) updateDevice(
 			currentDevice.PortOverrides,
 			deviceReq.PortOverrides,
 		)
+	} else if currentDevice != nil {
+		// No port_override blocks are managed in config (e.g. gateways/APs and
+		// switches we only touch for name/LED/radio). Echo the controller's current
+		// overrides so the diff doesn't emit `port_overrides: null`, which UDM/Dream
+		// Machine gateways reject with api.err.InvalidPayload (400) (#177).
+		portOverrides = currentDevice.PortOverrides
 	}
 
 	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, portOverrides)
@@ -2945,6 +2951,27 @@ func (r *deviceResource) frameworkToConfigNetwork(
 }
 
 // frameworkToRadioTable converts Framework types to API RadioTable.
+// sanitizeRadioForUpdate drops numeric radio fields whose zero/out-of-range values
+// the controller rejects with api.err.InvalidPayload (400) on UDM/Dream Machine
+// gateways (#150/#177, same class as #303). Leaving the pointer nil lets `omitempty`
+// drop the JSON key entirely. Valid ranges (from the go-unifi schema): min_rssi
+// -67..-90 (only when enabled), maxsta 1..200, sens_level -50..-90 (only when
+// enabled), assisted_roaming_rssi -60..-80 (only when enabled).
+func sanitizeRadioForUpdate(radio *unifi.DeviceRadioTable) {
+	if !radio.MinRssiEnabled || radio.MinRssi == nil || *radio.MinRssi >= 0 {
+		radio.MinRssi = nil
+	}
+	if radio.Maxsta != nil && *radio.Maxsta <= 0 {
+		radio.Maxsta = nil
+	}
+	if !radio.SensLevelEnabled || (radio.SensLevel != nil && *radio.SensLevel >= 0) {
+		radio.SensLevel = nil
+	}
+	if !radio.AssistedRoamingEnabled || (radio.AssistedRoamingRssi != nil && *radio.AssistedRoamingRssi >= 0) {
+		radio.AssistedRoamingRssi = nil
+	}
+}
+
 func (r *deviceResource) frameworkToRadioTable(
 	ctx context.Context,
 	radioList types.List,
@@ -2991,6 +3018,8 @@ func (r *deviceResource) frameworkToRadioTable(
 			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
 			VwireEnabled:           model.VwireEnabled.ValueBool(),
 		}
+
+		sanitizeRadioForUpdate(&radio)
 
 		radios = append(radios, radio)
 	}
