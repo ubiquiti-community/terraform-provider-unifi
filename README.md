@@ -8,7 +8,7 @@ Functionality first needs to be added to the [go-unifi](https://github.com/ubiqu
 
 ## Documentation
 
-You can browse documentation on the [Terraform provider registry](https://registry.terraform.io/providers/paultyng/unifi/latest/docs).
+You can browse documentation on the [Terraform provider registry](https://registry.terraform.io/providers/ubiquiti-community/unifi/latest/docs).
 
 ## Supported Unifi Controller Versions
 
@@ -20,4 +20,4 @@ The docker, UDM, and UDM-Pro versions are slightly different (the API is proxied
 
 ### Terraform 1.0 and above
 
-You can use the provider via the [Terraform provider registry](https://registry.terraform.io/providers/paultyng/unifi).
+You can use the provider via the [Terraform provider registry](https://registry.terraform.io/providers/ubiquiti-community/unifi).
