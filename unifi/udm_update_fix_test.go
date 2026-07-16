@@ -56,7 +56,7 @@ func TestSanitizeRadioForUpdate(t *testing.T) {
 	}
 }
 
-func TestBuildMinimalUpdateDevice_PreservesPortOverrides(t *testing.T) {
+func TestBuildMinimalUpdateDevice_UsesProvidedPortOverrides(t *testing.T) {
 	// current device has real port overrides; deviceReq declares none.
 	current := &unifi.Device{PortOverrides: []unifi.DevicePortOverrides{{PortIDX: i64(1)}}}
 	req := &unifi.Device{ID: "x", MAC: "aa"}

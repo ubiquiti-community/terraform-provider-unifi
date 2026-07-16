@@ -1686,7 +1686,9 @@ func (r *deviceResource) updateDevice(
 	// user declared at least one port_override, merge the declared blocks (by
 	// port_idx) onto the device's current overrides so undeclared ports keep their
 	// existing controller-side config — i.e. partial management of just the declared
-	// ports. With no override declared we leave the field untouched as before.
+	// ports. With no override declared we echo the controller's current overrides
+	// (below) so the diff never emits `port_overrides: null`, which UDM/Dream Machine
+	// gateways reject.
 	portOverrides := deviceReq.PortOverrides
 	if currentDevice != nil && len(deviceReq.PortOverrides) > 0 {
 		portOverrides = mergePortOverridesByIndex(
@@ -2954,9 +2956,9 @@ func (r *deviceResource) frameworkToConfigNetwork(
 // sanitizeRadioForUpdate drops numeric radio fields whose zero/out-of-range values
 // the controller rejects with api.err.InvalidPayload (400) on UDM/Dream Machine
 // gateways (#150/#177, same class as #303). Leaving the pointer nil lets `omitempty`
-// drop the JSON key entirely. Valid ranges (from the go-unifi schema): min_rssi
-// -67..-90 (only when enabled), maxsta 1..200, sens_level -50..-90 (only when
-// enabled), assisted_roaming_rssi -60..-80 (only when enabled).
+// drop the JSON key entirely. Valid ranges (from the go-unifi schema, low..high):
+// min_rssi -90..-67 (only when enabled), maxsta 1..200, sens_level -90..-50 (only
+// when enabled), assisted_roaming_rssi -80..-60 (only when enabled).
 func sanitizeRadioForUpdate(radio *unifi.DeviceRadioTable) {
 	// Drop the pointer (so omitempty removes the key) whenever the value is outside
 	// the controller's valid range — not just when zero — or the feature is disabled.
