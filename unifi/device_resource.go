@@ -2958,16 +2958,22 @@ func (r *deviceResource) frameworkToConfigNetwork(
 // -67..-90 (only when enabled), maxsta 1..200, sens_level -50..-90 (only when
 // enabled), assisted_roaming_rssi -60..-80 (only when enabled).
 func sanitizeRadioForUpdate(radio *unifi.DeviceRadioTable) {
-	if !radio.MinRssiEnabled || radio.MinRssi == nil || *radio.MinRssi >= 0 {
+	// Drop the pointer (so omitempty removes the key) whenever the value is outside
+	// the controller's valid range — not just when zero — or the feature is disabled.
+	// Ranges are the go-unifi schema regexes: min_rssi [-90,-67], maxsta [1,200],
+	// sens_level [-90,-50], assisted_roaming_rssi [-80,-60].
+	inRange := func(v *int64, lo, hi int64) bool { return v != nil && *v >= lo && *v <= hi }
+
+	if !radio.MinRssiEnabled || !inRange(radio.MinRssi, -90, -67) {
 		radio.MinRssi = nil
 	}
-	if radio.Maxsta != nil && *radio.Maxsta <= 0 {
+	if !inRange(radio.Maxsta, 1, 200) {
 		radio.Maxsta = nil
 	}
-	if !radio.SensLevelEnabled || (radio.SensLevel != nil && *radio.SensLevel >= 0) {
+	if !radio.SensLevelEnabled || !inRange(radio.SensLevel, -90, -50) {
 		radio.SensLevel = nil
 	}
-	if !radio.AssistedRoamingEnabled || (radio.AssistedRoamingRssi != nil && *radio.AssistedRoamingRssi >= 0) {
+	if !radio.AssistedRoamingEnabled || !inRange(radio.AssistedRoamingRssi, -80, -60) {
 		radio.AssistedRoamingRssi = nil
 	}
 }
