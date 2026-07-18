@@ -49,7 +49,7 @@ func TestSanitizeRadioForUpdate(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r := c.in
-			sanitizeRadioForUpdate("ng", &r)
+			_ = sanitizeRadioForUpdate("ng", &r) // diagnostic-emission behavior is covered by TestSanitizeRadioForUpdate_WarnsWhenEnabledAndOutOfRange
 			if !c.want(r) {
 				t.Fatalf("sanitize failed: %+v", r)
 			}
