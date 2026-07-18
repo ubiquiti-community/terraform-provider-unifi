@@ -1,6 +1,7 @@
 package unifi
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -48,9 +49,56 @@ func TestSanitizeRadioForUpdate(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r := c.in
-			sanitizeRadioForUpdate(&r)
+			sanitizeRadioForUpdate("ng", &r)
 			if !c.want(r) {
 				t.Fatalf("sanitize failed: %+v", r)
+			}
+		})
+	}
+}
+
+// TestSanitizeRadioForUpdate_WarnsWhenEnabledAndOutOfRange covers review feedback on
+// PR #378: an out-of-range value is dropped either way (the controller would reject
+// it), but if the field was ENABLED — the user actually declared and turned on that
+// setting — the drop must be visible as a warning, not a silent no-op. Disabled (or
+// simply unset) fields drop silently, same as before: that's the normal/expected case.
+func TestSanitizeRadioForUpdate_WarnsWhenEnabledAndOutOfRange(t *testing.T) {
+	cases := []struct {
+		name      string
+		in        unifi.DeviceRadioTable
+		wantWarn  bool
+		wantField string
+	}{
+		{"min_rssi enabled+out-of-range warns", unifi.DeviceRadioTable{MinRssiEnabled: true, MinRssi: i64(-10)}, true, "min_rssi"},
+		{"min_rssi disabled+out-of-range silent", unifi.DeviceRadioTable{MinRssiEnabled: false, MinRssi: i64(-10)}, false, ""},
+		{"min_rssi enabled+in-range silent", unifi.DeviceRadioTable{MinRssiEnabled: true, MinRssi: i64(-80)}, false, ""},
+		{"maxsta out-of-range always warns (no enabled flag)", unifi.DeviceRadioTable{Maxsta: i64(201)}, true, "maxsta"},
+		{"maxsta in-range silent", unifi.DeviceRadioTable{Maxsta: i64(50)}, false, ""},
+		{"sens_level enabled+out-of-range warns", unifi.DeviceRadioTable{SensLevelEnabled: true, SensLevel: i64(-10)}, true, "sens_level"},
+		{"sens_level disabled+out-of-range silent", unifi.DeviceRadioTable{SensLevelEnabled: false, SensLevel: i64(-10)}, false, ""},
+		{"assisted_roaming_rssi enabled+out-of-range warns", unifi.DeviceRadioTable{AssistedRoamingEnabled: true, AssistedRoamingRssi: i64(-10)}, true, "assisted_roaming_rssi"},
+		{"assisted_roaming_rssi disabled+out-of-range silent", unifi.DeviceRadioTable{AssistedRoamingEnabled: false, AssistedRoamingRssi: i64(-10)}, false, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := c.in
+			diags := sanitizeRadioForUpdate("ng", &r)
+			if c.wantWarn && !diags.HasError() && len(diags) == 0 {
+				t.Fatalf("expected a warning diagnostic, got none")
+			}
+			if !c.wantWarn && len(diags) != 0 {
+				t.Fatalf("expected no diagnostics, got: %+v", diags)
+			}
+			if c.wantWarn {
+				found := false
+				for _, d := range diags {
+					if strings.Contains(d.Detail(), c.wantField) && strings.Contains(d.Detail(), "ng") {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("expected a warning mentioning field %q and radio %q, got: %+v", c.wantField, "ng", diags)
+				}
 			}
 		})
 	}
