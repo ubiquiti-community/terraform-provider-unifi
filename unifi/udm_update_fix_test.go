@@ -72,8 +72,12 @@ func TestSanitizeRadioForUpdate_WarnsWhenEnabledAndOutOfRange(t *testing.T) {
 		{"min_rssi enabled+out-of-range warns", unifi.DeviceRadioTable{MinRssiEnabled: true, MinRssi: i64(-10)}, true, "min_rssi"},
 		{"min_rssi disabled+out-of-range silent", unifi.DeviceRadioTable{MinRssiEnabled: false, MinRssi: i64(-10)}, false, ""},
 		{"min_rssi enabled+in-range silent", unifi.DeviceRadioTable{MinRssiEnabled: true, MinRssi: i64(-80)}, false, ""},
-		{"maxsta out-of-range always warns (no enabled flag)", unifi.DeviceRadioTable{Maxsta: i64(201)}, true, "maxsta"},
+		{"maxsta out-of-range (non-zero) warns", unifi.DeviceRadioTable{Maxsta: i64(201)}, true, "maxsta"},
 		{"maxsta in-range silent", unifi.DeviceRadioTable{Maxsta: i64(50)}, false, ""},
+		// maxsta=0 is the controller's "unset" sentinel (Optional+Computed,
+		// UseStateForUnknown) — flows back on every update of a device that never
+		// configured maxsta. Must stay silent, not warn on every unrelated update.
+		{"maxsta=0 (controller unset sentinel) silent, not warned", unifi.DeviceRadioTable{Maxsta: i64(0)}, false, ""},
 		{"sens_level enabled+out-of-range warns", unifi.DeviceRadioTable{SensLevelEnabled: true, SensLevel: i64(-10)}, true, "sens_level"},
 		{"sens_level disabled+out-of-range silent", unifi.DeviceRadioTable{SensLevelEnabled: false, SensLevel: i64(-10)}, false, ""},
 		{"assisted_roaming_rssi enabled+out-of-range warns", unifi.DeviceRadioTable{AssistedRoamingEnabled: true, AssistedRoamingRssi: i64(-10)}, true, "assisted_roaming_rssi"},

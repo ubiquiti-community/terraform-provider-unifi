@@ -3010,7 +3010,14 @@ func sanitizeRadioForUpdate(radioName string, radio *unifi.DeviceRadioTable) dia
 	if !radio.MinRssiEnabled || !inRange(radio.MinRssi, -90, -67) {
 		radio.MinRssi = nil
 	}
-	if radio.Maxsta != nil && !inRange(radio.Maxsta, 1, 200) {
+	// maxsta has no "enabled" flag — it's Optional+Computed with UseStateForUnknown,
+	// so a controller-reported 0 flows back on EVERY update of a device where the
+	// user never configured maxsta at all (0 is the controller's "unset" sentinel,
+	// not a declared value) — the original pre-existing test already expected 0 to
+	// drop silently. Warning on that would fire on unrelated updates for users who
+	// never touched maxsta — only warn for a genuinely declared, non-zero,
+	// out-of-range value (review feedback on PR #378).
+	if radio.Maxsta != nil && *radio.Maxsta != 0 && !inRange(radio.Maxsta, 1, 200) {
 		warnDropped("maxsta", *radio.Maxsta, 1, 200)
 	}
 	if !inRange(radio.Maxsta, 1, 200) {
