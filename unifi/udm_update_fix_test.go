@@ -87,7 +87,7 @@ func TestSanitizeRadioForUpdate_WarnsWhenEnabledAndOutOfRange(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			r := c.in
 			diags := sanitizeRadioForUpdate("ng", &r)
-			if c.wantWarn && !diags.HasError() && len(diags) == 0 {
+			if c.wantWarn && len(diags) == 0 {
 				t.Fatalf("expected a warning diagnostic, got none")
 			}
 			if !c.wantWarn && len(diags) != 0 {
