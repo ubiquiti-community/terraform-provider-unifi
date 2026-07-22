@@ -545,21 +545,33 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Primary NTP server.",
 						Optional:            true,
 						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"ntp_server_2": schema.StringAttribute{
 						MarkdownDescription: "Second NTP server.",
 						Optional:            true,
 						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"ntp_server_3": schema.StringAttribute{
 						MarkdownDescription: "Third NTP server.",
 						Optional:            true,
 						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"ntp_server_4": schema.StringAttribute{
 						MarkdownDescription: "Fourth NTP server.",
 						Optional:            true,
 						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
 					},
 				},
 			},
@@ -3024,10 +3036,10 @@ func (r *settingResource) ntpModelToSetting(m *settingNtpModel) *settings.Ntp {
 
 func (r *settingResource) ntpSettingToModel(s *settings.Ntp) settingNtpModel {
 	return settingNtpModel{
-		NtpServer1:        util.StringValueOrNull(s.NtpServer1),
-		NtpServer2:        util.StringValueOrNull(s.NtpServer2),
-		NtpServer3:        util.StringValueOrNull(s.NtpServer3),
-		NtpServer4:        util.StringValueOrNull(s.NtpServer4),
+		NtpServer1:        types.StringValue(s.NtpServer1),
+		NtpServer2:        types.StringValue(s.NtpServer2),
+		NtpServer3:        types.StringValue(s.NtpServer3),
+		NtpServer4:        types.StringValue(s.NtpServer4),
 		SettingPreference: util.StringValueOrNull(s.SettingPreference),
 	}
 }

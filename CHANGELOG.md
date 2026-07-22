@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting.ntp`: stop empty NTP server slots causing perpetual diffs or inconsistent results.** The controller stores unused `ntp_server_1..4` values as empty strings, but the provider read them back as `null`, conflicting with an explicitly configured `""`. The server attributes now preserve prior state during unrelated plans and normalize controller empty strings to known empty Terraform values (#382)
+
 ## [v0.55.0] - 2026-07-10
 
 ### ✨ Features
