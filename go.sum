@@ -539,8 +539,6 @@ github.com/transparency-dev/formats v0.1.1 h1:4bVHJc+KdBgpA1OJD1yjI+g0i5Z1graCpp
 github.com/transparency-dev/formats v0.1.1/go.mod h1:qtZ8goRuJ8FTBG9c9+Bj0rn2rUG7eG/AUTkr+Aw3jFw=
 github.com/transparency-dev/merkle v0.0.2 h1:Q9nBoQcZcgPamMkGn7ghV8XiTZ/kRxn1yCG81+twTK4=
 github.com/transparency-dev/merkle v0.0.2/go.mod h1:pqSy+OXefQ1EDUVmAJ8MUhHB9TXGuzVAT58PqBoHz1A=
-github.com/ubiquiti-community/go-unifi v1.33.43-0.20260706191309-bc63776a9ebf h1:EKNgGAeqTbFll7ddVVFU6JLDtkKZDFytq2k0Cqg/rbk=
-github.com/ubiquiti-community/go-unifi v1.33.43-0.20260706191309-bc63776a9ebf/go.mod h1:QfZDUwKQmGJNNW4af3KHzb7f+VmiSvkyTqC4/D5aPWU=
 github.com/vbatts/tar-split v0.12.2 h1:w/Y6tjxpeiFMR47yzZPlPj/FcPLpXbTUi/9H7d3CPa4=
 github.com/vbatts/tar-split v0.12.2/go.mod h1:eF6B6i6ftWQcDqEn3/iGFRFRo8cBIMSJVOpnNdfTMFA=
 github.com/vmihailenco/msgpack v3.3.3+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=
@@ -550,6 +548,8 @@ github.com/vmihailenco/msgpack/v5 v5.4.1 h1:cQriyiUvjTwOHg8QZaPihLWeRAAVoCpE00IU
 github.com/vmihailenco/msgpack/v5 v5.4.1/go.mod h1:GaZTsDaehaPpQVyxrf5mtQlH+pc21PIudVV/E3rRQok=
 github.com/vmihailenco/tagparser/v2 v2.0.0 h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAhO7/IwNM9g=
 github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV6mEfg5OIWRZA9qds=
+github.com/walero-moon/go-unifi v1.33.43-0.20260710213429-15a8d0ac4cdd h1:c6js4sXcqzrvDNV7qe4vOMvbFR/OceOYslGhlWzhpP0=
+github.com/walero-moon/go-unifi v1.33.43-0.20260710213429-15a8d0ac4cdd/go.mod h1:5BzB50Sd1+7tHp6veqZrX0HPUTih5h/U9/PIk+deVN0=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
 github.com/xhit/go-str2duration/v2 v2.1.0 h1:lxklc02Drh6ynqX+DdPyp5pCKLUQpRT8bp8Ydu2Bstc=

@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -29,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var (
@@ -88,9 +90,53 @@ type firewallPolicyModel struct {
 	ConnectionStates    types.List     `tfsdk:"connection_states"`
 	ICMPTypename        types.String   `tfsdk:"icmp_typename"`
 	ICMPV6Typename      types.String   `tfsdk:"icmp_v6_typename"`
+	Schedule            types.Object   `tfsdk:"schedule"`
 	Source              types.Object   `tfsdk:"source"`
 	Destination         types.Object   `tfsdk:"destination"`
 	Timeouts            timeouts.Value `tfsdk:"timeouts"`
+}
+
+// firewallPolicyScheduleModel is the complete schedule shape returned by the
+// zone-based firewall API. Date is used by ONE_TIME_ONLY on older firmware;
+// DateStart/DateEnd are also returned by newer Network application versions.
+type firewallPolicyScheduleModel struct {
+	Date           types.String `tfsdk:"date"`
+	DateStart      types.String `tfsdk:"date_start"`
+	DateEnd        types.String `tfsdk:"date_end"`
+	Mode           types.String `tfsdk:"mode"`
+	RepeatOnDays   types.Set    `tfsdk:"repeat_on_days"`
+	TimeAllDay     types.Bool   `tfsdk:"time_all_day"`
+	TimeRangeStart types.String `tfsdk:"time_range_start"`
+	TimeRangeEnd   types.String `tfsdk:"time_range_end"`
+}
+
+func (m firewallPolicyScheduleModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"date":             types.StringType,
+		"date_start":       types.StringType,
+		"date_end":         types.StringType,
+		"mode":             types.StringType,
+		"repeat_on_days":   types.SetType{ElemType: types.StringType},
+		"time_all_day":     types.BoolType,
+		"time_range_start": types.StringType,
+		"time_range_end":   types.StringType,
+	}
+}
+
+func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"date":       schema.StringAttribute{Computed: true},
+		"date_start": schema.StringAttribute{Computed: true},
+		"date_end":   schema.StringAttribute{Computed: true},
+		"mode":       schema.StringAttribute{Computed: true},
+		"repeat_on_days": schema.SetAttribute{
+			Computed:    true,
+			ElementType: types.StringType,
+		},
+		"time_all_day":     schema.BoolAttribute{Computed: true},
+		"time_range_start": schema.StringAttribute{Computed: true},
+		"time_range_end":   schema.StringAttribute{Computed: true},
+	}
 }
 
 // firewallPolicyEndpointModel is the nested source/destination block model.
@@ -378,6 +424,16 @@ func (r *firewallPolicyResource) Schema(
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+			},
+			"schedule": schema.SingleNestedAttribute{
+				MarkdownDescription: "Schedule returned by the UniFi controller. It is " +
+					"preserved in state so importing a scheduled policy or updating another " +
+					"field does not replace the existing schedule.",
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: firewallPolicyScheduleAttributes(),
 			},
 			"source": schema.SingleNestedAttribute{
 				MarkdownDescription: "The source endpoint of the policy.",
@@ -795,9 +851,33 @@ func modelToFirewallPolicy(
 		ICMPTypename:        model.ICMPTypename.ValueString(),
 		ICMPV6Typename:      model.ICMPV6Typename.ValueString(),
 		ConnectionStates:    []string{},
-		Schedule: &unifi.FirewallPolicySchedule{
-			Mode: "ALWAYS",
-		},
+	}
+
+	if model.Schedule.IsNull() || model.Schedule.IsUnknown() {
+		fp.Schedule = &unifi.FirewallPolicySchedule{Mode: "ALWAYS"}
+	} else {
+		var schedule firewallPolicyScheduleModel
+		diags.Append(model.Schedule.As(ctx, &schedule, basetypes.ObjectAsOptions{})...)
+		if !diags.HasError() {
+			var timeAllDay *bool
+			if !schedule.TimeAllDay.IsNull() && !schedule.TimeAllDay.IsUnknown() {
+				timeAllDay = schedule.TimeAllDay.ValueBoolPointer()
+			}
+			fp.Schedule = &unifi.FirewallPolicySchedule{
+				Date:           schedule.Date.ValueString(),
+				DateStart:      schedule.DateStart.ValueString(),
+				DateEnd:        schedule.DateEnd.ValueString(),
+				Mode:           schedule.Mode.ValueString(),
+				TimeAllDay:     timeAllDay,
+				TimeRangeStart: schedule.TimeRangeStart.ValueString(),
+				TimeRangeEnd:   schedule.TimeRangeEnd.ValueString(),
+			}
+			if !schedule.RepeatOnDays.IsNull() && !schedule.RepeatOnDays.IsUnknown() {
+				diags.Append(
+					schedule.RepeatOnDays.ElementsAs(ctx, &fp.Schedule.RepeatOnDays, false)...,
+				)
+			}
+		}
 	}
 
 	// Round-trip the connection states (e.g. ["NEW"]) the controller reported.
@@ -972,6 +1052,33 @@ func firewallPolicyToModel(
 	model.ConnectionStates = connStates
 	model.ICMPTypename = types.StringValue(fp.ICMPTypename)
 	model.ICMPV6Typename = types.StringValue(fp.ICMPV6Typename)
+	if fp.Schedule == nil {
+		model.Schedule = types.ObjectNull(firewallPolicyScheduleModel{}.AttributeTypes())
+	} else {
+		repeatOnDays := types.SetValueMust(types.StringType, []attr.Value{})
+		if fp.Schedule.RepeatOnDays != nil {
+			var scheduleDiags diag.Diagnostics
+			repeatOnDays, scheduleDiags = types.SetValueFrom(
+				ctx, types.StringType, fp.Schedule.RepeatOnDays,
+			)
+			diags.Append(scheduleDiags...)
+		}
+		schedule := firewallPolicyScheduleModel{
+			Date:           util.StringValueOrNull(fp.Schedule.Date),
+			DateStart:      util.StringValueOrNull(fp.Schedule.DateStart),
+			DateEnd:        util.StringValueOrNull(fp.Schedule.DateEnd),
+			Mode:           util.StringValueOrNull(fp.Schedule.Mode),
+			RepeatOnDays:   repeatOnDays,
+			TimeAllDay:     types.BoolPointerValue(fp.Schedule.TimeAllDay),
+			TimeRangeStart: util.StringValueOrNull(fp.Schedule.TimeRangeStart),
+			TimeRangeEnd:   util.StringValueOrNull(fp.Schedule.TimeRangeEnd),
+		}
+		var scheduleDiags diag.Diagnostics
+		model.Schedule, scheduleDiags = types.ObjectValueFrom(
+			ctx, firewallPolicyScheduleModel{}.AttributeTypes(), schedule,
+		)
+		diags.Append(scheduleDiags...)
+	}
 
 	if fp.Index != nil {
 		model.Index = types.Int64Value(*fp.Index)

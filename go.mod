@@ -225,6 +225,9 @@ require (
 	gotest.tools/gotestsum v1.13.0 // indirect
 )
 
+// Temporary draft dependency. Remove after ubiquiti-community/go-unifi#55 merges.
+replace github.com/ubiquiti-community/go-unifi => github.com/walero-moon/go-unifi v1.33.43-0.20260710213429-15a8d0ac4cdd
+
 tool (
 	github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 	gotest.tools/gotestsum
