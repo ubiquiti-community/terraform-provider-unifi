@@ -688,6 +688,7 @@ func (r *clientResource) Update(
 			if resp.Diagnostics.HasError() {
 				return
 			}
+			r.applyPlanToState(ctx, &plan, &state)
 
 			// Update identity with MAC
 			identityModel := clientIdentityModel{
@@ -733,6 +734,7 @@ func (r *clientResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.applyPlanToState(ctx, &plan, &state)
 
 	// Update identity with MAC
 	identityModel := clientIdentityModel{
@@ -746,7 +748,7 @@ func (r *clientResource) Update(
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *clientResource) applyPlanToState( //nolint:unused
+func (r *clientResource) applyPlanToState(
 	_ context.Context,
 	plan *clientResourceModel,
 	state *clientResourceModel,
