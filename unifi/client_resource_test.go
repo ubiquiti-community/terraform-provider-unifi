@@ -88,6 +88,13 @@ func TestAccClientFramework_basic(t *testing.T) {
 				),
 			},
 			{
+				Config: testAccClientFrameworkConfig_controlFlags(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_client.test", "allow_existing", "false"),
+					resource.TestCheckResourceAttr("unifi_client.test", "skip_forget_on_destroy", "true"),
+				),
+			},
+			{
 				ResourceName:    "unifi_client.test",
 				ImportState:     true,
 				ImportStateKind: resource.ImportBlockWithResourceIdentity,
@@ -101,6 +108,17 @@ func testAccClientFrameworkConfig_basic() string {
 resource "unifi_client" "test" {
 	name = "tfacc-client"
 	mac  = "01:23:45:67:89:ab"
+}
+`
+}
+
+func testAccClientFrameworkConfig_controlFlags() string {
+	return `
+resource "unifi_client" "test" {
+	name                   = "tfacc-client"
+	mac                    = "01:23:45:67:89:ab"
+	allow_existing         = false
+	skip_forget_on_destroy = true
 }
 `
 }
