@@ -21,3 +21,7 @@ The docker, UDM, and UDM-Pro versions are slightly different (the API is proxied
 ### Terraform 1.0 and above
 
 You can use the provider via the [Terraform provider registry](https://registry.terraform.io/providers/paultyng/unifi).
+
+## Acceptance Tests
+
+`TF_ACC=1 go test ./unifi/...` boots the demo-mode controller from `docker-compose.yaml` via testcontainers; a Docker (or Podman) socket is the only prerequisite. The compose file also starts a `unifi-device-sim` sidecar — emulated UniFi devices speaking the real inform protocol, from [unifi-emu](https://github.com/jamesbraid/unifi-emu) — because controllers without demo mode (for example a seeded UniFi OS appliance) expose no devices for the device tests to adopt. The image is a local build until one is published: `docker build -t unifi-emu:dev .` in the unifi-emu repo. With the default demo-mode controller the sidecar's devices are extra inventory the tests don't assert on, so the sidecar just runs; its default MACs deliberately avoid `00:27:22:00:00:02`, which the demo seeder already presents. If the harness ever swaps to a device-less seeded controller, declare that MAC in `SIM_DEVICES` so the device test's adoption contract keeps holding. `UNIFI_SKIP_CONTAINER=1` skips compose entirely and tests against `UNIFI_API` — in that mode, run your own sim against the external controller or skip the device tests.

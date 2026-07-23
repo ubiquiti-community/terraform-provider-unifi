@@ -29,3 +29,34 @@ services:
       - 10001:10001/udp
       - 8080:8080
     restart: unless-stopped
+
+  # unifi-device-sim emulates real UniFi devices speaking the inform protocol
+  # to the controller above (unifi-emu, https://github.com/jamesbraid/unifi-emu).
+  #
+  # Why: the demo-mode controller seeds fake "demo" devices, which is enough
+  # for the current acceptance tests. Controllers without demo mode (e.g. a
+  # seeded UniFi OS device) expose no devices at all, and device tests like
+  # TestAccDeviceFramework_basic need real inform-based devices to adopt. This
+  # sidecar provides those without changing the test code.
+  #
+  # MAC collision rule: the demo-mode seeder already presents 00:27:22:00:00:02
+  # (adopted by TestAccDeviceFramework_basic), so the defaults below MUST NOT
+  # declare that MAC. With the demo-mode controller these two extra devices are
+  # harmless: the provider tests don't assert on them. If the harness later
+  # swaps to a device-less seeded controller, change SIM_DEVICES to declare
+  # 00:27:22:00:00:02 so the test's MAC contract keeps holding.
+  #
+  # The sidecar shares the compose network with the controller, so the
+  # controller's own advertised inform address (set post-adoption) resolves
+  # for it; no inform-URL override is needed.
+  unifi-device-sim:
+    image: unifi-emu:dev # local build: `docker build -t unifi-emu:dev .` in the unifi-emu repo; swap for the published image when available
+    environment:
+      SIM_CONTROLLER: http://unifi:8080/inform
+      SIM_DEVICES: |
+        - {mac: "00:27:22:e0:00:51", type: uap, model: U7MP, ip: "192.168.1.251"}
+        - {mac: "00:27:22:e0:00:52", type: usw, model: USM8P, ip: "192.168.1.252"}
+    depends_on:
+      unifi:
+        condition: service_healthy
+    restart: unless-stopped
