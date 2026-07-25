@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -1670,12 +1671,17 @@ func (r *deviceResource) updateDevice(
 	//      api.err.Invalid (issue #177). Echo the current values so they don't
 	//      appear in the diff.
 	// Prefer MAC lookup (works through cloud connector); fall back to ID (local).
+	// Capture each lookup error so that auth/network/permission failures are
+	// surfaced distinctly from a simple not-found case (review feedback on PR #378).
+	// GetDeviceByMAC and GetDevice both return *unifi.NotFoundError when the device
+	// is missing; that sentinel must NOT be treated as a lookup failure.
 	var currentDevice *unifi.Device
+	var macErr, idErr error
 	if deviceReq.MAC != "" {
-		currentDevice, _ = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
+		currentDevice, macErr = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
 	}
 	if currentDevice == nil && deviceReq.ID != "" {
-		currentDevice, _ = r.client.GetDevice(ctx, site, deviceReq.ID)
+		currentDevice, idErr = r.client.GetDevice(ctx, site, deviceReq.ID)
 	}
 	if currentDevice == nil {
 		// Everything below (state/adopted echo, port_overrides echo) depends on
@@ -1684,16 +1690,31 @@ func (r *deviceResource) updateDevice(
 		// api.err.InvalidPayload (400) on UDM/Dream Machine gateways that this PR
 		// exists to fix (#177/#150). Fail fast with a clear diagnostic instead of
 		// silently reintroducing that failure mode (review feedback on PR #378).
-		diags.AddError(
-			"Error Updating Device",
-			fmt.Sprintf(
+		var detail string
+		if isLookupFailure(macErr) || isLookupFailure(idErr) {
+			// Pick the REAL failure, not merely the first non-nil error: a
+			// not-found from one lookup must never mask a genuine
+			// auth/network/permission failure from the other (either order).
+			lookupErr := macErr
+			if !isLookupFailure(lookupErr) {
+				lookupErr = idErr
+			}
+			detail = fmt.Sprintf(
+				"Could not fetch the current device (mac=%q, id=%q) on site %q before updating: %v — "+
+					"refusing to send an update with state/adopted left unset, which UDM/Dream "+
+					"Machine gateways reject.",
+				deviceReq.MAC, deviceReq.ID, site, lookupErr,
+			)
+		} else {
+			detail = fmt.Sprintf(
 				"Could not fetch the current device (mac=%q, id=%q) on site %q before updating — "+
 					"refusing to send an update with state/adopted left unset, which UDM/Dream "+
 					"Machine gateways reject. Verify the device still exists on this site and that "+
 					"its MAC/ID are correct.",
 				deviceReq.MAC, deviceReq.ID, site,
-			),
-		)
+			)
+		}
+		diags.AddError("Error Updating Device", detail)
 		return diags
 	}
 	if deviceReq.Type == "" {
@@ -1760,6 +1781,14 @@ func (r *deviceResource) updateDevice(
 	// Update state from API response
 	r.setResourceData(ctx, &diags, device, model, site)
 	return diags
+}
+
+func isLookupFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var notFound *unifi.NotFoundError
+	return !errors.As(err, &notFound)
 }
 
 func (r *deviceResource) setResourceData(
