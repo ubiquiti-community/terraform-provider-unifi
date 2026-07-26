@@ -116,6 +116,47 @@ func TestClientToModel_LocalDNSRecordEnabledKeepsValue(t *testing.T) {
 	}
 }
 
+// TestClientToModel_FixedIPDisabledIgnoresEcho guards #386: when the controller
+// reports use_fixedip=false it still echoes the stale address. The provider must
+// ignore that echo and mirror a known empty string so an explicit fixed_ip=""
+// round-trips instead of resending the old IP (api.err.DuplicateFixedIP).
+func TestClientToModel_FixedIPDisabledIgnoresEcho(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:        "02:00:00:de:ad:05",
+		FixedIP:    "10.26.20.56",
+		UseFixedIP: false,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.FixedIP.IsNull() || model.FixedIP.IsUnknown() ||
+		model.FixedIP.ValueString() != "" {
+		t.Errorf("fixed_ip: want known empty string, got %#v", model.FixedIP)
+	}
+}
+
+// TestClientToModel_FixedIPEnabledKeepsValue is the companion to #386: an
+// enabled fixed IP must still surface its real value.
+func TestClientToModel_FixedIPEnabledKeepsValue(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:        "02:00:00:de:ad:06",
+		FixedIP:    "10.26.20.56",
+		UseFixedIP: true,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.FixedIP.ValueString() != "10.26.20.56" {
+		t.Errorf("fixed_ip: want 10.26.20.56, got %q", model.FixedIP.ValueString())
+	}
+}
+
 func TestAccClientFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
