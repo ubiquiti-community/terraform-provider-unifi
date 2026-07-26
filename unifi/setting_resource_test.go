@@ -8,7 +8,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 )
@@ -654,6 +658,51 @@ func Test_settingResource_Schema(t *testing.T) {
 	}
 }
 
+// TestSettingNtpServersUseStateForUnknown guards #382: omitted
+// Optional+Computed server fields must retain their prior values instead of
+// repeatedly planning as "known after apply" when the NTP block is configured.
+func TestSettingNtpServersUseStateForUnknown(t *testing.T) {
+	resp := &fwresource.SchemaResponse{}
+	(&settingResource{}).Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	ntp, ok := resp.Schema.Attributes["ntp"].(schema.SingleNestedAttribute)
+	if !ok {
+		t.Fatal("ntp is not a SingleNestedAttribute")
+	}
+	for _, key := range []string{"ntp_server_1", "ntp_server_2", "ntp_server_3", "ntp_server_4"} {
+		server, ok := ntp.Attributes[key].(schema.StringAttribute)
+		if !ok {
+			t.Errorf("ntp.%s is not a StringAttribute", key)
+			continue
+		}
+		if !server.Optional || !server.Computed {
+			t.Errorf("ntp.%s must remain Optional+Computed", key)
+		}
+		if len(server.PlanModifiers) == 0 {
+			t.Errorf("ntp.%s must use UseStateForUnknown (#382)", key)
+			continue
+		}
+
+		req := planmodifier.StringRequest{
+			ConfigValue: types.StringNull(),
+			PlanValue:   types.StringUnknown(),
+			State: tfsdk.State{
+				Raw: tftypes.NewValue(tftypes.String, ""),
+			},
+			StateValue: types.StringValue(""),
+		}
+		modified := &planmodifier.StringResponse{PlanValue: req.PlanValue}
+		server.PlanModifiers[0].PlanModifyString(context.Background(), req, modified)
+		if modified.Diagnostics.HasError() {
+			t.Errorf("ntp.%s plan modifier returned errors: %v", key, modified.Diagnostics)
+		}
+		if modified.PlanValue.IsNull() || modified.PlanValue.IsUnknown() ||
+			modified.PlanValue.ValueString() != "" {
+			t.Errorf("ntp.%s plan = %v, want prior known empty state", key, modified.PlanValue)
+		}
+	}
+}
+
 func Test_settingResource_UpgradeState(t *testing.T) {
 	r := &settingResource{}
 	ctx := context.Background()
@@ -1280,6 +1329,34 @@ func TestAutoSpeedtestSettingRoundTrip(t *testing.T) {
 	out := r.autoSpeedtestSettingToModel(setting)
 	if !out.Enabled.ValueBool() || out.CronExpr.ValueString() != "0 3 * * *" {
 		t.Errorf("settingToModel = %+v, want enabled cron preserved", out)
+	}
+}
+
+// TestNtpSettingStateNormalization guards #382: the controller represents
+// unset NTP servers as "", which is a valid configured value and must not be
+// rewritten to null during the post-apply read.
+func TestNtpSettingStateNormalization(t *testing.T) {
+	r := &settingResource{}
+	apiSetting := r.ntpModelToSetting(&settingNtpModel{
+		NtpServer1:        types.StringValue("pool.ntp.org"),
+		NtpServer2:        types.StringValue(""),
+		NtpServer3:        types.StringNull(),
+		NtpServer4:        types.StringNull(),
+		SettingPreference: types.StringValue("manual"),
+	})
+
+	state := r.ntpSettingToModel(apiSetting)
+	if state.NtpServer1.ValueString() != "pool.ntp.org" {
+		t.Errorf("ntp_server_1 = %q, want pool.ntp.org", state.NtpServer1.ValueString())
+	}
+	for key, value := range map[string]types.String{
+		"ntp_server_2": state.NtpServer2,
+		"ntp_server_3": state.NtpServer3,
+		"ntp_server_4": state.NtpServer4,
+	} {
+		if value.IsNull() || value.IsUnknown() || value.ValueString() != "" {
+			t.Errorf("%s = %v, want known empty string", key, value)
+		}
 	}
 }
 
