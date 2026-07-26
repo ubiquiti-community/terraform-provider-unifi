@@ -1002,11 +1002,23 @@ func (r *wlanFrameworkResource) Read(
 		}
 	}
 
+	// #392: passphrase is an Optional (non-computed) secret. When it is managed via
+	// the write-only passphrase_wo attribute (or not managed at all) it is null in
+	// config and state, yet the controller echoes the stored secret on read.
+	// Persisting that echo makes every subsequent plan show
+	// `passphrase = (sensitive) -> null`. Preserve the prior null so the write-only
+	// workflow stays stable; a config-managed passphrase keeps round-tripping normally.
+	priorPassphraseNull := state.Passphrase.IsNull()
+
 	// Convert API response to model
 	diags = r.wlanToModel(ctx, wlan, &state, site)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if priorPassphraseNull {
+		state.Passphrase = types.StringNull()
 	}
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
