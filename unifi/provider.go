@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"os"
+	"sync"
 
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -41,6 +42,14 @@ type unifiProviderModel struct {
 type Client struct {
 	*ui.ApiClient
 	Site string
+
+	// groupCache memoizes network members group name<->ID lookups per site. It lives
+	// on the shared *Client (one per provider configuration) rather than on the
+	// resource because the framework builds a fresh clientResource per RPC: keeping it
+	// here serializes concurrent group resolution across parallel unifi_client creates
+	// so they stop each creating a duplicate group with the same name (#389).
+	groupCacheMu sync.Mutex
+	groupCache   map[string]map[string]string // site -> (name -> id)
 }
 
 // GetSiteName returns the site name for this client.
