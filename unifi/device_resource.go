@@ -159,7 +159,7 @@ type portOverrideModel struct {
 	Dot1XIDleTimeout           timetypes.GoDuration `tfsdk:"dot1x_idle_timeout"`
 	EgressRateLimitKbps        types.Int64          `tfsdk:"egress_rate_limit_kbps"`
 	EgressRateLimitKbpsEnabled types.Bool           `tfsdk:"egress_rate_limit_kbps_enabled"`
-	ExcludedNetworkIDs         types.List           `tfsdk:"excluded_networkconf_ids"`
+	ExcludedNetworkIDs         types.Set            `tfsdk:"excluded_networkconf_ids"`
 	FecMode                    types.String         `tfsdk:"fec_mode"`
 	FlowControlEnabled         types.Bool           `tfsdk:"flow_control_enabled"`
 	Forward                    types.String         `tfsdk:"forward"`
@@ -168,7 +168,7 @@ type portOverrideModel struct {
 	LldpmedEnabled             types.Bool           `tfsdk:"lldpmed_enabled"`
 	LldpmedNotifyEnabled       types.Bool           `tfsdk:"lldpmed_notify_enabled"`
 	MirrorPortIDX              types.Int64          `tfsdk:"mirror_port_idx"`
-	MulticastRouterNetworkIDs  types.List           `tfsdk:"multicast_router_networkconf_ids"`
+	MulticastRouterNetworkIDs  types.Set            `tfsdk:"multicast_router_networkconf_ids"`
 	NativeNetworkID            types.String         `tfsdk:"native_networkconf_id"`
 	PortKeepaliveEnabled       types.Bool           `tfsdk:"port_keepalive_enabled"`
 	PortSecurityEnabled        types.Bool           `tfsdk:"port_security_enabled"`
@@ -190,7 +190,7 @@ type portOverrideModel struct {
 	StormctrlUcastLevel        types.Int64          `tfsdk:"stormctrl_ucast_level"`
 	StormctrlUcastRate         types.Int64          `tfsdk:"stormctrl_ucast_rate"`
 	StpPortMode                types.Bool           `tfsdk:"stp_port_mode"`
-	TaggedNetworkIDs           types.List           `tfsdk:"tagged_networkconf_ids"`
+	TaggedNetworkIDs           types.Set            `tfsdk:"tagged_networkconf_ids"`
 	TaggedVLANMgmt             types.String         `tfsdk:"tagged_vlan_mgmt"`
 	VoiceNetworkID             types.String         `tfsdk:"voice_networkconf_id"`
 }
@@ -272,8 +272,10 @@ func (r *deviceResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		// v1: lcm_idle_timeout and port_override.dot1x_idle_timeout changed from
-		// Int64 (seconds) to GoDuration strings. See UpgradeState.
-		Version: 1,
+		//     Int64 (seconds) to GoDuration strings.
+		// v2: port_override.{excluded,multicast_router,tagged}_networkconf_ids changed
+		//     from List to Set (#384). See UpgradeState.
+		Version: 2,
 		Description: "`unifi_device` manages a device of the network.\n\n" +
 			"Devices are adopted by the controller, so it is not possible for this resource to be created through " +
 			"Terraform, the create operation instead will simply start managing the device specified by MAC address. " +
@@ -809,7 +811,7 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 							Computed:    true,
 						},
-						"excluded_networkconf_ids": schema.ListAttribute{
+						"excluded_networkconf_ids": schema.SetAttribute{
 							Description: "List of network IDs to exclude from this port.",
 							Optional:    true,
 							ElementType: types.StringType,
@@ -851,7 +853,7 @@ func (r *deviceResource) Schema(
 							Description: "Mirror port index.",
 							Optional:    true,
 						},
-						"multicast_router_networkconf_ids": schema.ListAttribute{
+						"multicast_router_networkconf_ids": schema.SetAttribute{
 							Description: "List of network IDs for multicast router.",
 							Optional:    true,
 							ElementType: types.StringType,
@@ -947,7 +949,7 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 							Computed:    true,
 						},
-						"tagged_networkconf_ids": schema.ListAttribute{
+						"tagged_networkconf_ids": schema.SetAttribute{
 							Description: "List of network IDs to tag on this port.",
 							Optional:    true,
 							ElementType: types.StringType,
@@ -967,9 +969,17 @@ func (r *deviceResource) Schema(
 	}
 }
 
-// UpgradeState migrates v0 state to v1: lcm_idle_timeout and each
-// port_override.dot1x_idle_timeout changed from integer seconds to GoDuration
-// strings.
+// UpgradeState migrates prior device state to the current schema version.
+//
+//	v0 -> current: lcm_idle_timeout and each port_override.dot1x_idle_timeout
+//	    changed from integer seconds to GoDuration strings.
+//	v1 -> current: port_override.{excluded,multicast_router,tagged}_networkconf_ids
+//	    changed from List to Set (#384). No JSON rewrite is needed - a JSON array
+//	    decodes into either collection - so the raw state is simply reconciled
+//	    against the current (Set) schema type.
+//
+// Each upgrader targets the CURRENT schema type, so v0 state also picks up the
+// List->Set change via reconciliation.
 func (r *deviceResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
@@ -1000,6 +1010,29 @@ func (r *deviceResource) UpgradeState(
 							}
 						}
 					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade device state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		},
+		1: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				// v1 already stores durations as strings; only the List->Set change
+				// applies, which reconcileType handles against the current schema type.
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(map[string]any) {},
 				)
 				if err != nil {
 					resp.Diagnostics.AddError("Failed to upgrade device state", err.Error())
@@ -2228,13 +2261,13 @@ func (r *deviceResource) reconcilePortOverrides(
 				for i, id := range sorted {
 					vals[i] = types.StringValue(id)
 				}
-				listVal, listDiags := types.ListValue(types.StringType, vals)
-				diags.Append(listDiags...)
-				updated.ExcludedNetworkIDs = listVal
+				setVal, setDiags := types.SetValue(types.StringType, vals)
+				diags.Append(setDiags...)
+				updated.ExcludedNetworkIDs = setVal
 			} else {
-				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
-				diags.Append(listDiags...)
-				updated.ExcludedNetworkIDs = emptyList
+				emptySet, setDiags := types.SetValue(types.StringType, []attr.Value{})
+				diags.Append(setDiags...)
+				updated.ExcludedNetworkIDs = emptySet
 			}
 		}
 		if !pm.PortProfileID.IsNull() {
@@ -2414,7 +2447,7 @@ func (r *deviceResource) portOverridesToFramework(
 		}
 
 		if len(po.ExcludedNetworkIDs) == 0 {
-			model.ExcludedNetworkIDs = types.ListNull(types.StringType)
+			model.ExcludedNetworkIDs = types.SetNull(types.StringType)
 		} else {
 			sortedExcluded := make([]string, len(po.ExcludedNetworkIDs))
 			copy(sortedExcluded, po.ExcludedNetworkIDs)
@@ -2423,34 +2456,34 @@ func (r *deviceResource) portOverridesToFramework(
 			for _, id := range sortedExcluded {
 				excludedValues = append(excludedValues, types.StringValue(id))
 			}
-			listVal, listDiags := types.ListValue(types.StringType, excludedValues)
-			diags.Append(listDiags...)
+			setVal, setDiags := types.SetValue(types.StringType, excludedValues)
+			diags.Append(setDiags...)
 			if diags.HasError() {
 				continue
 			}
-			model.ExcludedNetworkIDs = listVal
+			model.ExcludedNetworkIDs = setVal
 		}
 
 		// FIX (#235): the pinned go-unifi SDK has no TaggedNetworkIDs field, so
 		// nothing populates it below. Without this assignment the model field
-		// stays an untyped zero-value types.List, which makes ObjectValueFrom
-		// emit a "types.ListType[!!! MISSING TYPE !!!]" Value Conversion Error
-		// against the schema's ListAttribute{ElementType: types.StringType}.
-		model.TaggedNetworkIDs = types.ListNull(types.StringType)
+		// stays an untyped zero-value types.Set, which makes ObjectValueFrom
+		// emit a "types.SetType[!!! MISSING TYPE !!!]" Value Conversion Error
+		// against the schema's SetAttribute{ElementType: types.StringType}.
+		model.TaggedNetworkIDs = types.SetNull(types.StringType)
 
 		if len(po.MulticastRouterNetworkIDs) == 0 {
-			model.MulticastRouterNetworkIDs = types.ListNull(types.StringType)
+			model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
 		} else {
 			multicastValues := make([]attr.Value, 0, len(po.MulticastRouterNetworkIDs))
 			for _, id := range po.MulticastRouterNetworkIDs {
 				multicastValues = append(multicastValues, types.StringValue(id))
 			}
-			listVal, listDiags := types.ListValue(types.StringType, multicastValues)
-			diags.Append(listDiags...)
+			setVal, setDiags := types.SetValue(types.StringType, multicastValues)
+			diags.Append(setDiags...)
 			if diags.HasError() {
 				continue
 			}
-			model.MulticastRouterNetworkIDs = listVal
+			model.MulticastRouterNetworkIDs = setVal
 		}
 
 		if len(po.PortSecurityMACAddress) == 0 {
@@ -2751,7 +2784,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"dot1x_idle_timeout":               timetypes.GoDurationType{},
 		"egress_rate_limit_kbps":           types.Int64Type,
 		"egress_rate_limit_kbps_enabled":   types.BoolType,
-		"excluded_networkconf_ids":         types.ListType{ElemType: types.StringType},
+		"excluded_networkconf_ids":         types.SetType{ElemType: types.StringType},
 		"fec_mode":                         types.StringType,
 		"flow_control_enabled":             types.BoolType,
 		"forward":                          types.StringType,
@@ -2760,7 +2793,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"lldpmed_enabled":                  types.BoolType,
 		"lldpmed_notify_enabled":           types.BoolType,
 		"mirror_port_idx":                  types.Int64Type,
-		"multicast_router_networkconf_ids": types.ListType{ElemType: types.StringType},
+		"multicast_router_networkconf_ids": types.SetType{ElemType: types.StringType},
 		"native_networkconf_id":            types.StringType,
 		"port_keepalive_enabled":           types.BoolType,
 		"port_security_enabled":            types.BoolType,
@@ -2782,7 +2815,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"stormctrl_ucast_level":            types.Int64Type,
 		"stormctrl_ucast_rate":             types.Int64Type,
 		"stp_port_mode":                    types.BoolType,
-		"tagged_networkconf_ids":           types.ListType{ElemType: types.StringType},
+		"tagged_networkconf_ids":           types.SetType{ElemType: types.StringType},
 		"tagged_vlan_mgmt":                 types.StringType,
 		"voice_networkconf_id":             types.StringType,
 	}

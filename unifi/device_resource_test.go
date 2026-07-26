@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -498,6 +499,48 @@ func Test_deviceResource_UpgradeState(t *testing.T) {
 				t.Errorf("deviceResource.UpgradeState() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestDeviceNetworkconfIDsAreSets guards #384: the port_override networkconf_ids
+// attributes are order-insensitive Sets, and a v1->v2 state upgrader exists so
+// existing List state migrates instead of erroring on refresh.
+func TestDeviceNetworkconfIDsAreSets(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	if schemaResp.Schema.Version != 2 {
+		t.Errorf("device schema Version = %d, want 2", schemaResp.Schema.Version)
+	}
+
+	block, ok := schemaResp.Schema.Blocks["port_override"].(schema.SetNestedBlock)
+	if !ok {
+		t.Fatalf(
+			"port_override is not a SetNestedBlock: %T",
+			schemaResp.Schema.Blocks["port_override"],
+		)
+	}
+	for _, name := range []string{
+		"excluded_networkconf_ids",
+		"multicast_router_networkconf_ids",
+		"tagged_networkconf_ids",
+	} {
+		if _, ok := block.NestedObject.Attributes[name].(schema.SetAttribute); !ok {
+			t.Errorf(
+				"port_override.%s must be a SetAttribute, got %T",
+				name, block.NestedObject.Attributes[name],
+			)
+		}
+	}
+
+	ups := r.UpgradeState(ctx)
+	for _, v := range []int64{0, 1} {
+		if _, ok := ups[v]; !ok {
+			t.Errorf("UpgradeState is missing an upgrader for schema version %d", v)
+		}
 	}
 }
 
