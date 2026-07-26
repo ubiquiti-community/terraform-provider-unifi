@@ -630,13 +630,28 @@ func (r *firewallPolicyResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
+	if req.ID != "" {
+		id := req.ID
+		idParts := strings.SplitN(req.ID, ":", 2)
+		if len(idParts) == 2 {
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+			id = idParts[1]
+		}
+
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		if resp.Identity != nil {
+			resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
+		}
 		return
 	}
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+
+	resource.ImportStatePassthroughWithIdentity(
+		ctx,
+		path.Root("id"),
+		path.Root("id"),
+		req,
+		resp,
+	)
 }
 
 // ---------------------------------------------------------------------------
