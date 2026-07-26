@@ -957,6 +957,8 @@ func nullPortOverrideAttrValues() map[string]attr.Value {
 			vals[name] = types.BoolNull()
 		case basetypes.ListType:
 			vals[name] = types.ListNull(tt.ElemType)
+		case basetypes.SetType:
+			vals[name] = types.SetNull(tt.ElemType)
 		case timetypes.GoDurationType:
 			vals[name] = timetypes.NewGoDurationNull()
 		}
@@ -1051,10 +1053,10 @@ func TestFrameworkToPortOverrides_SwitchOpModeOmitted(t *testing.T) {
 
 // TestPortOverridesToFramework_TaggedNetworkIDsTypedNull is a regression test
 // for #235. portOverridesToFramework must initialize the tagged_networkconf_ids
-// model field to a typed null list. Previously it was left as an untyped
-// zero-value types.List, which made types.ObjectValueFrom fail with a
-// "types.ListType[!!! MISSING TYPE !!!]" Value Conversion Error during the
-// Read/refresh (and import) of any unifi_device that has port overrides.
+// model field to a typed null set. Previously it was left as an untyped
+// zero-value collection, which made types.ObjectValueFrom fail with a
+// "!!! MISSING TYPE !!!" Value Conversion Error during the Read/refresh (and
+// import) of any unifi_device that has port overrides. (#384 made this a Set.)
 func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
 	r := &deviceResource{}
 
@@ -1087,14 +1089,14 @@ func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
 		t.Fatal("port_override is missing the tagged_networkconf_ids attribute")
 	}
 
-	list, ok := taggedAttr.(types.List)
+	taggedSet, ok := taggedAttr.(types.Set)
 	if !ok {
-		t.Fatalf("expected tagged_networkconf_ids to be types.List, got %T", taggedAttr)
+		t.Fatalf("expected tagged_networkconf_ids to be types.Set, got %T", taggedAttr)
 	}
-	if !list.IsNull() {
-		t.Errorf("expected tagged_networkconf_ids to be a null list, got %v", list)
+	if !taggedSet.IsNull() {
+		t.Errorf("expected tagged_networkconf_ids to be a null set, got %v", taggedSet)
 	}
-	if et := list.ElementType(context.Background()); !et.Equal(types.StringType) {
+	if et := taggedSet.ElementType(context.Background()); !et.Equal(types.StringType) {
 		t.Errorf("expected tagged_networkconf_ids element type to be string, got %v", et)
 	}
 }
