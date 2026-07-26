@@ -91,7 +91,11 @@ func TestAccClientFramework_basic(t *testing.T) {
 				Config: testAccClientFrameworkConfig_controlFlags(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_client.test", "allow_existing", "false"),
-					resource.TestCheckResourceAttr("unifi_client.test", "skip_forget_on_destroy", "true"),
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"skip_forget_on_destroy",
+						"true",
+					),
 				),
 			},
 			{
