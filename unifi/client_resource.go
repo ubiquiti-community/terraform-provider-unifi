@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
@@ -63,10 +62,6 @@ func NewClientListResource() list.ListResource {
 // clientResource defines the resource implementation.
 type clientResource struct {
 	client *Client
-
-	// Cache group name → ID lookups per site to avoid repeated API calls during List.
-	groupCacheMu sync.Mutex
-	groupCache   map[string]map[string]string // site → (name → id)
 }
 
 // qosRateModel describes the nested qos_rate attribute.
@@ -1195,15 +1190,15 @@ func (r *clientResource) resolveGroupNames(
 	site string,
 	ids []string,
 ) ([]string, error) {
-	r.groupCacheMu.Lock()
-	defer r.groupCacheMu.Unlock()
+	r.client.groupCacheMu.Lock()
+	defer r.client.groupCacheMu.Unlock()
 
-	if r.groupCache == nil {
-		r.groupCache = make(map[string]map[string]string)
+	if r.client.groupCache == nil {
+		r.client.groupCache = make(map[string]map[string]string)
 	}
 
 	// Ensure cache is populated for this site.
-	if _, ok := r.groupCache[site]; !ok {
+	if _, ok := r.client.groupCache[site]; !ok {
 		groups, err := r.client.ListNetworkMembersGroups(ctx, site)
 		if err != nil {
 			return nil, fmt.Errorf("listing network members groups: %w", err)
@@ -1212,11 +1207,11 @@ func (r *clientResource) resolveGroupNames(
 		for _, g := range groups {
 			siteCache[g.Name] = g.ID
 		}
-		r.groupCache[site] = siteCache
+		r.client.groupCache[site] = siteCache
 	}
 
 	// Build reverse map id → name from cache.
-	siteCache := r.groupCache[site]
+	siteCache := r.client.groupCache[site]
 	idToName := make(map[string]string, len(siteCache))
 	for name, id := range siteCache {
 		idToName[id] = name
@@ -1239,14 +1234,14 @@ func (r *clientResource) resolveGroupID(
 	ctx context.Context,
 	site, groupName string,
 ) (string, error) {
-	r.groupCacheMu.Lock()
-	defer r.groupCacheMu.Unlock()
+	r.client.groupCacheMu.Lock()
+	defer r.client.groupCacheMu.Unlock()
 
-	if r.groupCache == nil {
-		r.groupCache = make(map[string]map[string]string)
+	if r.client.groupCache == nil {
+		r.client.groupCache = make(map[string]map[string]string)
 	}
 
-	if siteCache, ok := r.groupCache[site]; ok {
+	if siteCache, ok := r.client.groupCache[site]; ok {
 		if id, ok := siteCache[groupName]; ok {
 			return id, nil
 		}
@@ -1262,7 +1257,7 @@ func (r *clientResource) resolveGroupID(
 	for _, g := range groups {
 		siteCache[g.Name] = g.ID
 	}
-	r.groupCache[site] = siteCache
+	r.client.groupCache[site] = siteCache
 
 	id, ok := siteCache[groupName]
 	if ok {
