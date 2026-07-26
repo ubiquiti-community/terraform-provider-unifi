@@ -1703,7 +1703,10 @@ func (r *deviceResource) updateDevice(
 				"Could not fetch the current device (mac=%q, id=%q) on site %q before updating: %v — "+
 					"refusing to send an update with state/adopted left unset, which UDM/Dream "+
 					"Machine gateways reject.",
-				deviceReq.MAC, deviceReq.ID, site, lookupErr,
+				deviceReq.MAC,
+				deviceReq.ID,
+				site,
+				lookupErr,
 			)
 		} else {
 			detail = fmt.Sprintf(
@@ -2636,7 +2639,8 @@ func (r *deviceResource) frameworkToPortOverrides(
 			if !model.MulticastRouterNetworkIDs.IsNull() {
 				var multicastIDs []string
 				diags.Append(
-					model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...)
+					model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...,
+				)
 				if diags.HasError() {
 					return nil, diags
 				}
@@ -3058,7 +3062,8 @@ func sanitizeRadioForUpdate(radioName string, radio *unifi.DeviceRadioTable) dia
 	if !radio.SensLevelEnabled || !inRange(radio.SensLevel, -90, -50) {
 		radio.SensLevel = nil
 	}
-	if radio.AssistedRoamingEnabled && radio.AssistedRoamingRssi != nil && !inRange(radio.AssistedRoamingRssi, -80, -60) {
+	if radio.AssistedRoamingEnabled && radio.AssistedRoamingRssi != nil &&
+		!inRange(radio.AssistedRoamingRssi, -80, -60) {
 		warnDropped("assisted_roaming_rssi", *radio.AssistedRoamingRssi, -80, -60)
 	}
 	if !radio.AssistedRoamingEnabled || !inRange(radio.AssistedRoamingRssi, -80, -60) {
