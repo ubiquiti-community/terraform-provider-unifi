@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
-	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -25,11 +25,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -83,19 +85,19 @@ func (m qosRateModel) AttributeTypes() map[string]attr.Type {
 
 // clientResourceModel describes the resource data model.
 type clientResourceModel struct {
-	ID             types.String        `tfsdk:"id"`
-	Site           types.String        `tfsdk:"site"`
-	MAC            hwtypes.MACAddress  `tfsdk:"mac"`
-	Name           types.String        `tfsdk:"name"`
-	DisplayName    types.String        `tfsdk:"display_name"`
-	QOSRate        types.Object        `tfsdk:"qos_rate"`
-	Note           types.String        `tfsdk:"note"`
-	FixedIP        iptypes.IPv4Address `tfsdk:"fixed_ip"`
-	FixedApMAC     hwtypes.MACAddress  `tfsdk:"fixed_ap_mac"`
-	NetworkID      types.String        `tfsdk:"network_id"`
-	Groups         types.List          `tfsdk:"groups"`
-	Blocked        types.Bool          `tfsdk:"blocked"`
-	LocalDNSRecord types.String        `tfsdk:"local_dns_record"`
+	ID             types.String       `tfsdk:"id"`
+	Site           types.String       `tfsdk:"site"`
+	MAC            hwtypes.MACAddress `tfsdk:"mac"`
+	Name           types.String       `tfsdk:"name"`
+	DisplayName    types.String       `tfsdk:"display_name"`
+	QOSRate        types.Object       `tfsdk:"qos_rate"`
+	Note           types.String       `tfsdk:"note"`
+	FixedIP        types.String       `tfsdk:"fixed_ip"`
+	FixedApMAC     hwtypes.MACAddress `tfsdk:"fixed_ap_mac"`
+	NetworkID      types.String       `tfsdk:"network_id"`
+	Groups         types.List         `tfsdk:"groups"`
+	Blocked        types.Bool         `tfsdk:"blocked"`
+	LocalDNSRecord types.String       `tfsdk:"local_dns_record"`
 
 	// These control import and create behavior to allow the resource to take over existing clients instead of erroring, and to allow it to just be removed from Terraform management without deleting in UniFi.
 	AllowExisting       types.Bool `tfsdk:"allow_existing"`
@@ -239,10 +241,20 @@ Clients are created in the controller when observed on the network, so the resou
 				},
 			},
 			"fixed_ip": schema.StringAttribute{
-				MarkdownDescription: "A fixed IPv4 address for this client.",
-				CustomType:          iptypes.IPv4AddressType{},
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "A fixed IPv4 address for this client. " +
+					"Set to an empty string to clear a previously assigned fixed IP.",
+				Optional: true,
+				Computed: true,
+				// #386: keep validating the IPv4 format but also accept an empty
+				// string, which is the documented way to clear the fixed IP. A typed
+				// IPv4 custom type rejects "" outright, so a plain string with an
+				// empty-or-IPv4 validator is used instead.
+				Validators: []validator.String{
+					stringvalidator.Any(
+						stringvalidator.OneOf(""),
+						validators.IPv4Validator(),
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -1051,7 +1063,15 @@ func (r *clientResource) clientToModel(
 	model.Name = util.StringValueOrNull(client.Name)
 	model.DisplayName = util.StringValueOrNull(client.DisplayName)
 	model.Note = util.StringValueOrNull(client.Note)
-	model.FixedIP = util.IPv4ValueOrNull(client.FixedIP)
+	// #386: when the fixed IP is disabled the controller keeps echoing the stale
+	// address. Mirror it as a known empty string so an explicit fixed_ip = "" (the
+	// documented way to clear it) round-trips, instead of resending the old IP with
+	// use_fixedip=true (which the controller rejects with api.err.DuplicateFixedIP).
+	if client.UseFixedIP {
+		model.FixedIP = util.StringValueOrNull(client.FixedIP)
+	} else {
+		model.FixedIP = types.StringValue("")
+	}
 	model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
 	model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
 

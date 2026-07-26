@@ -50,7 +50,7 @@ resource "unifi_client" "test" {
 - `blocked` (Boolean) Specifies whether this client should be blocked from the network.
 - `display_name` (String) The display name of the client.
 - `fixed_ap_mac` (String) The MAC address of the access point to which this client should be fixed.
-- `fixed_ip` (String) A fixed IPv4 address for this client.
+- `fixed_ip` (String) A fixed IPv4 address for this client. Set to an empty string to clear a previously assigned fixed IP.
 - `groups` (List of String) List of network members group names for this client.
 - `local_dns_record` (String) Specifies the local DNS record for this client.
 - `name` (String) The name of the client.
