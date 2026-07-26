@@ -74,6 +74,48 @@ func TestClientToModel_PreservesBlockedTrue(t *testing.T) {
 	}
 }
 
+// TestClientToModel_LocalDNSRecordDisabledIgnoresEcho guards #387: when the
+// controller reports local_dns_record_enabled=false it still echoes the stale
+// record string. The provider must ignore that echo and mirror a known empty
+// string so an explicit local_dns_record="" round-trips instead of producing an
+// inconsistent-result-after-apply.
+func TestClientToModel_LocalDNSRecordDisabledIgnoresEcho(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:                   "02:00:00:de:ad:03",
+		LocalDNSRecord:        "mqtt.home.arpa",
+		LocalDNSRecordEnabled: false,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.LocalDNSRecord.IsNull() || model.LocalDNSRecord.IsUnknown() ||
+		model.LocalDNSRecord.ValueString() != "" {
+		t.Errorf("local_dns_record: want known empty string, got %#v", model.LocalDNSRecord)
+	}
+}
+
+// TestClientToModel_LocalDNSRecordEnabledKeepsValue is the companion to #387: an
+// enabled record must still surface its real value.
+func TestClientToModel_LocalDNSRecordEnabledKeepsValue(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:                   "02:00:00:de:ad:04",
+		LocalDNSRecord:        "nas.home.arpa",
+		LocalDNSRecordEnabled: true,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.LocalDNSRecord.ValueString() != "nas.home.arpa" {
+		t.Errorf("local_dns_record: want nas.home.arpa, got %q", model.LocalDNSRecord.ValueString())
+	}
+}
+
 func TestAccClientFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },

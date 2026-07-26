@@ -1106,7 +1106,17 @@ func (r *clientResource) clientToModel(
 	// (false) instead of null; otherwise the schema's Default(false) makes the next
 	// plan propose false → a spurious diff on every create/import.
 	model.Blocked = types.BoolValue(client.Blocked != nil && *client.Blocked)
-	model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
+
+	// #387: when the local DNS record is disabled the controller keeps echoing the
+	// stale record string, so trusting it produces an inconsistent-result-after-apply
+	// against an explicit `local_dns_record = ""` (the documented way to clear it).
+	// Mirror the disabled state as a known empty string instead of the echoed value,
+	// so `""` round-trips cleanly and enabling still surfaces the real record.
+	if client.LocalDNSRecordEnabled {
+		model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
+	} else {
+		model.LocalDNSRecord = types.StringValue("")
+	}
 
 	// Computed attributes
 	model.Hostname = util.StringValueOrNull(client.Hostname)
