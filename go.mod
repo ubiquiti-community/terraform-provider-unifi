@@ -226,7 +226,7 @@ require (
 )
 
 // Temporary dependency. Remove after ubiquiti-community/go-unifi#56 merges.
-replace github.com/ubiquiti-community/go-unifi => github.com/walero-moon/go-unifi v1.33.43-0.20260727153850-5255e6004f65
+replace github.com/ubiquiti-community/go-unifi => github.com/walero-moon/go-unifi v1.33.43-0.20260727163245-37cc042c62ae
 
 tool (
 	github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
