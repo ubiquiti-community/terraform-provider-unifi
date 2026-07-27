@@ -507,6 +507,54 @@ func Test_portProfileResource_ListResourceConfigSchema(t *testing.T) {
 	}
 }
 
+// TestPortProfileToModel_NativeNetworkClearedRoundTrips guards #383: the
+// controller reports "" for native_networkconf_id when the native network is
+// explicitly None. portProfileToModel must surface that as a known empty string
+// (not null) so an explicit native_networkconf_id = "" round-trips instead of
+// producing an inconsistent-result-after-apply.
+func TestPortProfileToModel_NativeNetworkClearedRoundTrips(t *testing.T) {
+	r := &portProfileResource{}
+	var model portProfileResourceModel
+	diags := r.portProfileToModel(
+		context.Background(),
+		&unifi.PortProfile{NATiveNetworkID: ""},
+		&model,
+		"default",
+	)
+	if diags.HasError() {
+		t.Fatalf("portProfileToModel returned errors: %v", diags)
+	}
+	if model.NativeNetworkConfID.IsNull() || model.NativeNetworkConfID.IsUnknown() ||
+		model.NativeNetworkConfID.ValueString() != "" {
+		t.Errorf(
+			"native_networkconf_id: want known empty string, got %#v",
+			model.NativeNetworkConfID,
+		)
+	}
+}
+
+// TestPortProfileToModel_NativeNetworkAssignedKept is the companion to #383: a
+// controller-assigned native network ID must still surface its value.
+func TestPortProfileToModel_NativeNetworkAssignedKept(t *testing.T) {
+	r := &portProfileResource{}
+	var model portProfileResourceModel
+	diags := r.portProfileToModel(
+		context.Background(),
+		&unifi.PortProfile{NATiveNetworkID: "net-123"},
+		&model,
+		"default",
+	)
+	if diags.HasError() {
+		t.Fatalf("portProfileToModel returned errors: %v", diags)
+	}
+	if model.NativeNetworkConfID.ValueString() != "net-123" {
+		t.Errorf(
+			"native_networkconf_id: want net-123, got %q",
+			model.NativeNetworkConfID.ValueString(),
+		)
+	}
+}
+
 func TestAccPortProfileList_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },

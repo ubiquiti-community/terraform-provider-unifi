@@ -931,11 +931,13 @@ func (r *portProfileResource) portProfileToModel(
 		model.LLDPMedNotifyEnabled = types.BoolNull()
 	}
 
-	if portProfile.NATiveNetworkID != "" {
-		model.NativeNetworkConfID = types.StringValue(portProfile.NATiveNetworkID)
-	} else {
-		model.NativeNetworkConfID = types.StringNull()
-	}
+	// #383: the controller reports "" when the native network is explicitly set to
+	// None. Surface that as a known empty string (not null) so an explicit
+	// native_networkconf_id = "" round-trips and actually clears the native network,
+	// instead of triggering an inconsistent-result-after-apply. A profile that never
+	// set it gets the controller-assigned ID here (non-empty). Requires the go-unifi
+	// fix that stops dropping the empty value from the request body.
+	model.NativeNetworkConfID = types.StringValue(portProfile.NATiveNetworkID)
 
 	if portProfile.OpMode == "" {
 		model.OpMode = types.StringValue("switch")
