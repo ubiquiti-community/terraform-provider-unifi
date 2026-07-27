@@ -1534,8 +1534,75 @@ func (r *wlanFrameworkResource) planToWLAN(
 	return wlan, diags
 }
 
+func privatePresharedKeysState(
+	ctx context.Context,
+	wlan *unifi.WLAN,
+	prior types.List,
+) (types.List, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
+
+	// Disabled PPSK has no key state.
+	if !wlan.PrivatePresharedKeysEnabled {
+		return types.ListNull(ppskType), diags
+	}
+	if len(wlan.PrivatePresharedKeys) == 0 {
+		return types.ListNull(ppskType), diags
+	}
+
+	// Build the state used for imports and real controller-side changes.
+	values := make([]wlanPrivatePresharedKeyModel, len(wlan.PrivatePresharedKeys))
+	for i, key := range wlan.PrivatePresharedKeys {
+		values[i] = wlanPrivatePresharedKeyModel{
+			NetworkID: types.StringValue(key.NetworkID),
+			Password:  types.StringValue(key.Password),
+		}
+	}
+	remote, d := types.ListValueFrom(ctx, ppskType, values)
+	diags.Append(d...)
+	if prior.IsNull() || prior.IsUnknown() || len(values) != len(prior.Elements()) {
+		return remote, diags
+	}
+
+	// Keep prior secrets when the same bindings return in another order or without passwords.
+	var keys []wlanPrivatePresharedKeyModel
+	diags.Append(prior.ElementsAs(ctx, &keys, false)...)
+	if diags.HasError() {
+		return remote, diags
+	}
+
+	matched := make([]bool, len(keys))
+	match := func(current unifi.WLANPrivatePresharedKeys) bool {
+		for i, old := range keys {
+			if matched[i] || old.NetworkID.ValueString() != current.NetworkID {
+				continue
+			}
+			if current.Password != "" && old.Password.ValueString() != current.Password {
+				continue
+			}
+			matched[i] = true
+			return true
+		}
+		return false
+	}
+
+	// Match visible passwords before an omitted password can consume their entry.
+	for _, current := range wlan.PrivatePresharedKeys {
+		if current.Password != "" && !match(current) {
+			return remote, diags
+		}
+	}
+	for _, current := range wlan.PrivatePresharedKeys {
+		if current.Password == "" && !match(current) {
+			return remote, diags
+		}
+	}
+
+	return prior, diags
+}
+
 func (r *wlanFrameworkResource) wlanToModel(
-	_ context.Context,
+	ctx context.Context,
 	wlan *unifi.WLAN,
 	model *wlanFrameworkResourceModel,
 	site string,
@@ -1630,26 +1697,8 @@ func (r *wlanFrameworkResource) wlanToModel(
 	// refresh and import.
 	model.PrivatePresharedKeysEnabled = types.BoolValue(wlan.PrivatePresharedKeysEnabled)
 
-	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
-	if len(wlan.PrivatePresharedKeys) > 0 {
-		ppskValues := make([]attr.Value, len(wlan.PrivatePresharedKeys))
-		for i, ppsk := range wlan.PrivatePresharedKeys {
-			obj, d := types.ObjectValue(
-				wlanPrivatePresharedKeyModel{}.AttributeTypes(),
-				map[string]attr.Value{
-					"network_id": types.StringValue(ppsk.NetworkID),
-					"password":   types.StringValue(ppsk.Password),
-				},
-			)
-			diags.Append(d...)
-			ppskValues[i] = obj
-		}
-		ppskList, d := types.ListValue(ppskType, ppskValues)
-		diags.Append(d...)
-		model.PrivatePresharedKeys = ppskList
-	} else {
-		model.PrivatePresharedKeys = types.ListNull(ppskType)
-	}
+	model.PrivatePresharedKeys, d = privatePresharedKeysState(ctx, wlan, model.PrivatePresharedKeys)
+	diags.Append(d...)
 
 	if wlan.RADIUSProfileID != "" {
 		model.RadiusProfileID = types.StringValue(wlan.RADIUSProfileID)
