@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
-	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -26,11 +25,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -63,10 +64,6 @@ func NewClientListResource() list.ListResource {
 // clientResource defines the resource implementation.
 type clientResource struct {
 	client *Client
-
-	// Cache group name → ID lookups per site to avoid repeated API calls during List.
-	groupCacheMu sync.Mutex
-	groupCache   map[string]map[string]string // site → (name → id)
 }
 
 // qosRateModel describes the nested qos_rate attribute.
@@ -88,19 +85,19 @@ func (m qosRateModel) AttributeTypes() map[string]attr.Type {
 
 // clientResourceModel describes the resource data model.
 type clientResourceModel struct {
-	ID             types.String        `tfsdk:"id"`
-	Site           types.String        `tfsdk:"site"`
-	MAC            hwtypes.MACAddress  `tfsdk:"mac"`
-	Name           types.String        `tfsdk:"name"`
-	DisplayName    types.String        `tfsdk:"display_name"`
-	QOSRate        types.Object        `tfsdk:"qos_rate"`
-	Note           types.String        `tfsdk:"note"`
-	FixedIP        iptypes.IPv4Address `tfsdk:"fixed_ip"`
-	FixedApMAC     hwtypes.MACAddress  `tfsdk:"fixed_ap_mac"`
-	NetworkID      types.String        `tfsdk:"network_id"`
-	Groups         types.List          `tfsdk:"groups"`
-	Blocked        types.Bool          `tfsdk:"blocked"`
-	LocalDNSRecord types.String        `tfsdk:"local_dns_record"`
+	ID             types.String       `tfsdk:"id"`
+	Site           types.String       `tfsdk:"site"`
+	MAC            hwtypes.MACAddress `tfsdk:"mac"`
+	Name           types.String       `tfsdk:"name"`
+	DisplayName    types.String       `tfsdk:"display_name"`
+	QOSRate        types.Object       `tfsdk:"qos_rate"`
+	Note           types.String       `tfsdk:"note"`
+	FixedIP        types.String       `tfsdk:"fixed_ip"`
+	FixedApMAC     hwtypes.MACAddress `tfsdk:"fixed_ap_mac"`
+	NetworkID      types.String       `tfsdk:"network_id"`
+	Groups         types.List         `tfsdk:"groups"`
+	Blocked        types.Bool         `tfsdk:"blocked"`
+	LocalDNSRecord types.String       `tfsdk:"local_dns_record"`
 
 	// These control import and create behavior to allow the resource to take over existing clients instead of erroring, and to allow it to just be removed from Terraform management without deleting in UniFi.
 	AllowExisting       types.Bool `tfsdk:"allow_existing"`
@@ -244,10 +241,20 @@ Clients are created in the controller when observed on the network, so the resou
 				},
 			},
 			"fixed_ip": schema.StringAttribute{
-				MarkdownDescription: "A fixed IPv4 address for this client.",
-				CustomType:          iptypes.IPv4AddressType{},
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "A fixed IPv4 address for this client. " +
+					"Set to an empty string to clear a previously assigned fixed IP.",
+				Optional: true,
+				Computed: true,
+				// #386: keep validating the IPv4 format but also accept an empty
+				// string, which is the documented way to clear the fixed IP. A typed
+				// IPv4 custom type rejects "" outright, so a plain string with an
+				// empty-or-IPv4 validator is used instead.
+				Validators: []validator.String{
+					stringvalidator.Any(
+						stringvalidator.OneOf(""),
+						validators.IPv4Validator(),
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -688,6 +695,7 @@ func (r *clientResource) Update(
 			if resp.Diagnostics.HasError() {
 				return
 			}
+			r.applyPlanToState(ctx, &plan, &state)
 
 			// Update identity with MAC
 			identityModel := clientIdentityModel{
@@ -733,6 +741,7 @@ func (r *clientResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.applyPlanToState(ctx, &plan, &state)
 
 	// Update identity with MAC
 	identityModel := clientIdentityModel{
@@ -746,7 +755,7 @@ func (r *clientResource) Update(
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *clientResource) applyPlanToState( //nolint:unused
+func (r *clientResource) applyPlanToState(
 	_ context.Context,
 	plan *clientResourceModel,
 	state *clientResourceModel,
@@ -1054,7 +1063,15 @@ func (r *clientResource) clientToModel(
 	model.Name = util.StringValueOrNull(client.Name)
 	model.DisplayName = util.StringValueOrNull(client.DisplayName)
 	model.Note = util.StringValueOrNull(client.Note)
-	model.FixedIP = util.IPv4ValueOrNull(client.FixedIP)
+	// #386: when the fixed IP is disabled the controller keeps echoing the stale
+	// address. Mirror it as a known empty string so an explicit fixed_ip = "" (the
+	// documented way to clear it) round-trips, instead of resending the old IP with
+	// use_fixedip=true (which the controller rejects with api.err.DuplicateFixedIP).
+	if client.UseFixedIP {
+		model.FixedIP = util.StringValueOrNull(client.FixedIP)
+	} else {
+		model.FixedIP = types.StringValue("")
+	}
 	model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
 	model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
 
@@ -1104,7 +1121,17 @@ func (r *clientResource) clientToModel(
 	// (false) instead of null; otherwise the schema's Default(false) makes the next
 	// plan propose false → a spurious diff on every create/import.
 	model.Blocked = types.BoolValue(client.Blocked != nil && *client.Blocked)
-	model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
+
+	// #387: when the local DNS record is disabled the controller keeps echoing the
+	// stale record string, so trusting it produces an inconsistent-result-after-apply
+	// against an explicit `local_dns_record = ""` (the documented way to clear it).
+	// Mirror the disabled state as a known empty string instead of the echoed value,
+	// so `""` round-trips cleanly and enabling still surfaces the real record.
+	if client.LocalDNSRecordEnabled {
+		model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
+	} else {
+		model.LocalDNSRecord = types.StringValue("")
+	}
 
 	// Computed attributes
 	model.Hostname = util.StringValueOrNull(client.Hostname)
@@ -1193,15 +1220,15 @@ func (r *clientResource) resolveGroupNames(
 	site string,
 	ids []string,
 ) ([]string, error) {
-	r.groupCacheMu.Lock()
-	defer r.groupCacheMu.Unlock()
+	r.client.groupCacheMu.Lock()
+	defer r.client.groupCacheMu.Unlock()
 
-	if r.groupCache == nil {
-		r.groupCache = make(map[string]map[string]string)
+	if r.client.groupCache == nil {
+		r.client.groupCache = make(map[string]map[string]string)
 	}
 
 	// Ensure cache is populated for this site.
-	if _, ok := r.groupCache[site]; !ok {
+	if _, ok := r.client.groupCache[site]; !ok {
 		groups, err := r.client.ListNetworkMembersGroups(ctx, site)
 		if err != nil {
 			return nil, fmt.Errorf("listing network members groups: %w", err)
@@ -1210,11 +1237,11 @@ func (r *clientResource) resolveGroupNames(
 		for _, g := range groups {
 			siteCache[g.Name] = g.ID
 		}
-		r.groupCache[site] = siteCache
+		r.client.groupCache[site] = siteCache
 	}
 
 	// Build reverse map id → name from cache.
-	siteCache := r.groupCache[site]
+	siteCache := r.client.groupCache[site]
 	idToName := make(map[string]string, len(siteCache))
 	for name, id := range siteCache {
 		idToName[id] = name
@@ -1237,14 +1264,14 @@ func (r *clientResource) resolveGroupID(
 	ctx context.Context,
 	site, groupName string,
 ) (string, error) {
-	r.groupCacheMu.Lock()
-	defer r.groupCacheMu.Unlock()
+	r.client.groupCacheMu.Lock()
+	defer r.client.groupCacheMu.Unlock()
 
-	if r.groupCache == nil {
-		r.groupCache = make(map[string]map[string]string)
+	if r.client.groupCache == nil {
+		r.client.groupCache = make(map[string]map[string]string)
 	}
 
-	if siteCache, ok := r.groupCache[site]; ok {
+	if siteCache, ok := r.client.groupCache[site]; ok {
 		if id, ok := siteCache[groupName]; ok {
 			return id, nil
 		}
@@ -1260,7 +1287,7 @@ func (r *clientResource) resolveGroupID(
 	for _, g := range groups {
 		siteCache[g.Name] = g.ID
 	}
-	r.groupCache[site] = siteCache
+	r.client.groupCache[site] = siteCache
 
 	id, ok := siteCache[groupName]
 	if ok {

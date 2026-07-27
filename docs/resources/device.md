@@ -153,7 +153,7 @@ Optional:
 - `dot1x_idle_timeout` (String) 802.1X idle timeout, as a Go duration string (e.g. `5m`, `300s`).
 - `egress_rate_limit_kbps` (Number) Egress rate limit in kbps.
 - `egress_rate_limit_kbps_enabled` (Boolean) Enable egress rate limiting.
-- `excluded_networkconf_ids` (List of String) List of network IDs to exclude from this port.
+- `excluded_networkconf_ids` (Set of String) List of network IDs to exclude from this port.
 - `fec_mode` (String) Forward Error Correction mode.
 - `flow_control_enabled` (Boolean) Enable flow control.
 - `forward` (String) Forwarding mode.
@@ -162,7 +162,7 @@ Optional:
 - `lldpmed_enabled` (Boolean) Enable LLDP-MED.
 - `lldpmed_notify_enabled` (Boolean) Enable LLDP-MED notifications.
 - `mirror_port_idx` (Number) Mirror port index.
-- `multicast_router_networkconf_ids` (List of String) List of network IDs for multicast router.
+- `multicast_router_networkconf_ids` (Set of String) List of network IDs for multicast router.
 - `name` (String) Human-readable name of the port.
 - `native_networkconf_id` (String) Native network ID (VLAN).
 - `op_mode` (String) Operating mode of the port: `switch` (default), `mirror`, or `aggregate`. Set `aggregate` on the lead port of an SFP+/link-aggregation (LAG) group and list the member ports in `aggregate_members`. Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.
@@ -188,7 +188,7 @@ Optional:
 - `stormctrl_ucast_level` (Number) Unicast storm control level.
 - `stormctrl_ucast_rate` (Number) Unicast storm control rate.
 - `stp_port_mode` (Boolean) STP port mode.
-- `tagged_networkconf_ids` (List of String) List of network IDs to tag on this port.
+- `tagged_networkconf_ids` (Set of String) List of network IDs to tag on this port.
 - `tagged_vlan_mgmt` (String) Tagged VLAN management.
 - `voice_networkconf_id` (String) Voice network ID.
 

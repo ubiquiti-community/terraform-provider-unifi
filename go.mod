@@ -14,7 +14,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.43.0
-	github.com/ubiquiti-community/go-unifi v1.33.43-0.20260706191309-bc63776a9ebf
+	github.com/ubiquiti-community/go-unifi v1.33.43-0.20260727045534-2df04ff820c6
 )
 
 require (
@@ -208,7 +208,7 @@ require (
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/grpc v1.81.1 // indirect
+	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -225,8 +225,8 @@ require (
 	gotest.tools/gotestsum v1.13.0 // indirect
 )
 
-// Temporary draft dependency. Remove after ubiquiti-community/go-unifi#55 merges.
-replace github.com/ubiquiti-community/go-unifi => github.com/walero-moon/go-unifi v1.33.43-0.20260710213429-15a8d0ac4cdd
+// Temporary dependency. Remove after ubiquiti-community/go-unifi#56 merges.
+replace github.com/ubiquiti-community/go-unifi => github.com/walero-moon/go-unifi v1.33.43-0.20260727153850-5255e6004f65
 
 tool (
 	github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs

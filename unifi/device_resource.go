@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -158,7 +159,7 @@ type portOverrideModel struct {
 	Dot1XIDleTimeout           timetypes.GoDuration `tfsdk:"dot1x_idle_timeout"`
 	EgressRateLimitKbps        types.Int64          `tfsdk:"egress_rate_limit_kbps"`
 	EgressRateLimitKbpsEnabled types.Bool           `tfsdk:"egress_rate_limit_kbps_enabled"`
-	ExcludedNetworkIDs         types.List           `tfsdk:"excluded_networkconf_ids"`
+	ExcludedNetworkIDs         types.Set            `tfsdk:"excluded_networkconf_ids"`
 	FecMode                    types.String         `tfsdk:"fec_mode"`
 	FlowControlEnabled         types.Bool           `tfsdk:"flow_control_enabled"`
 	Forward                    types.String         `tfsdk:"forward"`
@@ -167,7 +168,7 @@ type portOverrideModel struct {
 	LldpmedEnabled             types.Bool           `tfsdk:"lldpmed_enabled"`
 	LldpmedNotifyEnabled       types.Bool           `tfsdk:"lldpmed_notify_enabled"`
 	MirrorPortIDX              types.Int64          `tfsdk:"mirror_port_idx"`
-	MulticastRouterNetworkIDs  types.List           `tfsdk:"multicast_router_networkconf_ids"`
+	MulticastRouterNetworkIDs  types.Set            `tfsdk:"multicast_router_networkconf_ids"`
 	NativeNetworkID            types.String         `tfsdk:"native_networkconf_id"`
 	PortKeepaliveEnabled       types.Bool           `tfsdk:"port_keepalive_enabled"`
 	PortSecurityEnabled        types.Bool           `tfsdk:"port_security_enabled"`
@@ -189,7 +190,7 @@ type portOverrideModel struct {
 	StormctrlUcastLevel        types.Int64          `tfsdk:"stormctrl_ucast_level"`
 	StormctrlUcastRate         types.Int64          `tfsdk:"stormctrl_ucast_rate"`
 	StpPortMode                types.Bool           `tfsdk:"stp_port_mode"`
-	TaggedNetworkIDs           types.List           `tfsdk:"tagged_networkconf_ids"`
+	TaggedNetworkIDs           types.Set            `tfsdk:"tagged_networkconf_ids"`
 	TaggedVLANMgmt             types.String         `tfsdk:"tagged_vlan_mgmt"`
 	VoiceNetworkID             types.String         `tfsdk:"voice_networkconf_id"`
 }
@@ -271,8 +272,10 @@ func (r *deviceResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		// v1: lcm_idle_timeout and port_override.dot1x_idle_timeout changed from
-		// Int64 (seconds) to GoDuration strings. See UpgradeState.
-		Version: 1,
+		//     Int64 (seconds) to GoDuration strings.
+		// v2: port_override.{excluded,multicast_router,tagged}_networkconf_ids changed
+		//     from List to Set (#384). See UpgradeState.
+		Version: 2,
 		Description: "`unifi_device` manages a device of the network.\n\n" +
 			"Devices are adopted by the controller, so it is not possible for this resource to be created through " +
 			"Terraform, the create operation instead will simply start managing the device specified by MAC address. " +
@@ -808,7 +811,7 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 							Computed:    true,
 						},
-						"excluded_networkconf_ids": schema.ListAttribute{
+						"excluded_networkconf_ids": schema.SetAttribute{
 							Description: "List of network IDs to exclude from this port.",
 							Optional:    true,
 							ElementType: types.StringType,
@@ -850,7 +853,7 @@ func (r *deviceResource) Schema(
 							Description: "Mirror port index.",
 							Optional:    true,
 						},
-						"multicast_router_networkconf_ids": schema.ListAttribute{
+						"multicast_router_networkconf_ids": schema.SetAttribute{
 							Description: "List of network IDs for multicast router.",
 							Optional:    true,
 							ElementType: types.StringType,
@@ -946,7 +949,7 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 							Computed:    true,
 						},
-						"tagged_networkconf_ids": schema.ListAttribute{
+						"tagged_networkconf_ids": schema.SetAttribute{
 							Description: "List of network IDs to tag on this port.",
 							Optional:    true,
 							ElementType: types.StringType,
@@ -966,9 +969,17 @@ func (r *deviceResource) Schema(
 	}
 }
 
-// UpgradeState migrates v0 state to v1: lcm_idle_timeout and each
-// port_override.dot1x_idle_timeout changed from integer seconds to GoDuration
-// strings.
+// UpgradeState migrates prior device state to the current schema version.
+//
+//	v0 -> current: lcm_idle_timeout and each port_override.dot1x_idle_timeout
+//	    changed from integer seconds to GoDuration strings.
+//	v1 -> current: port_override.{excluded,multicast_router,tagged}_networkconf_ids
+//	    changed from List to Set (#384). No JSON rewrite is needed - a JSON array
+//	    decodes into either collection - so the raw state is simply reconciled
+//	    against the current (Set) schema type.
+//
+// Each upgrader targets the CURRENT schema type, so v0 state also picks up the
+// List->Set change via reconciliation.
 func (r *deviceResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
@@ -999,6 +1010,29 @@ func (r *deviceResource) UpgradeState(
 							}
 						}
 					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade device state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		},
+		1: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				// v1 already stores durations as strings; only the List->Set change
+				// applies, which reconcileType handles against the current schema type.
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(map[string]any) {},
 				)
 				if err != nil {
 					resp.Diagnostics.AddError("Failed to upgrade device state", err.Error())
@@ -1670,14 +1704,56 @@ func (r *deviceResource) updateDevice(
 	//      api.err.Invalid (issue #177). Echo the current values so they don't
 	//      appear in the diff.
 	// Prefer MAC lookup (works through cloud connector); fall back to ID (local).
+	// Capture each lookup error so that auth/network/permission failures are
+	// surfaced distinctly from a simple not-found case (review feedback on PR #378).
+	// GetDeviceByMAC and GetDevice both return *unifi.NotFoundError when the device
+	// is missing; that sentinel must NOT be treated as a lookup failure.
 	var currentDevice *unifi.Device
+	var macErr, idErr error
 	if deviceReq.MAC != "" {
-		currentDevice, _ = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
+		currentDevice, macErr = r.client.GetDeviceByMAC(ctx, site, deviceReq.MAC)
 	}
 	if currentDevice == nil && deviceReq.ID != "" {
-		currentDevice, _ = r.client.GetDevice(ctx, site, deviceReq.ID)
+		currentDevice, idErr = r.client.GetDevice(ctx, site, deviceReq.ID)
 	}
-	if currentDevice != nil && deviceReq.Type == "" {
+	if currentDevice == nil {
+		// Everything below (state/adopted echo, port_overrides echo) depends on
+		// currentDevice. Proceeding without it would leave state/adopted at their Go
+		// zero-values in the PUT body — precisely the condition that triggers
+		// api.err.InvalidPayload (400) on UDM/Dream Machine gateways that this PR
+		// exists to fix (#177/#150). Fail fast with a clear diagnostic instead of
+		// silently reintroducing that failure mode (review feedback on PR #378).
+		var detail string
+		if isLookupFailure(macErr) || isLookupFailure(idErr) {
+			// Pick the REAL failure, not merely the first non-nil error: a
+			// not-found from one lookup must never mask a genuine
+			// auth/network/permission failure from the other (either order).
+			lookupErr := macErr
+			if !isLookupFailure(lookupErr) {
+				lookupErr = idErr
+			}
+			detail = fmt.Sprintf(
+				"Could not fetch the current device (mac=%q, id=%q) on site %q before updating: %v — "+
+					"refusing to send an update with state/adopted left unset, which UDM/Dream "+
+					"Machine gateways reject.",
+				deviceReq.MAC,
+				deviceReq.ID,
+				site,
+				lookupErr,
+			)
+		} else {
+			detail = fmt.Sprintf(
+				"Could not fetch the current device (mac=%q, id=%q) on site %q before updating — "+
+					"refusing to send an update with state/adopted left unset, which UDM/Dream "+
+					"Machine gateways reject. Verify the device still exists on this site and that "+
+					"its MAC/ID are correct.",
+				deviceReq.MAC, deviceReq.ID, site,
+			)
+		}
+		diags.AddError("Error Updating Device", detail)
+		return diags
+	}
+	if deviceReq.Type == "" {
 		deviceReq.Type = currentDevice.Type
 	}
 
@@ -1686,13 +1762,21 @@ func (r *deviceResource) updateDevice(
 	// user declared at least one port_override, merge the declared blocks (by
 	// port_idx) onto the device's current overrides so undeclared ports keep their
 	// existing controller-side config — i.e. partial management of just the declared
-	// ports. With no override declared we leave the field untouched as before.
+	// ports. With no override declared we echo the controller's current overrides
+	// (below) so the diff never emits `port_overrides: null`, which UDM/Dream Machine
+	// gateways reject.
 	portOverrides := deviceReq.PortOverrides
-	if currentDevice != nil && len(deviceReq.PortOverrides) > 0 {
+	if len(deviceReq.PortOverrides) > 0 {
 		portOverrides = mergePortOverridesByIndex(
 			currentDevice.PortOverrides,
 			deviceReq.PortOverrides,
 		)
+	} else {
+		// No port_override blocks are managed in config (e.g. gateways/APs and
+		// switches we only touch for name/LED/radio). Echo the controller's current
+		// overrides so the diff doesn't emit `port_overrides: null`, which UDM/Dream
+		// Machine gateways reject with api.err.InvalidPayload (400) (#177).
+		portOverrides = currentDevice.PortOverrides
 	}
 
 	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, portOverrides)
@@ -1733,6 +1817,14 @@ func (r *deviceResource) updateDevice(
 	// Update state from API response
 	r.setResourceData(ctx, &diags, device, model, site)
 	return diags
+}
+
+func isLookupFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var notFound *unifi.NotFoundError
+	return !errors.As(err, &notFound)
 }
 
 func (r *deviceResource) setResourceData(
@@ -2169,13 +2261,13 @@ func (r *deviceResource) reconcilePortOverrides(
 				for i, id := range sorted {
 					vals[i] = types.StringValue(id)
 				}
-				listVal, listDiags := types.ListValue(types.StringType, vals)
-				diags.Append(listDiags...)
-				updated.ExcludedNetworkIDs = listVal
+				setVal, setDiags := types.SetValue(types.StringType, vals)
+				diags.Append(setDiags...)
+				updated.ExcludedNetworkIDs = setVal
 			} else {
-				emptyList, listDiags := types.ListValue(types.StringType, []attr.Value{})
-				diags.Append(listDiags...)
-				updated.ExcludedNetworkIDs = emptyList
+				emptySet, setDiags := types.SetValue(types.StringType, []attr.Value{})
+				diags.Append(setDiags...)
+				updated.ExcludedNetworkIDs = emptySet
 			}
 		}
 		if !pm.PortProfileID.IsNull() {
@@ -2355,7 +2447,7 @@ func (r *deviceResource) portOverridesToFramework(
 		}
 
 		if len(po.ExcludedNetworkIDs) == 0 {
-			model.ExcludedNetworkIDs = types.ListNull(types.StringType)
+			model.ExcludedNetworkIDs = types.SetNull(types.StringType)
 		} else {
 			sortedExcluded := make([]string, len(po.ExcludedNetworkIDs))
 			copy(sortedExcluded, po.ExcludedNetworkIDs)
@@ -2364,34 +2456,34 @@ func (r *deviceResource) portOverridesToFramework(
 			for _, id := range sortedExcluded {
 				excludedValues = append(excludedValues, types.StringValue(id))
 			}
-			listVal, listDiags := types.ListValue(types.StringType, excludedValues)
-			diags.Append(listDiags...)
+			setVal, setDiags := types.SetValue(types.StringType, excludedValues)
+			diags.Append(setDiags...)
 			if diags.HasError() {
 				continue
 			}
-			model.ExcludedNetworkIDs = listVal
+			model.ExcludedNetworkIDs = setVal
 		}
 
 		// FIX (#235): the pinned go-unifi SDK has no TaggedNetworkIDs field, so
 		// nothing populates it below. Without this assignment the model field
-		// stays an untyped zero-value types.List, which makes ObjectValueFrom
-		// emit a "types.ListType[!!! MISSING TYPE !!!]" Value Conversion Error
-		// against the schema's ListAttribute{ElementType: types.StringType}.
-		model.TaggedNetworkIDs = types.ListNull(types.StringType)
+		// stays an untyped zero-value types.Set, which makes ObjectValueFrom
+		// emit a "types.SetType[!!! MISSING TYPE !!!]" Value Conversion Error
+		// against the schema's SetAttribute{ElementType: types.StringType}.
+		model.TaggedNetworkIDs = types.SetNull(types.StringType)
 
 		if len(po.MulticastRouterNetworkIDs) == 0 {
-			model.MulticastRouterNetworkIDs = types.ListNull(types.StringType)
+			model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
 		} else {
 			multicastValues := make([]attr.Value, 0, len(po.MulticastRouterNetworkIDs))
 			for _, id := range po.MulticastRouterNetworkIDs {
 				multicastValues = append(multicastValues, types.StringValue(id))
 			}
-			listVal, listDiags := types.ListValue(types.StringType, multicastValues)
-			diags.Append(listDiags...)
+			setVal, setDiags := types.SetValue(types.StringType, multicastValues)
+			diags.Append(setDiags...)
 			if diags.HasError() {
 				continue
 			}
-			model.MulticastRouterNetworkIDs = listVal
+			model.MulticastRouterNetworkIDs = setVal
 		}
 
 		if len(po.PortSecurityMACAddress) == 0 {
@@ -2580,7 +2672,8 @@ func (r *deviceResource) frameworkToPortOverrides(
 			if !model.MulticastRouterNetworkIDs.IsNull() {
 				var multicastIDs []string
 				diags.Append(
-					model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...)
+					model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...,
+				)
 				if diags.HasError() {
 					return nil, diags
 				}
@@ -2691,7 +2784,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"dot1x_idle_timeout":               timetypes.GoDurationType{},
 		"egress_rate_limit_kbps":           types.Int64Type,
 		"egress_rate_limit_kbps_enabled":   types.BoolType,
-		"excluded_networkconf_ids":         types.ListType{ElemType: types.StringType},
+		"excluded_networkconf_ids":         types.SetType{ElemType: types.StringType},
 		"fec_mode":                         types.StringType,
 		"flow_control_enabled":             types.BoolType,
 		"forward":                          types.StringType,
@@ -2700,7 +2793,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"lldpmed_enabled":                  types.BoolType,
 		"lldpmed_notify_enabled":           types.BoolType,
 		"mirror_port_idx":                  types.Int64Type,
-		"multicast_router_networkconf_ids": types.ListType{ElemType: types.StringType},
+		"multicast_router_networkconf_ids": types.SetType{ElemType: types.StringType},
 		"native_networkconf_id":            types.StringType,
 		"port_keepalive_enabled":           types.BoolType,
 		"port_security_enabled":            types.BoolType,
@@ -2722,7 +2815,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"stormctrl_ucast_level":            types.Int64Type,
 		"stormctrl_ucast_rate":             types.Int64Type,
 		"stp_port_mode":                    types.BoolType,
-		"tagged_networkconf_ids":           types.ListType{ElemType: types.StringType},
+		"tagged_networkconf_ids":           types.SetType{ElemType: types.StringType},
 		"tagged_vlan_mgmt":                 types.StringType,
 		"voice_networkconf_id":             types.StringType,
 	}
@@ -2945,6 +3038,74 @@ func (r *deviceResource) frameworkToConfigNetwork(
 }
 
 // frameworkToRadioTable converts Framework types to API RadioTable.
+// sanitizeRadioForUpdate drops numeric radio fields whose zero/out-of-range values
+// the controller rejects with api.err.InvalidPayload (400) on UDM/Dream Machine
+// gateways (#150/#177, same class as #303). Leaving the pointer nil lets `omitempty`
+// drop the JSON key entirely. Valid ranges (from the go-unifi schema, low..high):
+// min_rssi -90..-67 (only when enabled), maxsta 1..200, sens_level -90..-50 (only
+// when enabled), assisted_roaming_rssi -80..-60 (only when enabled).
+//
+// When a field is ENABLED but its declared value is out of range, the value is
+// still dropped (the controller would reject the whole request otherwise) but a
+// warning diagnostic is returned so the silent no-op is visible to the user
+// instead of their configured value just quietly failing to apply (review
+// feedback on PR #378: "user-provided configuration can be silently ignored").
+// Disabled fields, or fields simply left unset, drop silently as before — that's
+// the normal/expected case, not something worth warning about.
+func sanitizeRadioForUpdate(radioName string, radio *unifi.DeviceRadioTable) diag.Diagnostics {
+	var diags diag.Diagnostics
+	// Ranges are the go-unifi schema regexes: min_rssi [-90,-67], maxsta [1,200],
+	// sens_level [-90,-50], assisted_roaming_rssi [-80,-60].
+	inRange := func(v *int64, lo, hi int64) bool { return v != nil && *v >= lo && *v <= hi }
+	warnDropped := func(field string, v int64, lo, hi int64) {
+		diags.AddWarning(
+			"Radio field out of range — not applied",
+			fmt.Sprintf(
+				"radio %q: %s=%d is outside the controller's valid range [%d,%d] and was dropped "+
+					"from the update (the controller rejects out-of-range values with "+
+					"api.err.InvalidPayload). The declared value will not take effect — adjust it "+
+					"to be within range.",
+				radioName, field, v, lo, hi,
+			),
+		)
+	}
+
+	if radio.MinRssiEnabled && radio.MinRssi != nil && !inRange(radio.MinRssi, -90, -67) {
+		warnDropped("min_rssi", *radio.MinRssi, -90, -67)
+	}
+	if !radio.MinRssiEnabled || !inRange(radio.MinRssi, -90, -67) {
+		radio.MinRssi = nil
+	}
+	// maxsta has no "enabled" flag — it's Optional+Computed with UseStateForUnknown,
+	// so a controller-reported 0 flows back on EVERY update of a device where the
+	// user never configured maxsta at all (0 is the controller's "unset" sentinel,
+	// not a declared value) — the original pre-existing test already expected 0 to
+	// drop silently. Warning on that would fire on unrelated updates for users who
+	// never touched maxsta — only warn for a genuinely declared, non-zero,
+	// out-of-range value (review feedback on PR #378).
+	if radio.Maxsta != nil && *radio.Maxsta != 0 && !inRange(radio.Maxsta, 1, 200) {
+		warnDropped("maxsta", *radio.Maxsta, 1, 200)
+	}
+	if !inRange(radio.Maxsta, 1, 200) {
+		radio.Maxsta = nil
+	}
+	if radio.SensLevelEnabled && radio.SensLevel != nil && !inRange(radio.SensLevel, -90, -50) {
+		warnDropped("sens_level", *radio.SensLevel, -90, -50)
+	}
+	if !radio.SensLevelEnabled || !inRange(radio.SensLevel, -90, -50) {
+		radio.SensLevel = nil
+	}
+	if radio.AssistedRoamingEnabled && radio.AssistedRoamingRssi != nil &&
+		!inRange(radio.AssistedRoamingRssi, -80, -60) {
+		warnDropped("assisted_roaming_rssi", *radio.AssistedRoamingRssi, -80, -60)
+	}
+	if !radio.AssistedRoamingEnabled || !inRange(radio.AssistedRoamingRssi, -80, -60) {
+		radio.AssistedRoamingRssi = nil
+	}
+
+	return diags
+}
+
 func (r *deviceResource) frameworkToRadioTable(
 	ctx context.Context,
 	radioList types.List,
@@ -2991,6 +3152,8 @@ func (r *deviceResource) frameworkToRadioTable(
 			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
 			VwireEnabled:           model.VwireEnabled.ValueBool(),
 		}
+
+		diags.Append(sanitizeRadioForUpdate(radio.Radio, &radio)...)
 
 		radios = append(radios, radio)
 	}

@@ -74,6 +74,89 @@ func TestClientToModel_PreservesBlockedTrue(t *testing.T) {
 	}
 }
 
+// TestClientToModel_LocalDNSRecordDisabledIgnoresEcho guards #387: when the
+// controller reports local_dns_record_enabled=false it still echoes the stale
+// record string. The provider must ignore that echo and mirror a known empty
+// string so an explicit local_dns_record="" round-trips instead of producing an
+// inconsistent-result-after-apply.
+func TestClientToModel_LocalDNSRecordDisabledIgnoresEcho(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:                   "02:00:00:de:ad:03",
+		LocalDNSRecord:        "mqtt.home.arpa",
+		LocalDNSRecordEnabled: false,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.LocalDNSRecord.IsNull() || model.LocalDNSRecord.IsUnknown() ||
+		model.LocalDNSRecord.ValueString() != "" {
+		t.Errorf("local_dns_record: want known empty string, got %#v", model.LocalDNSRecord)
+	}
+}
+
+// TestClientToModel_LocalDNSRecordEnabledKeepsValue is the companion to #387: an
+// enabled record must still surface its real value.
+func TestClientToModel_LocalDNSRecordEnabledKeepsValue(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:                   "02:00:00:de:ad:04",
+		LocalDNSRecord:        "nas.home.arpa",
+		LocalDNSRecordEnabled: true,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.LocalDNSRecord.ValueString() != "nas.home.arpa" {
+		t.Errorf("local_dns_record: want nas.home.arpa, got %q", model.LocalDNSRecord.ValueString())
+	}
+}
+
+// TestClientToModel_FixedIPDisabledIgnoresEcho guards #386: when the controller
+// reports use_fixedip=false it still echoes the stale address. The provider must
+// ignore that echo and mirror a known empty string so an explicit fixed_ip=""
+// round-trips instead of resending the old IP (api.err.DuplicateFixedIP).
+func TestClientToModel_FixedIPDisabledIgnoresEcho(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:        "02:00:00:de:ad:05",
+		FixedIP:    "10.26.20.56",
+		UseFixedIP: false,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.FixedIP.IsNull() || model.FixedIP.IsUnknown() ||
+		model.FixedIP.ValueString() != "" {
+		t.Errorf("fixed_ip: want known empty string, got %#v", model.FixedIP)
+	}
+}
+
+// TestClientToModel_FixedIPEnabledKeepsValue is the companion to #386: an
+// enabled fixed IP must still surface its real value.
+func TestClientToModel_FixedIPEnabledKeepsValue(t *testing.T) {
+	r := &clientResource{}
+	client := &unifi.Client{
+		MAC:        "02:00:00:de:ad:06",
+		FixedIP:    "10.26.20.56",
+		UseFixedIP: true,
+	}
+
+	var model clientResourceModel
+	if diags := r.clientToModel(context.Background(), client, &model, "default"); diags.HasError() {
+		t.Fatalf("clientToModel returned errors: %v", diags)
+	}
+	if model.FixedIP.ValueString() != "10.26.20.56" {
+		t.Errorf("fixed_ip: want 10.26.20.56, got %q", model.FixedIP.ValueString())
+	}
+}
+
 func TestAccClientFramework_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
@@ -85,6 +168,17 @@ func TestAccClientFramework_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_client.test", "name", "tfacc-client"),
 					resource.TestCheckResourceAttr("unifi_client.test", "mac", "01:23:45:67:89:ab"),
 					resource.TestCheckResourceAttr("unifi_client.test", "blocked", "false"),
+				),
+			},
+			{
+				Config: testAccClientFrameworkConfig_controlFlags(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_client.test", "allow_existing", "false"),
+					resource.TestCheckResourceAttr(
+						"unifi_client.test",
+						"skip_forget_on_destroy",
+						"true",
+					),
 				),
 			},
 			{
@@ -101,6 +195,17 @@ func testAccClientFrameworkConfig_basic() string {
 resource "unifi_client" "test" {
 	name = "tfacc-client"
 	mac  = "01:23:45:67:89:ab"
+}
+`
+}
+
+func testAccClientFrameworkConfig_controlFlags() string {
+	return `
+resource "unifi_client" "test" {
+	name                   = "tfacc-client"
+	mac                    = "01:23:45:67:89:ab"
+	allow_existing         = false
+	skip_forget_on_destroy = true
 }
 `
 }
@@ -852,6 +957,8 @@ func nullPortOverrideAttrValues() map[string]attr.Value {
 			vals[name] = types.BoolNull()
 		case basetypes.ListType:
 			vals[name] = types.ListNull(tt.ElemType)
+		case basetypes.SetType:
+			vals[name] = types.SetNull(tt.ElemType)
 		case timetypes.GoDurationType:
 			vals[name] = timetypes.NewGoDurationNull()
 		}
@@ -946,10 +1053,10 @@ func TestFrameworkToPortOverrides_SwitchOpModeOmitted(t *testing.T) {
 
 // TestPortOverridesToFramework_TaggedNetworkIDsTypedNull is a regression test
 // for #235. portOverridesToFramework must initialize the tagged_networkconf_ids
-// model field to a typed null list. Previously it was left as an untyped
-// zero-value types.List, which made types.ObjectValueFrom fail with a
-// "types.ListType[!!! MISSING TYPE !!!]" Value Conversion Error during the
-// Read/refresh (and import) of any unifi_device that has port overrides.
+// model field to a typed null set. Previously it was left as an untyped
+// zero-value collection, which made types.ObjectValueFrom fail with a
+// "!!! MISSING TYPE !!!" Value Conversion Error during the Read/refresh (and
+// import) of any unifi_device that has port overrides. (#384 made this a Set.)
 func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
 	r := &deviceResource{}
 
@@ -982,14 +1089,14 @@ func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
 		t.Fatal("port_override is missing the tagged_networkconf_ids attribute")
 	}
 
-	list, ok := taggedAttr.(types.List)
+	taggedSet, ok := taggedAttr.(types.Set)
 	if !ok {
-		t.Fatalf("expected tagged_networkconf_ids to be types.List, got %T", taggedAttr)
+		t.Fatalf("expected tagged_networkconf_ids to be types.Set, got %T", taggedAttr)
 	}
-	if !list.IsNull() {
-		t.Errorf("expected tagged_networkconf_ids to be a null list, got %v", list)
+	if !taggedSet.IsNull() {
+		t.Errorf("expected tagged_networkconf_ids to be a null set, got %v", taggedSet)
 	}
-	if et := list.ElementType(context.Background()); !et.Equal(types.StringType) {
+	if et := taggedSet.ElementType(context.Background()); !et.Equal(types.StringType) {
 		t.Errorf("expected tagged_networkconf_ids element type to be string, got %v", et)
 	}
 }

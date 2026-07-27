@@ -336,20 +336,63 @@ func (r *firewallZoneResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:id" or just "id" for the default site.
-	idParts := strings.Split(req.ID, ":")
-	switch len(idParts) {
-	case 2:
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
-	case 1:
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-	default:
-		resp.Diagnostics.AddError(
-			"Invalid Import ID",
-			"Import ID must be in format 'site:id' or 'id'",
-		)
+	// Import formats:
+	//   "id"            - zone id on the default site
+	//   "site:id"       - zone id on an explicit site
+	//   "name=<name>"   - resolve the zone id by name on the default site
+	//   "site:name=<name>" - resolve by name on an explicit site
+	// The name forms let the built-in zones (e.g. "Hotspot") be imported without
+	// first looking up their controller-assigned id (#396).
+	id := req.ID
+	var site string
+	if parts := strings.SplitN(req.ID, ":", 2); len(parts) == 2 {
+		site, id = parts[0], parts[1]
 	}
+
+	if name, ok := strings.CutPrefix(id, "name="); ok {
+		lookupSite := site
+		if lookupSite == "" {
+			lookupSite = r.client.Site
+		}
+		zones, err := r.client.ListFirewallZone(ctx, lookupSite)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Importing Firewall Zone",
+				fmt.Sprintf("Could not list firewall zones on site %q: %s", lookupSite, err),
+			)
+			return
+		}
+		var matches []string
+		for _, z := range zones {
+			if z.Name == name {
+				matches = append(matches, z.ID)
+			}
+		}
+		switch len(matches) {
+		case 0:
+			resp.Diagnostics.AddError(
+				"Firewall Zone Not Found",
+				fmt.Sprintf("No firewall zone named %q on site %q.", name, lookupSite),
+			)
+			return
+		case 1:
+			id, site = matches[0], lookupSite
+		default:
+			resp.Diagnostics.AddError(
+				"Ambiguous Firewall Zone Name",
+				fmt.Sprintf(
+					"Multiple firewall zones named %q on site %q; import by id instead.",
+					name, lookupSite,
+				),
+			)
+			return
+		}
+	}
+
+	if site != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 }
 
 // modelToFirewallZone converts the Terraform model to the API struct.
