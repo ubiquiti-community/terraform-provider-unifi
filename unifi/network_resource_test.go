@@ -1268,6 +1268,92 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 	})
 }
 
+// Test_networkResource_networkToModel_normalizesControllerDefaults guards #414:
+// UniFi may omit gateway_type and ipv6_interface_type when they have their
+// implicit defaults. Import must write the provider defaults into state instead
+// of null, otherwise every subsequent plan proposes null -> default/none.
+func Test_networkResource_networkToModel_normalizesControllerDefaults(t *testing.T) {
+	r := &networkResource{}
+	base := func() *networkResourceModel {
+		return &networkResourceModel{
+			// Import seeds identity only, leaving computed attributes null.
+			NetworkIsolation: types.BoolNull(),
+			DhcpServer:       types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			DhcpRelay:        types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server:     types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding:     types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:   types.ListNull(types.StringType),
+			IPv6Aliases: types.ListNull(types.StringType),
+		}
+	}
+
+	tests := []struct {
+		name                  string
+		gatewayType           *string
+		ipv6InterfaceType     *string
+		wantGatewayType       string
+		wantIPv6InterfaceType string
+	}{
+		{
+			name:                  "nil API values use schema defaults",
+			wantGatewayType:       "default",
+			wantIPv6InterfaceType: "none",
+		},
+		{
+			name:                  "empty API values use schema defaults",
+			gatewayType:           strPtr(""),
+			ipv6InterfaceType:     strPtr(""),
+			wantGatewayType:       "default",
+			wantIPv6InterfaceType: "none",
+		},
+		{
+			name:                  "explicit API values are preserved",
+			gatewayType:           strPtr("switch"),
+			ipv6InterfaceType:     strPtr("static"),
+			wantGatewayType:       "switch",
+			wantIPv6InterfaceType: "static",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			network := &unifi.Network{
+				ID:                "net-imported",
+				Name:              strPtr("Imported Network"),
+				Purpose:           unifi.PurposeCorporate,
+				Enabled:           true,
+				IPSubnet:          strPtr("10.25.0.1/24"),
+				GatewayType:       tt.gatewayType,
+				IPV6InterfaceType: tt.ipv6InterfaceType,
+			}
+			var model networkResourceModel
+			d := r.networkToModel(context.Background(), network, &model, "default", base())
+			if d.HasError() {
+				t.Fatalf("networkToModel: %v", d)
+			}
+			if model.GatewayType.IsNull() || model.GatewayType.IsUnknown() {
+				t.Fatalf("gateway_type should be known, got %v", model.GatewayType)
+			}
+			if got := model.GatewayType.ValueString(); got != tt.wantGatewayType {
+				t.Errorf("gateway_type = %q, want %q", got, tt.wantGatewayType)
+			}
+			if model.IPv6InterfaceType.IsNull() || model.IPv6InterfaceType.IsUnknown() {
+				t.Fatalf("ipv6_interface_type should be known, got %v", model.IPv6InterfaceType)
+			}
+			if got := model.IPv6InterfaceType.ValueString(); got != tt.wantIPv6InterfaceType {
+				t.Errorf(
+					"ipv6_interface_type = %q, want %q",
+					got,
+					tt.wantIPv6InterfaceType,
+				)
+			}
+		})
+	}
+}
+
 // Test_networkResource_purpose covers #276: purpose must be author-settable
 // (guest/vlan-only/corporate) on write and reflected from the controller on read.
 func Test_networkResource_purpose(t *testing.T) {

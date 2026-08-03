@@ -1719,8 +1719,19 @@ func (r *networkResource) networkToModel(
 		} else {
 			model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
 		}
-		model.GatewayType = types.StringPointerValue(network.GatewayType)
-		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+		// UniFi omits these fields when they have their implicit controller defaults.
+		// Normalize the omitted values to the provider schema defaults so an imported
+		// network does not perpetually plan null -> default/none changes (#414).
+		if network.GatewayType == nil || *network.GatewayType == "" {
+			model.GatewayType = types.StringValue("default")
+		} else {
+			model.GatewayType = types.StringPointerValue(network.GatewayType)
+		}
+		if network.IPV6InterfaceType == nil || *network.IPV6InterfaceType == "" {
+			model.IPv6InterfaceType = types.StringValue("none")
+		} else {
+			model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+		}
 		model.IPv6ClientAddressAssignment = types.StringPointerValue(
 			network.IPV6ClientAddressAssignment,
 		)
