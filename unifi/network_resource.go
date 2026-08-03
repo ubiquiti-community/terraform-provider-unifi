@@ -1698,8 +1698,23 @@ func (r *networkResource) networkToModel(
 		} else {
 			model.MulticastDNS = previousModel.MulticastDNS
 		}
-		model.GatewayType = previousModel.GatewayType
-		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
+		// Preserve configured values, but normalize import/read values that are
+		// absent because the controller omits fields irrelevant to vlan-only
+		// networks. Leaving these null/unknown would perpetually plan the schema
+		// defaults (gateway_type="default", ipv6_interface_type="none") (#414).
+		if previousModel.GatewayType.IsNull() || previousModel.GatewayType.IsUnknown() ||
+			previousModel.GatewayType.ValueString() == "" {
+			model.GatewayType = types.StringValue("default")
+		} else {
+			model.GatewayType = previousModel.GatewayType
+		}
+		if previousModel.IPv6InterfaceType.IsNull() ||
+			previousModel.IPv6InterfaceType.IsUnknown() ||
+			previousModel.IPv6InterfaceType.ValueString() == "" {
+			model.IPv6InterfaceType = types.StringValue("none")
+		} else {
+			model.IPv6InterfaceType = previousModel.IPv6InterfaceType
+		}
 		model.IPv6StaticSubnet = previousModel.IPv6StaticSubnet
 		model.IPv6PDInterface = previousModel.IPv6PDInterface
 		model.IPv6PDPrefixID = previousModel.IPv6PDPrefixID
