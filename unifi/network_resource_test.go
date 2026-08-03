@@ -1354,6 +1354,97 @@ func Test_networkResource_networkToModel_normalizesControllerDefaults(t *testing
 	}
 }
 
+func Test_networkResource_networkToModel_normalizesVLANOnlyDefaults(t *testing.T) {
+	r := &networkResource{}
+	base := func() *networkResourceModel {
+		return &networkResourceModel{
+			// Import seeds identity only, leaving computed attributes null.
+			NetworkIsolation: types.BoolNull(),
+			DhcpServer:       types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			DhcpRelay:        types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server:     types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding:     types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:   types.ListNull(types.StringType),
+			IPv6Aliases: types.ListNull(types.StringType),
+		}
+	}
+
+	tests := []struct {
+		name                  string
+		previousGatewayType   types.String
+		previousIPv6Type      types.String
+		wantGatewayType       string
+		wantIPv6InterfaceType string
+	}{
+		{
+			name:                  "import nulls use schema defaults",
+			previousGatewayType:   types.StringNull(),
+			previousIPv6Type:      types.StringNull(),
+			wantGatewayType:       "default",
+			wantIPv6InterfaceType: "none",
+		},
+		{
+			name:                  "unknown plan values use schema defaults",
+			previousGatewayType:   types.StringUnknown(),
+			previousIPv6Type:      types.StringUnknown(),
+			wantGatewayType:       "default",
+			wantIPv6InterfaceType: "none",
+		},
+		{
+			name:                  "empty prior values use schema defaults",
+			previousGatewayType:   types.StringValue(""),
+			previousIPv6Type:      types.StringValue(""),
+			wantGatewayType:       "default",
+			wantIPv6InterfaceType: "none",
+		},
+		{
+			name:                  "explicit prior values are preserved",
+			previousGatewayType:   types.StringValue("switch"),
+			previousIPv6Type:      types.StringValue("static"),
+			wantGatewayType:       "switch",
+			wantIPv6InterfaceType: "static",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := base()
+			previous.GatewayType = tt.previousGatewayType
+			previous.IPv6InterfaceType = tt.previousIPv6Type
+			network := &unifi.Network{
+				ID:      "net-vlan-only-imported",
+				Name:    strPtr("Imported VLAN Only"),
+				Purpose: unifi.PurposeVLANOnly,
+				Enabled: true,
+			}
+			var model networkResourceModel
+			d := r.networkToModel(context.Background(), network, &model, "default", previous)
+			if d.HasError() {
+				t.Fatalf("networkToModel: %v", d)
+			}
+			if model.GatewayType.IsNull() || model.GatewayType.IsUnknown() {
+				t.Fatalf("gateway_type should be known, got %v", model.GatewayType)
+			}
+			if got := model.GatewayType.ValueString(); got != tt.wantGatewayType {
+				t.Errorf("gateway_type = %q, want %q", got, tt.wantGatewayType)
+			}
+			if model.IPv6InterfaceType.IsNull() || model.IPv6InterfaceType.IsUnknown() {
+				t.Fatalf("ipv6_interface_type should be known, got %v", model.IPv6InterfaceType)
+			}
+			if got := model.IPv6InterfaceType.ValueString(); got != tt.wantIPv6InterfaceType {
+				t.Errorf(
+					"ipv6_interface_type = %q, want %q",
+					got,
+					tt.wantIPv6InterfaceType,
+				)
+			}
+		})
+	}
+}
+
 // Test_networkResource_purpose covers #276: purpose must be author-settable
 // (guest/vlan-only/corporate) on write and reflected from the controller on read.
 func Test_networkResource_purpose(t *testing.T) {
