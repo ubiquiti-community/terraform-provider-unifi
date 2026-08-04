@@ -32,7 +32,11 @@ func TestFirewallPolicySchemaExposesOptionalComputedSchedule(t *testing.T) {
 		t.Fatalf("schedule schema type = %T, want schema.SingleNestedAttribute", attribute)
 	}
 	if !schedule.Optional || !schedule.Computed {
-		t.Fatalf("schedule Optional=%v Computed=%v, want both true", schedule.Optional, schedule.Computed)
+		t.Fatalf(
+			"schedule Optional=%v Computed=%v, want both true",
+			schedule.Optional,
+			schedule.Computed,
+		)
 	}
 
 	wantFields := []string{
@@ -246,7 +250,12 @@ func TestFirewallPolicyScheduleValidatorModeRequirements(t *testing.T) {
 				&response,
 			)
 			if response.Diagnostics.HasError() != tc.wantError {
-				t.Fatalf("HasError = %v, want %v: %v", response.Diagnostics.HasError(), tc.wantError, response.Diagnostics)
+				t.Fatalf(
+					"HasError = %v, want %v: %v",
+					response.Diagnostics.HasError(),
+					tc.wantError,
+					response.Diagnostics,
+				)
 			}
 		})
 	}
@@ -521,12 +530,15 @@ func TestFirewallPolicyScheduleNormalizeByMode(t *testing.T) {
 
 func TestFirewallPolicyScheduleNormalizePlanMatchesControllerResult(t *testing.T) {
 	schedule := firewallPolicyScheduleModel{
-		Date:           types.StringNull(),
-		DateStart:      types.StringNull(),
-		DateEnd:        types.StringNull(),
-		Mode:           types.StringValue("EVERY_WEEK"),
-		Normalize:      types.BoolValue(true),
-		RepeatOnDays:   types.SetValueMust(types.StringType, []attr.Value{types.StringValue("mon"), types.StringValue("fri")}),
+		Date:      types.StringNull(),
+		DateStart: types.StringNull(),
+		DateEnd:   types.StringNull(),
+		Mode:      types.StringValue("EVERY_WEEK"),
+		Normalize: types.BoolValue(true),
+		RepeatOnDays: types.SetValueMust(
+			types.StringType,
+			[]attr.Value{types.StringValue("mon"), types.StringValue("fri")},
+		),
 		TimeAllDay:     types.BoolValue(true),
 		TimeRangeStart: types.StringValue("09:00"),
 		TimeRangeEnd:   types.StringValue("17:00"),
@@ -605,6 +617,10 @@ func assertFirewallPolicyScheduleRoundTrip(t *testing.T, want *api.FirewallPolic
 		normalizedWant.RepeatOnDays = []string{}
 	}
 	if !reflect.DeepEqual(roundTripped.Schedule, &normalizedWant) {
-		t.Fatalf("schedule changed during round-trip:\n got: %#v\nwant: %#v", roundTripped.Schedule, &normalizedWant)
+		t.Fatalf(
+			"schedule changed during round-trip:\n got: %#v\nwant: %#v",
+			roundTripped.Schedule,
+			&normalizedWant,
+		)
 	}
 }

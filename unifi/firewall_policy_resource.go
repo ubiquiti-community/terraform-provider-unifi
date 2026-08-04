@@ -503,7 +503,9 @@ func (r *firewallPolicyResource) Schema(
 						ElementType:         types.StringType,
 						Validators: []validator.Set{
 							setvalidator.ValueStringsAre(
-								stringvalidator.OneOf("mon", "tue", "wed", "thu", "fri", "sat", "sun"),
+								stringvalidator.OneOf(
+									"mon", "tue", "wed", "thu", "fri", "sat", "sun",
+								),
 							),
 						},
 						PlanModifiers: []planmodifier.Set{
