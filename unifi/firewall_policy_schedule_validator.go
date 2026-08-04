@@ -61,7 +61,11 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 			resp.Diagnostics.AddAttributeError(
 				req.Path,
 				"Invalid Firewall Policy Schedule Date",
-				fmt.Sprintf("%s must be a real calendar date in YYYY-MM-DD format: %v.", field, err),
+				fmt.Sprintf(
+					"%s must be a real calendar date in YYYY-MM-DD format: %v.",
+					field,
+					err,
+				),
 			)
 			return time.Time{}, false
 		}
@@ -86,7 +90,11 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 		resp.Diagnostics.AddAttributeError(
 			req.Path,
 			"Conflicting Normalized Firewall Policy Schedule",
-			fmt.Sprintf("Schedule mode %s does not use %s; omit it when normalize is true.", mode, field),
+			fmt.Sprintf(
+				"Schedule mode %s does not use %s; omit it when normalize is true.",
+				mode,
+				field,
+			),
 		)
 	}
 	rejectDaysWhenNormalizing := func() {
@@ -97,7 +105,10 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 		resp.Diagnostics.AddAttributeError(
 			req.Path,
 			"Conflicting Normalized Firewall Policy Schedule",
-			fmt.Sprintf("Schedule mode %s does not use repeat_on_days; omit it when normalize is true.", mode),
+			fmt.Sprintf(
+				"Schedule mode %s does not use repeat_on_days; omit it when normalize is true.",
+				mode,
+			),
 		)
 	}
 	rejectTimeAllDayWhenNormalizing := func() {
@@ -107,7 +118,10 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 		resp.Diagnostics.AddAttributeError(
 			req.Path,
 			"Conflicting Normalized Firewall Policy Schedule",
-			fmt.Sprintf("Schedule mode %s does not use time_all_day; omit it when normalize is true.", mode),
+			fmt.Sprintf(
+				"Schedule mode %s does not use time_all_day; omit it when normalize is true.",
+				mode,
+			),
 		)
 	}
 	rejectTimeRangeForAllDay := func() {
@@ -118,9 +132,9 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 		rejectStringWhenNormalizing(schedule.TimeRangeStart, "time_range_start with time_all_day")
 		rejectStringWhenNormalizing(schedule.TimeRangeEnd, "time_range_end with time_all_day")
 	}
-	requireDate := func(value basetypes.StringValue, field string) bool {
+	requireDate := func(value basetypes.StringValue, field string) {
 		if value.IsUnknown() {
-			return true
+			return
 		}
 		if value.IsNull() || value.ValueString() == "" {
 			resp.Diagnostics.AddAttributeError(
@@ -128,13 +142,12 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 				"Incomplete Firewall Policy Schedule",
 				fmt.Sprintf("Schedule mode %s requires %s.", mode, field),
 			)
-			return false
+			return
 		}
-		return true
 	}
-	requireDays := func() bool {
+	requireDays := func() {
 		if schedule.RepeatOnDays.IsUnknown() {
-			return true
+			return
 		}
 		if schedule.RepeatOnDays.IsNull() || len(schedule.RepeatOnDays.Elements()) == 0 {
 			resp.Diagnostics.AddAttributeError(
@@ -142,19 +155,18 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 				"Incomplete Firewall Policy Schedule",
 				fmt.Sprintf("Schedule mode %s requires at least one repeat_on_days value.", mode),
 			)
-			return false
+			return
 		}
-		return true
 	}
-	requireTimeSelection := func() bool {
+	requireTimeSelection := func() {
 		if schedule.TimeAllDay.IsUnknown() {
-			return true
+			return
 		}
 		if !schedule.TimeAllDay.IsNull() && schedule.TimeAllDay.ValueBool() {
-			return true
+			return
 		}
 		if schedule.TimeRangeStart.IsUnknown() || schedule.TimeRangeEnd.IsUnknown() {
-			return true
+			return
 		}
 		if schedule.TimeRangeStart.IsNull() || schedule.TimeRangeStart.ValueString() == "" ||
 			schedule.TimeRangeEnd.IsNull() || schedule.TimeRangeEnd.ValueString() == "" {
@@ -166,13 +178,12 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 					mode,
 				),
 			)
-			return false
+			return
 		}
-		return true
 	}
-	requireTimeAllDayFlag := func() bool {
+	requireTimeAllDayFlag := func() {
 		if schedule.TimeAllDay.IsUnknown() {
-			return true
+			return
 		}
 		if schedule.TimeAllDay.IsNull() {
 			resp.Diagnostics.AddAttributeError(
@@ -180,9 +191,8 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 				"Incomplete Firewall Policy Schedule",
 				fmt.Sprintf("Schedule mode %s requires an explicit time_all_day value.", mode),
 			)
-			return false
+			return
 		}
-		return true
 	}
 	requireTimeRange := func() bool {
 		if schedule.TimeRangeStart.IsUnknown() || schedule.TimeRangeEnd.IsUnknown() {
