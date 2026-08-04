@@ -188,7 +188,7 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.
 - `logging` (Boolean) Whether to log packets matching this policy. Defaults to `false`.
 - `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, `icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` policies the controller rejects `create_allow_respond = true` (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy if you need the reply.
-- `schedule` (Attributes) When the policy is active. The complete controller value is round-tripped so updating another policy field does not reset its schedule. Modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, and `CUSTOM`. `EVERY_DAY`, `EVERY_WEEK`, and `CUSTOM` require an explicit `time_all_day`; when false, both time-range fields are required. `EVERY_WEEK` also needs weekdays; `ONE_TIME_ONLY` needs `date`, `time_all_day = false`, and an explicit time range; and `CUSTOM` needs `date_start`, `date_end`, and weekdays. Extra controller-returned fields are preserved by default. (see [below for nested schema](#nestedatt--schedule))
+- `schedule` (Attributes) When the policy is active. The complete controller value is round-tripped so updating another policy field does not reset its schedule. Supported modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, and `CUSTOM`. (see [below for nested schema](#nestedatt--schedule))
 - `site` (String) The name of the UniFi site. Defaults to the site configured in the provider.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
@@ -252,15 +252,14 @@ Read-Only:
 
 Optional:
 
-- `date` (String) Date used by `ONE_TIME_ONLY`, in `YYYY-MM-DD` format.
-- `date_end` (String) End date used by `CUSTOM`, in `YYYY-MM-DD` format.
-- `date_start` (String) Start date used by `CUSTOM`, in `YYYY-MM-DD` format.
-- `mode` (String) Schedule mode: `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, or `CUSTOM`.
-- `normalize` (Boolean) Clear inherited schedule fields that are not used by the selected mode. Defaults to `false`, preserving controller-returned metadata. When true, omit unused fields from configuration.
-- `repeat_on_days` (Set of String) Weekdays on which the policy is active: `mon` through `sun`.
-- `time_all_day` (Boolean) Whether the policy is active all day on matching dates. Set explicitly for active modes; use false for `ONE_TIME_ONLY`; omit for canonical `ALWAYS` schedules.
-- `time_range_end` (String) End time in 24-hour `HH:MM` format.
-- `time_range_start` (String) Start time in 24-hour `HH:MM` format.
+- `date` (String) Date used by `ONE_TIME_ONLY`.
+- `date_end` (String) End date used by `CUSTOM`.
+- `date_start` (String) Start date used by `CUSTOM`.
+- `mode` (String) Schedule mode.
+- `repeat_on_days` (Set of String) Weekdays on which the policy is active.
+- `time_all_day` (Boolean) Whether the policy is active all day.
+- `time_range_end` (String) End time for a timed schedule.
+- `time_range_start` (String) Start time for a timed schedule.
 
 
 <a id="nestedatt--timeouts"></a>
