@@ -511,6 +511,248 @@ func TestWLANPrivatePresharedKeys_emptyIsNull(t *testing.T) {
 	}
 }
 
+func TestWLANPrivatePresharedKeys_preservesStateForPartialResponse(t *testing.T) {
+	ctx := context.Background()
+	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
+	prior, diags := types.ListValueFrom(ctx, ppskType, []wlanPrivatePresharedKeyModel{
+		{NetworkID: types.StringValue("net-a"), Password: types.StringValue("secretpass1")},
+		{NetworkID: types.StringValue("net-b"), Password: types.StringValue("secretpass2")},
+	})
+	if diags.HasError() {
+		t.Fatalf("building prior PPSK list: %v", diags)
+	}
+
+	for name, keys := range map[string][]unifi.WLANPrivatePresharedKeys{
+		"passwords omitted and list reordered": {
+			{NetworkID: "net-b"},
+			{NetworkID: "net-a"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			model := wlanFrameworkResourceModel{PrivatePresharedKeys: prior}
+			wlan := &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys:        keys,
+			}
+
+			if diags := (&wlanFrameworkResource{}).wlanToModel(
+				ctx,
+				wlan,
+				&model,
+				"default",
+			); diags.HasError() {
+				t.Fatalf("wlanToModel: %v", diags)
+			}
+			if !model.PrivatePresharedKeys.Equal(prior) {
+				t.Fatalf("PrivatePresharedKeys = %v, want %v", model.PrivatePresharedKeys, prior)
+			}
+		})
+	}
+}
+
+func TestWLANPrivatePresharedKeys_usesControllerChanges(t *testing.T) {
+	ctx := context.Background()
+	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
+	list := func(keys ...wlanPrivatePresharedKeyModel) types.List {
+		value, diags := types.ListValueFrom(ctx, ppskType, keys)
+		if diags.HasError() {
+			t.Fatalf("building PPSK list: %v", diags)
+		}
+		return value
+	}
+	prior := list(
+		wlanPrivatePresharedKeyModel{
+			NetworkID: types.StringValue("net-a"),
+			Password:  types.StringValue("secretpass1"),
+		},
+	)
+	duplicateBindings := list(
+		wlanPrivatePresharedKeyModel{
+			NetworkID: types.StringValue("net-a"),
+			Password:  types.StringValue("secretpass1"),
+		},
+		wlanPrivatePresharedKeyModel{
+			NetworkID: types.StringValue("net-a"),
+			Password:  types.StringValue("secretpass2"),
+		},
+	)
+
+	tests := []struct {
+		name  string
+		wlan  *unifi.WLAN
+		prior types.List
+		want  types.List
+	}{
+		{
+			name:  "disabled",
+			wlan:  &unifi.WLAN{},
+			prior: prior,
+			want:  types.ListNull(ppskType),
+		},
+		{
+			name:  "list omitted",
+			wlan:  &unifi.WLAN{PrivatePresharedKeysEnabled: true},
+			prior: prior,
+			want:  types.ListNull(ppskType),
+		},
+		{
+			name: "explicit deletion",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys:        []unifi.WLANPrivatePresharedKeys{},
+			},
+			prior: prior,
+			want:  types.ListNull(ppskType),
+		},
+		{
+			name: "import",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-a", Password: "secretpass1"},
+				},
+			},
+			prior: types.ListNull(ppskType),
+			want:  prior,
+		},
+		{
+			name: "key added",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-a", Password: "secretpass1"},
+					{NetworkID: "net-b", Password: "secretpass2"},
+				},
+			},
+			prior: prior,
+			want: list(
+				wlanPrivatePresharedKeyModel{
+					NetworkID: types.StringValue("net-a"),
+					Password:  types.StringValue("secretpass1"),
+				},
+				wlanPrivatePresharedKeyModel{
+					NetworkID: types.StringValue("net-b"),
+					Password:  types.StringValue("secretpass2"),
+				},
+			),
+		},
+		{
+			name: "binding changed",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-b", Password: "secretpass1"},
+				},
+			},
+			prior: prior,
+			want: list(wlanPrivatePresharedKeyModel{
+				NetworkID: types.StringValue("net-b"),
+				Password:  types.StringValue("secretpass1"),
+			}),
+		},
+		{
+			name: "binding changed without password",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-b"},
+				},
+			},
+			prior: prior,
+			want: list(wlanPrivatePresharedKeyModel{
+				NetworkID: types.StringValue("net-b"),
+				Password:  types.StringValue(""),
+			}),
+		},
+		{
+			name: "password changed",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-a", Password: "changedpass1"},
+				},
+			},
+			prior: prior,
+			want: list(wlanPrivatePresharedKeyModel{
+				NetworkID: types.StringValue("net-a"),
+				Password:  types.StringValue("changedpass1"),
+			}),
+		},
+		{
+			name: "matching response",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-a", Password: "secretpass1"},
+				},
+			},
+			prior: prior,
+			want:  prior,
+		},
+		{
+			name: "duplicate bindings match once",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-a"},
+					{NetworkID: "net-a", Password: "secretpass1"},
+				},
+			},
+			prior: duplicateBindings,
+			want:  duplicateBindings,
+		},
+		{
+			name: "duplicate binding replaced",
+			wlan: &unifi.WLAN{
+				PrivatePresharedKeysEnabled: true,
+				PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+					{NetworkID: "net-a"},
+					{NetworkID: "net-a", Password: "changedpass1"},
+				},
+			},
+			prior: duplicateBindings,
+			want: list(
+				wlanPrivatePresharedKeyModel{
+					NetworkID: types.StringValue("net-a"),
+					Password:  types.StringValue(""),
+				},
+				wlanPrivatePresharedKeyModel{
+					NetworkID: types.StringValue("net-a"),
+					Password:  types.StringValue("changedpass1"),
+				},
+			),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, diags := privatePresharedKeysState(ctx, test.wlan, test.prior)
+			if diags.HasError() {
+				t.Fatalf("privatePresharedKeysState: %v", diags)
+			}
+			if !got.Equal(test.want) {
+				t.Fatalf("privatePresharedKeysState = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestWLANPrivatePresharedKeys_rejectsInvalidPriorState(t *testing.T) {
+	_, diags := privatePresharedKeysState(
+		context.Background(),
+		&unifi.WLAN{
+			PrivatePresharedKeysEnabled: true,
+			PrivatePresharedKeys: []unifi.WLANPrivatePresharedKeys{
+				{NetworkID: "net-a", Password: "secretpass1"},
+			},
+		},
+		types.ListValueMust(types.StringType, []attr.Value{types.StringValue("invalid")}),
+	)
+	if !diags.HasError() {
+		t.Fatal("privatePresharedKeysState accepted invalid prior state")
+	}
+}
+
 // TestApplyEnhancedIotOverrides guards #283: when enhanced_iot is enabled the
 // controller forces iapp_enabled, wpa3_support, wpa3_transition, pmf_mode and
 // dtim_ng, so the provider pins them in the plan to avoid an inconsistent-result
