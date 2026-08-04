@@ -252,6 +252,7 @@ type networkResourceModel struct {
 	DhcpServer                  types.Object         `tfsdk:"dhcp_server"`
 	DhcpV6Server                types.Object         `tfsdk:"dhcp_v6_server"`
 	DhcpRelay                   types.Object         `tfsdk:"dhcp_relay"`
+	FirewallZoneID              types.String         `tfsdk:"firewall_zone_id"`
 	Timeouts                    timeouts.Value       `tfsdk:"timeouts"`
 }
 
@@ -810,6 +811,14 @@ func (r *networkResource) Schema(
 							listvalidator.SizeAtMost(4),
 						},
 					},
+				},
+			},
+			"firewall_zone_id": schema.StringAttribute{
+				MarkdownDescription: "The firewall zone ID assigned to this network.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"timeouts": timeouts.Attributes(
@@ -1578,6 +1587,11 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPRelayEnabled = false
 	}
 
+	if !model.FirewallZoneID.IsNull() && !model.FirewallZoneID.IsUnknown() {
+		zoneID := model.FirewallZoneID.ValueString()
+		network.FirewallZoneID = &zoneID
+	}
+
 	return network, diags
 }
 
@@ -1987,6 +2001,12 @@ func (r *networkResource) networkToModel(
 	} else {
 		// Keep dhcp_relay null if it wasn't in the plan/state
 		model.DhcpRelay = types.ObjectNull(dhcpRelayModel{}.AttributeTypes())
+	}
+
+	if network.FirewallZoneID != nil {
+		model.FirewallZoneID = types.StringValue(*network.FirewallZoneID)
+	} else {
+		model.FirewallZoneID = types.StringNull()
 	}
 
 	return diags
