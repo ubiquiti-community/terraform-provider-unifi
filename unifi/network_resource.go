@@ -814,12 +814,12 @@ func (r *networkResource) Schema(
 				},
 			},
 			"firewall_zone_id": schema.StringAttribute{
-				MarkdownDescription: "The firewall zone ID assigned to this network.",
+				MarkdownDescription: "The firewall zone ID assigned to this network. " +
+					"Note: This field is dual-managed and can compete with `unifi_firewall_zone.network_ids`. " +
+					"To prevent state drift loops, ensure you manage zone membership from exactly one side. " +
+					"On Zone-Based Firewall (ZBF) controllers, this field is tightly coupled to the network's `purpose` field.",
 				Optional:            true,
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
@@ -1587,7 +1587,8 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPRelayEnabled = false
 	}
 
-	if !model.FirewallZoneID.IsNull() && !model.FirewallZoneID.IsUnknown() {
+	if !model.FirewallZoneID.IsNull() && !model.FirewallZoneID.IsUnknown() &&
+		model.FirewallZoneID.ValueString() != "" {
 		zoneID := model.FirewallZoneID.ValueString()
 		network.FirewallZoneID = &zoneID
 	}
@@ -2004,7 +2005,7 @@ func (r *networkResource) networkToModel(
 	}
 
 	if network.FirewallZoneID != nil {
-		model.FirewallZoneID = types.StringValue(*network.FirewallZoneID)
+		model.FirewallZoneID = types.StringPointerValue(network.FirewallZoneID)
 	} else {
 		model.FirewallZoneID = types.StringNull()
 	}
