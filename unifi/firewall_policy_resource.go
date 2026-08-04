@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -37,6 +38,7 @@ var (
 	_ resource.Resource                 = &firewallPolicyResource{}
 	_ resource.ResourceWithImportState  = &firewallPolicyResource{}
 	_ resource.ResourceWithIdentity     = &firewallPolicyResource{}
+	_ resource.ResourceWithModifyPlan   = &firewallPolicyResource{}
 	_ resource.ResourceWithUpgradeState = &firewallPolicyResource{}
 )
 
@@ -104,6 +106,7 @@ type firewallPolicyScheduleModel struct {
 	DateStart      types.String `tfsdk:"date_start"`
 	DateEnd        types.String `tfsdk:"date_end"`
 	Mode           types.String `tfsdk:"mode"`
+	Normalize      types.Bool   `tfsdk:"normalize"`
 	RepeatOnDays   types.Set    `tfsdk:"repeat_on_days"`
 	TimeAllDay     types.Bool   `tfsdk:"time_all_day"`
 	TimeRangeStart types.String `tfsdk:"time_range_start"`
@@ -116,6 +119,7 @@ func (m firewallPolicyScheduleModel) AttributeTypes() map[string]attr.Type {
 		"date_start":       types.StringType,
 		"date_end":         types.StringType,
 		"mode":             types.StringType,
+		"normalize":        types.BoolType,
 		"repeat_on_days":   types.SetType{ElemType: types.StringType},
 		"time_all_day":     types.BoolType,
 		"time_range_start": types.StringType,
@@ -126,30 +130,51 @@ func (m firewallPolicyScheduleModel) AttributeTypes() map[string]attr.Type {
 func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"date": schema.StringAttribute{
-			MarkdownDescription: "Date used by `ONE_TIME_ONLY`.",
+			MarkdownDescription: "Date used by `ONE_TIME_ONLY`, in `YYYY-MM-DD` format.",
 			Optional:            true,
 			Computed:            true,
+			Validators: []validator.String{stringvalidator.RegexMatches(
+				regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`), "must use YYYY-MM-DD format",
+			)},
 		},
 		"date_start": schema.StringAttribute{
-			MarkdownDescription: "Start date used by `CUSTOM`.",
+			MarkdownDescription: "Start date used by `CUSTOM`, in `YYYY-MM-DD` format.",
 			Optional:            true,
 			Computed:            true,
+			Validators: []validator.String{stringvalidator.RegexMatches(
+				regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`), "must use YYYY-MM-DD format",
+			)},
 		},
 		"date_end": schema.StringAttribute{
-			MarkdownDescription: "End date used by `CUSTOM`.",
+			MarkdownDescription: "End date used by `CUSTOM`, in `YYYY-MM-DD` format.",
 			Optional:            true,
 			Computed:            true,
+			Validators: []validator.String{stringvalidator.RegexMatches(
+				regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`), "must use YYYY-MM-DD format",
+			)},
 		},
 		"mode": schema.StringAttribute{
 			MarkdownDescription: "Schedule mode.",
 			Optional:            true,
 			Computed:            true,
+			Validators: []validator.String{stringvalidator.OneOf(
+				"ALWAYS", "EVERY_DAY", "EVERY_WEEK", "ONE_TIME_ONLY", "CUSTOM",
+			)},
+		},
+		"normalize": schema.BoolAttribute{
+			MarkdownDescription: "Clear inherited fields that are unused by the selected mode.",
+			Optional:            true,
+			Computed:            true,
+			Default:             booldefault.StaticBool(false),
 		},
 		"repeat_on_days": schema.SetAttribute{
 			MarkdownDescription: "Weekdays on which the policy is active.",
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
+			Validators: []validator.Set{setvalidator.ValueStringsAre(
+				stringvalidator.OneOf("mon", "tue", "wed", "thu", "fri", "sat", "sun"),
+			)},
 		},
 		"time_all_day": schema.BoolAttribute{
 			MarkdownDescription: "Whether the policy is active all day.",
@@ -157,14 +182,20 @@ func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
 			Computed:            true,
 		},
 		"time_range_start": schema.StringAttribute{
-			MarkdownDescription: "Start time for a timed schedule.",
+			MarkdownDescription: "Start time in 24-hour `HH:MM` format.",
 			Optional:            true,
 			Computed:            true,
+			Validators: []validator.String{stringvalidator.RegexMatches(
+				regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`), "must use 24-hour HH:MM format",
+			)},
 		},
 		"time_range_end": schema.StringAttribute{
-			MarkdownDescription: "End time for a timed schedule.",
+			MarkdownDescription: "End time in 24-hour `HH:MM` format.",
 			Optional:            true,
 			Computed:            true,
+			Validators: []validator.String{stringvalidator.RegexMatches(
+				regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`), "must use 24-hour HH:MM format",
+			)},
 		},
 	}
 }
@@ -459,12 +490,16 @@ func (r *firewallPolicyResource) Schema(
 				MarkdownDescription: "When the policy is active. The complete controller value is " +
 					"round-tripped so updating another policy field does not reset its schedule. " +
 					"Supported modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, " +
-					"and `CUSTOM`.",
+					"and `CUSTOM`. Timed modes require `time_all_day`; when false, both time-range " +
+					"fields are required. `EVERY_WEEK` also requires weekdays, `ONE_TIME_ONLY` " +
+					"requires `date` and a time range, and `CUSTOM` requires a date range and weekdays. " +
+					"Set `normalize` to clear inherited fields unused by the selected mode.",
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Object{
 					objectplanmodifier.UseStateForUnknown(),
 				},
+				Validators: []validator.Object{firewallPolicyScheduleValidator{}},
 				Attributes: firewallPolicyScheduleAttributes(),
 			},
 			"source": schema.SingleNestedAttribute{
@@ -507,6 +542,29 @@ func (r *firewallPolicyResource) Configure(
 	}
 
 	r.client = client
+}
+
+func (r *firewallPolicyResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+	var value types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("schedule"), &value)...)
+	if resp.Diagnostics.HasError() || value.IsNull() || value.IsUnknown() {
+		return
+	}
+	var schedule firewallPolicyScheduleModel
+	resp.Diagnostics.Append(value.As(ctx, &schedule, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() || !normalizeFirewallPolicyScheduleModel(&schedule) {
+		return
+	}
+	normalized, diags := types.ObjectValueFrom(ctx, schedule.AttributeTypes(), schedule)
+	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("schedule"), normalized)...)
 }
 
 func (r *firewallPolicyResource) Create(
@@ -906,6 +964,7 @@ func modelToFirewallPolicy(
 		var schedule firewallPolicyScheduleModel
 		diags.Append(model.Schedule.As(ctx, &schedule, basetypes.ObjectAsOptions{})...)
 		if !diags.HasError() {
+			normalizeFirewallPolicyScheduleModel(&schedule)
 			var timeAllDay *bool
 			if !schedule.TimeAllDay.IsNull() && !schedule.TimeAllDay.IsUnknown() {
 				timeAllDay = schedule.TimeAllDay.ValueBoolPointer()
@@ -1102,6 +1161,15 @@ func firewallPolicyToModel(
 	if fp.Schedule == nil {
 		model.Schedule = types.ObjectNull(firewallPolicyScheduleModel{}.AttributeTypes())
 	} else {
+		normalize := types.BoolValue(false)
+		if !model.Schedule.IsNull() && !model.Schedule.IsUnknown() {
+			var prior firewallPolicyScheduleModel
+			d := model.Schedule.As(ctx, &prior, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+			if !prior.Normalize.IsNull() && !prior.Normalize.IsUnknown() {
+				normalize = prior.Normalize
+			}
+		}
 		repeatOnDays := types.SetValueMust(types.StringType, []attr.Value{})
 		if fp.Schedule.RepeatOnDays != nil {
 			var scheduleDiags diag.Diagnostics
@@ -1115,6 +1183,7 @@ func firewallPolicyToModel(
 			DateStart:      util.StringValueOrNull(fp.Schedule.DateStart),
 			DateEnd:        util.StringValueOrNull(fp.Schedule.DateEnd),
 			Mode:           util.StringValueOrNull(fp.Schedule.Mode),
+			Normalize:      normalize,
 			RepeatOnDays:   repeatOnDays,
 			TimeAllDay:     types.BoolPointerValue(fp.Schedule.TimeAllDay),
 			TimeRangeStart: util.StringValueOrNull(fp.Schedule.TimeRangeStart),
@@ -1154,6 +1223,35 @@ func firewallPolicyToModel(
 	}
 
 	return diags
+}
+
+func normalizeFirewallPolicyScheduleModel(schedule *firewallPolicyScheduleModel) bool {
+	if schedule.Normalize.IsNull() || schedule.Normalize.IsUnknown() ||
+		!schedule.Normalize.ValueBool() || schedule.Mode.IsNull() || schedule.Mode.IsUnknown() {
+		return false
+	}
+	emptyDays := types.SetValueMust(types.StringType, []attr.Value{})
+	switch schedule.Mode.ValueString() {
+	case "ALWAYS":
+		schedule.Date, schedule.DateStart, schedule.DateEnd = types.StringNull(), types.StringNull(), types.StringNull()
+		schedule.RepeatOnDays, schedule.TimeAllDay = emptyDays, types.BoolNull()
+		schedule.TimeRangeStart, schedule.TimeRangeEnd = types.StringNull(), types.StringNull()
+	case "EVERY_DAY":
+		schedule.Date, schedule.DateStart, schedule.DateEnd = types.StringNull(), types.StringNull(), types.StringNull()
+		schedule.RepeatOnDays = emptyDays
+	case "EVERY_WEEK":
+		schedule.Date, schedule.DateStart, schedule.DateEnd = types.StringNull(), types.StringNull(), types.StringNull()
+	case "ONE_TIME_ONLY":
+		schedule.DateStart, schedule.DateEnd = types.StringNull(), types.StringNull()
+		schedule.RepeatOnDays = emptyDays
+	case "CUSTOM":
+		schedule.Date = types.StringNull()
+	}
+	if !schedule.TimeAllDay.IsNull() && !schedule.TimeAllDay.IsUnknown() &&
+		schedule.TimeAllDay.ValueBool() {
+		schedule.TimeRangeStart, schedule.TimeRangeEnd = types.StringNull(), types.StringNull()
+	}
+	return true
 }
 
 func apiSourceToEndpointModel(
