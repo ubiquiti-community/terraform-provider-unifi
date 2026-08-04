@@ -451,7 +451,7 @@ jobs:
       group: issue-stale
       cancel-in-progress: false
     steps:
-      - uses: actions/stale@v10
+      - uses: actions/stale@v11
         with:
           # ── Issues ───────────────────────────────────────────────────────
           days-before-issue-stale: 90
