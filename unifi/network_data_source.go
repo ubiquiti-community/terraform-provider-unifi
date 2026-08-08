@@ -287,11 +287,11 @@ func (d *networkDataSource) Schema(
 						MarkdownDescription: "Specifies whether DHCP NTP is enabled.",
 						Computed:            true,
 					},
-                    "ntp_servers": schema.ListAttribute{
-                        MarkdownDescription: "List of NTP server addresses for DHCP clients.",
-                        Computed:            true,
-                        ElementType:         types.StringType,
-                    },
+					"ntp_servers": schema.ListAttribute{
+						MarkdownDescription: "List of NTP server addresses for DHCP clients.",
+						Computed:            true,
+						ElementType:         types.StringType,
+					},
 					"time_offset_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Specifies whether DHCP time offset is enabled.",
 						Computed:            true,
@@ -706,13 +706,13 @@ func (d *networkDataSource) setDataSourceData(
 		diags.Append(d...)
 
 		ntpServers := collectNonEmptyStringPointers(network.DHCPDNtp1, network.DHCPDNtp2)
-        var ntpServersList types.List
-        if len(ntpServers) > 0 {
-        	ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
-        	diags.Append(d...)
-        } else {
-        	ntpServersList = types.ListNull(types.StringType)
-        }
+		var ntpServersList types.List
+		if len(ntpServers) > 0 {
+			ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
+			diags.Append(d...)
+		} else {
+			ntpServersList = types.ListNull(types.StringType)
+		}
 
 		dhcpServerValue := dhcpServerModel{
 			Boot:              dhcpBootObj,
