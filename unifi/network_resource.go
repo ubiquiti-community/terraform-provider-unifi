@@ -117,6 +117,7 @@ type dhcpServerModel struct {
 	GatewayEnabled    types.Bool           `tfsdk:"gateway_enabled"`
 	ConflictChecking  types.Bool           `tfsdk:"conflict_checking"`
 	NtpEnabled        types.Bool           `tfsdk:"ntp_enabled"`
+	NtpServers        types.List           `tfsdk:"ntp_servers"`
 	TimeOffsetEnabled types.Bool           `tfsdk:"time_offset_enabled"`
 	DnsEnabled        types.Bool           `tfsdk:"dns_enabled"`
 	Leasetime         timetypes.GoDuration `tfsdk:"leasetime"`
@@ -136,6 +137,7 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 		"gateway_enabled":     types.BoolType,
 		"conflict_checking":   types.BoolType,
 		"ntp_enabled":         types.BoolType,
+		"ntp_servers":         types.ListType{ElemType: types.StringType},
 		"time_offset_enabled": types.BoolType,
 		"dns_enabled":         types.BoolType,
 		"leasetime":           timetypes.GoDurationType{},
@@ -679,6 +681,21 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
+                	"ntp_servers": schema.ListAttribute{
+                        MarkdownDescription: "List of NTP server addresses for DHCP clients.",
+                        Optional:            true,
+                        ElementType:         types.StringType,
+                        Validators: []validator.List{
+                    		listvalidator.SizeAtMost(2),
+                    		listvalidator.ValueStringsAre(
+                    			stringvalidator.Any(
+                    				stringvalidator.OneOf(""),
+                    				validators.IPv4Validator(),
+                    				validators.IPv6Validator(),
+                    			),
+                    		),
+                    	},
+                     },
 					"time_offset_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Specifies whether DHCP time offset is enabled.",
 						Optional:            true,
@@ -1365,6 +1382,42 @@ func (r *networkResource) modelToNetwork(
 			network.DHCPDGatewayEnabled = dhcpServer.GatewayEnabled.ValueBool()
 			network.DHCPDConflictChecking = dhcpServer.ConflictChecking.ValueBool()
 			network.DHCPDNtpEnabled = dhcpServer.NtpEnabled.ValueBool()
+
+			// Handle NTP servers
+            if !dhcpServer.NtpServers.IsNull() && !dhcpServer.NtpServers.IsUnknown() {
+            	var ntpServers []string
+            	d := dhcpServer.NtpServers.ElementsAs(ctx, &ntpServers, false)
+            	diags.Append(d...)
+            	if !diags.HasError() {
+            		for i, ntp := range ntpServers {
+            			if i >= 2 {
+            				break
+            			}
+            			switch i {
+            			case 0:
+            				network.DHCPDNtp1 = util.Ptr(ntp)
+            			case 1:
+            				network.DHCPDNtp2 = util.Ptr(ntp)
+            			}
+            		}
+            		// Set remaining NTP servers to empty
+            		for i := len(ntpServers); i < 2; i++ {
+            			switch i {
+            			case 0:
+            				network.DHCPDNtp1 = util.Ptr("")
+            			case 1:
+            				network.DHCPDNtp2 = util.Ptr("")
+            			}
+            		}
+            	}
+            } else {
+            	// Set all NTP servers to empty string when not configured
+            	network.DHCPDNtp1 = util.Ptr("")
+            	network.DHCPDNtp2 = util.Ptr("")
+            }
+
+
+
 			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
 			network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
 			network.DHCPDLeaseTime = util.DurationUnitsPtr(dhcpServer.Leasetime, time.Second)
@@ -1483,6 +1536,8 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPDGatewayEnabled = false
 		network.DHCPDConflictChecking = true
 		network.DHCPDNtpEnabled = false
+		network.DHCPDNtp1 = util.Ptr("")
+        network.DHCPDNtp2 = util.Ptr("")
 		network.DHCPDTimeOffsetEnabled = false
 		network.DHCPDDNSEnabled = false
 		network.DHCPDLeaseTime = util.Ptr(int64(86400))
@@ -1853,6 +1908,23 @@ func (r *networkResource) networkToModel(
 			dnsServersList = types.ListNull(types.StringType)
 		}
 
+        // Build NTP servers list from DHCPDNtp1-2
+        var ntpServers []string
+        if network.DHCPDNtp1 != nil && *network.DHCPDNtp1 != "" {
+        	ntpServers = append(ntpServers, *network.DHCPDNtp1)
+        }
+        if network.DHCPDNtp2 != nil && *network.DHCPDNtp2 != "" {
+        	ntpServers = append(ntpServers, *network.DHCPDNtp2)
+        }
+
+        var ntpServersList types.List
+        if len(ntpServers) > 0 {
+        	ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
+        	diags.Append(d...)
+        } else {
+        	ntpServersList = types.ListNull(types.StringType)
+        }
+
 		// Build WINS addresses list from DHCPDWins1-2
 		var winsAddresses []string
 		if network.DHCPDWins1 != nil && *network.DHCPDWins1 != "" {
@@ -1884,6 +1956,7 @@ func (r *networkResource) networkToModel(
 			GatewayEnabled:    types.BoolValue(network.DHCPDGatewayEnabled),
 			ConflictChecking:  types.BoolValue(network.DHCPDConflictChecking),
 			NtpEnabled:        types.BoolValue(network.DHCPDNtpEnabled),
+			NtpServers:        ntpServersList,
 			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
 			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
 			Leasetime:         util.DurationPtrValue(network.DHCPDLeaseTime, time.Second),
