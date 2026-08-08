@@ -689,7 +689,6 @@ func (r *networkResource) Schema(
                     		listvalidator.SizeAtMost(2),
                     		listvalidator.ValueStringsAre(
                     			stringvalidator.Any(
-                    				stringvalidator.OneOf(""),
                     				validators.IPv4Validator(),
                     				validators.IPv6Validator(),
                     			),
