@@ -287,7 +287,7 @@ func (d *networkDataSource) Schema(
 						MarkdownDescription: "Specifies whether DHCP NTP is enabled.",
 						Computed:            true,
 					},
-                     "ntp_servers": schema.ListAttribute{
+                    "ntp_servers": schema.ListAttribute{
                         MarkdownDescription: "List of NTP server addresses for DHCP clients.",
                         Computed:            true,
                         ElementType:         types.StringType,
