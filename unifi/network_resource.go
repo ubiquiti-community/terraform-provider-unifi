@@ -681,20 +681,20 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
-                	"ntp_servers": schema.ListAttribute{
-                        MarkdownDescription: "List of NTP server addresses for DHCP clients.",
-                        Optional:            true,
-                        ElementType:         types.StringType,
-                        Validators: []validator.List{
-                    		listvalidator.SizeAtMost(2),
-                    		listvalidator.ValueStringsAre(
-                    			stringvalidator.Any(
-                    				validators.IPv4Validator(),
-                    				validators.IPv6Validator(),
-                    			),
-                    		),
-                    	},
-                     },
+					"ntp_servers": schema.ListAttribute{
+						MarkdownDescription: "List of NTP server addresses for DHCP clients.",
+						Optional:            true,
+						ElementType:         types.StringType,
+						Validators: []validator.List{
+							listvalidator.SizeAtMost(2),
+							listvalidator.ValueStringsAre(
+								stringvalidator.Any(
+									validators.IPv4Validator(),
+									validators.IPv6Validator(),
+								),
+							),
+						},
+					},
 					"time_offset_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Specifies whether DHCP time offset is enabled.",
 						Optional:            true,
@@ -1383,39 +1383,37 @@ func (r *networkResource) modelToNetwork(
 			network.DHCPDNtpEnabled = dhcpServer.NtpEnabled.ValueBool()
 
 			// Handle NTP servers
-            if !dhcpServer.NtpServers.IsNull() && !dhcpServer.NtpServers.IsUnknown() {
-            	var ntpServers []string
-            	d := dhcpServer.NtpServers.ElementsAs(ctx, &ntpServers, false)
-            	diags.Append(d...)
-            	if !diags.HasError() {
-            		for i, ntp := range ntpServers {
-            			if i >= 2 {
-            				break
-            			}
-            			switch i {
-            			case 0:
-            				network.DHCPDNtp1 = util.Ptr(ntp)
-            			case 1:
-            				network.DHCPDNtp2 = util.Ptr(ntp)
-            			}
-            		}
-            		// Set remaining NTP servers to empty
-            		for i := len(ntpServers); i < 2; i++ {
-            			switch i {
-            			case 0:
-            				network.DHCPDNtp1 = util.Ptr("")
-            			case 1:
-            				network.DHCPDNtp2 = util.Ptr("")
-            			}
-            		}
-            	}
-            } else {
-            	// Set all NTP servers to empty string when not configured
-            	network.DHCPDNtp1 = util.Ptr("")
-            	network.DHCPDNtp2 = util.Ptr("")
-            }
-
-
+			if !dhcpServer.NtpServers.IsNull() && !dhcpServer.NtpServers.IsUnknown() {
+				var ntpServers []string
+				d := dhcpServer.NtpServers.ElementsAs(ctx, &ntpServers, false)
+				diags.Append(d...)
+				if !diags.HasError() {
+					for i, ntp := range ntpServers {
+						if i >= 2 {
+							break
+						}
+						switch i {
+						case 0:
+							network.DHCPDNtp1 = util.Ptr(ntp)
+						case 1:
+							network.DHCPDNtp2 = util.Ptr(ntp)
+						}
+					}
+					// Set remaining NTP servers to empty
+					for i := len(ntpServers); i < 2; i++ {
+						switch i {
+						case 0:
+							network.DHCPDNtp1 = util.Ptr("")
+						case 1:
+							network.DHCPDNtp2 = util.Ptr("")
+						}
+					}
+				}
+			} else {
+				// Set all NTP servers to empty string when not configured
+				network.DHCPDNtp1 = util.Ptr("")
+				network.DHCPDNtp2 = util.Ptr("")
+			}
 
 			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
 			network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
@@ -1536,7 +1534,7 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPDConflictChecking = true
 		network.DHCPDNtpEnabled = false
 		network.DHCPDNtp1 = util.Ptr("")
-        network.DHCPDNtp2 = util.Ptr("")
+		network.DHCPDNtp2 = util.Ptr("")
 		network.DHCPDTimeOffsetEnabled = false
 		network.DHCPDDNSEnabled = false
 		network.DHCPDLeaseTime = util.Ptr(int64(86400))
@@ -1907,22 +1905,22 @@ func (r *networkResource) networkToModel(
 			dnsServersList = types.ListNull(types.StringType)
 		}
 
-        // Build NTP servers list from DHCPDNtp1-2
-        var ntpServers []string
-        if network.DHCPDNtp1 != nil && *network.DHCPDNtp1 != "" {
-        	ntpServers = append(ntpServers, *network.DHCPDNtp1)
-        }
-        if network.DHCPDNtp2 != nil && *network.DHCPDNtp2 != "" {
-        	ntpServers = append(ntpServers, *network.DHCPDNtp2)
-        }
+		// Build NTP servers list from DHCPDNtp1-2
+		var ntpServers []string
+		if network.DHCPDNtp1 != nil && *network.DHCPDNtp1 != "" {
+			ntpServers = append(ntpServers, *network.DHCPDNtp1)
+		}
+		if network.DHCPDNtp2 != nil && *network.DHCPDNtp2 != "" {
+			ntpServers = append(ntpServers, *network.DHCPDNtp2)
+		}
 
-        var ntpServersList types.List
-        if len(ntpServers) > 0 {
-        	ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
-        	diags.Append(d...)
-        } else {
-        	ntpServersList = types.ListNull(types.StringType)
-        }
+		var ntpServersList types.List
+		if len(ntpServers) > 0 {
+			ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
+			diags.Append(d...)
+		} else {
+			ntpServersList = types.ListNull(types.StringType)
+		}
 
 		// Build WINS addresses list from DHCPDWins1-2
 		var winsAddresses []string
