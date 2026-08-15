@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -187,8 +188,75 @@ func Test_siteToSiteVPNResource_UpgradeState(t *testing.T) {
 func Test_siteToSiteVPNResource_ConfigValidators(t *testing.T) {
 	r := &siteToSiteVPNResource{}
 	validators := r.ConfigValidators(context.Background())
-	if validators != nil {
-		t.Errorf("expected nil ConfigValidators, got %v", validators)
+	if len(validators) != 1 {
+		t.Fatalf("expected one ConfigValidator, got %d", len(validators))
+	}
+	if _, ok := validators[0].(*siteToSiteVPNRemoteSubnetsValidator); !ok {
+		t.Errorf("unexpected ConfigValidator type %T", validators[0])
+	}
+}
+
+func TestSiteToSiteVPNDynamicRoutingRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &siteToSiteVPNResource{}
+
+	model := &siteToSiteVPNResourceModel{
+		Name:           types.StringValue("dynamic-vpn"),
+		DynamicRouting: types.BoolValue(true),
+		RemoteSubnets:  types.ListValueMust(types.StringType, nil),
+	}
+
+	network, diags := r.modelToNetwork(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToNetwork: %v", diags)
+	}
+	if !network.IPSecDynamicRouting {
+		t.Error("IPSecDynamicRouting = false, want true")
+	}
+	if len(network.RemoteVPNSubnets) != 0 {
+		t.Errorf("RemoteVPNSubnets = %v, want empty", network.RemoteVPNSubnets)
+	}
+
+	out := &siteToSiteVPNResourceModel{}
+	if diags := r.networkToModel(ctx, network, out, "default"); diags.HasError() {
+		t.Fatalf("networkToModel: %v", diags)
+	}
+	if !out.DynamicRouting.ValueBool() {
+		t.Error("DynamicRouting = false, want true")
+	}
+	if len(out.RemoteSubnets.Elements()) != 0 {
+		t.Errorf("RemoteSubnets = %v, want empty", out.RemoteSubnets.Elements())
+	}
+}
+
+func TestSiteToSiteVPNRemoteSubnetsValid(t *testing.T) {
+	empty := types.ListValueMust(types.StringType, nil)
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	tests := []struct {
+		name           string
+		dynamicRouting types.Bool
+		remoteSubnets  types.List
+		want           bool
+	}{
+		{"static tunnel with subnet", types.BoolValue(false), nonEmpty, true},
+		{"dynamic tunnel with subnet", types.BoolValue(true), nonEmpty, true},
+		{"dynamic tunnel without subnets", types.BoolValue(true), empty, true},
+		{"static tunnel without subnets", types.BoolValue(false), empty, false},
+		{"routing mode omitted", types.BoolNull(), empty, false},
+		{"routing mode unknown", types.BoolUnknown(), empty, true},
+		{"subnets unknown", types.BoolValue(false), types.ListUnknown(types.StringType), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := siteToSiteVPNRemoteSubnetsValid(tt.dynamicRouting, tt.remoteSubnets); got != tt.want {
+				t.Errorf("siteToSiteVPNRemoteSubnetsValid() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
