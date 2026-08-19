@@ -2144,6 +2144,33 @@ func (r *deviceResource) modelToAPIDevice(
 // declared ports. Ports present only in the current set are preserved; ports
 // declared but not yet present are appended. Declared order is preserved for the
 // appended entries so the result is deterministic.
+// carryUnwritableFields copies forward the fields the provider structurally cannot
+// write, so that declaring a port does not silently DELETE them.
+//
+// op_mode is the case that bites. It is only ever sent when it is not "switch"
+// (see modelToAPIPortOverride), because UDM gateways reject it on update (#213),
+// and DevicePortOverrides.OpMode is `json:"op_mode,omitempty"`. A port carrying
+// op_mode:"switch" on the controller therefore produces a declared entry with
+// OpMode == "", which differs from the current entry — and since UpdateDevice PUTs
+// getDeviceDiff(existing, target), which compares port_overrides as a single JSON
+// value, that one difference sends the ENTIRE array. The endpoint full-replaces it
+// with a copy that has been round-tripped through DevicePortOverrides, so every
+// port on the device loses the fields the struct does not model (stp_edge_state,
+// stp_bpdu_guard_enabled, multicast_router_mode, sd_wan_underlay_port) and every
+// field at its zero value (omitempty drops false, "" and []).
+//
+// Carrying the controller's value forward keeps the marshalled entry identical, so
+// the diff stays empty and nothing is written. No value is ever sourced from
+// config, so a user-supplied op_mode still cannot reach a gateway.
+func carryUnwritableFields(
+	current, declared unifi.DevicePortOverrides,
+) unifi.DevicePortOverrides {
+	if declared.OpMode == "" && current.OpMode != "" {
+		declared.OpMode = current.OpMode
+	}
+	return declared
+}
+
 func mergePortOverridesByIndex(
 	current, declared []unifi.DevicePortOverrides,
 ) []unifi.DevicePortOverrides {
@@ -2163,7 +2190,7 @@ func mergePortOverridesByIndex(
 	for _, po := range current {
 		if po.PortIDX != nil {
 			if i, ok := declaredByIdx[*po.PortIDX]; ok {
-				merged = append(merged, declared[i])
+				merged = append(merged, carryUnwritableFields(po, declared[i]))
 				used[i] = true
 				continue
 			}
