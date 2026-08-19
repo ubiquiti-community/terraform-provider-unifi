@@ -35,10 +35,11 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                 = &siteToSiteVPNResource{}
-	_ resource.ResourceWithImportState  = &siteToSiteVPNResource{}
-	_ resource.ResourceWithIdentity     = &siteToSiteVPNResource{}
-	_ resource.ResourceWithUpgradeState = &siteToSiteVPNResource{}
+	_ resource.Resource                     = &siteToSiteVPNResource{}
+	_ resource.ResourceWithConfigValidators = &siteToSiteVPNResource{}
+	_ resource.ResourceWithImportState      = &siteToSiteVPNResource{}
+	_ resource.ResourceWithIdentity         = &siteToSiteVPNResource{}
+	_ resource.ResourceWithUpgradeState     = &siteToSiteVPNResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -222,11 +223,11 @@ func (r *siteToSiteVPNResource) Schema(
 				},
 			},
 			"remote_subnets": schema.ListAttribute{
-				MarkdownDescription: "The remote site's subnets reachable through the tunnel (CIDR).",
-				ElementType:         types.StringType,
-				Required:            true,
+				MarkdownDescription: "The remote site's subnets reachable through the tunnel (CIDR). " +
+					"May be empty when dynamic routing is enabled.",
+				ElementType: types.StringType,
+				Required:    true,
 				Validators: []validator.List{
-					listvalidator.SizeAtLeast(1),
 					listvalidator.ValueStringsAre(validators.CIDRValidator()),
 				},
 			},
@@ -375,9 +376,67 @@ func (r *siteToSiteVPNResource) UpgradeState(
 }
 
 func (r *siteToSiteVPNResource) ConfigValidators(
-	ctx context.Context,
+	_ context.Context,
 ) []resource.ConfigValidator {
-	return nil
+	return []resource.ConfigValidator{
+		&siteToSiteVPNRemoteSubnetsValidator{},
+	}
+}
+
+// siteToSiteVPNRemoteSubnetsValidator allows dynamic-routing tunnels to rely
+// entirely on learned routes while retaining the static-tunnel safeguard.
+type siteToSiteVPNRemoteSubnetsValidator struct{}
+
+func (v *siteToSiteVPNRemoteSubnetsValidator) Description(_ context.Context) string {
+	return "remote_subnets must contain at least one CIDR unless dynamic routing is enabled"
+}
+
+func (v *siteToSiteVPNRemoteSubnetsValidator) MarkdownDescription(
+	_ context.Context,
+) string {
+	return "`remote_subnets` must contain at least one CIDR unless `dynamic_routing` is enabled"
+}
+
+func (v *siteToSiteVPNRemoteSubnetsValidator) ValidateResource(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var dynamicRouting types.Bool
+	var remoteSubnets types.List
+
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("dynamic_routing"), &dynamicRouting)...,
+	)
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("remote_subnets"), &remoteSubnets)...,
+	)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if siteToSiteVPNRemoteSubnetsValid(dynamicRouting, remoteSubnets) {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeError(
+		path.Root("remote_subnets"),
+		"Empty Remote Subnets",
+		"remote_subnets must contain at least one CIDR unless dynamic_routing is enabled.",
+	)
+}
+
+func siteToSiteVPNRemoteSubnetsValid(
+	dynamicRouting types.Bool,
+	remoteSubnets types.List,
+) bool {
+	if remoteSubnets.IsNull() || remoteSubnets.IsUnknown() || len(remoteSubnets.Elements()) > 0 {
+		return true
+	}
+	if dynamicRouting.IsUnknown() {
+		return true
+	}
+	return !dynamicRouting.IsNull() && dynamicRouting.ValueBool()
 }
 
 func (r *siteToSiteVPNResource) Configure(

@@ -25,3 +25,13 @@ resource "unifi_site_to_site_vpn" "branch" {
   esp_dh_group   = 14
   pfs            = true
 }
+
+# Dynamic routing learns remote routes over the tunnel, so no static remote
+# subnets are required.
+resource "unifi_site_to_site_vpn" "dynamic" {
+  name            = "dynamic-branch"
+  peer_ip         = "203.0.113.30"
+  pre_shared_key  = var.s2s_pre_shared_key
+  dynamic_routing = true
+  remote_subnets  = []
+}
