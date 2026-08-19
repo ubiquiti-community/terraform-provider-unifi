@@ -578,7 +578,7 @@ func (r *networkResource) Schema(
 				},
 			},
 			"dhcp_guarding": schema.SingleNestedAttribute{
-				MarkdownDescription: "DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network. Omit to leave the controller's DHCP guarding unmanaged.",
+				MarkdownDescription: "DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
