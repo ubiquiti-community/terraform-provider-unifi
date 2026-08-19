@@ -1654,6 +1654,13 @@ func buildMinimalUpdateDevice(
 	deviceReq, currentDevice *unifi.Device,
 	portOverrides []unifi.DevicePortOverrides,
 ) *unifi.Device {
+	// A nil slice marshals to `port_overrides: null`, which UDM/Dream Machine
+	// gateways reject with api.err.InvalidPayload (400). Force a non-nil empty
+	// slice so a device with no overrides at all (an access point, a gateway)
+	// sends `port_overrides: []` instead.
+	if portOverrides == nil {
+		portOverrides = []unifi.DevicePortOverrides{}
+	}
 	minimalDevice := &unifi.Device{
 		ID:                         deviceReq.ID,
 		Type:                       deviceReq.Type,
