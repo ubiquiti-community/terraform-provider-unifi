@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **`unifi_network`: stop updates silently disabling DHCP guarding configured outside Terraform.** The update PUT is assembled from the Terraform model alone, so when the `dhcp_guarding` block is absent from configuration the body carries `dhcpguard_enabled: false` (with the trusted-server fields empty or, for corporate/guest networks on current go-unifi, absent from the wire entirely) — any unrelated update (changing the DHCP pool, DNS, anything) wiped guarding that was enabled on the controller, with no plan diff and no error. When the block is unmanaged the provider now reads the network first and carries the controller's current guarding fields through the update; removing the block therefore preserves guarding rather than disabling it — disable explicitly with `enabled = false`. Managing `dhcp_guarding` end-to-end additionally requires go-unifi to marshal `dhcpd_ip_1..3` for corporate/guest networks (go-unifi#68) — without that fix the controller rejects an enabled guard with `api.err.MissingIPAddress` (#439)
+
 - **`unifi_setting.ntp`: stop empty NTP server slots causing perpetual diffs or inconsistent results.** The controller stores unused `ntp_server_1..4` values as empty strings, but the provider read them back as `null`, conflicting with an explicitly configured `""`. The server attributes now preserve prior state during unrelated plans and normalize controller empty strings to known empty Terraform values (#382)
 
 ## [v0.55.0] - 2026-07-10

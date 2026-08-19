@@ -1096,6 +1096,26 @@ func (r *networkResource) Update(
 
 	network.ID = data.ID.ValueString()
 
+	// modelToNetwork zero-values the DHCP guarding fields when the
+	// dhcp_guarding block is absent from configuration, and the controller
+	// treats the resulting PUT as "disable guarding" — silently wiping
+	// guarding configured outside Terraform on every unrelated update.
+	// Preserve the controller's current values instead.
+	if data.DhcpGuarding.IsNull() {
+		current, err := r.client.GetNetwork(ctx, site, network.ID)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating network",
+				fmt.Sprintf(
+					"Could not read the network to preserve its DHCP guarding settings: %s",
+					err,
+				),
+			)
+			return
+		}
+		preserveUnmanagedDhcpGuarding(data.DhcpGuarding, network, current)
+	}
+
 	// Update the network
 	updatedNetwork, err := r.client.UpdateNetwork(ctx, site, network)
 	if err != nil {
@@ -1193,6 +1213,27 @@ func (r *networkResource) ImportState(
 	} else {
 		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 	}
+}
+
+// preserveUnmanagedDhcpGuarding copies the controller's current DHCP guarding
+// fields onto an outgoing network update when the configuration does not
+// manage the dhcp_guarding block (planned is null). Without this, an update
+// built from the model alone carries dhcpguard_enabled=false and empty
+// dhcpd_ip_1..3, disabling guarding that was configured outside Terraform.
+// Returns true when the fields were preserved.
+func preserveUnmanagedDhcpGuarding(
+	planned types.Object,
+	network *unifi.Network,
+	current *unifi.Network,
+) bool {
+	if !planned.IsNull() {
+		return false
+	}
+	network.DHCPguardEnabled = current.DHCPguardEnabled
+	network.DHCPDIP1 = current.DHCPDIP1
+	network.DHCPDIP2 = current.DHCPDIP2
+	network.DHCPDIP3 = current.DHCPDIP3
+	return true
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
