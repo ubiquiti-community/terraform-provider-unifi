@@ -1350,3 +1350,62 @@ func Test_networkResource_purpose(t *testing.T) {
 		}
 	})
 }
+
+func Test_preserveUnmanagedDhcpGuarding(t *testing.T) {
+	t.Parallel()
+
+	current := &unifi.Network{
+		DHCPguardEnabled: true,
+		DHCPDIP1:         "192.168.1.1",
+		DHCPDIP2:         "192.168.1.2",
+	}
+
+	t.Run("null block preserves controller values", func(t *testing.T) {
+		t.Parallel()
+
+		network := &unifi.Network{}
+		preserved := preserveUnmanagedDhcpGuarding(
+			types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			network,
+			current,
+		)
+
+		if !preserved {
+			t.Fatal("expected preservation for a null dhcp_guarding block")
+		}
+		if !network.DHCPguardEnabled {
+			t.Error("expected DHCPguardEnabled to be preserved as true")
+		}
+		if network.DHCPDIP1 != "192.168.1.1" || network.DHCPDIP2 != "192.168.1.2" {
+			t.Errorf(
+				"expected trusted servers to be preserved, got %q, %q",
+				network.DHCPDIP1,
+				network.DHCPDIP2,
+			)
+		}
+	})
+
+	t.Run("managed block is left alone", func(t *testing.T) {
+		t.Parallel()
+
+		planned, diags := types.ObjectValueFrom(
+			t.Context(),
+			dhcpGuardingModel{}.AttributeTypes(),
+			dhcpGuardingModel{
+				Enabled: types.BoolValue(false),
+				Servers: types.ListNull(types.StringType),
+			},
+		)
+		if diags.HasError() {
+			t.Fatalf("failed to build planned object: %v", diags)
+		}
+
+		network := &unifi.Network{}
+		if preserveUnmanagedDhcpGuarding(planned, network, current) {
+			t.Fatal("expected no preservation for a managed dhcp_guarding block")
+		}
+		if network.DHCPguardEnabled || network.DHCPDIP1 != "" {
+			t.Error("expected the outgoing network to be untouched")
+		}
+	})
+}
