@@ -93,7 +93,7 @@ resource "unifi_network" "third_party" {
 ### Optional
 
 - `auto_scale` (Boolean) Specifies whether auto-scaling is enabled.
-- `dhcp_guarding` (Attributes) DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network. When this block is absent, DHCP guarding configured on the controller is preserved during updates rather than disabled; set `enabled = false` to disable guarding. (see [below for nested schema](#nestedatt--dhcp_guarding))
+- `dhcp_guarding` (Attributes) DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network. Omit to leave the controller's DHCP guarding unmanaged. (see [below for nested schema](#nestedatt--dhcp_guarding))
 - `dhcp_relay` (Attributes) DHCP relay configuration. (see [below for nested schema](#nestedatt--dhcp_relay))
 - `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
 - `dhcp_v6_server` (Attributes) DHCPv6 server configuration. (see [below for nested schema](#nestedatt--dhcp_v6_server))
