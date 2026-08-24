@@ -930,8 +930,13 @@ func TestReconcilePortOverrides_NativeNetworkClearedRoundTrips(t *testing.T) {
 	r := &deviceResource{}
 
 	priorModel := portOverrideModel{
-		Index:           types.Int64Value(1),
-		NativeNetworkID: types.StringValue(""),
+		Index:                     types.Int64Value(1),
+		NativeNetworkID:           types.StringValue(""),
+		AggregateMembers:          types.ListNull(types.Int64Type),
+		ExcludedNetworkIDs:        types.SetNull(types.StringType),
+		MulticastRouterNetworkIDs: types.SetNull(types.StringType),
+		PortSecurityMACAddress:    types.ListNull(types.StringType),
+		TaggedNetworkIDs:          types.SetNull(types.StringType),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {
@@ -976,8 +981,13 @@ func TestReconcilePortOverrides_NativeNetworkAssignedKept(t *testing.T) {
 	r := &deviceResource{}
 
 	priorModel := portOverrideModel{
-		Index:           types.Int64Value(1),
-		NativeNetworkID: types.StringValue("net-old"),
+		Index:                     types.Int64Value(1),
+		NativeNetworkID:           types.StringValue("net-old"),
+		AggregateMembers:          types.ListNull(types.Int64Type),
+		ExcludedNetworkIDs:        types.SetNull(types.StringType),
+		MulticastRouterNetworkIDs: types.SetNull(types.StringType),
+		PortSecurityMACAddress:    types.ListNull(types.StringType),
+		TaggedNetworkIDs:          types.SetNull(types.StringType),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {
