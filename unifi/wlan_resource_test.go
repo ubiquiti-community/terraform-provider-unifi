@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -216,6 +217,10 @@ func testAccWLANDefaultUserGroupID(t *testing.T) string {
 		t.Fatalf("listing user groups: %s", err)
 	}
 	defer groupResp.Body.Close()
+	if groupResp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(groupResp.Body, 2048))
+		t.Fatalf("listing user groups: status %d: %s", groupResp.StatusCode, respBody)
+	}
 
 	var body struct {
 		Data []struct {

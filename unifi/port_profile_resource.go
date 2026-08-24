@@ -570,7 +570,10 @@ func (r *portProfileResource) Create(
 	// to "customize" instead of auto-assigning the default network. Resolve the
 	// site's default network up front so the create body carries the same
 	// concrete native ID the controller would have auto-assigned.
-	if plan.NativeNetworkConfID.IsUnknown() {
+	// Unknown covers both omitted and explicitly-null config (the attribute is
+	// Optional+Computed); the null check is defensive so an explicit null can
+	// never fall through and serialize as a clearing "".
+	if plan.NativeNetworkConfID.IsUnknown() || plan.NativeNetworkConfID.IsNull() {
 		defaultNetworkID, d := r.defaultNativeNetworkID(ctx, site)
 		resp.Diagnostics.Append(d...)
 		if resp.Diagnostics.HasError() {
@@ -667,10 +670,15 @@ func (r *portProfileResource) Read(
 	// Update state from API response
 	resp.Diagnostics.Append(r.portProfileToModel(ctx, portProfile, &state, site)...)
 
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
-		ID:   state.ID,
-		Site: state.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -749,10 +757,15 @@ func (r *portProfileResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
-		ID:   state.ID,
-		Site: state.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }

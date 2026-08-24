@@ -185,7 +185,8 @@ func TestClientResourceSchema_ObservedAttributesHaveNoUseStateForUnknown(t *test
 		if len(strAttr.PlanModifiers) != 0 {
 			t.Errorf(
 				"attribute %q: want no plan modifiers (value is purely controller-observed), got %d",
-				name, len(strAttr.PlanModifiers),
+				name,
+				len(strAttr.PlanModifiers),
 			)
 		}
 	}

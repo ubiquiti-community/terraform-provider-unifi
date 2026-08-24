@@ -413,10 +413,15 @@ func (r *powerSupervisorResource) Read(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(supervisor, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
-		ID:   data.ID,
-		Site: data.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
+			ID:   data.ID,
+			Site: data.Site,
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -455,10 +460,15 @@ func (r *powerSupervisorResource) Update(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(updated, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
-		ID:   data.ID,
-		Site: data.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
+			ID:   data.ID,
+			Site: data.Site,
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

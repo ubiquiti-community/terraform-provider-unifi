@@ -295,10 +295,15 @@ func (r *apGroupResource) Read(
 	// Update state from API response
 	resp.Diagnostics.Append(r.apGroupToModel(ctx, apGroup, &state, site)...)
 
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, apGroupIdentityModel{
-		ID:   state.ID,
-		Site: state.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, apGroupIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -388,10 +393,15 @@ func (r *apGroupResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, apGroupIdentityModel{
-		ID:   state.ID,
-		Site: state.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, apGroupIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }

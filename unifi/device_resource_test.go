@@ -84,8 +84,12 @@ func Test_resolvePortOverridesForUpdate_zeroDeclaredEchoesCurrent(t *testing.T) 
 
 	got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
 	if len(got) != len(current) {
-		t.Fatalf("resolvePortOverridesForUpdate() length = %d, want %d (must echo current, not null/empty): %+v",
-			len(got), len(current), got)
+		t.Fatalf(
+			"resolvePortOverridesForUpdate() length = %d, want %d (must echo current, not null/empty): %+v",
+			len(got),
+			len(current),
+			got,
+		)
 	}
 	byIdx := indexOverrides(got)
 	if byIdx[1].NATiveNetworkID != "vlan-a" || byIdx[2].NATiveNetworkID != "vlan-b" {
@@ -94,10 +98,16 @@ func Test_resolvePortOverridesForUpdate_zeroDeclaredEchoesCurrent(t *testing.T) 
 
 	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
 	if minimalDevice.PortOverrides == nil {
-		t.Error("buildMinimalUpdateDevice() PortOverrides is nil, want the live overrides echoed (would marshal to `port_overrides: null`)")
+		t.Error(
+			"buildMinimalUpdateDevice() PortOverrides is nil, want the live overrides echoed (would marshal to `port_overrides: null`)",
+		)
 	}
 	if len(minimalDevice.PortOverrides) != len(current) {
-		t.Errorf("buildMinimalUpdateDevice() PortOverrides length = %d, want %d", len(minimalDevice.PortOverrides), len(current))
+		t.Errorf(
+			"buildMinimalUpdateDevice() PortOverrides length = %d, want %d",
+			len(minimalDevice.PortOverrides),
+			len(current),
+		)
 	}
 }
 
@@ -111,10 +121,15 @@ func Test_resolvePortOverridesForUpdate_noCurrentOverridesSendsEmpty(t *testing.
 	got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
 	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
 	if minimalDevice.PortOverrides == nil {
-		t.Error("buildMinimalUpdateDevice() PortOverrides is nil, want a non-nil empty slice (would marshal to `port_overrides: null`)")
+		t.Error(
+			"buildMinimalUpdateDevice() PortOverrides is nil, want a non-nil empty slice (would marshal to `port_overrides: null`)",
+		)
 	}
 	if len(minimalDevice.PortOverrides) != 0 {
-		t.Errorf("buildMinimalUpdateDevice() PortOverrides length = %d, want 0", len(minimalDevice.PortOverrides))
+		t.Errorf(
+			"buildMinimalUpdateDevice() PortOverrides length = %d, want 0",
+			len(minimalDevice.PortOverrides),
+		)
 	}
 }
 
@@ -986,6 +1001,13 @@ func TestReconcilePortOverrides_NativeNetworkClearedRoundTrips(t *testing.T) {
 	priorModel := portOverrideModel{
 		Index:           types.Int64Value(1),
 		NativeNetworkID: types.StringValue(""),
+		// Zero-value collections carry no element type and fail the
+		// ObjectValueFrom type check; use typed nulls.
+		AggregateMembers:          types.ListNull(types.Int64Type),
+		ExcludedNetworkIDs:        types.SetNull(types.StringType),
+		MulticastRouterNetworkIDs: types.SetNull(types.StringType),
+		PortSecurityMACAddress:    types.ListNull(types.StringType),
+		TaggedNetworkIDs:          types.SetNull(types.StringType),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {
@@ -1032,6 +1054,13 @@ func TestReconcilePortOverrides_NativeNetworkAssignedKept(t *testing.T) {
 	priorModel := portOverrideModel{
 		Index:           types.Int64Value(1),
 		NativeNetworkID: types.StringValue("net-old"),
+		// Zero-value collections carry no element type and fail the
+		// ObjectValueFrom type check; use typed nulls.
+		AggregateMembers:          types.ListNull(types.Int64Type),
+		ExcludedNetworkIDs:        types.SetNull(types.StringType),
+		MulticastRouterNetworkIDs: types.SetNull(types.StringType),
+		PortSecurityMACAddress:    types.ListNull(types.StringType),
+		TaggedNetworkIDs:          types.SetNull(types.StringType),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {

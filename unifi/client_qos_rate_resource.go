@@ -306,10 +306,15 @@ func (r *clientQosRateResource) Read(
 		return
 	}
 
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, clientQosRateIdentityModel{
-		ID:   state.ID,
-		Site: state.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, clientQosRateIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -380,10 +385,15 @@ func (r *clientQosRateResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, clientQosRateIdentityModel{
-		ID:   state.ID,
-		Site: state.Site,
-	})...)
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, clientQosRateIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 

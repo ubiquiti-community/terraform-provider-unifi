@@ -2218,7 +2218,9 @@ func carryUnwritableFields(
 //
 // mergePortOverridesByIndex already returns `current` unchanged when `declared` is
 // empty, so both cases collapse to one call.
-func resolvePortOverridesForUpdate(currentDevice, deviceReq *unifi.Device) []unifi.DevicePortOverrides {
+func resolvePortOverridesForUpdate(
+	currentDevice, deviceReq *unifi.Device,
+) []unifi.DevicePortOverrides {
 	return mergePortOverridesByIndex(currentDevice.PortOverrides, deviceReq.PortOverrides)
 }
 
