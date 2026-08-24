@@ -139,7 +139,7 @@ resource "unifi_network" "third_party" {
 Optional:
 
 - `enabled` (Boolean) Specifies whether DHCP guarding is enabled.
-- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3).
+- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3). On `corporate` and `guest` networks the controller only honors DHCP guarding with `setting_preference = "manual"`; when `setting_preference` is not configured, the provider sets it to `manual` automatically whenever `dhcp_guarding.enabled` is `true`.
 
 
 <a id="nestedatt--dhcp_relay"></a>
