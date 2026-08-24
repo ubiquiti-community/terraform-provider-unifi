@@ -15,6 +15,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
@@ -1570,6 +1571,138 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 	})
 }
 
+// Test_networkResource_networkToModel_dnsServersEmptyList guards #429:
+// dhcp_server.dns_servers and dhcp_server.wins.addresses are Optional but not
+// Computed, so a config of `[]` plans an empty (non-null) list. Read must
+// mirror an empty API response as an empty list when the previous plan/state
+// held an empty list, rather than always collapsing to null - otherwise
+// Terraform reports "provider produced inconsistent result after apply" and
+// the empty value can never be expressed. A previous null (never configured)
+// must still read back as null.
+func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
+	r := &networkResource{}
+	ctx := context.Background()
+
+	// The controller holds no DNS servers and no WINS addresses.
+	network := &unifi.Network{
+		ID:      "net-1",
+		Name:    strPtr("test-net"),
+		Purpose: unifi.PurposeCorporate,
+		Enabled: true,
+	}
+
+	base := func() *networkResourceModel {
+		return &networkResourceModel{
+			DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:   types.ListNull(types.StringType),
+			IPv6Aliases: types.ListNull(types.StringType),
+		}
+	}
+
+	dhcpServerObj := func(dnsServers, winsAddresses, ntpServers types.List) types.Object {
+		wins := types.ObjectValueMust(winsModel{}.AttributeTypes(), map[string]attr.Value{
+			"enabled":   types.BoolValue(false),
+			"addresses": winsAddresses,
+		})
+		return types.ObjectValueMust(dhcpServerModel{}.AttributeTypes(), map[string]attr.Value{
+			"boot":                types.ObjectNull(dhcpBootModel{}.AttributeTypes()),
+			"enabled":             types.BoolValue(true),
+			"start":               types.StringNull(),
+			"stop":                types.StringNull(),
+			"gateway_enabled":     types.BoolValue(false),
+			"conflict_checking":   types.BoolValue(true),
+			"ntp_enabled":         types.BoolValue(false),
+			"ntp_servers":         ntpServers,
+			"time_offset_enabled": types.BoolValue(false),
+			"dns_enabled":         types.BoolValue(false),
+			"leasetime":           timetypes.NewGoDurationNull(),
+			"wins":                wins,
+			"wpad_url":            types.StringNull(),
+			"tftp_server":         types.StringNull(),
+			"unifi_controller":    types.StringNull(),
+			"dns_servers":         dnsServers,
+		})
+	}
+
+	emptyList := types.ListValueMust(types.StringType, []attr.Value{})
+	nullList := types.ListNull(types.StringType)
+
+	t.Run("empty config list round-trips as empty list, not null", func(t *testing.T) {
+		prev := base()
+		prev.DhcpServer = dhcpServerObj(emptyList, emptyList, emptyList)
+
+		var model networkResourceModel
+		d := r.networkToModel(ctx, network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+
+		var got dhcpServerModel
+		d = model.DhcpServer.As(ctx, &got, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting dhcp_server: %v", d)
+		}
+		if got.DnsServers.IsNull() {
+			t.Errorf("dns_servers = null, want empty list")
+		}
+		if len(got.DnsServers.Elements()) != 0 {
+			t.Errorf("dns_servers = %v, want 0 elements", got.DnsServers.Elements())
+		}
+		if got.NtpServers.IsNull() {
+			t.Errorf("ntp_servers = null, want empty list")
+		}
+		if len(got.NtpServers.Elements()) != 0 {
+			t.Errorf("ntp_servers = %v, want 0 elements", got.NtpServers.Elements())
+		}
+
+		var gotWins winsModel
+		d = got.Wins.As(ctx, &gotWins, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting wins: %v", d)
+		}
+		if gotWins.Addresses.IsNull() {
+			t.Errorf("wins.addresses = null, want empty list")
+		}
+	})
+
+	t.Run("never-configured stays null", func(t *testing.T) {
+		prev := base()
+		prev.DhcpServer = dhcpServerObj(nullList, nullList, nullList)
+
+		var model networkResourceModel
+		d := r.networkToModel(ctx, network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+
+		var got dhcpServerModel
+		d = model.DhcpServer.As(ctx, &got, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting dhcp_server: %v", d)
+		}
+		if !got.DnsServers.IsNull() {
+			t.Errorf("dns_servers = %v, want null", got.DnsServers)
+		}
+		if !got.NtpServers.IsNull() {
+			t.Errorf("ntp_servers = %v, want null", got.NtpServers)
+		}
+
+		var gotWins winsModel
+		d = got.Wins.As(ctx, &gotWins, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting wins: %v", d)
+		}
+		if !gotWins.Addresses.IsNull() {
+			t.Errorf("wins.addresses = %v, want null", gotWins.Addresses)
+		}
+	})
+}
+
 // Test_networkResource_networkToModel_normalizesControllerDefaults guards #414:
 // UniFi may omit gateway_type and ipv6_interface_type when they have their
 // implicit defaults. Import must write the provider defaults into state instead
@@ -2383,5 +2516,201 @@ resource "unifi_network" "guard_corp" {
 				),
 			},
 		},
+	})
+}
+
+// TestAccNetworkFramework_dhcpEmptyLists guards #429 end-to-end: dns_servers,
+// ntp_servers, and wins.addresses configured with values must be updatable to
+// an explicit empty list. Historically the readback collapsed an empty
+// controller response to null while the plan held [], so the update failed
+// with "Provider produced inconsistent result after apply".
+func TestAccNetworkFramework_dhcpEmptyLists(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "unifi_network" "test_empty_lists" {
+	name               = "Test Empty Lists"
+	subnet             = "192.168.54.1/24"
+	vlan               = 54
+	# The controller resets dhcpd_dns/ntp/wins_enabled on writes to
+	# auto-managed networks (same family as #419's dhcpguard reset), which
+	# is unrelated to the empty-list readback under test here.
+	setting_preference = "manual"
+
+	dhcp_server = {
+		enabled     = true
+		start       = "192.168.54.10"
+		stop        = "192.168.54.254"
+		dns_enabled = true
+		dns_servers = ["192.168.54.2", "192.168.54.3"]
+		ntp_enabled = true
+		ntp_servers = ["192.168.54.4"]
+		wins = {
+			enabled   = true
+			addresses = ["192.168.54.5"]
+		}
+	}
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_empty_lists",
+						"dhcp_server.dns_servers.#",
+						"2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_empty_lists",
+						"dhcp_server.ntp_servers.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_empty_lists",
+						"dhcp_server.wins.addresses.#",
+						"1",
+					),
+				),
+			},
+			{
+				Config: `
+resource "unifi_network" "test_empty_lists" {
+	name               = "Test Empty Lists"
+	subnet             = "192.168.54.1/24"
+	vlan               = 54
+	# The controller resets dhcpd_dns/ntp/wins_enabled on writes to
+	# auto-managed networks (same family as #419's dhcpguard reset), which
+	# is unrelated to the empty-list readback under test here.
+	setting_preference = "manual"
+
+	dhcp_server = {
+		enabled     = true
+		start       = "192.168.54.10"
+		stop        = "192.168.54.254"
+		dns_enabled = false
+		dns_servers = []
+		ntp_enabled = false
+		ntp_servers = []
+		wins = {
+			enabled   = false
+			addresses = []
+		}
+	}
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_empty_lists",
+						"dhcp_server.dns_servers.#",
+						"0",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_empty_lists",
+						"dhcp_server.ntp_servers.#",
+						"0",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_empty_lists",
+						"dhcp_server.wins.addresses.#",
+						"0",
+					),
+				),
+			},
+		},
+	})
+}
+
+// Test_preserveUnmanagedDhcpServer guards the Update-path carry-through of
+// controller-side DHCP server options when the dhcp_server block is absent
+// from configuration. Since go-unifi#73 empty dhcpd_dns_1..4 / dhcpd_ntp_1..2
+// serialize (and clear) on corporate/guest networks, so an update built from
+// the zero-filled model alone would reset DHCP options configured outside
+// Terraform. Relay networks intentionally keep the zero-filled fields.
+func Test_preserveUnmanagedDhcpServer(t *testing.T) {
+	current := &unifi.Network{
+		DHCPDEnabled:    true,
+		DHCPDStart:      strPtr("10.0.0.100"),
+		DHCPDStop:       strPtr("10.0.0.200"),
+		DHCPDLeaseTime:  func() *int64 { v := int64(3600); return &v }(),
+		DHCPDDNSEnabled: true,
+		DHCPDDNS1:       "10.0.0.53",
+		DHCPDNtpEnabled: true,
+		DHCPDNtp1:       strPtr("10.0.0.123"),
+		DHCPDWins1:      strPtr("10.0.0.44"),
+	}
+
+	t.Run("unmanaged block: current values carried", func(t *testing.T) {
+		network := &unifi.Network{DHCPDEnabled: true, DHCPDDNS1: "", DHCPDNtp1: strPtr("")}
+		got := preserveUnmanagedDhcpServer(
+			types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			false,
+			network,
+			current,
+		)
+		if !got {
+			t.Fatal("preserveUnmanagedDhcpServer = false, want true")
+		}
+		if network.DHCPDDNS1 != "10.0.0.53" {
+			t.Errorf("DHCPDDNS1 = %q, want carried 10.0.0.53", network.DHCPDDNS1)
+		}
+		if network.DHCPDNtp1 == nil || *network.DHCPDNtp1 != "10.0.0.123" {
+			t.Errorf("DHCPDNtp1 = %v, want carried 10.0.0.123", network.DHCPDNtp1)
+		}
+		if network.DHCPDStart == nil || *network.DHCPDStart != "10.0.0.100" {
+			t.Errorf("DHCPDStart = %v, want carried 10.0.0.100", network.DHCPDStart)
+		}
+		if !network.DHCPDDNSEnabled || !network.DHCPDNtpEnabled {
+			t.Error("enabled flags not carried")
+		}
+	})
+
+	t.Run("managed block: untouched", func(t *testing.T) {
+		network := &unifi.Network{DHCPDDNS1: ""}
+		got := preserveUnmanagedDhcpServer(
+			types.ObjectValueMust(dhcpServerModel{}.AttributeTypes(), map[string]attr.Value{
+				"boot":                types.ObjectNull(dhcpBootModel{}.AttributeTypes()),
+				"enabled":             types.BoolValue(true),
+				"start":               types.StringNull(),
+				"stop":                types.StringNull(),
+				"gateway_enabled":     types.BoolValue(false),
+				"conflict_checking":   types.BoolValue(true),
+				"ntp_enabled":         types.BoolValue(false),
+				"ntp_servers":         types.ListNull(types.StringType),
+				"time_offset_enabled": types.BoolValue(false),
+				"dns_enabled":         types.BoolValue(false),
+				"leasetime":           timetypes.NewGoDurationNull(),
+				"wins":                types.ObjectNull(winsModel{}.AttributeTypes()),
+				"wpad_url":            types.StringNull(),
+				"tftp_server":         types.StringNull(),
+				"unifi_controller":    types.StringNull(),
+				"dns_servers":         types.ListNull(types.StringType),
+			}),
+			false,
+			network,
+			current,
+		)
+		if got {
+			t.Fatal("preserveUnmanagedDhcpServer = true, want false for managed block")
+		}
+		if network.DHCPDDNS1 != "" {
+			t.Errorf("DHCPDDNS1 = %q, want untouched empty", network.DHCPDDNS1)
+		}
+	})
+
+	t.Run("relay enabled: untouched", func(t *testing.T) {
+		network := &unifi.Network{DHCPDEnabled: false}
+		got := preserveUnmanagedDhcpServer(
+			types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			true,
+			network,
+			current,
+		)
+		if got {
+			t.Fatal("preserveUnmanagedDhcpServer = true, want false when relay enabled")
+		}
+		if network.DHCPDEnabled {
+			t.Error("DHCPDEnabled = true, want untouched false (relay requires it off)")
+		}
 	})
 }

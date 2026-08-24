@@ -1346,23 +1346,36 @@ func (r *networkResource) Update(
 	network.ID = data.ID.ValueString()
 
 	// modelToNetwork zero-values the DHCP guarding fields when the
-	// dhcp_guarding block is absent from configuration, and the controller
-	// treats the resulting PUT as "disable guarding" — silently wiping
-	// guarding configured outside Terraform on every unrelated update.
-	// Preserve the controller's current values instead.
-	if data.DhcpGuarding.IsNull() {
+	// dhcp_guarding block is absent from configuration (and the DHCP server
+	// option fields when dhcp_server is absent), and the controller treats
+	// the resulting PUT literally — silently wiping settings configured
+	// outside Terraform on every unrelated update. Preserve the controller's
+	// current values instead.
+	if data.DhcpGuarding.IsNull() || data.DhcpServer.IsNull() {
 		current, err := r.client.GetNetwork(ctx, site, network.ID)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Updating network",
 				fmt.Sprintf(
-					"Could not read the network to preserve its DHCP guarding settings: %s",
+					"Could not read the network to preserve its unmanaged DHCP settings: %s",
 					err,
 				),
 			)
 			return
 		}
 		preserveUnmanagedDhcpGuarding(data.DhcpGuarding, network, current)
+
+		relayEnabled := false
+		if !data.DhcpRelay.IsNull() && !data.DhcpRelay.IsUnknown() {
+			var relay dhcpRelayModel
+			resp.Diagnostics.Append(
+				data.DhcpRelay.As(ctx, &relay, basetypes.ObjectAsOptions{})...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			relayEnabled = relay.Enabled.ValueBool()
+		}
+		preserveUnmanagedDhcpServer(data.DhcpServer, relayEnabled, network, current)
 	}
 
 	// Update the network
@@ -1506,6 +1519,74 @@ func preserveUnmanagedDhcpGuarding(
 	network.DHCPDIP2 = current.DHCPDIP2
 	network.DHCPDIP3 = current.DHCPDIP3
 	return true
+}
+
+// preserveUnmanagedDhcpServer copies the controller's current DHCP server
+// option fields onto an outgoing network update when the configuration does
+// not manage the dhcp_server block (planned is null). modelToNetwork
+// zero-fills these fields in that case, and go-unifi serializes them for
+// corporate/guest networks (since go-unifi#73 that includes empty
+// dhcpd_dns_1..4 and pointer-to-empty dhcpd_ntp_1..2, so an empty value now
+// actively clears the slot). Without preserving, any unrelated update would
+// reset the controller's DHCP configuration — range, lease time, DNS, NTP,
+// WINS, boot options — configured outside Terraform. Skipped when DHCP relay
+// is enabled: relay requires the built-in DHCP server disabled, and
+// modelToNetwork's zero-filling is intentional there. Returns true when the
+// fields were preserved.
+func preserveUnmanagedDhcpServer(
+	planned types.Object,
+	relayEnabled bool,
+	network *unifi.Network,
+	current *unifi.Network,
+) bool {
+	if !planned.IsNull() || relayEnabled {
+		return false
+	}
+	network.DHCPDEnabled = current.DHCPDEnabled
+	network.DHCPDStart = current.DHCPDStart
+	network.DHCPDStop = current.DHCPDStop
+	network.DHCPDLeaseTime = current.DHCPDLeaseTime
+	network.DHCPDGatewayEnabled = current.DHCPDGatewayEnabled
+	network.DHCPDConflictChecking = current.DHCPDConflictChecking
+	network.DHCPDBootEnabled = current.DHCPDBootEnabled
+	network.DHCPDBootServer = current.DHCPDBootServer
+	network.DHCPDBootFilename = current.DHCPDBootFilename
+	network.DHCPDTimeOffsetEnabled = current.DHCPDTimeOffsetEnabled
+	network.DHCPDDNSEnabled = current.DHCPDDNSEnabled
+	network.DHCPDDNS1 = current.DHCPDDNS1
+	network.DHCPDDNS2 = current.DHCPDDNS2
+	network.DHCPDDNS3 = current.DHCPDDNS3
+	network.DHCPDDNS4 = current.DHCPDDNS4
+	network.DHCPDNtpEnabled = current.DHCPDNtpEnabled
+	network.DHCPDNtp1 = current.DHCPDNtp1
+	network.DHCPDNtp2 = current.DHCPDNtp2
+	network.DHCPDWinsEnabled = current.DHCPDWinsEnabled
+	network.DHCPDWins1 = current.DHCPDWins1
+	network.DHCPDWins2 = current.DHCPDWins2
+	network.DHCPDWPAdUrl = current.DHCPDWPAdUrl
+	network.DHCPDTFTPServer = current.DHCPDTFTPServer
+	network.DHCPDUnifiController = current.DHCPDUnifiController
+	return true
+}
+
+// stringListOrNull builds a Terraform list from values. When values is empty,
+// it mirrors previous's null-ness instead of always collapsing to null: these
+// list attributes are Optional but not Computed, so an empty-list plan (e.g.
+// dns_servers = []) must read back as an empty list, not null, or Terraform
+// reports "provider produced inconsistent result after apply". A previous
+// value of null (attribute never configured) is preserved as null.
+func stringListOrNull(
+	ctx context.Context,
+	values []string,
+	previous types.List,
+) (types.List, diag.Diagnostics) {
+	if len(values) > 0 {
+		return types.ListValueFrom(ctx, types.StringType, values)
+	}
+	if !previous.IsNull() && !previous.IsUnknown() {
+		return types.ListValueMust(types.StringType, []attr.Value{}), nil
+	}
+	return types.ListNull(types.StringType), nil
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
@@ -2242,6 +2323,21 @@ func (r *networkResource) networkToModel(
 			return types.StringValue(*ptr)
 		}
 
+		// Extract the previous dhcp_server value (from plan or prior state) so
+		// list attributes below can distinguish "never configured" (null) from
+		// "configured empty" (empty list) when the API reports no values.
+		var previousDhcpServer dhcpServerModel
+		var previousWins winsModel
+		if previousModel != nil && !previousModel.DhcpServer.IsNull() &&
+			!previousModel.DhcpServer.IsUnknown() {
+			d := previousModel.DhcpServer.As(ctx, &previousDhcpServer, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+			if !previousDhcpServer.Wins.IsNull() && !previousDhcpServer.Wins.IsUnknown() {
+				d := previousDhcpServer.Wins.As(ctx, &previousWins, basetypes.ObjectAsOptions{})
+				diags.Append(d...)
+			}
+		}
+
 		bootServer := types.StringNull()
 		if network.DHCPDBootServer != "" {
 			bootServer = types.StringValue(network.DHCPDBootServer)
@@ -2274,13 +2370,8 @@ func (r *networkResource) networkToModel(
 			dnsServers = append(dnsServers, network.DHCPDDNS4)
 		}
 
-		var dnsServersList types.List
-		if len(dnsServers) > 0 {
-			dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)
-			diags.Append(d...)
-		} else {
-			dnsServersList = types.ListNull(types.StringType)
-		}
+		dnsServersList, d := stringListOrNull(ctx, dnsServers, previousDhcpServer.DnsServers)
+		diags.Append(d...)
 
 		// Build NTP servers list from DHCPDNtp1-2
 		var ntpServers []string
@@ -2291,13 +2382,8 @@ func (r *networkResource) networkToModel(
 			ntpServers = append(ntpServers, *network.DHCPDNtp2)
 		}
 
-		var ntpServersList types.List
-		if len(ntpServers) > 0 {
-			ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
-			diags.Append(d...)
-		} else {
-			ntpServersList = types.ListNull(types.StringType)
-		}
+		ntpServersList, d := stringListOrNull(ctx, ntpServers, previousDhcpServer.NtpServers)
+		diags.Append(d...)
 
 		// Build WINS addresses list from DHCPDWins1-2
 		var winsAddresses []string
@@ -2308,13 +2394,8 @@ func (r *networkResource) networkToModel(
 			winsAddresses = append(winsAddresses, *network.DHCPDWins2)
 		}
 
-		var winsAddressesList types.List
-		if len(winsAddresses) > 0 {
-			winsAddressesList, d = types.ListValueFrom(ctx, types.StringType, winsAddresses)
-			diags.Append(d...)
-		} else {
-			winsAddressesList = types.ListNull(types.StringType)
-		}
+		winsAddressesList, d := stringListOrNull(ctx, winsAddresses, previousWins.Addresses)
+		diags.Append(d...)
 
 		winsValue := winsModel{
 			Enabled:   types.BoolValue(network.DHCPDWinsEnabled),
