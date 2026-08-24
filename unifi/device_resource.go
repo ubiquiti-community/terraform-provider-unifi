@@ -1772,7 +1772,7 @@ func (r *deviceResource) updateDevice(
 	// ports. With no override declared we echo the controller's current overrides
 	// (below) so the diff never emits `port_overrides: null`, which UDM/Dream Machine
 	// gateways reject.
-	portOverrides := deviceReq.PortOverrides
+	var portOverrides []unifi.DevicePortOverrides
 	if len(deviceReq.PortOverrides) > 0 {
 		portOverrides = mergePortOverridesByIndex(
 			currentDevice.PortOverrides,
