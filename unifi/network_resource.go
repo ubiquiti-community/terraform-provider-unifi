@@ -980,7 +980,7 @@ func (r *networkResource) ModifyPlan(
 				continue
 			}
 			poolAttr, poolOk := obj.Attributes()["ip_address_pool"]
-			if poolOk && !poolAttr.IsNull() {
+			if poolOk && (!poolAttr.IsNull() || poolAttr.IsUnknown()) {
 				resp.Diagnostics.AddAttributeError(
 					path.Root("nat_outbound_ip_addresses").AtListIndex(i).AtName("ip_address_pool"),
 					"ip_address_pool is not yet supported",

@@ -1926,6 +1926,11 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 			pool:      types.ListValueMust(types.StringType, []attr.Value{}),
 			wantError: true,
 		},
+		{
+			name:      "unknown pool (from data source): error",
+			pool:      types.ListUnknown(types.StringType),
+			wantError: true,
+		},
 	}
 
 	for _, tt := range tests {
