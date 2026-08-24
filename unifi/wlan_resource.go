@@ -120,6 +120,7 @@ type wlanFrameworkResourceModel struct {
 	VLAN                        types.Int64  `tfsdk:"vlan"`
 	WLANBand                    types.String `tfsdk:"wlan_band"`
 	WLANBands                   types.Set    `tfsdk:"wlan_bands"`
+	BandsteeringMode            types.String `tfsdk:"bandsteering_mode"`
 	MulticastEnhance            types.Bool   `tfsdk:"multicast_enhance"`
 	MacFilter                   types.Object `tfsdk:"mac_filter"`
 	PrivatePresharedKeysEnabled types.Bool   `tfsdk:"private_preshared_keys_enabled"`
@@ -354,6 +355,19 @@ func (r *wlanFrameworkResource) Schema(
 				ElementType: types.StringType,
 				Validators: []validator.Set{
 					setvalidator.ValueStringsAre(stringvalidator.OneOf("2g", "5g", "6g")),
+				},
+			},
+			"bandsteering_mode": schema.StringAttribute{
+				MarkdownDescription: "Per-SSID band steering mode. Steers dual-band capable " +
+					"clients toward the less congested / higher-throughput band. Valid values " +
+					"are `off`, `equal` and `prefer_5g`. Requires a controller that exposes " +
+					"per-SSID band steering on the WLAN (Network 9/10.x; on WiFi 6/7 access " +
+					"points this replaces the legacy device-level control). Left unset, the " +
+					"controller default applies.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("off", "equal", "prefer_5g"),
 				},
 			},
 			"multicast_enhance": schema.BoolAttribute{
@@ -1320,6 +1334,9 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.WLANBands.IsNull() && !plan.WLANBands.IsUnknown() {
 		state.WLANBands = plan.WLANBands
 	}
+	if !plan.BandsteeringMode.IsNull() && !plan.BandsteeringMode.IsUnknown() {
+		state.BandsteeringMode = plan.BandsteeringMode
+	}
 	if !plan.MulticastEnhance.IsNull() && !plan.MulticastEnhance.IsUnknown() {
 		state.MulticastEnhance = plan.MulticastEnhance
 	}
@@ -1526,30 +1543,33 @@ func (r *wlanFrameworkResource) planToWLAN(
 	var diags diag.Diagnostics
 
 	wlan := &unifi.WLAN{
-		ID:                       plan.ID.ValueString(),
-		Name:                     plan.Name.ValueString(),
-		NetworkID:                plan.NetworkID.ValueString(),
-		UserGroupID:              plan.UserGroupID.ValueString(),
-		Security:                 plan.Security.ValueString(),
-		WPA3Support:              plan.WPA3Support.ValueBool(),
-		WPA3Transition:           plan.WPA3Transition.ValueBool(),
-		PMFMode:                  plan.PMFMode.ValueString(),
-		Passphrase:               plan.Passphrase.ValueString(),
-		HideSSID:                 plan.HideSSID.ValueBool(),
-		IsGuest:                  plan.IsGuest.ValueBool(),
-		Enabled:                  plan.Enabled.ValueBool(),
-		ApGroupMode:              plan.ApGroupMode.ValueString(),
-		VLANEnabled:              plan.VLANEnabled.ValueBool(),
-		VLAN:                     plan.VLAN.ValueInt64Pointer(),
-		MulticastEnhanceEnabled:  plan.MulticastEnhance.ValueBool(),
-		RADIUSProfileID:          plan.RadiusProfileID.ValueString(),
-		NasIDentifierType:        plan.NasIDentifierType.ValueString(),
-		No2GhzOui:                plan.No2GhzOui.ValueBool(),
-		L2Isolation:              plan.L2Isolation.ValueBool(),
-		ProxyArp:                 plan.ProxyArp.ValueBool(),
-		BssTransition:            plan.BssTransition.ValueBool(),
-		UapsdEnabled:             plan.Uapsd.ValueBool(),
-		FastRoamingEnabled:       plan.FastRoamingEnabled.ValueBool(),
+		ID:                      plan.ID.ValueString(),
+		Name:                    plan.Name.ValueString(),
+		NetworkID:               plan.NetworkID.ValueString(),
+		UserGroupID:             plan.UserGroupID.ValueString(),
+		Security:                plan.Security.ValueString(),
+		WPA3Support:             plan.WPA3Support.ValueBool(),
+		WPA3Transition:          plan.WPA3Transition.ValueBool(),
+		PMFMode:                 plan.PMFMode.ValueString(),
+		Passphrase:              plan.Passphrase.ValueString(),
+		HideSSID:                plan.HideSSID.ValueBool(),
+		IsGuest:                 plan.IsGuest.ValueBool(),
+		Enabled:                 plan.Enabled.ValueBool(),
+		ApGroupMode:             plan.ApGroupMode.ValueString(),
+		VLANEnabled:             plan.VLANEnabled.ValueBool(),
+		VLAN:                    plan.VLAN.ValueInt64Pointer(),
+		MulticastEnhanceEnabled: plan.MulticastEnhance.ValueBool(),
+		RADIUSProfileID:         plan.RadiusProfileID.ValueString(),
+		NasIDentifierType:       plan.NasIDentifierType.ValueString(),
+		No2GhzOui:               plan.No2GhzOui.ValueBool(),
+		L2Isolation:             plan.L2Isolation.ValueBool(),
+		ProxyArp:                plan.ProxyArp.ValueBool(),
+		BssTransition:           plan.BssTransition.ValueBool(),
+		UapsdEnabled:            plan.Uapsd.ValueBool(),
+		FastRoamingEnabled:      plan.FastRoamingEnabled.ValueBool(),
+		// Unknown/null → "" → omitempty keeps it off the wire, so controllers
+		// without per-SSID band steering are never sent the key (#388).
+		BandsteeringMode:         plan.BandsteeringMode.ValueString(),
 		MinrateSettingPreference: plan.MinrateSettingPreference.ValueString(),
 		MinrateNgEnabled:         plan.MinimumDataRate2GKbps.ValueInt64() > 0,
 		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64Pointer(),
@@ -1831,6 +1851,18 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.WLANBand = types.StringValue(wlan.WLANBand)
 	} else {
 		model.WLANBand = types.StringValue("both")
+	}
+
+	// Per-SSID band steering (#388). Controllers without the feature never
+	// echo the key: keep the model's existing value in that case — the
+	// declared value on create/update, the prior state on read — so a config
+	// on an unsupporting controller doesn't fail the apply with an
+	// inconsistent-result error or produce perpetual drift. An Unknown value
+	// (never configured, nothing stored) resolves to null.
+	if wlan.BandsteeringMode != "" {
+		model.BandsteeringMode = types.StringValue(wlan.BandsteeringMode)
+	} else if model.BandsteeringMode.IsUnknown() {
+		model.BandsteeringMode = types.StringNull()
 	}
 
 	model.MulticastEnhance = types.BoolValue(wlan.MulticastEnhanceEnabled)

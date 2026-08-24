@@ -77,6 +77,7 @@ resource "unifi_wlan" "wifi" {
 
 - `ap_group_ids` (Set of String) List of AP group IDs to apply this WLAN to.
 - `ap_group_mode` (String) Access point group mode.
+- `bandsteering_mode` (String) Per-SSID band steering mode. Steers dual-band capable clients toward the less congested / higher-throughput band. Valid values are `off`, `equal` and `prefer_5g`. Requires a controller that exposes per-SSID band steering on the WLAN (Network 9/10.x; on WiFi 6/7 access points this replaces the legacy device-level control). Left unset, the controller default applies.
 - `bc_filter_list` (Set of String) List of MAC addresses for the broadcast filter. The controller may populate this on its own, so it is computed when unset.
 - `bss_transition` (Boolean) Improves client roaming by providing connection details of nearby APs.
 - `dtim_6e` (Number) DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
