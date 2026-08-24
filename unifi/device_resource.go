@@ -2267,11 +2267,13 @@ func (r *deviceResource) reconcilePortOverrides(
 			}
 		}
 		if !pm.NativeNetworkID.IsNull() {
-			if apiPO.NATiveNetworkID == "" {
-				updated.NativeNetworkID = types.StringNull()
-			} else {
-				updated.NativeNetworkID = types.StringValue(apiPO.NATiveNetworkID)
-			}
+			// #410: an explicit native_networkconf_id = "" clears the port's
+			// native network on the controller and round-trips back as "" in
+			// the API response. Surface that as a known empty string (not
+			// null) so the explicit override round-trips instead of drifting
+			// back to "unset" on every plan; mirrors the #383 fix applied to
+			// unifi_port_profile.
+			updated.NativeNetworkID = types.StringValue(apiPO.NATiveNetworkID)
 		}
 		if !pm.Forward.IsNull() {
 			if apiPO.Forward == "" {
