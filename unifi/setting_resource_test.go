@@ -182,6 +182,95 @@ func TestAccSettingResource_usg(t *testing.T) {
 	})
 }
 
+// TestAccSettingResource_usgGeo guards #374: the Region Blocking fields must
+// round-trip and the follow-up refresh plan must stay empty. On controllers
+// that store the config as usg.geo_ip_filtering_* the legacy path is used;
+// controllers that store it under usg_geo.ip_filtering take the standalone
+// write/read path.
+func TestAccSettingResource_usgGeo(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSettingConfig_usgGeo(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_enabled", "true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_block", "block",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_countries", "KP,RU",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_traffic_direction", "both",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_usgGeoUpdated(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_countries", "CN,KP,RU",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_traffic_direction", "ingress",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_usgGeoDisabled(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_enabled", "false",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccSettingConfig_usgGeo() string {
+	return `
+resource "unifi_setting" "test" {
+  usg = {
+    geo_ip_filtering_enabled           = true
+    geo_ip_filtering_block             = "block"
+    geo_ip_filtering_countries         = "KP,RU"
+    geo_ip_filtering_traffic_direction = "both"
+  }
+}
+`
+}
+
+func testAccSettingConfig_usgGeoUpdated() string {
+	return `
+resource "unifi_setting" "test" {
+  usg = {
+    geo_ip_filtering_enabled           = true
+    geo_ip_filtering_block             = "block"
+    geo_ip_filtering_countries         = "CN,KP,RU"
+    geo_ip_filtering_traffic_direction = "ingress"
+  }
+}
+`
+}
+
+func testAccSettingConfig_usgGeoDisabled() string {
+	return `
+resource "unifi_setting" "test" {
+  usg = {
+    geo_ip_filtering_enabled           = false
+    geo_ip_filtering_block             = "block"
+    geo_ip_filtering_countries         = "CN,KP,RU"
+    geo_ip_filtering_traffic_direction = "ingress"
+  }
+}
+`
+}
+
 // TestAccSettingResource_import exercises both import paths: the classic
 // string import (the import id is the site name, with state verification) and
 // the Terraform 1.12+ identity-based import block.
@@ -1911,5 +2000,114 @@ func TestIpsSuppressionConfigured(t *testing.T) {
 	}
 	if !ipsSuppressionConfigured(managed) {
 		t.Error("an empty configured list must count as configured")
+	}
+}
+
+// TestUsgGeoRawSetting guards the #374 write path: the standalone usg_geo
+// setting must carry the ip_filtering payload with the legacy block field
+// mapped to action, and only configured fields present (enabled always,
+// matching the always-serialized legacy usg field).
+func TestUsgGeoRawSetting(t *testing.T) {
+	raw := usgGeoRawSetting(&settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolValue(true),
+		GeoIPFilteringBlock:            types.StringValue("block"),
+		GeoIPFilteringCountries:        types.StringValue("KP,RU"),
+		GeoIPFilteringTrafficDirection: types.StringValue("both"),
+	})
+	if raw.Key != "usg_geo" {
+		t.Fatalf("key = %q, want usg_geo", raw.Key)
+	}
+	ipf, ok := raw.Data["ip_filtering"].(map[string]any)
+	if !ok {
+		t.Fatalf("ip_filtering missing: %+v", raw.Data)
+	}
+	if ipf["enabled"] != true || ipf["action"] != "block" ||
+		ipf["countries"] != "KP,RU" || ipf["traffic_direction"] != "both" {
+		t.Errorf("ip_filtering mismatch: %+v", ipf)
+	}
+
+	// Unconfigured optional fields are omitted; enabled defaults to false.
+	raw = usgGeoRawSetting(&settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolNull(),
+		GeoIPFilteringBlock:            types.StringNull(),
+		GeoIPFilteringCountries:        types.StringValue("KP"),
+		GeoIPFilteringTrafficDirection: types.StringNull(),
+	})
+	ipf, ok = raw.Data["ip_filtering"].(map[string]any)
+	if !ok {
+		t.Fatalf("ip_filtering missing: %+v", raw.Data)
+	}
+	if ipf["enabled"] != false {
+		t.Errorf("unconfigured enabled must serialize false: %+v", ipf)
+	}
+	if _, ok := ipf["action"]; ok {
+		t.Errorf("unconfigured action must be omitted: %+v", ipf)
+	}
+	if _, ok := ipf["traffic_direction"]; ok {
+		t.Errorf("unconfigured traffic_direction must be omitted: %+v", ipf)
+	}
+}
+
+// TestApplyUsgGeoIPFiltering guards the #374 read path: a stored usg_geo
+// setting is authoritative and overrides the geo fields of the usg struct,
+// including mapping action back to the legacy block field.
+func TestApplyUsgGeoIPFiltering(t *testing.T) {
+	setting := &settings.Usg{
+		GeoIPFilteringEnabled: false,
+		GeoIPFilteringBlock:   "allow",
+	}
+	applyUsgGeoIPFiltering(setting, map[string]any{
+		"key": "usg_geo",
+		"ip_filtering": map[string]any{
+			"enabled":           true,
+			"action":            "block",
+			"countries":         "KP,RU",
+			"traffic_direction": "both",
+		},
+	})
+	if !setting.GeoIPFilteringEnabled || setting.GeoIPFilteringBlock != "block" ||
+		setting.GeoIPFilteringCountries != "KP,RU" ||
+		setting.GeoIPFilteringTrafficDirection != "both" {
+		t.Errorf("override mismatch: %+v", setting)
+	}
+
+	// A list-shaped countries payload is normalized to the comma form.
+	applyUsgGeoIPFiltering(setting, map[string]any{
+		"ip_filtering": map[string]any{
+			"countries": []any{"CN", "KP"},
+		},
+	})
+	if setting.GeoIPFilteringCountries != "CN,KP" {
+		t.Errorf("countries list not normalized: %q", setting.GeoIPFilteringCountries)
+	}
+
+	// Missing/malformed ip_filtering leaves the struct untouched.
+	before := *setting
+	applyUsgGeoIPFiltering(setting, map[string]any{"ip_filtering": "bogus"})
+	applyUsgGeoIPFiltering(setting, map[string]any{})
+	if *setting != before {
+		t.Errorf("no-op payloads must not modify the setting")
+	}
+}
+
+// TestUsgGeoConfigured covers the plan gate for the #374 paths.
+func TestUsgGeoConfigured(t *testing.T) {
+	unmanaged := &settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolNull(),
+		GeoIPFilteringBlock:            types.StringNull(),
+		GeoIPFilteringCountries:        types.StringNull(),
+		GeoIPFilteringTrafficDirection: types.StringNull(),
+	}
+	if usgGeoConfigured(unmanaged) {
+		t.Error("all-null geo fields must not count as configured")
+	}
+	managed := &settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolNull(),
+		GeoIPFilteringBlock:            types.StringNull(),
+		GeoIPFilteringCountries:        types.StringValue("KP"),
+		GeoIPFilteringTrafficDirection: types.StringNull(),
+	}
+	if !usgGeoConfigured(managed) {
+		t.Error("any configured geo field must count as configured")
 	}
 }
