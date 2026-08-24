@@ -192,7 +192,7 @@ Read-Only:
 
 Import is supported using the following syntax:
 
-The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 # VPN servers can be imported by their 24-character hex network ID:
