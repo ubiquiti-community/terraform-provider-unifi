@@ -188,6 +188,7 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.
 - `logging` (Boolean) Whether to log packets matching this policy. Defaults to `false`.
 - `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, `icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` policies the controller rejects `create_allow_respond = true` (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy if you need the reply.
+- `schedule` (Attributes) When the policy is active. The complete controller value is round-tripped so updating another policy field does not reset its schedule. Supported modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, and `CUSTOM`. Timed modes require `time_all_day`; when false, both time-range fields are required. `EVERY_WEEK` also requires weekdays, `ONE_TIME_ONLY` requires `date` and a time range, and `CUSTOM` requires a date range and weekdays. Set `normalize` to clear inherited fields unused by the selected mode. (see [below for nested schema](#nestedatt--schedule))
 - `site` (String) The name of the UniFi site. Defaults to the site configured in the provider.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
@@ -197,7 +198,6 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `icmp_v6_typename` (String) ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 - `id` (String) The ID of the firewall policy.
 - `index` (Number) The ordering index of the policy within its zone-pair, assigned by the controller. **Read-only:** UniFi does not accept a client-supplied index on create or update (the policy is always appended to the end of its source/destination zone-pair), and the supported API exposes no reorder operation, so policy ordering cannot be managed through this provider. Reorder policies in the UniFi UI if needed.
-- `schedule` (Attributes) Schedule returned by the UniFi controller. It is preserved in state so importing a scheduled policy or updating another field does not replace the existing schedule. (see [below for nested schema](#nestedatt--schedule))
 
 <a id="nestedatt--destination"></a>
 ### Nested Schema for `destination`
@@ -247,6 +247,22 @@ Read-Only:
 - `matching_target_type` (String) How the matching target is specified (`ANY`, `SPECIFIC`, `LIST`, `OBJECT`). Managed by the UniFi controller; the provider round-trips it so updates are accepted.
 
 
+<a id="nestedatt--schedule"></a>
+### Nested Schema for `schedule`
+
+Optional:
+
+- `date` (String) Date used by `ONE_TIME_ONLY`, in `YYYY-MM-DD` format.
+- `date_end` (String) End date used by `CUSTOM`, in `YYYY-MM-DD` format.
+- `date_start` (String) Start date used by `CUSTOM`, in `YYYY-MM-DD` format.
+- `mode` (String) Schedule mode.
+- `normalize` (Boolean) Clear inherited fields that are unused by the selected mode.
+- `repeat_on_days` (Set of String) Weekdays on which the policy is active.
+- `time_all_day` (Boolean) Whether the policy is active all day.
+- `time_range_end` (String) End time in 24-hour `HH:MM` format.
+- `time_range_start` (String) Start time in 24-hour `HH:MM` format.
+
+
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`
 
@@ -256,21 +272,6 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
-
-
-<a id="nestedatt--schedule"></a>
-### Nested Schema for `schedule`
-
-Read-Only:
-
-- `date` (String)
-- `date_end` (String)
-- `date_start` (String)
-- `mode` (String)
-- `repeat_on_days` (Set of String)
-- `time_all_day` (Boolean)
-- `time_range_end` (String)
-- `time_range_start` (String)
 
 ## Import
 
