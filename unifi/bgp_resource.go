@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -102,6 +104,7 @@ type frrNeighborData struct {
 var (
 	_ resource.Resource                = &bgpResource{}
 	_ resource.ResourceWithImportState = &bgpResource{}
+	_ resource.ResourceWithIdentity    = &bgpResource{}
 )
 
 func NewBGPResource() resource.Resource {
@@ -130,6 +133,12 @@ func (m bgpPeerModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// bgpIdentityModel describes the resource identity data model. The BGP
+// configuration is a per-site singleton, so the site name is its natural key.
+type bgpIdentityModel struct {
+	Site types.String `tfsdk:"site"`
+}
+
 // bgpResourceModel describes the resource data model.
 type bgpResourceModel struct {
 	ID             types.String   `tfsdk:"id"`
@@ -150,6 +159,21 @@ func (r *bgpResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_bgp"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *bgpResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"site": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *bgpResource) Schema(
@@ -351,6 +375,8 @@ func (r *bgpResource) Create(
 	r.bgpToModel(ctx, createdBGPConfig, &data, site)
 
 	// Save data into Terraform state
+	identity := bgpIdentityModel{Site: types.StringValue(site)}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -375,7 +401,23 @@ func (r *bgpResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support (or refreshed from a string import).
+	var identity bgpIdentityModel
+	identityStored := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
+	if identityStored {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		// Identity-only state (e.g. the refresh right after an identity-based
+		// import of an old state): look the config up by the identity site.
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -396,6 +438,14 @@ func (r *bgpResource) Read(
 
 	// Convert to model
 	r.bgpToModel(ctx, bgpConfig, &data, site)
+
+	// Terraform rejects any modification of a stored identity, so pass a
+	// stored identity through untouched (resp.Identity is pre-populated from
+	// it) and only derive a fresh one from state when none exists yet.
+	if !identityStored {
+		identity = bgpIdentityModel{Site: types.StringValue(site)}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -460,6 +510,13 @@ func (r *bgpResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		identity := bgpIdentityModel{Site: types.StringValue(site)}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -509,12 +566,37 @@ func (r *bgpResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	resource.ImportStatePassthroughID(
-		ctx,
-		path.Root("id"),
-		req,
-		resp,
-	)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity bgpIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"BGP configuration identity must have `site` set.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		return
+	}
+
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// The BGP configuration is a per-site singleton that is always looked up
+	// by site, so the import ID is the site name. A 24-hex value keeps the
+	// previous passthrough behavior (stored as the object id, read from the
+	// provider's default site).
+	if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), req.ID)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), req.ID)...)
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.

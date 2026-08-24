@@ -225,6 +225,21 @@ func (r *siteFrameworkResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Fall back to the identity id when the state id is empty (e.g. the
+	// refresh right after an identity-based import of an old state).
+	if (state.ID.IsNull() || state.ID.IsUnknown()) && req.Identity != nil &&
+		!req.Identity.Raw.IsNull() {
+		var identityID types.String
+		resp.Diagnostics.Append(
+			req.Identity.GetAttribute(ctx, path.Root("id"), &identityID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !identityID.IsNull() && identityID.ValueString() != "" {
+			state.ID = identityID
+		}
+	}
+
 	var err error
 	var site *unifi.Site
 
@@ -265,7 +280,13 @@ func (r *siteFrameworkResource) Read(
 		return
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Terraform rejects any modification of a stored identity, so pass a
+	// stored identity through untouched (resp.Identity is pre-populated from
+	// it) and only derive a fresh one from state when none exists yet.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -335,7 +356,12 @@ func (r *siteFrameworkResource) Update(
 		return
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -390,6 +416,28 @@ func (r *siteFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform
+	// 1.12+). ImportStatePassthroughID leaves the state empty on this path, so
+	// copy the identity id into state by hand.
+	if req.ID == "" {
+		var id types.String
+		resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("id"), &id)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if id.IsNull() || id.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"Site identity must have `id` set to the site's 24-hex controller id.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		return
+	}
+
+	// Import by ID string (terraform import CLI, or import block with id set):
+	// a 24-hex controller id, or a site name (optionally with a `name=` prefix).
 	rootAttributeName := "name"
 	if after, ok := strings.CutPrefix(req.ID, "name="); ok {
 		req.ID = after
@@ -397,7 +445,14 @@ func (r *siteFrameworkResource) ImportState(
 		rootAttributeName = "id"
 	}
 
-	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
+	resp.Diagnostics.Append(
+		resp.State.SetAttribute(ctx, path.Root(rootAttributeName), req.ID)...)
+	if rootAttributeName == "id" {
+		// Mirror the id into the resource identity; a name-based import leaves
+		// the identity to be filled in by the first Read.
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	}
 }
 
 // Helper functions for conversion and merging

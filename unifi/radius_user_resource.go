@@ -65,6 +65,12 @@ type radiusUserResourceModel struct {
 	Timeouts         timeouts.Value `tfsdk:"timeouts"`
 }
 
+// radiusUserIdentityModel describes the resource identity data model.
+type radiusUserIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // radiusUserListConfigModel describes the list configuration model.
 type radiusUserListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -95,6 +101,9 @@ func (r *radiusUserResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -265,7 +274,11 @@ func (r *radiusUserResource) Create(
 	r.radiusUserToModel(ctx, createdAccount, &data, site)
 
 	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	identity := radiusUserIdentityModel{
+		ID:   data.ID,
+		Site: types.StringValue(site),
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -290,13 +303,37 @@ func (r *radiusUserResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
-	site := data.Site.ValueString()
+	// Read identity, falling back to state for resources created before
+	// identity support (or refreshed from a string import).
+	var identity radiusUserIdentityModel
+	identityStored := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
+	if identityStored {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = data.ID
+	}
+	if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+		identity.Site = data.Site
+	}
+
+	id := data.ID.ValueString()
+	if id == "" {
+		// Identity-only state (e.g. the refresh right after an identity-based
+		// import of an old state): look the account up by the identity id.
+		id = identity.ID.ValueString()
+	}
+
+	site := identity.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
 	// Get the account from the API
-	account, err := r.client.GetAccount(ctx, site, data.ID.ValueString())
+	account, err := r.client.GetAccount(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -304,7 +341,7 @@ func (r *radiusUserResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Radius User",
-			"Could not read radius user with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read radius user with ID "+id+": "+err.Error(),
 		)
 		return
 	}
@@ -312,8 +349,17 @@ func (r *radiusUserResource) Read(
 	// Convert to model
 	r.radiusUserToModel(ctx, account, &data, site)
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	// Terraform rejects any modification of a stored identity (even filling a
+	// previously-null attribute), so pass a stored identity through untouched
+	// (resp.Identity is pre-populated from it) and only derive a fresh one
+	// from state when none exists yet.
+	if !identityStored {
+		identity = radiusUserIdentityModel{
+			ID:   data.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -379,8 +425,15 @@ func (r *radiusUserResource) Update(
 	// Step 5: Update state with API response
 	r.radiusUserToModel(ctx, updatedAccount, &state, site)
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		identity := radiusUserIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -426,6 +479,29 @@ func (r *radiusUserResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity radiusUserIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"RADIUS user identity must have `id` set.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
 	// Import format: "site:id" or just "id" for default site
 	idParts := strings.Split(req.ID, ":")
 
@@ -436,12 +512,15 @@ func (r *radiusUserResource) ImportState(
 
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
 		return
 	}
 
 	if len(idParts) == 1 {
 		// Just id, use default site
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), req.ID)...)
 		return
 	}
 
@@ -670,6 +749,13 @@ func (r *radiusUserResource) List(
 					ctx,
 					path.Root("id"),
 					types.StringValue(account.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
 				)...,
 			)
 

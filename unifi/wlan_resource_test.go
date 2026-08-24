@@ -1,7 +1,14 @@
 package unifi
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/cookiejar"
+	"os"
 	"reflect"
 	"testing"
 
@@ -93,6 +100,145 @@ func TestAccWLANFramework_additionalFields(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccWLANFramework_import creates an open (passphrase-less) WLAN and
+// exercises both import paths: the classic string import (by controller id,
+// with state verification) and the Terraform 1.12+ identity-based import
+// block. An open WLAN is used because the read path deliberately keeps a
+// null passphrase null (#392), which would otherwise make the post-import
+// plan non-empty for a secured WLAN.
+func TestAccWLANFramework_import(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set, skipping acceptance test")
+	}
+
+	// user_group_id is required in the schema and the provider exposes no
+	// user-group data source, so fetch the default group from the API.
+	userGroupID := testAccWLANDefaultUserGroupID(t)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWLANFrameworkConfig_import(userGroupID),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_wlan.test_import",
+						"name",
+						"tfacc-wlan-import",
+					),
+					resource.TestCheckResourceAttr("unifi_wlan.test_import", "security", "open"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test_import", "id"),
+				),
+			},
+			// Classic string import by controller id.
+			{
+				ResourceName:      "unifi_wlan.test_import",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_wlan.test_import",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+		},
+	})
+}
+
+func testAccWLANFrameworkConfig_import(userGroupID string) string {
+	// network_id and ap_group_ids are pinned in config: they are optional,
+	// non-computed attributes that the controller always assigns, so leaving
+	// them out makes the apply result inconsistent with the plan.
+	return fmt.Sprintf(`
+data "unifi_ap_group" "default" {
+	name = "All APs"
+}
+
+data "unifi_network" "default" {
+	name = "Default"
+}
+
+resource "unifi_wlan" "test_import" {
+	name          = "tfacc-wlan-import"
+	security      = "open"
+	user_group_id = %q
+	network_id    = data.unifi_network.default.id
+	ap_group_ids  = [data.unifi_ap_group.default.id]
+}
+`, userGroupID)
+}
+
+// testAccWLANDefaultUserGroupID fetches the default user group id straight
+// from the controller REST API: the provider has no user-group data source
+// and go-unifi exposes no user-group client, but WLANs require one.
+func testAccWLANDefaultUserGroupID(t *testing.T) string {
+	t.Helper()
+
+	baseURL := os.Getenv("UNIFI_API")
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("creating cookie jar: %s", err)
+	}
+	httpClient := &http.Client{
+		Jar: jar,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	loginBody, err := json.Marshal(map[string]string{
+		"username": os.Getenv("UNIFI_USERNAME"),
+		"password": os.Getenv("UNIFI_PASSWORD"),
+	})
+	if err != nil {
+		t.Fatalf("marshaling login body: %s", err)
+	}
+	loginResp, err := httpClient.Post(
+		baseURL+"/api/login",
+		"application/json",
+		bytes.NewReader(loginBody),
+	)
+	if err != nil {
+		t.Fatalf("logging in to controller: %s", err)
+	}
+	defer loginResp.Body.Close()
+	if loginResp.StatusCode != http.StatusOK {
+		t.Fatalf("logging in to controller: status %d", loginResp.StatusCode)
+	}
+
+	groupResp, err := httpClient.Get(baseURL + "/api/s/default/rest/usergroup")
+	if err != nil {
+		t.Fatalf("listing user groups: %s", err)
+	}
+	defer groupResp.Body.Close()
+
+	var body struct {
+		Data []struct {
+			ID       string `json:"_id"`
+			Name     string `json:"name"`
+			HiddenID string `json:"attr_hidden_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(groupResp.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding user groups: %s", err)
+	}
+
+	for _, g := range body.Data {
+		if g.HiddenID == "Default" || g.Name == "Default" {
+			return g.ID
+		}
+	}
+	if len(body.Data) > 0 {
+		return body.Data[0].ID
+	}
+
+	t.Fatal("no user groups found on controller")
+	return ""
 }
 
 func TestNewWLANFrameworkResource(t *testing.T) {

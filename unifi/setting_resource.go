@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
@@ -33,6 +34,7 @@ var (
 	_ resource.Resource                 = &settingResource{}
 	_ resource.ResourceWithImportState  = &settingResource{}
 	_ resource.ResourceWithUpgradeState = &settingResource{}
+	_ resource.ResourceWithIdentity     = &settingResource{}
 )
 
 func NewSettingResource() resource.Resource {
@@ -41,6 +43,13 @@ func NewSettingResource() resource.Resource {
 
 type settingResource struct {
 	client *Client
+}
+
+// settingIdentityModel describes the resource identity data model. Site
+// settings are a per-site singleton (the resource id is the site name), so
+// the site name is their natural key.
+type settingIdentityModel struct {
+	Site types.String `tfsdk:"site"`
 }
 
 type sshKeyModel struct {
@@ -382,6 +391,21 @@ func (r *settingResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_setting"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *settingResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"site": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *settingResource) Schema(
@@ -1609,6 +1633,8 @@ func (r *settingResource) Create(
 		return
 	}
 
+	identity := settingIdentityModel{Site: types.StringValue(site)}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -1632,7 +1658,23 @@ func (r *settingResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support (or refreshed from a string import).
+	var identity settingIdentityModel
+	identityStored := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
+	if identityStored {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		// Identity-only state (e.g. the refresh right after an identity-based
+		// import of an old state): read the settings of the identity site.
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -1642,6 +1684,13 @@ func (r *settingResource) Read(
 		return
 	}
 
+	// Terraform rejects any modification of a stored identity, so pass a
+	// stored identity through untouched (resp.Identity is pre-populated from
+	// it) and only derive a fresh one from state when none exists yet.
+	if !identityStored {
+		identity = settingIdentityModel{Site: types.StringValue(site)}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -1898,6 +1947,12 @@ func (r *settingResource) Update(
 		return
 	}
 
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		identity := settingIdentityModel{Site: types.StringValue(site)}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -1915,12 +1970,33 @@ func (r *settingResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	resource.ImportStatePassthroughID(
-		ctx,
-		path.Root("id"),
-		req,
-		resp,
-	)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity settingIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"Setting identity must have `site` set to the site name.",
+			)
+			return
+		}
+		// Settings are a per-site singleton whose id is the site name.
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.Site)...)
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		return
+	}
+
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// The import id is the site name (which is also the resource id).
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), req.ID)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), req.ID)...)
 }
 
 func (r *settingResource) readSettings(
