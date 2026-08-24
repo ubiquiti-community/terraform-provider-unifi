@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### ✨ Features
+
+- **`unifi_wlan`: per-SSID band steering via the new `bandsteering_mode` attribute** (`off` | `equal` | `prefer_5g`). Modern controllers expose band steering on the wlanconf record, and on WiFi 6/7 access points this per-SSID control has replaced the legacy device-level one (still available as `unifi_device.bandsteering_mode`), so band steering was previously unmanageable on that hardware. Optional+Computed with value validation; the value is echoed from the controller on read, stays entirely off the wire when unset, and on controllers without per-SSID band steering (which accept and ignore the key) the declared value is kept in state instead of failing the apply with an inconsistent-result error. Requires go-unifi with `WLAN.BandsteeringMode` (go-unifi#72) (#388)
+
 ### 🐛 Bug Fixes
 
 - **`unifi_wlan`: creating a WLAN with `"6g"` in `wlan_bands` no longer fails with `Provider produced inconsistent result after apply`.** The provider marshals the full declared band list — `6g` included — on both create and update, but some controllers (observed on Network 10.4.x) silently drop `6g` from the initial create response while accepting the identical payload on a subsequent update; the reporter's manual workaround (create without `6g`, then add it) confirmed the asymmetry. `Create` now compares the controller's response against the requested band list and, when a band was dropped, immediately re-asserts the intended configuration with a single follow-up update — the created WLAN carries all declared bands in one `terraform apply`. If the controller refuses the band even then, the apply now fails with an actionable diagnostic (6GHz gating: WPA3/SAE with PMF, 6GHz-capable APs) instead of the cryptic consistency error, and the created WLAN is tracked in state as tainted rather than orphaned on the controller (#406)
