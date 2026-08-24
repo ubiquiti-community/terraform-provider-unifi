@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -1532,6 +1533,12 @@ func (r *settingResource) Create(
 			resp.Diagnostics.AddError("Error Creating IPS Setting", err.Error())
 			return
 		}
+		// Newer controllers store suppression under the standalone
+		// ips_suppression setting and drop the nested field (#381).
+		r.persistIpsSuppression(ctx, site, setting, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	if !data.Mgmt.IsNull() && !data.Mgmt.IsUnknown() {
@@ -1846,6 +1853,12 @@ func (r *settingResource) Update(
 		}
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating IPS Setting", err.Error())
+			return
+		}
+		// Newer controllers store suppression under the standalone
+		// ips_suppression setting and drop the nested field (#381).
+		r.persistIpsSuppression(ctx, site, setting, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
@@ -2173,6 +2186,26 @@ func (r *settingResource) readSettings(
 		if err != nil {
 			diags.AddError("Error Reading IPS Setting", err.Error())
 			return
+		}
+
+		// Newer controllers store suppression under the standalone
+		// ips_suppression setting instead of nested in ips: graft it so
+		// configured entries refresh from where the controller actually
+		// keeps them (#381).
+		if ipsSetting.Suppression == nil && ipsSuppressionConfigured(&planIps) {
+			rawData, found, err := r.readRawSettingData(ctx, site, ipsSuppressionSettingKey)
+			if err != nil {
+				diags.AddError("Error Reading IPS Suppression Setting", err.Error())
+				return
+			}
+			if found {
+				supp, err := ipsSuppressionFromRaw(rawData)
+				if err != nil {
+					diags.AddError("Error Reading IPS Suppression Setting", err.Error())
+					return
+				}
+				ipsSetting.Suppression = supp
+			}
 		}
 
 		ipsModel := r.ipsSettingToModel(ctx, ipsSetting, &planIps, diags)
@@ -3261,6 +3294,116 @@ func (r *settingResource) dohSettingToModel(
 }
 
 // IPS conversion functions.
+// ipsSuppressionSettingKey is the standalone setting key newer controllers
+// (observed on Network 10.4.x) use to store IPS alert suppression and
+// whitelist entries. Older controllers persist the same data nested under the
+// ips setting's "suppression" field and reject this key with api.err.Invalid.
+const ipsSuppressionSettingKey = "ips_suppression"
+
+// readRawSettingData fetches a site setting by its raw key, for setting keys
+// the go-unifi client has no typed struct for. found is false when the
+// controller has no setting stored under that key.
+func (r *settingResource) readRawSettingData(
+	ctx context.Context,
+	site string,
+	key string,
+) (map[string]any, bool, error) {
+	rawSettings, err := r.client.ListSettings(ctx, site)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, raw := range rawSettings {
+		if raw.Key == key {
+			return raw.Data, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+// ipsSuppressionFromRaw decodes the alerts/whitelist payload of a raw
+// ips_suppression setting into the nested suppression struct the ips
+// conversion functions already understand.
+func ipsSuppressionFromRaw(data map[string]any) (*settings.SettingIpsSuppression, error) {
+	buf, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	supp := &settings.SettingIpsSuppression{}
+	if err := json.Unmarshal(buf, supp); err != nil {
+		return nil, err
+	}
+	return supp, nil
+}
+
+// ipsSuppressionRawSetting builds the standalone ips_suppression setting
+// payload from the suppression entries of an ips setting. Nil slices are sent
+// as empty arrays so clearing the last entry actually clears the controller.
+func ipsSuppressionRawSetting(suppression *settings.SettingIpsSuppression) *settings.RawSetting {
+	alerts := suppression.Alerts
+	if alerts == nil {
+		alerts = []settings.SettingIpsAlerts{}
+	}
+	whitelist := suppression.Whitelist
+	if whitelist == nil {
+		whitelist = []settings.SettingIpsWhitelist{}
+	}
+	return &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: ipsSuppressionSettingKey},
+		Data: map[string]any{
+			"alerts":    alerts,
+			"whitelist": whitelist,
+		},
+	}
+}
+
+// ipsSuppressionConfigured reports whether the plan manages either
+// suppression list.
+func ipsSuppressionConfigured(plan *settingIpsModel) bool {
+	return (!plan.SuppressionAlerts.IsNull() && !plan.SuppressionAlerts.IsUnknown()) ||
+		(!plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown())
+}
+
+// persistIpsSuppression makes sure configured suppression entries actually
+// reach the controller. Older controllers persist them nested inside the ips
+// setting (and echo them back on read); newer controllers silently drop the
+// nested field and store suppression under the standalone ips_suppression
+// setting instead, which used to leave the entries unsaved and the plan
+// permanently dirty (#381).
+func (r *settingResource) persistIpsSuppression(
+	ctx context.Context,
+	site string,
+	sent *settings.Ips,
+	diags *diag.Diagnostics,
+) {
+	if sent.Suppression == nil {
+		return
+	}
+
+	// Controllers that store suppression nested in ips echo it back: nothing
+	// more to do.
+	_, current, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
+	if err != nil {
+		diags.AddError("Error Reading IPS Setting", err.Error())
+		return
+	}
+	if current.Suppression != nil {
+		return
+	}
+
+	raw := ipsSuppressionRawSetting(sent.Suppression)
+	if err := r.client.UpdateSetting(ctx, site, raw); err != nil {
+		// Controllers without the standalone key reject it with
+		// api.err.Invalid; when nothing is configured there is nothing to
+		// persist, so that rejection is not an error.
+		var apiErr *ui.APIError
+		if len(sent.Suppression.Alerts) == 0 && len(sent.Suppression.Whitelist) == 0 &&
+			errors.As(err, &apiErr) && apiErr.Message == "api.err.Invalid" {
+			return
+		}
+		diags.AddError("Error Updating IPS Suppression Setting", err.Error())
+	}
+}
+
 func (r *settingResource) ipsModelToSetting(
 	ctx context.Context,
 	model *settingIpsModel,

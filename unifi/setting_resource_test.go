@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -608,6 +609,129 @@ func TestAccSettingResource_ipsHoneypot(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccSettingResource_ipsSuppression guards #381: suppression entries must
+// round-trip and the follow-up plan must be empty (the framework fails a step
+// whose post-apply refresh plan is non-empty, which is exactly the perpetual
+// diff reported). On controllers that nest suppression in the ips setting the
+// nested path is used; controllers that store it under the standalone
+// ips_suppression key take the fallback write/read path.
+func TestAccSettingResource_ipsSuppression(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSettingConfig_ipsSuppression(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.#", "1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"ips.suppression_alerts.0.signature",
+						"ET SCAN Potential SSH Scan OUTBOUND",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.0.id", "2003068",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.#", "1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.0.value", "10.0.0.5",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_ipsSuppressionUpdated(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.#", "2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.#", "0",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_ipsSuppressionCleared(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.#", "0",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.#", "0",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccSettingConfig_ipsSuppression() string {
+	return `
+resource "unifi_setting" "test" {
+  ips = {
+    ips_mode = "disabled"
+    suppression_alerts = [{
+      category  = "emerging-scan"
+      gid       = 1
+      id        = 2003068
+      signature = "ET SCAN Potential SSH Scan OUTBOUND"
+      type      = "all"
+      tracking  = []
+    }]
+    suppression_whitelist = [{
+      direction = "both"
+      mode      = "ip"
+      value     = "10.0.0.5"
+    }]
+  }
+}
+`
+}
+
+func testAccSettingConfig_ipsSuppressionUpdated() string {
+	return `
+resource "unifi_setting" "test" {
+  ips = {
+    ips_mode = "disabled"
+    suppression_alerts = [
+      {
+        category  = "emerging-scan"
+        gid       = 1
+        id        = 2003068
+        signature = "ET SCAN Potential SSH Scan OUTBOUND"
+        type      = "all"
+        tracking  = []
+      },
+      {
+        category  = "emerging-dos"
+        gid       = 1
+        id        = 2019010
+        signature = "ET DOS Possible NTP DDoS"
+        type      = "all"
+        tracking  = []
+      },
+    ]
+    suppression_whitelist = []
+  }
+}
+`
+}
+
+func testAccSettingConfig_ipsSuppressionCleared() string {
+	return `
+resource "unifi_setting" "test" {
+  ips = {
+    ips_mode              = "disabled"
+    suppression_alerts    = []
+    suppression_whitelist = []
+  }
+}
+`
 }
 
 func testAccSettingConfig_dohAuto() string {
@@ -1652,5 +1776,140 @@ func TestLcmOmitsUnsetInts(t *testing.T) {
 	if setting.Brightness != nil || setting.IDleTimeout != nil {
 		t.Errorf("unset lcm ints must be omitted: brightness=%v idle=%v",
 			setting.Brightness, setting.IDleTimeout)
+	}
+}
+
+// TestIpsSuppressionFromRaw guards the #381 read path: newer controllers store
+// suppression under the standalone ips_suppression setting, whose raw payload
+// (decoded as map[string]any, so numbers arrive as float64) must convert into
+// the nested suppression struct the ips conversions consume.
+func TestIpsSuppressionFromRaw(t *testing.T) {
+	raw := map[string]any{
+		"_id":     "69d1925309e6659556d6e2f4",
+		"site_id": "62e7da55ac20a206e6945eea",
+		"key":     "ips_suppression",
+		"alerts": []any{
+			map[string]any{
+				"category":  "emerging-scan",
+				"gid":       float64(1),
+				"id":        float64(2003068),
+				"signature": "ET SCAN Potential SSH Scan OUTBOUND",
+				"type":      "track",
+				"tracking": []any{
+					map[string]any{
+						"direction": "both",
+						"mode":      "ip",
+						"value":     "10.0.0.5",
+					},
+				},
+			},
+		},
+		"whitelist": []any{
+			map[string]any{"direction": "src", "mode": "subnet", "value": "10.0.0.0/24"},
+		},
+	}
+
+	supp, err := ipsSuppressionFromRaw(raw)
+	if err != nil {
+		t.Fatalf("ipsSuppressionFromRaw: %v", err)
+	}
+	if len(supp.Alerts) != 1 || len(supp.Whitelist) != 1 {
+		t.Fatalf("unexpected counts: %+v", supp)
+	}
+	a := supp.Alerts[0]
+	if a.Gid == nil || *a.Gid != 1 || a.ID == nil || *a.ID != 2003068 {
+		t.Errorf("gid/id mismatch: gid=%v id=%v", a.Gid, a.ID)
+	}
+	if a.Signature != "ET SCAN Potential SSH Scan OUTBOUND" || a.Category != "emerging-scan" ||
+		a.Type != "track" {
+		t.Errorf("alert mismatch: %+v", a)
+	}
+	if len(a.Tracking) != 1 || a.Tracking[0].Value != "10.0.0.5" {
+		t.Errorf("tracking mismatch: %+v", a.Tracking)
+	}
+	if supp.Whitelist[0].Mode != "subnet" || supp.Whitelist[0].Value != "10.0.0.0/24" {
+		t.Errorf("whitelist mismatch: %+v", supp.Whitelist[0])
+	}
+}
+
+// TestIpsSuppressionRawSetting guards the #381 write path: the standalone
+// setting must carry the ips_suppression key and serialize nil entry slices
+// as empty JSON arrays (clearing the last entry must clear the controller,
+// and the endpoint rejects null lists).
+func TestIpsSuppressionRawSetting(t *testing.T) {
+	gid := int64(1)
+	id := int64(2003068)
+	raw := ipsSuppressionRawSetting(&settings.SettingIpsSuppression{
+		Alerts: []settings.SettingIpsAlerts{{
+			Category:  "emerging-scan",
+			Gid:       &gid,
+			ID:        &id,
+			Signature: "ET SCAN Potential SSH Scan OUTBOUND",
+			Type:      "all",
+		}},
+	})
+	if raw.Key != "ips_suppression" {
+		t.Fatalf("key = %q, want ips_suppression", raw.Key)
+	}
+
+	buf, err := raw.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded struct {
+		Key       string                         `json:"key"`
+		Alerts    []settings.SettingIpsAlerts    `json:"alerts"`
+		Whitelist []settings.SettingIpsWhitelist `json:"whitelist"`
+	}
+	if err := json.Unmarshal(buf, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.Key != "ips_suppression" || len(decoded.Alerts) != 1 {
+		t.Fatalf("payload mismatch: %s", buf)
+	}
+	if decoded.Whitelist == nil || len(decoded.Whitelist) != 0 {
+		t.Errorf("nil whitelist must serialize as []: %s", buf)
+	}
+
+	// Fully empty suppression: both lists still serialize as [].
+	raw = ipsSuppressionRawSetting(&settings.SettingIpsSuppression{})
+	buf, err = raw.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal empty: %v", err)
+	}
+	var decodedEmpty map[string]any
+	if err := json.Unmarshal(buf, &decodedEmpty); err != nil {
+		t.Fatalf("unmarshal empty: %v", err)
+	}
+	if v, ok := decodedEmpty["alerts"].([]any); !ok || len(v) != 0 {
+		t.Errorf("alerts must be an empty array: %s", buf)
+	}
+	if v, ok := decodedEmpty["whitelist"].([]any); !ok || len(v) != 0 {
+		t.Errorf("whitelist must be an empty array: %s", buf)
+	}
+}
+
+// TestIpsSuppressionConfigured covers the plan gate for the #381 fallback
+// read: only a plan that manages at least one suppression list triggers the
+// standalone-setting lookup.
+func TestIpsSuppressionConfigured(t *testing.T) {
+	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
+	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
+
+	unmanaged := &settingIpsModel{
+		SuppressionAlerts:    types.ListNull(alertType),
+		SuppressionWhitelist: types.ListNull(whitelistType),
+	}
+	if ipsSuppressionConfigured(unmanaged) {
+		t.Error("null lists must not count as configured")
+	}
+
+	empty, _ := types.ListValueFrom(context.Background(), alertType, []settingIpsAlertModel{})
+	managed := &settingIpsModel{
+		SuppressionAlerts:    empty,
+		SuppressionWhitelist: types.ListNull(whitelistType),
+	}
+	if !ipsSuppressionConfigured(managed) {
+		t.Error("an empty configured list must count as configured")
 	}
 }
