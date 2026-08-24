@@ -51,6 +51,15 @@ type wireguardPeerResource struct {
 	client *Client
 }
 
+// wireguardPeerIdentityModel describes the resource identity data model.
+// Peers live under a WireGuard server network, so locating one requires the
+// network ID in addition to the peer ID.
+type wireguardPeerIdentityModel struct {
+	ID        types.String `tfsdk:"id"`
+	NetworkID types.String `tfsdk:"network_id"`
+	Site      types.String `tfsdk:"site"`
+}
+
 // wireguardPeerResourceModel describes the resource data model.
 type wireguardPeerResourceModel struct {
 	ID          types.String   `tfsdk:"id"`
@@ -95,6 +104,14 @@ func (r *wireguardPeerResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			// The controller only exposes peers under their WireGuard server
+			// network, so the network ID is required to locate a peer.
+			"network_id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -237,7 +254,12 @@ func (r *wireguardPeerResource) Create(
 	}
 
 	resp.Diagnostics.Append(r.peerToModel(ctx, createdPeer, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	identity := wireguardPeerIdentityModel{
+		ID:        data.ID,
+		NetworkID: data.NetworkID,
+		Site:      data.Site,
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -261,17 +283,52 @@ func (r *wireguardPeerResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support. When an identity comes in it must be passed through
+	// unchanged: Terraform treats any modification of a non-null identity
+	// (including filling a null attribute) as an error.
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	var identity wireguardPeerIdentityModel
+	if haveIdentity {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = data.ID
+		identity.NetworkID = data.NetworkID
+		identity.Site = data.Site
+	}
+
+	// Tolerate identity-only state (the refresh right after an identity-based
+	// import): fill the missing lookup keys from identity.
+	id := data.ID.ValueString()
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
+
+	networkID := data.NetworkID.ValueString()
+	if networkID == "" {
+		networkID = identity.NetworkID.ValueString()
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
 
-	peer, err := r.client.GetWireGuardPeer(
-		ctx,
-		site,
-		data.NetworkID.ValueString(),
-		data.ID.ValueString(),
-	)
+	if id == "" || networkID == "" {
+		resp.Diagnostics.AddError(
+			"Invalid State",
+			"WireGuard peer must have an ID and a network ID",
+		)
+		return
+	}
+
+	peer, err := r.client.GetWireGuardPeer(ctx, site, networkID, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -279,13 +336,21 @@ func (r *wireguardPeerResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading WireGuard Peer",
-			"Could not read WireGuard peer with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read WireGuard peer with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	resp.Diagnostics.Append(r.peerToModel(ctx, peer, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+
+	// A pre-existing identity is re-set unchanged; a fresh one is derived
+	// from the refreshed state.
+	if !haveIdentity {
+		identity.ID = data.ID
+		identity.NetworkID = data.NetworkID
+		identity.Site = data.Site
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -331,7 +396,21 @@ func (r *wireguardPeerResource) Update(
 	}
 
 	resp.Diagnostics.Append(r.peerToModel(ctx, updatedPeer, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+
+	// Identity is immutable once set: carry the incoming identity through
+	// unchanged, deriving a fresh one from state only when it was absent.
+	identity := wireguardPeerIdentityModel{
+		ID:        data.ID,
+		NetworkID: data.NetworkID,
+		Site:      data.Site,
+	}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -379,24 +458,50 @@ func (r *wireguardPeerResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:network_id:id" or "network_id:id" for default site
-	idParts := strings.Split(req.ID, ":")
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// Format: "site:network_id:id" or "network_id:id" for the default site.
+	if req.ID != "" {
+		idParts := strings.Split(req.ID, ":")
 
-	switch len(idParts) {
-	case 3:
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+		var identity wireguardPeerIdentityModel
+		switch len(idParts) {
+		case 3:
+			identity.Site = types.StringValue(idParts[0])
+			identity.NetworkID = types.StringValue(idParts[1])
+			identity.ID = types.StringValue(idParts[2])
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		case 2:
+			identity.NetworkID = types.StringValue(idParts[0])
+			identity.ID = types.StringValue(idParts[1])
+		default:
+			resp.Diagnostics.AddError(
+				"Invalid Import ID",
+				"Import ID must be in format 'site:network_id:id' or 'network_id:id'",
+			)
+			return
+		}
+
 		resp.Diagnostics.Append(
-			resp.State.SetAttribute(ctx, path.Root("network_id"), idParts[1])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[2])...)
-	case 2:
+			resp.State.SetAttribute(ctx, path.Root("network_id"), identity.NetworkID)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+		return
+	}
+
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var identity wireguardPeerIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+	resp.Diagnostics.Append(
+		resp.State.SetAttribute(ctx, path.Root("network_id"), identity.NetworkID)...)
+	if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
 		resp.Diagnostics.Append(
-			resp.State.SetAttribute(ctx, path.Root("network_id"), idParts[0])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
-	default:
-		resp.Diagnostics.AddError(
-			"Invalid Import ID",
-			"Import ID must be in format 'site:network_id:id' or 'network_id:id'",
-		)
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
 	}
 }
 
@@ -541,11 +646,11 @@ func (r *wireguardPeerResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(peer.ID),
-				)...,
+				result.Identity.Set(ctx, wireguardPeerIdentityModel{
+					ID:        types.StringValue(peer.ID),
+					NetworkID: types.StringValue(peer.NetworkID),
+					Site:      types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.

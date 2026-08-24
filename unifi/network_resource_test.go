@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -105,8 +107,37 @@ func TestAccNetworkFramework_dhcp(t *testing.T) {
 				ImportStateVerify: true,
 				ImportStateId:     "name=Test DHCP Network",
 			},
+			// String import by bare controller ObjectID (the 24-hex format).
+			{
+				ResourceName:      "unifi_network.test_dhcp",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testAccNetworkFrameworkImportStateIDFunc(
+					"unifi_network.test_dhcp",
+				),
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_network.test_dhcp",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 		},
 	})
+}
+
+// testAccNetworkFrameworkImportStateIDFunc returns the bare controller
+// ObjectID of the named resource for use as a string import ID.
+func testAccNetworkFrameworkImportStateIDFunc(
+	resourceName string,
+) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return "", fmt.Errorf("resource not found in state: %s", resourceName)
+		}
+		return rs.Primary.ID, nil
+	}
 }
 
 func TestAccNetworkFramework_guest(t *testing.T) {

@@ -67,6 +67,12 @@ type staticRouteListFilterModel struct {
 	Value types.String `tfsdk:"value"`
 }
 
+// staticRouteIdentityModel describes the resource identity data model.
+type staticRouteIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // staticRouteFrameworkResourceModel describes the resource data model.
 type staticRouteFrameworkResourceModel struct {
 	ID            types.String      `tfsdk:"id"`
@@ -101,6 +107,9 @@ func (r *staticRouteFrameworkResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -265,7 +274,8 @@ func (r *staticRouteFrameworkResource) Create(
 	r.routingToModel(ctx, createdRouting, &data, site)
 
 	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	identity := staticRouteIdentityModel{ID: data.ID, Site: data.Site}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -290,13 +300,47 @@ func (r *staticRouteFrameworkResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support. When an identity comes in it must be passed through
+	// unchanged: Terraform treats any modification of a non-null identity
+	// (including filling a null attribute) as an error.
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	var identity staticRouteIdentityModel
+	if haveIdentity {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = data.ID
+		identity.Site = data.Site
+	}
+
+	// Tolerate identity-only state (the refresh right after an identity-based
+	// import): fill the missing lookup keys from identity.
+	id := data.ID.ValueString()
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
 
+	if id == "" {
+		resp.Diagnostics.AddError(
+			"Invalid State",
+			"Static route must have an ID",
+		)
+		return
+	}
+
 	// Get the static route from the API
-	routing, err := r.client.GetRouting(ctx, site, data.ID.ValueString())
+	routing, err := r.client.GetRouting(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -304,7 +348,7 @@ func (r *staticRouteFrameworkResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Static Route",
-			"Could not read static route with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read static route with ID "+id+": "+err.Error(),
 		)
 		return
 	}
@@ -312,8 +356,13 @@ func (r *staticRouteFrameworkResource) Read(
 	// Convert to model
 	r.routingToModel(ctx, routing, &data, site)
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	// Save updated data into Terraform state. A pre-existing identity is
+	// re-set unchanged; a fresh one is derived from the refreshed state.
+	if !haveIdentity {
+		identity.ID = data.ID
+		identity.Site = data.Site
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -372,7 +421,15 @@ func (r *staticRouteFrameworkResource) Update(
 	r.routingToModel(ctx, updatedRouting, &state, site)
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	identity := staticRouteIdentityModel{ID: state.ID, Site: state.Site}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		// Identity is immutable once set: carry the incoming identity through.
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -421,29 +478,46 @@ func (r *staticRouteFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:id" or just "id" for default site
-	idParts := strings.Split(req.ID, ":")
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// Format: "site:id" or just "id" for the default site.
+	if req.ID != "" {
+		idParts := strings.Split(req.ID, ":")
 
-	if len(idParts) == 2 {
-		// site:id format
-		site := idParts[0]
-		id := idParts[1]
+		var identity staticRouteIdentityModel
+		switch len(idParts) {
+		case 2:
+			identity.Site = types.StringValue(idParts[0])
+			identity.ID = types.StringValue(idParts[1])
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		case 1:
+			// Just id, use default site
+			identity.ID = types.StringValue(req.ID)
+		default:
+			resp.Diagnostics.AddError(
+				"Invalid Import ID",
+				"Import ID must be in format 'site:id' or 'id'",
+			)
+			return
+		}
 
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 		return
 	}
 
-	if len(idParts) == 1 {
-		// Just id, use default site
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var identity staticRouteIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.AddError(
-		"Invalid Import ID",
-		"Import ID must be in format 'site:id' or 'id'",
-	)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+	if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+	}
 }
 
 func (r *staticRouteFrameworkResource) ConfigValidators(
@@ -759,11 +833,10 @@ func (r *staticRouteFrameworkResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(routing.ID),
-				)...,
+				result.Identity.Set(ctx, staticRouteIdentityModel{
+					ID:   types.StringValue(routing.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.

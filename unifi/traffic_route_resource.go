@@ -139,7 +139,8 @@ type trafficRouteResourceModel struct {
 }
 
 type trafficRouteIdentityModel struct {
-	ID types.String `tfsdk:"id"`
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
 }
 
 // trafficRouteListConfigModel describes the list configuration model.
@@ -172,6 +173,9 @@ func (r *trafficRouteResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -387,7 +391,7 @@ func (r *trafficRouteResource) Create(
 		return
 	}
 
-	idModel := trafficRouteIdentityModel{ID: plan.ID}
+	idModel := trafficRouteIdentityModel{ID: plan.ID, Site: plan.Site}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -411,18 +415,35 @@ func (r *trafficRouteResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
-	site := state.Site.ValueString()
-	if site == "" {
-		site = r.client.Site
+	// Read identity, falling back to state for resources created before
+	// identity support. When an identity comes in it must be passed through
+	// unchanged: Terraform treats any modification of a non-null identity
+	// (including filling a null attribute) as an error.
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	var identity trafficRouteIdentityModel
+	if haveIdentity {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = state.ID
+		identity.Site = state.Site
 	}
 
+	// Tolerate identity-only state (the refresh right after an identity-based
+	// import): fill the missing lookup keys from identity.
 	id := state.ID.ValueString()
 	if id == "" {
-		// Try identity
-		var idModel trafficRouteIdentityModel
-		if d := req.Identity.Get(ctx, &idModel); !d.HasError() {
-			id = idModel.ID.ValueString()
-		}
+		id = identity.ID.ValueString()
+	}
+
+	site := state.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
+	if site == "" {
+		site = r.client.Site
 	}
 
 	if id == "" {
@@ -445,8 +466,13 @@ func (r *trafficRouteResource) Read(
 		return
 	}
 
-	idModel := trafficRouteIdentityModel{ID: state.ID}
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	// A pre-existing identity is re-set unchanged; a fresh one is derived
+	// from the refreshed state.
+	if !haveIdentity {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -496,7 +522,15 @@ func (r *trafficRouteResource) Update(
 		return
 	}
 
-	idModel := trafficRouteIdentityModel{ID: plan.ID}
+	// Identity is immutable once set: carry the incoming identity through
+	// unchanged, deriving a fresh one from state only when it was absent.
+	idModel := trafficRouteIdentityModel{ID: plan.ID, Site: plan.Site}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -541,25 +575,37 @@ func (r *trafficRouteResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		req.ID = idParts[1]
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// Format: "site:id" or just "id" for the default site.
+	if req.ID != "" {
+		idModel := trafficRouteIdentityModel{}
+
+		idParts := strings.Split(req.ID, ":")
+		if len(idParts) == 2 {
+			idModel.Site = types.StringValue(idParts[0])
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), idModel.Site)...)
+			req.ID = idParts[1]
+		}
+		idModel.ID = types.StringValue(req.ID)
+
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idModel.ID)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+		return
 	}
 
-	idModel := trafficRouteIdentityModel{ID: types.StringValue(req.ID)}
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var idModel trafficRouteIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resource.ImportStatePassthroughWithIdentity(
-		ctx,
-		path.Root("id"),
-		path.Root("id"),
-		req,
-		resp,
-	)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idModel.ID)...)
+	if !idModel.Site.IsNull() && idModel.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), idModel.Site)...)
+	}
 }
 
 // modelToAPI converts the Terraform model to the UniFi API struct.
@@ -1087,11 +1133,10 @@ func (r *trafficRouteResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(route.ID),
-				)...,
+				result.Identity.Set(ctx, trafficRouteIdentityModel{
+					ID:   types.StringValue(route.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.

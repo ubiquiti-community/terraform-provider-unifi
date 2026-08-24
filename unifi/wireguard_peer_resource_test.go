@@ -66,6 +66,29 @@ func TestAccWireguardPeer_basic(t *testing.T) {
 					return rs.Primary.Attributes["network_id"] + ":" + rs.Primary.ID, nil
 				},
 			},
+			// String import in the "site:network_id:id" format.
+			{
+				ResourceName:      "unifi_wireguard_peer.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: func(s *terraform.State) (string, error) {
+					rs, ok := s.RootModule().Resources["unifi_wireguard_peer.test"]
+					if !ok {
+						return "", fmt.Errorf("resource not found in state")
+					}
+					site := rs.Primary.Attributes["site"]
+					if site == "" {
+						site = "default"
+					}
+					return site + ":" + rs.Primary.Attributes["network_id"] + ":" + rs.Primary.ID, nil
+				},
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_wireguard_peer.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 		},
 	})
 }

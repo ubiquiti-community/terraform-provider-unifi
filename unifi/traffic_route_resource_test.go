@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -10,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -45,6 +47,30 @@ func TestAccTrafficRoute_basic(t *testing.T) {
 					),
 				),
 			},
+			// String import by bare controller ObjectID.
+			{
+				ResourceName:      "unifi_traffic_route.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			// String import in the "site:id" format.
+			{
+				ResourceName:      "unifi_traffic_route.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: func(s *terraform.State) (string, error) {
+					rs, ok := s.RootModule().Resources["unifi_traffic_route.test"]
+					if !ok {
+						return "", fmt.Errorf("resource not found in state")
+					}
+					site := rs.Primary.Attributes["site"]
+					if site == "" {
+						site = "default"
+					}
+					return site + ":" + rs.Primary.ID, nil
+				},
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
 			{
 				ResourceName:    "unifi_traffic_route.test",
 				ImportState:     true,
@@ -637,7 +663,7 @@ func Test_trafficRouteResource_Configure(t *testing.T) {
 
 func Test_trafficRouteResource_ImportState(t *testing.T) {
 	t.Skip(
-		"ImportState delegates to ImportStatePassthroughWithIdentity which requires full state schema setup",
+		"ImportState writes to resp.State/resp.Identity which require full state and identity schema setup; covered by TestAccTrafficRoute_basic import steps",
 	)
 }
 
