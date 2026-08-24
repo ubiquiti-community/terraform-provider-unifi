@@ -14,8 +14,68 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 )
+
+// testAccSettingProbeClient builds a raw API client for capability probes,
+// skipping the test when the controller cannot be reached.
+func testAccSettingProbeClient(t *testing.T, ctx context.Context) *unifi.ApiClient {
+	t.Helper()
+	client, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:       os.Getenv("UNIFI_API"),
+		Username:      os.Getenv("UNIFI_USERNAME"),
+		Password:      os.Getenv("UNIFI_PASSWORD"),
+		AllowInsecure: true,
+	})
+	if err != nil {
+		t.Skipf("cannot probe controller capabilities: %s", err)
+	}
+	return client
+}
+
+// testAccSettingDohCustomServersPreCheck skips when the controller rejects
+// custom DoH servers (app.err.DohCustomServersUnsupported on simulation
+// controllers). The probe applies a custom-server config and restores the
+// original setting when it succeeds.
+func testAccSettingDohCustomServersPreCheck(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	client := testAccSettingProbeClient(t, ctx)
+	_, current, err := unifi.GetSetting[*settings.Doh](client, ctx, "default")
+	if err != nil {
+		t.Skipf("cannot read DoH setting to probe custom-server support: %s", err)
+	}
+	probe := *current
+	probe.State = "custom"
+	probe.CustomServers = []settings.SettingDohCustomServers{
+		{ServerName: "tfacc-doh-probe", Enabled: true},
+	}
+	if err := client.UpdateSetting(ctx, "default", &probe); err != nil {
+		t.Skipf("custom DoH servers not supported by this controller: %s", err)
+	}
+	if err := client.UpdateSetting(ctx, "default", current); err != nil {
+		t.Fatalf("restoring DoH setting after probe: %s", err)
+	}
+}
+
+// testAccSettingIpsHoneypotPreCheck skips when the site's gateway is
+// USG-class: the controller rejects honeypot config with
+// api.err.HoneypotIsNotSupportedInUsg (the simulated gateway is a UGW3).
+func testAccSettingIpsHoneypotPreCheck(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	client := testAccSettingProbeClient(t, ctx)
+	devices, err := client.ListDevice(ctx, "default")
+	if err != nil {
+		t.Skipf("cannot probe gateway model for honeypot support: %s", err)
+	}
+	for _, d := range devices {
+		if d.Type == "ugw" {
+			t.Skip("IPS honeypot is not supported on USG-class gateways")
+		}
+	}
+}
 
 func TestAccSettingResource_mgmt(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -406,16 +466,14 @@ func TestAccSettingResource_doh(t *testing.T) {
 }
 
 func TestAccSettingResource_dohCustomServers(t *testing.T) {
-	// custom_servers requires controller support beyond simulation/demo mode;
-	// the simulation controller returns DohCustomServersUnsupported (400).
-	// Run only against a real controller (UNIFI_SKIP_CONTAINER bypasses the
-	// docker simulation and targets the pre-set UNIFI_* endpoint).
-	if os.Getenv("UNIFI_SKIP_CONTAINER") == "" {
-		t.Skip("custom DoH servers require a real controller; set UNIFI_SKIP_CONTAINER to run")
-	}
-
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
+		PreCheck: func() {
+			preCheck(t)
+			// Simulation controllers reject custom_servers with
+			// DohCustomServersUnsupported (400); probe instead of inferring
+			// from the environment.
+			testAccSettingDohCustomServersPreCheck(t)
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -513,16 +571,14 @@ func TestAccSettingResource_ips(t *testing.T) {
 }
 
 func TestAccSettingResource_ipsHoneypot(t *testing.T) {
-	// Honeypot requires a UDM-class gateway; the simulation controller presents as a USG,
-	// which returns HoneypotIsNotSupportedInUsg (400).
-	// honeypot is not supported on USG-class/simulation controllers; it
-	// requires a UDM-class device. Run only against a real controller.
-	if os.Getenv("UNIFI_SKIP_CONTAINER") == "" {
-		t.Skip("honeypot requires a real UDM-class controller; set UNIFI_SKIP_CONTAINER to run")
-	}
-
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
+		PreCheck: func() {
+			preCheck(t)
+			// Honeypot requires a UDM-class gateway; sites with a USG-class
+			// gateway (including the simulated UGW3 once adopted) reject it
+			// with HoneypotIsNotSupportedInUsg (400).
+			testAccSettingIpsHoneypotPreCheck(t)
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{

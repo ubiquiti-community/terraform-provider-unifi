@@ -868,10 +868,18 @@ func Test_vpnServerResource_ImportState(t *testing.T) {
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
 			t.Errorf("state id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("state site = %v, want default", got)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("identity site = %v, want default", got)
 		}
 	})
@@ -888,7 +896,11 @@ func Test_vpnServerResource_ImportState(t *testing.T) {
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
 			t.Errorf("state id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("id")); got.ValueString() != oid {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("id"),
+		); got.ValueString() != oid {
 			t.Errorf("identity id = %v, want %s", got, oid)
 		}
 	})
@@ -902,10 +914,18 @@ func Test_vpnServerResource_ImportState(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("state site = %v, want other", got)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("identity site = %v, want other", got)
 		}
 	})
@@ -919,7 +939,11 @@ func Test_vpnServerResource_ImportState(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("name")); got.ValueString() != "my-server" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("name"),
+		); got.ValueString() != "my-server" {
 			t.Errorf("state name = %v, want my-server", got)
 		}
 	})

@@ -178,9 +178,13 @@ func dynamicDNSImportHarness(t *testing.T) (tfsdk.State, tfsdk.ResourceIdentity)
 	return state, identity
 }
 
+// dynamicDNSImportTestID is the object id used by the ImportState unit tests.
+const dynamicDNSImportTestID = "0123456789abcdef01234567"
+
 // dynamicDNSIdentityValue builds a populated identity container for
-// identity-based import requests. Pass "" to leave site null.
-func dynamicDNSIdentityValue(t *testing.T, id, site string) tfsdk.ResourceIdentity {
+// identity-based import requests with id dynamicDNSImportTestID. Pass ""
+// to leave site null.
+func dynamicDNSIdentityValue(t *testing.T, site string) tfsdk.ResourceIdentity {
 	t.Helper()
 	ctx := context.Background()
 	_, identity := dynamicDNSImportHarness(t)
@@ -192,7 +196,7 @@ func dynamicDNSIdentityValue(t *testing.T, id, site string) tfsdk.ResourceIdenti
 	identity.Raw = tftypes.NewValue(
 		identity.Schema.Type().TerraformType(ctx),
 		map[string]tftypes.Value{
-			"id":   tftypes.NewValue(tftypes.String, id),
+			"id":   tftypes.NewValue(tftypes.String, dynamicDNSImportTestID),
 			"site": siteVal,
 		},
 	)
@@ -219,8 +223,8 @@ func Test_dynamicDNSResource_ImportState(t *testing.T) {
 	t.Run("identity import defaults omitted site to provider site", func(t *testing.T) {
 		r := newRes()
 		state, _ := dynamicDNSImportHarness(t)
-		reqIdentity := dynamicDNSIdentityValue(t, oid, "")
-		respIdentity := dynamicDNSIdentityValue(t, oid, "")
+		reqIdentity := dynamicDNSIdentityValue(t, "")
+		respIdentity := dynamicDNSIdentityValue(t, "")
 		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
 
 		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "", Identity: &reqIdentity}, resp)
@@ -230,10 +234,18 @@ func Test_dynamicDNSResource_ImportState(t *testing.T) {
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
 			t.Errorf("state id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("state site = %v, want default", got)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("identity site = %v, want default", got)
 		}
 	})
@@ -241,18 +253,26 @@ func Test_dynamicDNSResource_ImportState(t *testing.T) {
 	t.Run("identity import honors explicit site", func(t *testing.T) {
 		r := newRes()
 		state, _ := dynamicDNSImportHarness(t)
-		reqIdentity := dynamicDNSIdentityValue(t, oid, "other")
-		respIdentity := dynamicDNSIdentityValue(t, oid, "other")
+		reqIdentity := dynamicDNSIdentityValue(t, "other")
+		respIdentity := dynamicDNSIdentityValue(t, "other")
 		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
 
 		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "", Identity: &reqIdentity}, resp)
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("state site = %v, want other", got)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("identity site = %v, want other", got)
 		}
 	})
@@ -269,10 +289,18 @@ func Test_dynamicDNSResource_ImportState(t *testing.T) {
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
 			t.Errorf("state id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("id")); got.ValueString() != oid {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("id"),
+		); got.ValueString() != oid {
 			t.Errorf("identity id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("identity site = %v, want default", got)
 		}
 	})
@@ -286,13 +314,21 @@ func Test_dynamicDNSResource_ImportState(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("state site = %v, want other", got)
 		}
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
 			t.Errorf("state id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("identity site = %v, want other", got)
 		}
 	})

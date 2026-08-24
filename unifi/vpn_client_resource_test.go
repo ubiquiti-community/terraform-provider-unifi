@@ -448,9 +448,13 @@ func vpnClientImportHarness(t *testing.T) (tfsdk.State, tfsdk.ResourceIdentity) 
 	return state, identity
 }
 
+// vpnClientImportTestID is the object id used by the ImportState unit tests.
+const vpnClientImportTestID = "0123456789abcdef01234567"
+
 // vpnClientIdentityValue builds a populated identity container for
-// identity-based import requests. Pass "" to leave site null.
-func vpnClientIdentityValue(t *testing.T, id, site string) tfsdk.ResourceIdentity {
+// identity-based import requests with id vpnClientImportTestID. Pass ""
+// to leave site null.
+func vpnClientIdentityValue(t *testing.T, site string) tfsdk.ResourceIdentity {
 	t.Helper()
 	ctx := context.Background()
 	_, identity := vpnClientImportHarness(t)
@@ -462,7 +466,7 @@ func vpnClientIdentityValue(t *testing.T, id, site string) tfsdk.ResourceIdentit
 	identity.Raw = tftypes.NewValue(
 		identity.Schema.Type().TerraformType(ctx),
 		map[string]tftypes.Value{
-			"id":   tftypes.NewValue(tftypes.String, id),
+			"id":   tftypes.NewValue(tftypes.String, vpnClientImportTestID),
 			"site": siteVal,
 		},
 	)
@@ -489,8 +493,8 @@ func Test_vpnClientResource_ImportState(t *testing.T) {
 	t.Run("identity import defaults omitted site to provider site", func(t *testing.T) {
 		r := newRes()
 		state, _ := vpnClientImportHarness(t)
-		reqIdentity := vpnClientIdentityValue(t, oid, "")
-		respIdentity := vpnClientIdentityValue(t, oid, "")
+		reqIdentity := vpnClientIdentityValue(t, "")
+		respIdentity := vpnClientIdentityValue(t, "")
 		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
 
 		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "", Identity: &reqIdentity}, resp)
@@ -500,10 +504,18 @@ func Test_vpnClientResource_ImportState(t *testing.T) {
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
 			t.Errorf("state id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("state site = %v, want default", got)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("identity site = %v, want default", got)
 		}
 	})
@@ -511,15 +523,19 @@ func Test_vpnClientResource_ImportState(t *testing.T) {
 	t.Run("identity import honors explicit site", func(t *testing.T) {
 		r := newRes()
 		state, _ := vpnClientImportHarness(t)
-		reqIdentity := vpnClientIdentityValue(t, oid, "other")
-		respIdentity := vpnClientIdentityValue(t, oid, "other")
+		reqIdentity := vpnClientIdentityValue(t, "other")
+		respIdentity := vpnClientIdentityValue(t, "other")
 		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
 
 		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "", Identity: &reqIdentity}, resp)
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("state site = %v, want other", got)
 		}
 	})
@@ -536,10 +552,18 @@ func Test_vpnClientResource_ImportState(t *testing.T) {
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
 			t.Errorf("state id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("id")); got.ValueString() != oid {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("id"),
+		); got.ValueString() != oid {
 			t.Errorf("identity id = %v, want %s", got, oid)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "default" {
 			t.Errorf("identity site = %v, want default", got)
 		}
 	})
@@ -553,10 +577,18 @@ func Test_vpnClientResource_ImportState(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("state site = %v, want other", got)
 		}
-		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+		if got := getString(
+			t,
+			resp.Identity.GetAttribute,
+			path.Root("site"),
+		); got.ValueString() != "other" {
 			t.Errorf("identity site = %v, want other", got)
 		}
 	})
@@ -570,7 +602,11 @@ func Test_vpnClientResource_ImportState(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("name")); got.ValueString() != "my-vpn" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("name"),
+		); got.ValueString() != "my-vpn" {
 			t.Errorf("state name = %v, want my-vpn", got)
 		}
 		if got := getString(t, resp.State.GetAttribute, path.Root("id")); !got.IsNull() {
@@ -587,7 +623,11 @@ func Test_vpnClientResource_ImportState(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
 		}
-		if got := getString(t, resp.State.GetAttribute, path.Root("name")); got.ValueString() != "my-vpn" {
+		if got := getString(
+			t,
+			resp.State.GetAttribute,
+			path.Root("name"),
+		); got.ValueString() != "my-vpn" {
 			t.Errorf("state name = %v, want my-vpn", got)
 		}
 	})

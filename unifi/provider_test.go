@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 	if os.Getenv("UNIFI_SKIP_CONTAINER") != "" {
 		ctx := context.Background()
 		logger := NewLogger(ctx)
-		if _, err := waitForUniFiAPI(
+		if err := waitForUniFiAPI(
 			ctx,
 			logger,
 			os.Getenv("UNIFI_API"),
@@ -155,7 +155,7 @@ func runAcceptanceTests(m *testing.M) int {
 		}
 	}()
 
-	if _, err := waitForUniFiAPI(ctx, logger, endpoint, user, password); err != nil {
+	if err := waitForUniFiAPI(ctx, logger, endpoint, user, password); err != nil {
 		panic(err)
 	}
 
@@ -193,7 +193,7 @@ func waitForUniFiAPI(
 	ctx context.Context,
 	logger *UnifiLogger,
 	endpoint, user, password string,
-) (client *unifi.ApiClient, err error) {
+) error {
 	maxRetries := 60
 	retryDelay := 3 * time.Second
 
@@ -206,7 +206,7 @@ func waitForUniFiAPI(
 	var loginSuccessful bool
 	for i := range maxRetries {
 		// Step 1: Try to login
-		client, err = unifi.New(ctx, &unifi.Config{
+		client, err := unifi.New(ctx, &unifi.Config{
 			BaseURL:        endpoint,
 			Username:       user,
 			Password:       password,
@@ -229,7 +229,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return nil, fmt.Errorf(
+			return fmt.Errorf(
 				"UniFi API login did not succeed after %d attempts (waited %v): %w",
 				maxRetries,
 				time.Duration(maxRetries)*retryDelay,
@@ -276,7 +276,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return nil, fmt.Errorf(
+				return fmt.Errorf(
 					"UniFi API sites not ready after %d attempts: %w",
 					maxRetries,
 					err,
@@ -297,7 +297,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return nil, fmt.Errorf("no sites available after %d attempts", maxRetries)
+			return fmt.Errorf("no sites available after %d attempts", maxRetries)
 		}
 
 		// Step 3: Verify we can list devices (API fully operational)
@@ -320,7 +320,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return nil, fmt.Errorf(
+				return fmt.Errorf(
 					"device endpoint not operational after %d attempts: %w",
 					maxRetries,
 					err,
@@ -388,7 +388,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return nil, fmt.Errorf(
+				return fmt.Errorf(
 					"UniFi API networks not ready after %d attempts: %w",
 					maxRetries,
 					err,
@@ -409,7 +409,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return nil, fmt.Errorf("no networks available after %d attempts", maxRetries)
+			return fmt.Errorf("no networks available after %d attempts", maxRetries)
 		}
 
 		// Step 5: Ensure a default WAN network exists
@@ -441,10 +441,10 @@ func waitForUniFiAPI(
 			len(sites),
 			i+1,
 		)
-		return client, nil
+		return nil
 	}
 
-	return nil, fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
+	return fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
 }
 
 func TestClient_GetSiteName(t *testing.T) {

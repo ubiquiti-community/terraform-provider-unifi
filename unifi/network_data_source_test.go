@@ -142,7 +142,13 @@ func TestAccNetworkFrameworkDataSource_dhcpGuardingServers(t *testing.T) {
 
 func TestAccNetworkFrameworkDataSource_dhcpRelayServers(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
+		PreCheck: func() {
+			preCheck(t)
+			// Without zone-based firewall support the controller never
+			// assigns firewall_zone_id, so it stays "(known after apply)"
+			// and the re-plan step fails on a perpetual diff.
+			testAccFirewallZonePreCheck(t)
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
