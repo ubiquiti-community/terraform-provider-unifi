@@ -3187,6 +3187,23 @@ func sanitizeRadioForUpdate(radioName string, radio *unifi.DeviceRadioTable) dia
 	return diags
 }
 
+// radioInt64PointerIfKnown mirrors types.Int64.ValueInt64Pointer, except it also
+// treats an Unknown value as absent (nil), not just Null. A radio_table block can be
+// declared with only some sub-fields set (e.g. radio/channel/ht/tx_power_mode) — the
+// rest are Optional+Computed with no per-field plan modifier, so on update they arrive
+// Unknown rather than Null. ValueInt64Pointer only special-cases Null; for Unknown it
+// returns a pointer to the Go zero value, which then serializes as a real `0` the
+// controller rejects (api.err.InvalidPayload) for fields like antenna_gain/antenna_id
+// that have no zero-safe "enabled" gate of their own (the same bug class as #427's
+// min_rssi/maxsta/sens_level/assisted_roaming_rssi, closed off there only by
+// sanitizeRadioForUpdate's separate enabled-flag/range check).
+func radioInt64PointerIfKnown(v types.Int64) *int64 {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	return v.ValueInt64Pointer()
+}
+
 func (r *deviceResource) frameworkToRadioTable(
 	ctx context.Context,
 	radioList types.List,
@@ -3215,21 +3232,21 @@ func (r *deviceResource) frameworkToRadioTable(
 		radio := unifi.DeviceRadioTable{
 			Radio:                  model.Radio.ValueString(),
 			Channel:                model.Channel.ValueString(),
-			Ht:                     model.Ht.ValueInt64Pointer(),
+			Ht:                     radioInt64PointerIfKnown(model.Ht),
 			TxPower:                model.TxPower.ValueString(),
 			TxPowerMode:            model.TxPowerMode.ValueString(),
 			MinRssiEnabled:         model.MinRssiEnabled.ValueBool(),
-			MinRssi:                model.MinRssi.ValueInt64Pointer(),
-			AntennaGain:            model.AntennaGain.ValueInt64Pointer(),
-			AntennaID:              model.AntennaID.ValueInt64Pointer(),
+			MinRssi:                radioInt64PointerIfKnown(model.MinRssi),
+			AntennaGain:            radioInt64PointerIfKnown(model.AntennaGain),
+			AntennaID:              radioInt64PointerIfKnown(model.AntennaID),
 			AssistedRoamingEnabled: model.AssistedRoamingEnabled.ValueBool(),
-			AssistedRoamingRssi:    model.AssistedRoamingRssi.ValueInt64Pointer(),
+			AssistedRoamingRssi:    radioInt64PointerIfKnown(model.AssistedRoamingRssi),
 			Dfs:                    model.Dfs.ValueBool(),
 			HardNoiseFloorEnabled:  model.HardNoiseFloorEnabled.ValueBool(),
 			LoadbalanceEnabled:     model.LoadbalanceEnabled.ValueBool(),
-			Maxsta:                 model.Maxsta.ValueInt64Pointer(),
+			Maxsta:                 radioInt64PointerIfKnown(model.Maxsta),
 			Name:                   model.Name.ValueString(),
-			SensLevel:              model.SensLevel.ValueInt64Pointer(),
+			SensLevel:              radioInt64PointerIfKnown(model.SensLevel),
 			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
 			VwireEnabled:           model.VwireEnabled.ValueBool(),
 		}

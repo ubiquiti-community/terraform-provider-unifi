@@ -1,10 +1,13 @@
 package unifi
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -250,5 +253,94 @@ func TestBuildMinimalUpdateDevice_EmptyOverridesMarshalAsArrayNotNull(t *testing
 	}
 	if !strings.Contains(string(body), `"port_overrides":[]`) {
 		t.Fatalf("body must contain port_overrides:[], got: %s", body)
+	}
+}
+
+// TestFrameworkToRadioTable_PartialConfigOmitsUnknownFields guards #427: the
+// reported repro declares radio_table with only radio/channel/ht/tx_power_mode set.
+// Every other sub-field is Optional+Computed with no per-field plan modifier, so it
+// arrives Unknown (not Null) in an update plan — and frameworkToRadioTable used to
+// convert Unknown the same as a real configured 0/"" via ValueInt64Pointer /
+// ValueString, instead of omitting it. The controller rejects the resulting
+// min_rssi/sens_level/assisted_roaming_rssi/maxsta/antenna_gain/antenna_id: 0 with
+// api.err.InvalidPayload (400). Unknown sub-fields must stay off the wire, exactly
+// like Null ones, leaving only the declared channel/ht/tx_power(_mode) behind.
+func TestFrameworkToRadioTable_PartialConfigOmitsUnknownFields(t *testing.T) {
+	r := &deviceResource{}
+	ctx := context.Background()
+	attrTypes := radioTableAttrTypes()
+
+	newRadio := func(radio, channel string, ht int64, txPowerMode, txPower string) types.Object {
+		values := map[string]attr.Value{
+			"radio":                    types.StringValue(radio),
+			"channel":                  types.StringValue(channel),
+			"ht":                       types.Int64Value(ht),
+			"tx_power_mode":            types.StringValue(txPowerMode),
+			"tx_power":                 types.StringUnknown(),
+			"min_rssi_enabled":         types.BoolUnknown(),
+			"min_rssi":                 types.Int64Unknown(),
+			"antenna_gain":             types.Int64Unknown(),
+			"antenna_id":               types.Int64Unknown(),
+			"assisted_roaming_enabled": types.BoolUnknown(),
+			"assisted_roaming_rssi":    types.Int64Unknown(),
+			"dfs":                      types.BoolUnknown(),
+			"hard_noise_floor_enabled": types.BoolUnknown(),
+			"loadbalance_enabled":      types.BoolUnknown(),
+			"maxsta":                   types.Int64Unknown(),
+			"name":                     types.StringUnknown(),
+			"sens_level":               types.Int64Unknown(),
+			"sens_level_enabled":       types.BoolUnknown(),
+			"vwire_enabled":            types.BoolUnknown(),
+		}
+		if txPower != "" {
+			values["tx_power"] = types.StringValue(txPower)
+		}
+		obj, diags := types.ObjectValue(attrTypes, values)
+		if diags.HasError() {
+			t.Fatalf("building radio object: %v", diags)
+		}
+		return obj
+	}
+
+	list, diags := types.ListValue(types.ObjectType{AttrTypes: attrTypes}, []attr.Value{
+		newRadio("6e", "117", 160, "auto", ""),
+		newRadio("ng", "11", 20, "auto", ""),
+		newRadio("na", "149", 80, "custom", "23"),
+	})
+	if diags.HasError() {
+		t.Fatalf("building radio_table list: %v", diags)
+	}
+
+	got, convDiags := r.frameworkToRadioTable(ctx, list)
+	if convDiags.HasError() {
+		t.Fatalf("frameworkToRadioTable: %v", convDiags)
+	}
+	if len(got) != 3 {
+		t.Fatalf("radio count = %d, want 3", len(got))
+	}
+
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	body := string(raw)
+
+	for _, leaked := range []string{
+		`"min_rssi"`, `"sens_level"`, `"assisted_roaming_rssi"`, `"maxsta"`,
+		`"antenna_gain"`, `"antenna_id"`, `"name"`,
+	} {
+		if strings.Contains(body, leaked) {
+			t.Errorf("PUT body leaked unconfigured radio_table field %s: %s", leaked, body)
+		}
+	}
+
+	for _, want := range []string{
+		`"channel":"117"`, `"ht":160`,
+		`"channel":"11"`, `"ht":20`,
+		`"channel":"149"`, `"ht":80`, `"tx_power":"23"`, `"tx_power_mode":"custom"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("PUT body missing declared radio_table field %s: %s", want, body)
+		}
 	}
 }
