@@ -1200,8 +1200,8 @@ func TestAccNetworkList_basic(t *testing.T) {
 							filter {
 								name  = "name"
 								value = "Test VLAN"
-						  }
-					  }
+							}
+						}
 					}
 				`,
 				QueryResultChecks: []querycheck.QueryResultCheck{
@@ -1350,4 +1350,61 @@ func Test_networkResource_purpose(t *testing.T) {
 			t.Errorf("Purpose = %q, want %q", model.Purpose.ValueString(), unifi.PurposeGuest)
 		}
 	})
+}
+
+// TestNetworkFirewallZoneIDModelRoundTrip validates the model <-> go-unifi struct
+// conversion for the firewall_zone_id attribute on the unifi_network resource.
+// It is a unit test rather than an acceptance test because zone-based firewall
+// is not available in the dockerized acceptance controller.
+func TestNetworkFirewallZoneIDModelRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &networkResource{}
+
+	// Write path: a configured firewall_zone_id must reach the API struct.
+	model := &networkResourceModel{
+		Name:           types.StringValue("Test Zone Network"),
+		FirewallZoneID: types.StringValue("60b7c25e0cf2732bbdf1e102"),
+	}
+
+	network, diags := r.modelToNetwork(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToNetwork failed: %v", diags)
+	}
+
+	if network.FirewallZoneID == nil {
+		t.Fatalf("modelToNetwork: FirewallZoneID pointer is nil, want a value")
+	}
+	if *network.FirewallZoneID != "60b7c25e0cf2732bbdf1e102" {
+		t.Errorf(
+			"modelToNetwork: FirewallZoneID = %q, want 60b7c25e0cf2732bbdf1e102",
+			*network.FirewallZoneID,
+		)
+	}
+
+	// Read path: the controller-side value must land in the model for drift
+	// detection.
+	apiNetwork := &unifi.Network{
+		ID:             "net-123",
+		Name:           stringPtr("Test Zone Network"),
+		FirewallZoneID: stringPtr("60b7c25e0cf2732bbdf1e102"),
+	}
+
+	var out networkResourceModel
+	var planData networkResourceModel
+
+	readDiags := r.networkToModel(ctx, apiNetwork, &out, "default", &planData)
+	if readDiags.HasError() {
+		t.Fatalf("networkToModel failed: %v", readDiags)
+	}
+
+	if out.FirewallZoneID.ValueString() != "60b7c25e0cf2732bbdf1e102" {
+		t.Errorf(
+			"networkToModel: FirewallZoneID = %q, want 60b7c25e0cf2732bbdf1e102",
+			out.FirewallZoneID.ValueString(),
+		)
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
