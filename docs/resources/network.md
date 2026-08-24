@@ -139,7 +139,7 @@ resource "unifi_network" "third_party" {
 Optional:
 
 - `enabled` (Boolean) Specifies whether DHCP guarding is enabled.
-- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3).
+- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3). **Known limitation:** for networks with `purpose = "corporate"` or `purpose = "guest"`, the underlying go-unifi API client currently drops this field before it reaches the controller (it is only sent for `purpose = "vlan-only"` networks; tracked upstream as go-unifi#68). Terraform will show a warning in this case. See https://github.com/ubiquiti-community/terraform-provider-unifi/issues/419.
 
 
 <a id="nestedatt--dhcp_relay"></a>

@@ -599,9 +599,15 @@ func (r *networkResource) Schema(
 						Default:             booldefault.StaticBool(false),
 					},
 					"servers": schema.ListAttribute{
-						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3).",
-						Optional:            true,
-						ElementType:         types.StringType,
+						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3). " +
+							"**Known limitation:** for networks with `purpose = \"corporate\"` or " +
+							"`purpose = \"guest\"`, the underlying go-unifi API client currently " +
+							"drops this field before it reaches the controller (it is only sent " +
+							"for `purpose = \"vlan-only\"` networks; tracked upstream as " +
+							"go-unifi#68). Terraform will show a warning in this case. See " +
+							"https://github.com/ubiquiti-community/terraform-provider-unifi/issues/419.",
+						Optional:    true,
+						ElementType: types.StringType,
 						Validators: []validator.List{
 							listvalidator.SizeAtMost(3),
 						},
@@ -997,6 +1003,8 @@ func (r *networkResource) ModifyPlan(
 		}
 	}
 
+	r.warnUnsupportedDhcpGuarding(ctx, req, resp)
+
 	var configPref types.String
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("setting_preference"), &configPref)...)
@@ -1022,6 +1030,70 @@ func (r *networkResource) ModifyPlan(
 			path.Root("setting_preference"),
 			types.StringValue("manual"),
 		)...)
+}
+
+// warnUnsupportedDhcpGuarding surfaces a plan-time warning when dhcp_guarding
+// servers are configured on a "corporate" or "guest" purpose network. The
+// go-unifi client only serializes dhcpd_ip_1..3 into the request body for
+// "vlan-only" networks (unifi/network_encode.go marshalCorporate/marshalGuest
+// omit those fields), so the servers are silently dropped before the
+// controller ever sees them. Tracked upstream as go-unifi#68; see also
+// https://github.com/ubiquiti-community/terraform-provider-unifi/issues/419.
+func (r *networkResource) warnUnsupportedDhcpGuarding(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	var purpose types.String
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("purpose"), &purpose)...)
+	if resp.Diagnostics.HasError() || purpose.IsNull() || purpose.IsUnknown() {
+		return
+	}
+	if purpose.ValueString() != unifi.PurposeCorporate &&
+		purpose.ValueString() != unifi.PurposeGuest {
+		return
+	}
+
+	var thirdPartyGateway types.Bool
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("third_party_gateway"), &thirdPartyGateway)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if thirdPartyGateway.ValueBool() {
+		// third_party_gateway forces purpose to vlan-only, which go-unifi
+		// serializes dhcp guarding fields for correctly.
+		return
+	}
+
+	var guarding types.Object
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("dhcp_guarding"), &guarding)...)
+	if resp.Diagnostics.HasError() || guarding.IsNull() || guarding.IsUnknown() {
+		return
+	}
+
+	var dg dhcpGuardingModel
+	resp.Diagnostics.Append(guarding.As(ctx, &dg, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if dg.Servers.IsNull() || dg.Servers.IsUnknown() || len(dg.Servers.Elements()) == 0 {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeWarning(
+		path.Root("dhcp_guarding").AtName("servers"),
+		"DHCP Guarding Servers Not Sent for This Network Purpose",
+		"The go-unifi API client currently only transmits dhcp_guarding.servers to the "+
+			"controller for networks with purpose = \"vlan-only\". For purpose = \""+
+			purpose.ValueString()+"\", the configured servers are accepted by Terraform "+
+			"but silently dropped before the request reaches the controller. This is a "+
+			"known upstream limitation in go-unifi (go-unifi#68), not a bug in this "+
+			"provider's configuration handling; track progress at "+
+			"https://github.com/ubiquiti-community/terraform-provider-unifi/issues/419.",
+	)
 }
 
 func (r *networkResource) Create(
