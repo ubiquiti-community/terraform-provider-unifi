@@ -15,6 +15,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
@@ -1566,6 +1567,129 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 		}
 		if n := len(model.IPAliases.Elements()); n != 0 {
 			t.Errorf("IPAliases has %d elements, want 0", n)
+		}
+	})
+}
+
+// Test_networkResource_networkToModel_dnsServersEmptyList guards #429:
+// dhcp_server.dns_servers and dhcp_server.wins.addresses are Optional but not
+// Computed, so a config of `[]` plans an empty (non-null) list. Read must
+// mirror an empty API response as an empty list when the previous plan/state
+// held an empty list, rather than always collapsing to null - otherwise
+// Terraform reports "provider produced inconsistent result after apply" and
+// the empty value can never be expressed. A previous null (never configured)
+// must still read back as null.
+func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
+	r := &networkResource{}
+	ctx := context.Background()
+
+	// The controller holds no DNS servers and no WINS addresses.
+	network := &unifi.Network{
+		ID:      "net-1",
+		Name:    strPtr("test-net"),
+		Purpose: unifi.PurposeCorporate,
+		Enabled: true,
+	}
+
+	base := func() *networkResourceModel {
+		return &networkResourceModel{
+			DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:   types.ListNull(types.StringType),
+			IPv6Aliases: types.ListNull(types.StringType),
+		}
+	}
+
+	dhcpServerObj := func(dnsServers, winsAddresses types.List) types.Object {
+		wins := types.ObjectValueMust(winsModel{}.AttributeTypes(), map[string]attr.Value{
+			"enabled":   types.BoolValue(false),
+			"addresses": winsAddresses,
+		})
+		return types.ObjectValueMust(dhcpServerModel{}.AttributeTypes(), map[string]attr.Value{
+			"boot":                types.ObjectNull(dhcpBootModel{}.AttributeTypes()),
+			"enabled":             types.BoolValue(true),
+			"start":               types.StringNull(),
+			"stop":                types.StringNull(),
+			"gateway_enabled":     types.BoolValue(false),
+			"conflict_checking":   types.BoolValue(true),
+			"ntp_enabled":         types.BoolValue(false),
+			"ntp_servers":         types.ListNull(types.StringType),
+			"time_offset_enabled": types.BoolValue(false),
+			"dns_enabled":         types.BoolValue(false),
+			"leasetime":           timetypes.NewGoDurationNull(),
+			"wins":                wins,
+			"wpad_url":            types.StringNull(),
+			"tftp_server":         types.StringNull(),
+			"unifi_controller":    types.StringNull(),
+			"dns_servers":         dnsServers,
+		})
+	}
+
+	emptyList := types.ListValueMust(types.StringType, []attr.Value{})
+	nullList := types.ListNull(types.StringType)
+
+	t.Run("empty config list round-trips as empty list, not null", func(t *testing.T) {
+		prev := base()
+		prev.DhcpServer = dhcpServerObj(emptyList, emptyList)
+
+		var model networkResourceModel
+		d := r.networkToModel(ctx, network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+
+		var got dhcpServerModel
+		d = model.DhcpServer.As(ctx, &got, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting dhcp_server: %v", d)
+		}
+		if got.DnsServers.IsNull() {
+			t.Errorf("dns_servers = null, want empty list")
+		}
+		if len(got.DnsServers.Elements()) != 0 {
+			t.Errorf("dns_servers = %v, want 0 elements", got.DnsServers.Elements())
+		}
+
+		var gotWins winsModel
+		d = got.Wins.As(ctx, &gotWins, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting wins: %v", d)
+		}
+		if gotWins.Addresses.IsNull() {
+			t.Errorf("wins.addresses = null, want empty list")
+		}
+	})
+
+	t.Run("never-configured stays null", func(t *testing.T) {
+		prev := base()
+		prev.DhcpServer = dhcpServerObj(nullList, nullList)
+
+		var model networkResourceModel
+		d := r.networkToModel(ctx, network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+
+		var got dhcpServerModel
+		d = model.DhcpServer.As(ctx, &got, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting dhcp_server: %v", d)
+		}
+		if !got.DnsServers.IsNull() {
+			t.Errorf("dns_servers = %v, want null", got.DnsServers)
+		}
+
+		var gotWins winsModel
+		d = got.Wins.As(ctx, &gotWins, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting wins: %v", d)
+		}
+		if !gotWins.Addresses.IsNull() {
+			t.Errorf("wins.addresses = %v, want null", gotWins.Addresses)
 		}
 	})
 }

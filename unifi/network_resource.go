@@ -1508,6 +1508,26 @@ func preserveUnmanagedDhcpGuarding(
 	return true
 }
 
+// stringListOrNull builds a Terraform list from values. When values is empty,
+// it mirrors previous's null-ness instead of always collapsing to null: these
+// list attributes are Optional but not Computed, so an empty-list plan (e.g.
+// dns_servers = []) must read back as an empty list, not null, or Terraform
+// reports "provider produced inconsistent result after apply". A previous
+// value of null (attribute never configured) is preserved as null.
+func stringListOrNull(
+	ctx context.Context,
+	values []string,
+	previous types.List,
+) (types.List, diag.Diagnostics) {
+	if len(values) > 0 {
+		return types.ListValueFrom(ctx, types.StringType, values)
+	}
+	if !previous.IsNull() && !previous.IsUnknown() {
+		return types.ListValueMust(types.StringType, []attr.Value{}), nil
+	}
+	return types.ListNull(types.StringType), nil
+}
+
 // modelToNetwork converts from Terraform model to unifi.Network.
 func (r *networkResource) modelToNetwork(
 	ctx context.Context,
@@ -2242,6 +2262,21 @@ func (r *networkResource) networkToModel(
 			return types.StringValue(*ptr)
 		}
 
+		// Extract the previous dhcp_server value (from plan or prior state) so
+		// list attributes below can distinguish "never configured" (null) from
+		// "configured empty" (empty list) when the API reports no values.
+		var previousDhcpServer dhcpServerModel
+		var previousWins winsModel
+		if previousModel != nil && !previousModel.DhcpServer.IsNull() &&
+			!previousModel.DhcpServer.IsUnknown() {
+			d := previousModel.DhcpServer.As(ctx, &previousDhcpServer, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+			if !previousDhcpServer.Wins.IsNull() && !previousDhcpServer.Wins.IsUnknown() {
+				d := previousDhcpServer.Wins.As(ctx, &previousWins, basetypes.ObjectAsOptions{})
+				diags.Append(d...)
+			}
+		}
+
 		bootServer := types.StringNull()
 		if network.DHCPDBootServer != "" {
 			bootServer = types.StringValue(network.DHCPDBootServer)
@@ -2274,13 +2309,8 @@ func (r *networkResource) networkToModel(
 			dnsServers = append(dnsServers, network.DHCPDDNS4)
 		}
 
-		var dnsServersList types.List
-		if len(dnsServers) > 0 {
-			dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)
-			diags.Append(d...)
-		} else {
-			dnsServersList = types.ListNull(types.StringType)
-		}
+		dnsServersList, d := stringListOrNull(ctx, dnsServers, previousDhcpServer.DnsServers)
+		diags.Append(d...)
 
 		// Build NTP servers list from DHCPDNtp1-2
 		var ntpServers []string
@@ -2291,13 +2321,8 @@ func (r *networkResource) networkToModel(
 			ntpServers = append(ntpServers, *network.DHCPDNtp2)
 		}
 
-		var ntpServersList types.List
-		if len(ntpServers) > 0 {
-			ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
-			diags.Append(d...)
-		} else {
-			ntpServersList = types.ListNull(types.StringType)
-		}
+		ntpServersList, d := stringListOrNull(ctx, ntpServers, previousDhcpServer.NtpServers)
+		diags.Append(d...)
 
 		// Build WINS addresses list from DHCPDWins1-2
 		var winsAddresses []string
@@ -2308,13 +2333,8 @@ func (r *networkResource) networkToModel(
 			winsAddresses = append(winsAddresses, *network.DHCPDWins2)
 		}
 
-		var winsAddressesList types.List
-		if len(winsAddresses) > 0 {
-			winsAddressesList, d = types.ListValueFrom(ctx, types.StringType, winsAddresses)
-			diags.Append(d...)
-		} else {
-			winsAddressesList = types.ListNull(types.StringType)
-		}
+		winsAddressesList, d := stringListOrNull(ctx, winsAddresses, previousWins.Addresses)
+		diags.Append(d...)
 
 		winsValue := winsModel{
 			Enabled:   types.BoolValue(network.DHCPDWinsEnabled),
