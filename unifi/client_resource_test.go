@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -154,6 +155,37 @@ func TestClientToModel_FixedIPEnabledKeepsValue(t *testing.T) {
 	}
 	if model.FixedIP.ValueString() != "10.26.20.56" {
 		t.Errorf("fixed_ip: want 10.26.20.56, got %q", model.FixedIP.ValueString())
+	}
+}
+
+// TestClientResourceSchema_ObservedAttributesHaveNoUseStateForUnknown guards
+// #428: last_ip and hostname are values the controller reports from live
+// observation, not derived from any configured attribute, so they must not
+// carry stringplanmodifier.UseStateForUnknown(). That modifier pins the
+// planned value to the prior state, and Terraform then requires the applied
+// value to match exactly — but the controller can legitimately report a new
+// last_ip/hostname between plan and apply, which turned every unrelated
+// update into "Provider produced inconsistent result after apply: .last_ip".
+func TestClientResourceSchema_ObservedAttributesHaveNoUseStateForUnknown(t *testing.T) {
+	r := &clientResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	for _, name := range []string{"last_ip", "hostname"} {
+		attribute, ok := resp.Schema.Attributes[name]
+		if !ok {
+			t.Fatalf("schema missing attribute %q", name)
+		}
+		strAttr, ok := attribute.(schema.StringAttribute)
+		if !ok {
+			t.Fatalf("attribute %q: want schema.StringAttribute, got %T", name, attribute)
+		}
+		if len(strAttr.PlanModifiers) != 0 {
+			t.Errorf(
+				"attribute %q: want no plan modifiers (value is purely controller-observed), got %d",
+				name, len(strAttr.PlanModifiers),
+			)
+		}
 	}
 }
 
