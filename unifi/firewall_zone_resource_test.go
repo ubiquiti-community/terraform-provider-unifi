@@ -3,13 +3,19 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -176,6 +182,9 @@ func Test_firewallZoneResource_IdentitySchema(t *testing.T) {
 			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
 			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
 				t.Error("IdentitySchema missing 'id' attribute")
+			}
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["site"]; !ok {
+				t.Error("IdentitySchema missing 'site' attribute")
 			}
 		})
 	}
@@ -467,4 +476,238 @@ func Test_firewallZoneResource_ListResourceConfigSchema(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// ImportState unit tests. Zone-based firewall is not available on the demo
+// acceptance controller (zone creation fails with
+// api.err.CouldNotFindHotspotFirewallZone), so the import entry paths are
+// covered here without a live controller.
+// ---------------------------------------------------------------------------
+
+func newFirewallZoneImportResponse(
+	ctx context.Context,
+	r *firewallZoneResource,
+) *fwresource.ImportStateResponse {
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	var identityResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &identityResp)
+
+	return &fwresource.ImportStateResponse{
+		State: tfsdk.State{
+			Raw: tftypes.NewValue(
+				schemaResp.Schema.Type().TerraformType(ctx),
+				nil,
+			),
+			Schema: schemaResp.Schema,
+		},
+		Identity: &tfsdk.ResourceIdentity{
+			Raw: tftypes.NewValue(
+				identityResp.IdentitySchema.Type().TerraformType(ctx),
+				nil,
+			),
+			Schema: identityResp.IdentitySchema,
+		},
+	}
+}
+
+func assertFirewallZoneImportString(
+	t *testing.T,
+	ctx context.Context,
+	state tfsdk.State,
+	attribute string,
+	want string,
+) {
+	t.Helper()
+	var got types.String
+	diags := state.GetAttribute(ctx, path.Root(attribute), &got)
+	if diags.HasError() {
+		t.Fatalf("reading state attribute %q: %v", attribute, diags)
+	}
+	if got.ValueString() != want {
+		t.Errorf("state attribute %q = %q, want %q", attribute, got.ValueString(), want)
+	}
+}
+
+func assertFirewallZoneImportIdentityAttr(
+	t *testing.T,
+	ctx context.Context,
+	identity *tfsdk.ResourceIdentity,
+	attribute string,
+	want string,
+) {
+	t.Helper()
+	var got types.String
+	diags := identity.GetAttribute(ctx, path.Root(attribute), &got)
+	if diags.HasError() {
+		t.Fatalf("reading identity attribute %q: %v", attribute, diags)
+	}
+	if got.ValueString() != want {
+		t.Errorf("identity %s = %q, want %q", attribute, got.ValueString(), want)
+	}
+}
+
+func TestFirewallZoneImportStateByID(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallZoneResource{}
+	resp := newFirewallZoneImportResponse(ctx, r)
+
+	r.ImportState(ctx, fwresource.ImportStateRequest{ID: "zone-id"}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+	}
+	assertFirewallZoneImportString(t, ctx, resp.State, "id", "zone-id")
+	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "id", "zone-id")
+}
+
+func TestFirewallZoneImportStateBySiteAndID(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallZoneResource{}
+	resp := newFirewallZoneImportResponse(ctx, r)
+
+	r.ImportState(ctx, fwresource.ImportStateRequest{ID: "other-site:zone-id"}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+	}
+	assertFirewallZoneImportString(t, ctx, resp.State, "site", "other-site")
+	assertFirewallZoneImportString(t, ctx, resp.State, "id", "zone-id")
+	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "id", "zone-id")
+	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "site", "other-site")
+}
+
+func TestFirewallZoneImportStateByIdentity(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallZoneResource{}
+	resp := newFirewallZoneImportResponse(ctx, r)
+	const id = "zone-id"
+
+	reqIdentity := &tfsdk.ResourceIdentity{
+		Raw:    resp.Identity.Raw.Copy(),
+		Schema: resp.Identity.Schema,
+	}
+	if diags := reqIdentity.SetAttribute(ctx, path.Root("id"), id); diags.HasError() {
+		t.Fatalf("setting request identity: %v", diags)
+	}
+	resp.Identity = &tfsdk.ResourceIdentity{
+		Raw:    reqIdentity.Raw.Copy(),
+		Schema: reqIdentity.Schema,
+	}
+
+	r.ImportState(ctx, fwresource.ImportStateRequest{Identity: reqIdentity}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+	}
+	assertFirewallZoneImportString(t, ctx, resp.State, "id", id)
+	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "id", id)
+}
+
+func TestFirewallZoneImportStateByIdentityWithSite(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallZoneResource{}
+	resp := newFirewallZoneImportResponse(ctx, r)
+	const id = "zone-id"
+	const site = "non-default"
+
+	reqIdentity := &tfsdk.ResourceIdentity{
+		Raw:    resp.Identity.Raw.Copy(),
+		Schema: resp.Identity.Schema,
+	}
+	if diags := reqIdentity.SetAttribute(ctx, path.Root("id"), id); diags.HasError() {
+		t.Fatalf("setting request identity id: %v", diags)
+	}
+	if diags := reqIdentity.SetAttribute(ctx, path.Root("site"), site); diags.HasError() {
+		t.Fatalf("setting request identity site: %v", diags)
+	}
+	resp.Identity = &tfsdk.ResourceIdentity{
+		Raw:    reqIdentity.Raw.Copy(),
+		Schema: reqIdentity.Schema,
+	}
+
+	r.ImportState(ctx, fwresource.ImportStateRequest{Identity: reqIdentity}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+	}
+	assertFirewallZoneImportString(t, ctx, resp.State, "id", id)
+	assertFirewallZoneImportString(t, ctx, resp.State, "site", site)
+	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "id", id)
+	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "site", site)
+}
+
+// ---------------------------------------------------------------------------
+// Acceptance tests. These are gated on actual zone-based firewall support:
+// controllers that have never been migrated to the zone-based firewall (such
+// as the dockerized demo controller) reject zone creation with
+// api.err.CouldNotFindHotspotFirewallZone, so the tests skip there.
+// ---------------------------------------------------------------------------
+
+// testAccFirewallZonePreCheck skips the test when the controller cannot manage
+// firewall zones. It probes by creating (and immediately deleting) a zone.
+func testAccFirewallZonePreCheck(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	client, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:       os.Getenv("UNIFI_API"),
+		Username:      os.Getenv("UNIFI_USERNAME"),
+		Password:      os.Getenv("UNIFI_PASSWORD"),
+		AllowInsecure: true,
+	})
+	if err != nil {
+		t.Skipf("cannot probe zone-based firewall support: %s", err)
+	}
+	probe, err := client.CreateFirewallZone(ctx, "default", &unifi.FirewallZone{
+		Name:       acctest.RandomWithPrefix("tfacc-zone-probe"),
+		NetworkIDs: []string{},
+	})
+	if err != nil {
+		t.Skipf("zone-based firewall not supported by this controller: %s", err)
+	}
+	_ = client.DeleteFirewallZone(ctx, "default", probe.ID)
+}
+
+func TestAccFirewallZone_basic(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			preCheck(t)
+			testAccFirewallZonePreCheck(t)
+		},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccFirewallZoneConfig_basic(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_firewall_zone.test", "id"),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_zone.test",
+						"name",
+						"tfacc-zone-basic",
+					),
+				),
+			},
+			{
+				ResourceName:      "unifi_firewall_zone.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				ResourceName:    "unifi_firewall_zone.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+		},
+	})
+}
+
+func testAccFirewallZoneConfig_basic() string {
+	return `
+resource "unifi_firewall_zone" "test" {
+	name        = "tfacc-zone-basic"
+	network_ids = []
+}
+`
 }
