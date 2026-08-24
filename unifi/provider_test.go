@@ -34,7 +34,21 @@ func TestMain(m *testing.M) {
 	}
 
 	// UNIFI_SKIP_CONTAINER bypasses docker-compose and uses pre-set UNIFI_* env vars.
+	// The controller still needs the same readiness wait and seed state (default
+	// WAN network) that the compose path performs, or tests relying on
+	// defaultWANNetworkID fail on a fresh controller.
 	if os.Getenv("UNIFI_SKIP_CONTAINER") != "" {
+		ctx := context.Background()
+		logger := NewLogger(ctx)
+		if _, err := waitForUniFiAPI(
+			ctx,
+			logger,
+			os.Getenv("UNIFI_API"),
+			os.Getenv("UNIFI_USERNAME"),
+			os.Getenv("UNIFI_PASSWORD"),
+		); err != nil {
+			panic(err)
+		}
 		os.Exit(m.Run())
 	}
 
