@@ -46,6 +46,12 @@ type firewallZoneResource struct {
 	client *Client
 }
 
+// firewallZoneIdentityModel describes the resource identity data model.
+type firewallZoneIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // firewallZoneListConfigModel describes the list configuration model.
 type firewallZoneListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -87,6 +93,9 @@ func (r *firewallZoneResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -209,7 +218,11 @@ func (r *firewallZoneResource) Create(
 	}
 
 	resp.Diagnostics.Append(r.firewallZoneToModel(ctx, created, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	identity := firewallZoneIdentityModel{
+		ID:   data.ID,
+		Site: data.Site,
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -233,12 +246,33 @@ func (r *firewallZoneResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support. This also lets Read work from an identity-only state
+	// (the refresh right after an identity-based import).
+	var identity firewallZoneIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = data.ID
+		identity.Site = data.Site
+	}
+
+	id := data.ID.ValueString()
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
 	site := data.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
 
-	zone, err := r.client.GetFirewallZone(ctx, site, data.ID.ValueString())
+	zone, err := r.client.GetFirewallZone(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -246,13 +280,16 @@ func (r *firewallZoneResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Firewall Zone",
-			"Could not read firewall zone with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read firewall zone with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	resp.Diagnostics.Append(r.firewallZoneToModel(ctx, zone, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = data.ID
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -295,7 +332,23 @@ func (r *firewallZoneResource) Update(
 	}
 
 	resp.Diagnostics.Append(r.firewallZoneToModel(ctx, updated, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+
+	// Identity should not change during update; fall back to state for
+	// resources created before identity support.
+	identity := firewallZoneIdentityModel{
+		ID:   data.ID,
+		Site: data.Site,
+	}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			identity.ID = data.ID
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -336,6 +389,22 @@ func (r *firewallZoneResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Identity-based import (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity firewallZoneIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...,
+			)
+		}
+		return
+	}
+
 	// Import formats:
 	//   "id"            - zone id on the default site
 	//   "site:id"       - zone id on an explicit site
@@ -393,6 +462,16 @@ func (r *firewallZoneResource) ImportState(
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+
+	// Mirror into identity so it is populated from the first refresh on.
+	if resp.Identity != nil {
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
+		if site != "" {
+			resp.Diagnostics.Append(
+				resp.Identity.SetAttribute(ctx, path.Root("site"), site)...,
+			)
+		}
+	}
 }
 
 // modelToFirewallZone converts the Terraform model to the API struct.
@@ -524,6 +603,13 @@ func (r *firewallZoneResource) List(
 					ctx,
 					path.Root("id"),
 					types.StringValue(zone.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
 				)...,
 			)
 

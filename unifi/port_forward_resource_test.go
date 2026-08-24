@@ -66,6 +66,11 @@ func TestAccPortForward_basic(t *testing.T) {
 					"enabled",
 				},
 			},
+			{
+				ResourceName:    "unifi_port_forward.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 		},
 	})
 }
@@ -791,6 +796,12 @@ func Test_portForwardResource_IdentitySchema(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
+				t.Error("IdentitySchema missing 'id' attribute")
+			}
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["site"]; !ok {
+				t.Error("IdentitySchema missing 'site' attribute")
+			}
 		})
 	}
 }

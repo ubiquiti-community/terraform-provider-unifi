@@ -42,6 +42,11 @@ func TestAccFirewallGroupFramework_basic(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
+			{
+				ResourceName:    "unifi_firewall_group.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 		},
 	})
 }
@@ -178,6 +183,9 @@ func Test_firewallGroupResource_IdentitySchema(t *testing.T) {
 			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
 			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
 				t.Error("IdentitySchema missing 'id' attribute")
+			}
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["site"]; !ok {
+				t.Error("IdentitySchema missing 'site' attribute")
 			}
 		})
 	}

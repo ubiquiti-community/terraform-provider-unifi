@@ -24,7 +24,12 @@ func TestAccFirewallPolicy_scheduleRoundTrip(t *testing.T) {
 	const resourceName = "unifi_firewall_policy.test"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
+		PreCheck: func() {
+			preCheck(t)
+			// Policies live on firewall zones; skip on controllers that
+			// cannot manage zones (e.g. the dockerized demo controller).
+			testAccFirewallZonePreCheck(t)
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccFirewallPolicyCheckDestroy,
 		Steps: []resource.TestStep{
@@ -89,6 +94,55 @@ func TestAccFirewallPolicy_scheduleRoundTrip(t *testing.T) {
 				ResourceName:      resourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+// TestAccFirewallPolicy_import covers both import entry paths: the classic
+// string import (by controller object id) and the Terraform 1.12+ import
+// block with a resource identity.
+func TestAccFirewallPolicy_import(t *testing.T) {
+	if os.Getenv("UNIFI_SKIP_CONTAINER") == "" {
+		t.Skip(
+			"firewall policies require a real zone-based firewall controller; " +
+				"set UNIFI_SKIP_CONTAINER to run",
+		)
+	}
+
+	name := acctest.RandomWithPrefix("tf-acc-firewall-import")
+	const resourceName = "unifi_firewall_policy.test"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			preCheck(t)
+			// Policies live on firewall zones; skip on controllers that
+			// cannot manage zones (e.g. the dockerized demo controller).
+			testAccFirewallZonePreCheck(t)
+		},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccFirewallPolicyCheckDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccFirewallPolicyScheduleConfig(name, "import test"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(resourceName, "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", name),
+				),
+			},
+			{
+				Config:   testAccFirewallPolicyScheduleConfig(name, "import test"),
+				PlanOnly: true,
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				ResourceName:    resourceName,
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
 			},
 		},
 	})

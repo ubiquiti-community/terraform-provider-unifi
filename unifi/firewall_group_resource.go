@@ -58,6 +58,12 @@ type firewallGroupResourceModel struct {
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
+// firewallGroupIdentityModel describes the resource identity data model.
+type firewallGroupIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // firewallGroupListConfigModel describes the list configuration model.
 type firewallGroupListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -88,6 +94,9 @@ func (r *firewallGroupResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -215,7 +224,11 @@ func (r *firewallGroupResource) Create(
 	plan.Site = types.StringValue(site)
 	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, apiFirewallGroup, &plan, site)...)
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+	identity := firewallGroupIdentityModel{
+		ID:   plan.ID,
+		Site: plan.Site,
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -240,8 +253,28 @@ func (r *firewallGroupResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support. This also lets Read work from an identity-only state
+	// (the refresh right after an identity-based import).
+	var identity firewallGroupIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+
 	id := state.ID.ValueString()
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
 	site := state.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -262,7 +295,10 @@ func (r *firewallGroupResource) Read(
 	// Update state from API response
 	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, firewallGroup, &state, site)...)
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = state.ID
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -352,7 +388,22 @@ func (r *firewallGroupResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Identity should not change during update; fall back to state for
+	// resources created before identity support.
+	identity := firewallGroupIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			identity.ID = state.ID
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -401,18 +452,48 @@ func (r *firewallGroupResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Identity-based import (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity firewallGroupIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...,
+			)
+		}
+		return
+	}
+
+	// Import by ID string ("id" or "site:id").
 	idParts, diags := util.ParseImportID(req.ID, 1, 2)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if site := idParts["site"]; site != "" {
+	site := idParts["site"]
+	id := idParts["id"]
+
+	if site != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 	}
 
-	if id := idParts["id"]; id != "" {
+	if id != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	}
+
+	// Mirror into identity so it is populated from the first refresh on.
+	if resp.Identity != nil {
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
+		if site != "" {
+			resp.Diagnostics.Append(
+				resp.Identity.SetAttribute(ctx, path.Root("site"), site)...,
+			)
+		}
 	}
 }
 
@@ -595,6 +676,13 @@ func (r *firewallGroupResource) List(
 					ctx,
 					path.Root("id"),
 					types.StringValue(group.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
 				)...,
 			)
 

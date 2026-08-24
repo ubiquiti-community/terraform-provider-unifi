@@ -405,6 +405,7 @@ func TestFirewallPolicyImportStateByID(t *testing.T) {
 		resp.Identity,
 		"policy-id",
 	)
+	assertFirewallPolicyImportIdentityAttr(t, ctx, resp.Identity, "site", "default")
 }
 
 func TestFirewallPolicyImportStateByIdentity(t *testing.T) {
@@ -433,6 +434,41 @@ func TestFirewallPolicyImportStateByIdentity(t *testing.T) {
 	}
 	assertFirewallPolicyImportString(t, ctx, resp.State, "id", id)
 	assertFirewallPolicyImportIdentity(t, ctx, resp.Identity, id)
+}
+
+func TestFirewallPolicyImportStateByIdentityWithSite(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallPolicyResource{}
+	resp := newFirewallPolicyImportResponse(ctx, r)
+	const id = "policy-id"
+	const site = "non-default"
+
+	reqIdentity := &tfsdk.ResourceIdentity{
+		Raw:    resp.Identity.Raw.Copy(),
+		Schema: resp.Identity.Schema,
+	}
+	diags := reqIdentity.SetAttribute(ctx, path.Root("id"), id)
+	if diags.HasError() {
+		t.Fatalf("setting request identity id: %v", diags)
+	}
+	diags = reqIdentity.SetAttribute(ctx, path.Root("site"), site)
+	if diags.HasError() {
+		t.Fatalf("setting request identity site: %v", diags)
+	}
+	resp.Identity = &tfsdk.ResourceIdentity{
+		Raw:    reqIdentity.Raw.Copy(),
+		Schema: reqIdentity.Schema,
+	}
+
+	r.ImportState(ctx, fwresource.ImportStateRequest{Identity: reqIdentity}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+	}
+	assertFirewallPolicyImportString(t, ctx, resp.State, "id", id)
+	assertFirewallPolicyImportString(t, ctx, resp.State, "site", site)
+	assertFirewallPolicyImportIdentity(t, ctx, resp.Identity, id)
+	assertFirewallPolicyImportIdentityAttr(t, ctx, resp.Identity, "site", site)
 }
 
 func newFirewallPolicyImportResponse(
@@ -488,13 +524,24 @@ func assertFirewallPolicyImportIdentity(
 	want string,
 ) {
 	t.Helper()
+	assertFirewallPolicyImportIdentityAttr(t, ctx, identity, "id", want)
+}
+
+func assertFirewallPolicyImportIdentityAttr(
+	t *testing.T,
+	ctx context.Context,
+	identity *tfsdk.ResourceIdentity,
+	attribute string,
+	want string,
+) {
+	t.Helper()
 	var got types.String
-	diags := identity.GetAttribute(ctx, path.Root("id"), &got)
+	diags := identity.GetAttribute(ctx, path.Root(attribute), &got)
 	if diags.HasError() {
-		t.Fatalf("reading identity: %v", diags)
+		t.Fatalf("reading identity attribute %q: %v", attribute, diags)
 	}
 	if got.ValueString() != want {
-		t.Errorf("identity id = %q, want %q", got.ValueString(), want)
+		t.Errorf("identity %s = %q, want %q", attribute, got.ValueString(), want)
 	}
 }
 
@@ -600,6 +647,9 @@ func Test_firewallPolicyResource_IdentitySchema(t *testing.T) {
 			tt.r.IdentitySchema(tt.args.in0, tt.args.in1, tt.args.resp)
 			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
 				t.Error("IdentitySchema missing 'id' attribute")
+			}
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["site"]; !ok {
+				t.Error("IdentitySchema missing 'site' attribute")
 			}
 		})
 	}
