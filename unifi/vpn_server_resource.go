@@ -62,7 +62,8 @@ type vpnServerResource struct {
 }
 
 type vpnServerIdentityModel struct {
-	ID types.String `tfsdk:"id"`
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
 }
 
 // vpnServerListConfigModel describes the list configuration model.
@@ -193,9 +194,16 @@ func (r *vpnServerResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		// The optional "site" attribute defaults to the provider site on
+		// import. Identities stored by older provider versions ({id} only)
+		// decode under this schema with site as null; they are passed
+		// through unchanged on refresh.
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -534,7 +542,7 @@ func (r *vpnServerResource) Create(
 		return
 	}
 
-	idModel := vpnServerIdentityModel{ID: data.ID}
+	idModel := vpnServerIdentityModel{ID: data.ID, Site: data.Site}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -559,20 +567,43 @@ func (r *vpnServerResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Get the resource identity, tolerating null/empty identities (state
+	// written by older provider versions).
+	var identity vpnServerIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	site := data.Site.ValueString()
 	if site == "" {
+		site = identity.Site.ValueString()
+	}
+	if site == "" {
 		site = r.client.Site
+	}
+
+	// Prefer the state ID; fall back to the identity ID (the post-import
+	// refresh may run from an identity-only state).
+	lookupID := ""
+	if !data.ID.IsNull() && !data.ID.IsUnknown() {
+		lookupID = data.ID.ValueString()
+	}
+	if lookupID == "" && !identity.ID.IsNull() && !identity.ID.IsUnknown() {
+		lookupID = identity.ID.ValueString()
 	}
 
 	var err error
 	var network *unifi.Network
 
-	if !data.ID.IsNull() && !data.ID.IsUnknown() {
-		network, err = r.client.GetNetwork(ctx, site, data.ID.ValueString())
+	if lookupID != "" {
+		network, err = r.client.GetNetwork(ctx, site, lookupID)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Reading VPN Server",
-				"Could not read VPN server ID "+data.ID.ValueString()+": "+err.Error(),
+				"Could not read VPN server ID "+lookupID+": "+err.Error(),
 			)
 			return
 		}
@@ -599,8 +630,13 @@ func (r *vpnServerResource) Read(
 		return
 	}
 
-	idModel := vpnServerIdentityModel{ID: data.ID}
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	// Terraform rejects any modification of an existing stored identity
+	// (including filling a null attribute), so pass an incoming identity
+	// through unchanged and only derive one when none is stored yet.
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		idModel := vpnServerIdentityModel{ID: data.ID, Site: data.Site}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -658,8 +694,12 @@ func (r *vpnServerResource) Update(
 		return
 	}
 
-	idModel := vpnServerIdentityModel{ID: data.ID}
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	// Pass an existing identity through unchanged; only derive one when
+	// none is stored yet (see Read).
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		idModel := vpnServerIdentityModel{ID: data.ID, Site: data.Site}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -704,31 +744,69 @@ func (r *vpnServerResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		req.ID = idParts[1]
-	}
-
-	if strings.HasPrefix(req.ID, "name=") {
-		req.ID = strings.TrimPrefix(req.ID, "name=")
-		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
-	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
-		idModel := vpnServerIdentityModel{ID: types.StringValue(req.ID)}
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+	// Identity-based import (Terraform 1.12+ import block with identity).
+	if req.ID == "" {
+		if req.Identity == nil {
+			resp.Diagnostics.AddError(
+				"Invalid Import Request",
+				"Importing a VPN server requires either an import ID or a resource identity.",
+			)
+			return
+		}
+		var identity vpnServerIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		resource.ImportStatePassthroughWithIdentity(
-			ctx,
-			path.Root("id"),
-			path.Root("id"),
-			req,
-			resp,
-		)
-	} else {
-		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"The `id` identity attribute is required to import a VPN server.",
+			)
+			return
+		}
+		if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+			identity.Site = types.StringValue(r.client.Site)
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
+		return
 	}
+
+	// Classic string import: "id", "site:id", "name=<name>", "site:name=<name>",
+	// or a bare network name.
+	importID := req.ID
+	site := ""
+	if idParts := strings.Split(importID, ":"); len(idParts) == 2 {
+		site = idParts[0]
+		importID = idParts[1]
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+	}
+	if site == "" {
+		site = r.client.Site
+	}
+
+	if name, ok := strings.CutPrefix(importID, "name="); ok {
+		// Import by name; Read resolves the ID and fills the identity.
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
+		return
+	}
+
+	if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(importID) {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), importID)...)
+		idModel := vpnServerIdentityModel{
+			ID:   types.StringValue(importID),
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+		return
+	}
+
+	// Fall back to import by name; Read resolves the ID and fills the identity.
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), importID)...)
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
@@ -1151,11 +1229,10 @@ func (r *vpnServerResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(network.ID),
-				)...,
+				result.Identity.Set(ctx, vpnServerIdentityModel{
+					ID:   types.StringValue(network.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.

@@ -3,14 +3,19 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -20,6 +25,20 @@ import (
 
 func testAccDNSRecordCheckDestroy(s *terraform.State) error {
 	ctx := context.Background()
+	apiURL := os.Getenv("UNIFI_API")
+	if apiURL == "" {
+		return nil
+	}
+	apiClient, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:       apiURL,
+		Username:      os.Getenv("UNIFI_USERNAME"),
+		Password:      os.Getenv("UNIFI_PASSWORD"),
+		AllowInsecure: true,
+	})
+	if err != nil {
+		return nil //nolint:nilerr // best-effort check; skip when no live client
+	}
+	client := &Client{ApiClient: apiClient, Site: "default"}
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "unifi_dns_record" {
 			continue
@@ -27,24 +46,8 @@ func testAccDNSRecordCheckDestroy(s *terraform.State) error {
 		id := rs.Primary.ID
 		site := rs.Primary.Attributes["site"]
 		if site == "" {
-			site = "default"
+			site = client.Site
 		}
-		client := &Client{
-			ApiClient: nil, // populated by the acceptance test provider
-			Site:      site,
-		}
-		// Use the shared provider client via a direct API call.
-		apiClient, err := unifi.New(ctx, &unifi.Config{
-			BaseURL:       rs.Primary.Attributes["api_url"],
-			Username:      rs.Primary.Attributes["username"],
-			Password:      rs.Primary.Attributes["password"],
-			AllowInsecure: true,
-		})
-		if err != nil {
-			// If we can't build a client, skip the check.
-			return nil //nolint:nilerr // best-effort check; skip when no live client
-		}
-		client.ApiClient = apiClient
 		_, err = client.GetDNSRecord(ctx, site, id)
 		if err != nil {
 			if _, ok := err.(*unifi.NotFoundError); ok {
@@ -66,16 +69,33 @@ func TestAccDNSRecordFramework_basic(t *testing.T) {
 			{
 				Config: testAccDNSRecordFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_dns_record.test", "name", "test-record"),
+					resource.TestCheckResourceAttr(
+						"unifi_dns_record.test",
+						"name",
+						"test-record.example.com",
+					),
 					resource.TestCheckResourceAttr(
 						"unifi_dns_record.test",
 						"value",
 						"192.168.1.100",
 					),
-					resource.TestCheckResourceAttr("unifi_dns_record.test", "priority", "10"),
+					resource.TestCheckResourceAttr("unifi_dns_record.test", "record_type", "A"),
+					resource.TestCheckResourceAttr("unifi_dns_record.test", "ttl", "5m0s"),
 					resource.TestCheckResourceAttr("unifi_dns_record.test", "enabled", "true"),
+					resource.TestCheckResourceAttrSet("unifi_dns_record.test", "id"),
 				),
-				ExpectError: regexp.MustCompile(".*"),
+			},
+			// String-ID import (classic `terraform import` with the record ID).
+			{
+				ResourceName:      "unifi_dns_record.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_dns_record.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
 			},
 		},
 	})
@@ -86,12 +106,36 @@ func testAccDNSRecordFrameworkConfig_basic() string {
 resource "unifi_dns_record" "test" {
   name        = "test-record.example.com"
   enabled     = true
-  priority    = 10
   record_type = "A"
   ttl         = "5m0s"
   value       = "192.168.1.100"
 }
 `
+}
+
+// TestAccDNSRecordFramework_invalidPriorityOnARecord documents the controller
+// rejecting A records that carry SRV/MX-only parameters (port, priority,
+// weight).
+func TestAccDNSRecordFramework_invalidPriorityOnARecord(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: providerFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "unifi_dns_record" "test" {
+  name        = "test-record-invalid.example.com"
+  enabled     = true
+  priority    = 10
+  record_type = "A"
+  ttl         = "5m0s"
+  value       = "192.168.1.100"
+}
+`,
+				ExpectError: regexp.MustCompile(`(?s)may not have a value|InvalidParameters`),
+			},
+		},
+	})
 }
 
 func TestNewDNSRecordFrameworkResource(t *testing.T) {
@@ -183,8 +227,143 @@ func Test_dnsRecordFrameworkResource_IdentitySchema(t *testing.T) {
 			if _, ok := tt.args.resp.IdentitySchema.Attributes["id"]; !ok {
 				t.Error("expected identity schema to have 'id' attribute")
 			}
+			if _, ok := tt.args.resp.IdentitySchema.Attributes["site"]; !ok {
+				t.Error("expected identity schema to have 'site' attribute")
+			}
 		})
 	}
+}
+
+// dnsRecordImportHarness builds the empty state and null identity containers
+// the framework hands to ImportState, so the import logic can be unit tested
+// without a live controller.
+func dnsRecordImportHarness(t *testing.T) (tfsdk.State, tfsdk.ResourceIdentity) {
+	t.Helper()
+	ctx := context.Background()
+	r := &dnsRecordFrameworkResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("schema: %v", schemaResp.Diagnostics)
+	}
+
+	var idResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &idResp)
+	if idResp.Diagnostics.HasError() {
+		t.Fatalf("identity schema: %v", idResp.Diagnostics)
+	}
+
+	state := tfsdk.State{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+	}
+	identity := tfsdk.ResourceIdentity{
+		Schema: idResp.IdentitySchema,
+		Raw:    tftypes.NewValue(idResp.IdentitySchema.Type().TerraformType(ctx), nil),
+	}
+	return state, identity
+}
+
+// dnsRecordIdentityValue builds a populated identity container for
+// identity-based import requests. Pass "" to leave site null.
+func dnsRecordIdentityValue(t *testing.T, id, site string) tfsdk.ResourceIdentity {
+	t.Helper()
+	ctx := context.Background()
+	_, identity := dnsRecordImportHarness(t)
+
+	siteVal := tftypes.NewValue(tftypes.String, nil)
+	if site != "" {
+		siteVal = tftypes.NewValue(tftypes.String, site)
+	}
+	identity.Raw = tftypes.NewValue(
+		identity.Schema.Type().TerraformType(ctx),
+		map[string]tftypes.Value{
+			"id":   tftypes.NewValue(tftypes.String, id),
+			"site": siteVal,
+		},
+	)
+	return identity
+}
+
+func Test_dnsRecordFrameworkResource_ImportState(t *testing.T) {
+	ctx := context.Background()
+	const oid = "0123456789abcdef01234567"
+
+	newRes := func() *dnsRecordFrameworkResource {
+		return &dnsRecordFrameworkResource{client: &Client{Site: "default"}}
+	}
+
+	getString := func(t *testing.T, get func(context.Context, path.Path, any) diag.Diagnostics, p path.Path) types.String {
+		t.Helper()
+		var v types.String
+		if d := get(ctx, p, &v); d.HasError() {
+			t.Fatalf("get %s: %v", p, d)
+		}
+		return v
+	}
+
+	t.Run("identity import defaults omitted site to provider site", func(t *testing.T) {
+		r := newRes()
+		state, _ := dnsRecordImportHarness(t)
+		reqIdentity := dnsRecordIdentityValue(t, oid, "")
+		respIdentity := dnsRecordIdentityValue(t, oid, "")
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "", Identity: &reqIdentity}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
+			t.Errorf("state id = %v, want %s", got, oid)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+			t.Errorf("state site = %v, want default", got)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+			t.Errorf("identity site = %v, want default", got)
+		}
+	})
+
+	t.Run("string import by id mirrors identity", func(t *testing.T) {
+		r := newRes()
+		state, respIdentity := dnsRecordImportHarness(t)
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: oid}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
+			t.Errorf("state id = %v, want %s", got, oid)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("id")); got.ValueString() != oid {
+			t.Errorf("identity id = %v, want %s", got, oid)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+			t.Errorf("identity site = %v, want default", got)
+		}
+	})
+
+	t.Run("string import with site prefix", func(t *testing.T) {
+		r := newRes()
+		state, respIdentity := dnsRecordImportHarness(t)
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "other:" + oid}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+			t.Errorf("state site = %v, want other", got)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
+			t.Errorf("state id = %v, want %s", got, oid)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+			t.Errorf("identity site = %v, want other", got)
+		}
+	})
 }
 
 func Test_dnsRecordFrameworkResource_Schema(t *testing.T) {

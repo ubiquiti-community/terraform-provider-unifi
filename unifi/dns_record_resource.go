@@ -69,6 +69,12 @@ type dnsRecordFrameworkResourceModel struct {
 	Timeouts   timeouts.Value       `tfsdk:"timeouts"`
 }
 
+// dnsRecordIdentityModel describes the resource identity data model.
+type dnsRecordIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // dnsRecordFrameworkListConfigModel describes the list configuration model.
 type dnsRecordFrameworkListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -96,9 +102,16 @@ func (r *dnsRecordFrameworkResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		// The optional "site" attribute defaults to the provider site on
+		// import. Identities stored by older provider versions ({id} only)
+		// decode under this schema with site as null; they are passed
+		// through unchanged on refresh.
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -298,7 +311,10 @@ func (r *dnsRecordFrameworkResource) Create(
 	r.dnsRecordToModel(ctx, createdDNSRecord, &data, site)
 
 	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+		ID:   data.ID,
+		Site: types.StringValue(site),
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -323,13 +339,33 @@ func (r *dnsRecordFrameworkResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Get the resource identity, tolerating null/empty identities (state
+	// written by older provider versions).
+	var identity dnsRecordIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
 
+	// Prefer the state ID; fall back to the identity ID (the post-import
+	// refresh may run from an identity-only state).
+	lookupID := data.ID.ValueString()
+	if lookupID == "" {
+		lookupID = identity.ID.ValueString()
+	}
+
 	// Get the DNS record from the API
-	dnsRecord, err := r.client.GetDNSRecord(ctx, site, data.ID.ValueString())
+	dnsRecord, err := r.client.GetDNSRecord(ctx, site, lookupID)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -337,7 +373,7 @@ func (r *dnsRecordFrameworkResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Dns Record",
-			"Could not read DNS record with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read DNS record with ID "+lookupID+": "+err.Error(),
 		)
 		return
 	}
@@ -345,8 +381,15 @@ func (r *dnsRecordFrameworkResource) Read(
 	// Convert to model
 	r.dnsRecordToModel(ctx, dnsRecord, &data, site)
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	// Terraform rejects any modification of an existing stored identity
+	// (including filling a null attribute), so pass an incoming identity
+	// through unchanged and only derive one when none is stored yet.
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+			ID:   data.ID,
+			Site: types.StringValue(site),
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -405,8 +448,14 @@ func (r *dnsRecordFrameworkResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Pass an existing identity through unchanged; only derive one when
+	// none is stored yet (see Read).
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -452,29 +501,63 @@ func (r *dnsRecordFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:id" or just "id" for default site
+	// Identity-based import (Terraform 1.12+ import block with identity).
+	if req.ID == "" {
+		if req.Identity == nil {
+			resp.Diagnostics.AddError(
+				"Invalid Import Request",
+				"Importing a DNS record requires either an import ID or a resource identity.",
+			)
+			return
+		}
+		var identity dnsRecordIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"The `id` identity attribute is required to import a DNS record.",
+			)
+			return
+		}
+		if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+			identity.Site = types.StringValue(r.client.Site)
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
+		return
+	}
+
+	// Classic string import: "site:id" or just "id" for the default site.
 	idParts := strings.Split(req.ID, ":")
 
-	if len(idParts) == 2 {
-		// site:id format
-		site := idParts[0]
-		id := idParts[1]
-
+	site := r.client.Site
+	id := ""
+	switch len(idParts) {
+	case 2:
+		site = idParts[0]
+		id = idParts[1]
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	case 1:
+		id = req.ID
+	default:
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			"Import ID must be in format 'site:id' or 'id'",
+		)
 		return
 	}
 
-	if len(idParts) == 1 {
-		// Just id, use default site
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-		return
-	}
-
-	resp.Diagnostics.AddError(
-		"Invalid Import ID",
-		"Import ID must be in format 'site:id' or 'id'",
-	)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+		ID:   types.StringValue(id),
+		Site: types.StringValue(site),
+	})...)
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
@@ -696,11 +779,10 @@ func (r *dnsRecordFrameworkResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(record.ID),
-				)...,
+				result.Identity.Set(ctx, dnsRecordIdentityModel{
+					ID:   types.StringValue(record.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.

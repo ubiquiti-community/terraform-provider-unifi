@@ -91,6 +91,12 @@ type siteToSiteVPNResourceModel struct {
 	Timeouts       timeouts.Value       `tfsdk:"timeouts"`
 }
 
+// siteToSiteVPNIdentityModel describes the resource identity data model.
+type siteToSiteVPNIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // siteToSiteVPNListConfigModel describes the list configuration model.
 type siteToSiteVPNListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -118,9 +124,16 @@ func (r *siteToSiteVPNResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		// The optional "site" attribute defaults to the provider site on
+		// import. Identities stored by older provider versions ({id} only)
+		// decode under this schema with site as null; they are passed
+		// through unchanged on refresh.
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -506,7 +519,10 @@ func (r *siteToSiteVPNResource) Create(
 	if usedWO {
 		data.PreSharedKey = types.StringNull()
 	}
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, siteToSiteVPNIdentityModel{
+		ID:   data.ID,
+		Site: data.Site,
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -530,9 +546,37 @@ func (r *siteToSiteVPNResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
-	site := r.siteOrDefault(data.Site)
+	// Get the resource identity, tolerating null/empty identities (state
+	// written by older provider versions).
+	var identity siteToSiteVPNIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 
-	network, err := r.client.GetNetwork(ctx, site, data.ID.ValueString())
+	siteAttr := data.Site
+	if siteAttr.ValueString() == "" {
+		siteAttr = identity.Site
+	}
+	site := r.siteOrDefault(siteAttr)
+
+	// Prefer the state ID; fall back to the identity ID (the post-import
+	// refresh may run from an identity-only state).
+	lookupID := data.ID.ValueString()
+	if lookupID == "" {
+		lookupID = identity.ID.ValueString()
+	}
+	if lookupID == "" {
+		resp.Diagnostics.AddError(
+			"Invalid State",
+			"Site-to-site VPN must have an ID in state or identity",
+		)
+		return
+	}
+
+	network, err := r.client.GetNetwork(ctx, site, lookupID)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -540,13 +584,21 @@ func (r *siteToSiteVPNResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Site-to-Site VPN",
-			"Could not read network "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read network "+lookupID+": "+err.Error(),
 		)
 		return
 	}
 
 	resp.Diagnostics.Append(r.networkToModel(ctx, network, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	// Terraform rejects any modification of an existing stored identity
+	// (including filling a null attribute), so pass an incoming identity
+	// through unchanged and only derive one when none is stored yet.
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, siteToSiteVPNIdentityModel{
+			ID:   data.ID,
+			Site: data.Site,
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -594,7 +646,14 @@ func (r *siteToSiteVPNResource) Update(
 	if usedWO {
 		data.PreSharedKey = types.StringNull()
 	}
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	// Pass an existing identity through unchanged; only derive one when
+	// none is stored yet (see Read).
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, siteToSiteVPNIdentityModel{
+			ID:   data.ID,
+			Site: data.Site,
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -635,21 +694,64 @@ func (r *siteToSiteVPNResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:id" or just "id" for the default site. The pre-shared
-	// key is not recovered on import (write the secret in config and re-apply).
+	// The pre-shared key is not recovered on import (write the secret in
+	// config and re-apply).
+
+	// Identity-based import (Terraform 1.12+ import block with identity).
+	if req.ID == "" {
+		if req.Identity == nil {
+			resp.Diagnostics.AddError(
+				"Invalid Import Request",
+				"Importing a site-to-site VPN requires either an import ID or a resource identity.",
+			)
+			return
+		}
+		var identity siteToSiteVPNIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"The `id` identity attribute is required to import a site-to-site VPN.",
+			)
+			return
+		}
+		if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+			identity.Site = types.StringValue(r.client.Site)
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
+		return
+	}
+
+	// Classic string import: "site:id" or just "id" for the default site.
 	idParts := strings.Split(req.ID, ":")
+	site := r.client.Site
+	id := ""
 	switch len(idParts) {
 	case 2:
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
+		site = idParts[0]
+		id = idParts[1]
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 	case 1:
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+		id = req.ID
 	default:
 		resp.Diagnostics.AddError(
 			"Invalid Import ID",
 			"Import ID must be in format 'site:id' or 'id'",
 		)
+		return
 	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, siteToSiteVPNIdentityModel{
+		ID:   types.StringValue(id),
+		Site: types.StringValue(site),
+	})...)
 }
 
 func (r *siteToSiteVPNResource) siteOrDefault(site types.String) string {
@@ -896,11 +998,10 @@ func (r *siteToSiteVPNResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(network.ID),
-				)...,
+				result.Identity.Set(ctx, siteToSiteVPNIdentityModel{
+					ID:   types.StringValue(network.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.
