@@ -59,6 +59,12 @@ type clientQosRateResourceModel struct {
 	Timeouts       timeouts.Value `tfsdk:"timeouts"`
 }
 
+// clientQosRateIdentityModel describes the resource identity data model.
+type clientQosRateIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // clientQosRateListConfigModel describes the list configuration model.
 type clientQosRateListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -89,6 +95,9 @@ func (r *clientQosRateResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -223,7 +232,10 @@ func (r *clientQosRateResource) Create(
 		return
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, clientQosRateIdentityModel{
+		ID:   plan.ID,
+		Site: plan.Site,
+	})...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -248,6 +260,23 @@ func (r *clientQosRateResource) Read(
 	}
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
+
+	// Fall back to the resource identity when the state carries no ID (e.g.
+	// old states, or a state written by an identity-based import).
+	if state.ID.IsNull() || state.ID.IsUnknown() {
+		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+			var identity clientQosRateIdentityModel
+			resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			state.ID = identity.ID
+			if (state.Site.IsNull() || state.Site.IsUnknown()) &&
+				identity.Site.ValueString() != "" {
+				state.Site = identity.Site
+			}
+		}
+	}
 
 	site := state.Site.ValueString()
 	if site == "" {
@@ -277,7 +306,10 @@ func (r *clientQosRateResource) Read(
 		return
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, clientQosRateIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	})...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -348,7 +380,10 @@ func (r *clientQosRateResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, clientQosRateIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -416,12 +451,32 @@ func (r *clientQosRateResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
-	} else {
-		resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	// Import by ID string (terraform import CLI, or an import block with id
+	// set): either a bare controller ID or the documented "site:id" form.
+	if req.ID != "" {
+		id := req.ID
+		if idParts := strings.Split(req.ID, ":"); len(idParts) == 2 {
+			id = idParts[1]
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+			resp.Diagnostics.Append(
+				resp.Identity.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
+		return
+	}
+
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var identity clientQosRateIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+	if identity.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
 	}
 }
 
@@ -571,13 +626,10 @@ func (r *clientQosRateResource) List(
 			}
 
 			// Set identity.
-			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(clientGroup.ID),
-				)...,
-			)
+			result.Diagnostics.Append(result.Identity.Set(ctx, clientQosRateIdentityModel{
+				ID:   types.StringValue(clientGroup.ID),
+				Site: types.StringValue(site),
+			})...)
 
 			// Convert to model. Pre-populate the identifier so the converter's
 			// ID/Name guard is satisfied.

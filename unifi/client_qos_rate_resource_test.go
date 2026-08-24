@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -40,13 +42,45 @@ func TestAccClientQosRate_basic(t *testing.T) {
 					),
 				),
 			},
+			// Classic string import by bare controller ID.
 			{
 				ResourceName:      "unifi_client_qos_rate.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
+			// Classic string import using the documented "site:id" form.
+			{
+				ResourceName: "unifi_client_qos_rate.test",
+				ImportState:  true,
+				ImportStateIdFunc: testAccClientQosRateSitePrefixedID(
+					"unifi_client_qos_rate.test",
+				),
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_client_qos_rate.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 		},
 	})
+}
+
+// testAccClientQosRateSitePrefixedID returns an ImportStateIdFunc yielding the
+// "site:id" composite string import format.
+func testAccClientQosRateSitePrefixedID(resourceName string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return "", fmt.Errorf("resource not found in state: %s", resourceName)
+		}
+		site := rs.Primary.Attributes["site"]
+		if site == "" {
+			return "", fmt.Errorf("resource %s has no site attribute", resourceName)
+		}
+		return site + ":" + rs.Primary.ID, nil
+	}
 }
 
 func testAccClientQosRateConfig_basic() string {

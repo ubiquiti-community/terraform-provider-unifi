@@ -102,8 +102,37 @@ func TestAccAPGroupFramework_basic(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
+			// Classic string import using the documented "site:id" form.
+			{
+				ResourceName:      "unifi_ap_group.test",
+				ImportState:       true,
+				ImportStateIdFunc: testAccAPGroupSitePrefixedID("unifi_ap_group.test"),
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_ap_group.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 		},
 	})
+}
+
+// testAccAPGroupSitePrefixedID returns an ImportStateIdFunc yielding the
+// "site:id" composite string import format.
+func testAccAPGroupSitePrefixedID(resourceName string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return "", fmt.Errorf("resource not found in state: %s", resourceName)
+		}
+		site := rs.Primary.Attributes["site"]
+		if site == "" {
+			return "", fmt.Errorf("resource %s has no site attribute", resourceName)
+		}
+		return site + ":" + rs.Primary.ID, nil
+	}
 }
 
 // TestAccAPGroupFramework_withDevices asserts MAC semantic-equality: a member

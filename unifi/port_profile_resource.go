@@ -56,6 +56,12 @@ type portProfileResource struct {
 	client *Client
 }
 
+// portProfileIdentityModel describes the resource identity data model.
+type portProfileIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // portProfileListConfigModel describes the list configuration model.
 type portProfileListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -133,6 +139,9 @@ func (r *portProfileResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -554,6 +563,22 @@ func (r *portProfileResource) Create(
 		site = r.client.Site
 	}
 
+	// #383 made go-unifi always serialize native_networkconf_id (no omitempty)
+	// so an explicit "" can clear the native network. On create with the
+	// attribute unset (unknown), that would send "" — which some controllers
+	// (e.g. Network 10.0 demo mode) store as-is and answer by flipping forward
+	// to "customize" instead of auto-assigning the default network. Resolve the
+	// site's default network up front so the create body carries the same
+	// concrete native ID the controller would have auto-assigned.
+	if plan.NativeNetworkConfID.IsUnknown() {
+		defaultNetworkID, d := r.defaultNativeNetworkID(ctx, site)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.NativeNetworkConfID = types.StringValue(defaultNetworkID)
+	}
+
 	// Convert model to API request
 	portProfile, convDiags := r.modelToAPIPortProfile(ctx, &plan)
 	resp.Diagnostics.Append(convDiags...)
@@ -575,7 +600,10 @@ func (r *portProfileResource) Create(
 	plan.Site = types.StringValue(site)
 	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &plan, site)...)
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+		ID:   plan.ID,
+		Site: plan.Site,
+	})...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -600,6 +628,23 @@ func (r *portProfileResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Fall back to the resource identity when the state carries no ID (e.g.
+	// old states, or a state written by an identity-based import).
+	if state.ID.IsNull() || state.ID.IsUnknown() {
+		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+			var identity portProfileIdentityModel
+			resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			state.ID = identity.ID
+			if (state.Site.IsNull() || state.Site.IsUnknown()) &&
+				identity.Site.ValueString() != "" {
+				state.Site = identity.Site
+			}
+		}
+	}
+
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()
 	if site == "" {
@@ -622,7 +667,10 @@ func (r *portProfileResource) Read(
 	// Update state from API response
 	resp.Diagnostics.Append(r.portProfileToModel(ctx, portProfile, &state, site)...)
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	})...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -701,7 +749,10 @@ func (r *portProfileResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	})...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -750,6 +801,23 @@ func (r *portProfileResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity portProfileIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
+	// Import by ID string: "id" or "site:id".
 	idParts, diags := util.ParseImportID(req.ID, 1, 2)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -758,14 +826,55 @@ func (r *portProfileResource) ImportState(
 
 	if site := idParts["site"]; site != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
 	}
 
 	if id := idParts["id"]; id != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
 	}
 }
 
 // Helper methods
+
+// defaultNativeNetworkID returns the network the controller would auto-assign
+// as a port profile's native network: the site's default (undeletable)
+// corporate network, falling back to the first corporate network.
+func (r *portProfileResource) defaultNativeNetworkID(
+	ctx context.Context,
+	site string,
+) (string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	networks, err := r.client.ListNetwork(ctx, site)
+	if err != nil {
+		diags.AddError(
+			"Error Listing Networks",
+			fmt.Sprintf("Could not resolve the default native network: %s", err),
+		)
+		return "", diags
+	}
+
+	fallback := ""
+	for _, network := range networks {
+		if network.Purpose != "corporate" {
+			continue
+		}
+		if network.NoDelete {
+			return network.ID, diags
+		}
+		if fallback == "" {
+			fallback = network.ID
+		}
+	}
+	if fallback == "" {
+		diags.AddError(
+			"No Native Network Found",
+			"Could not find a corporate network to use as the port profile's native network; set native_networkconf_id explicitly.",
+		)
+	}
+	return fallback, diags
+}
 
 func (r *portProfileResource) modelToAPIPortProfile(
 	ctx context.Context,
@@ -1217,13 +1326,10 @@ func (r *portProfileResource) List(
 			}
 
 			// Set identity.
-			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(profile.ID),
-				)...,
-			)
+			result.Diagnostics.Append(result.Identity.Set(ctx, portProfileIdentityModel{
+				ID:   types.StringValue(profile.ID),
+				Site: types.StringValue(site),
+			})...)
 
 			// Convert to model.
 			var model portProfileResourceModel

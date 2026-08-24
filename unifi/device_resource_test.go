@@ -319,11 +319,53 @@ func TestAccDeviceFramework_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_device.test", "adopted", "true"),
 				),
 			},
+			// Classic string import. ImportStateVerify replays the import with the
+			// `id` attribute value, exercising the ID-or-MAC fallback.
 			{
 				ResourceName:            "unifi_device.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"allow_adoption", "forget_on_destroy"},
+			},
+			// Classic string import by MAC address (the documented import ID).
+			{
+				ResourceName:            "unifi_device.test",
+				ImportState:             true,
+				ImportStateId:           "00:27:22:00:00:02",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"allow_adoption", "forget_on_destroy"},
+			},
+			// The post-import refresh defaults the provider-only flags
+			// allow_adoption/forget_on_destroy to true, so the identity-import
+			// step must follow a config using those defaults for its plan to be
+			// empty. Switch to that config first.
+			{
+				Config: testAccDeviceFrameworkConfig_importDefaults(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_device.test",
+						"forget_on_destroy",
+						"true",
+					),
+				),
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_device.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+			// Return to forget_on_destroy = false so the final destroy does not
+			// forget the shared simulated device.
+			{
+				Config: testAccDeviceFrameworkConfig_basic(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_device.test",
+						"forget_on_destroy",
+						"false",
+					),
+				),
 			},
 		},
 	})
@@ -336,6 +378,18 @@ resource "unifi_device" "test" {
 	name = "Test Device"
 	allow_adoption = true
 	forget_on_destroy = false
+}
+`
+}
+
+// testAccDeviceFrameworkConfig_importDefaults leaves the provider-only flags at
+// their schema defaults (true), matching what a fresh import writes to state, so
+// a post-import plan against this config is empty.
+func testAccDeviceFrameworkConfig_importDefaults() string {
+	return `
+resource "unifi_device" "test" {
+	mac  = "00:27:22:00:00:02"
+	name = "Test Device"
 }
 `
 }

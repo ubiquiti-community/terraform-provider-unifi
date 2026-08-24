@@ -33,10 +33,17 @@ func TestAccPortProfileFramework_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_port_profile.test", "autoneg", "true"),
 				),
 			},
+			// Classic string import by bare controller ID.
 			{
 				ResourceName:      "unifi_port_profile.test",
 				ImportState:       true,
 				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_port_profile.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
 			},
 		},
 	})
