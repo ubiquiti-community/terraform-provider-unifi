@@ -151,10 +151,10 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 }
 
 type natOutboundIPAddressesModel struct {
-	IPAddress       types.String `tfsdk:"ip_address"`                  // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
-	IPAddressPool   types.List   `tfsdk:"ip_address_pool,omitempty"`   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
-	Mode            types.String `tfsdk:"mode,omitempty"`              // all|ip_address|ip_address_pool
-	WANNetworkGroup types.String `tfsdk:"wan_network_group,omitempty"` // WAN[2-9]?
+	IPAddress       types.String `tfsdk:"ip_address"`        // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
+	IPAddressPool   types.List   `tfsdk:"ip_address_pool"`   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+	Mode            types.String `tfsdk:"mode"`              // all|ip_address|ip_address_pool
+	WANNetworkGroup types.String `tfsdk:"wan_network_group"` // WAN[2-9]?
 }
 
 func (d natOutboundIPAddressesModel) AttributeTypes() map[string]attr.Type {
@@ -554,14 +554,18 @@ func (r *networkResource) Schema(
 				Default:  booldefault.StaticBool(true),
 			},
 			"ip_aliases": schema.ListAttribute{
-				MarkdownDescription: "List of IP aliases for the network.",
+				MarkdownDescription: "List of IP aliases for the network, in CIDR notation " +
+					"(e.g. `192.168.2.1/24`). The controller rejects entries without a " +
+					"prefix length.",
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
 			"ipv6_aliases": schema.ListAttribute{
-				MarkdownDescription: "List of IPv6 aliases for the network.",
-				Optional:            true,
-				ElementType:         types.StringType,
+				MarkdownDescription: "List of IPv6 aliases for the network. Not currently supported: " +
+					"the underlying UniFi API client has no field for this value, so a " +
+					"non-empty list is rejected at plan time (#413).",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 			"third_party_gateway": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.",
@@ -915,7 +919,9 @@ func (r *networkResource) Configure(
 	r.client = client
 }
 
-// ModifyPlan forces setting_preference to "manual" when DHCP relay is enabled.
+// ModifyPlan rejects a configured ipv6_aliases (#413, unsupported by the
+// underlying client) and forces setting_preference to "manual" when DHCP
+// relay is enabled.
 //
 // With setting_preference "auto" the controller auto-manages the network and
 // re-enables its built-in DHCP server, which silently turns dhcp_relay off
@@ -929,6 +935,66 @@ func (r *networkResource) ModifyPlan(
 ) {
 	if req.Plan.Raw.IsNull() {
 		return // resource is being destroyed
+	}
+
+	// ipv6_aliases: go-unifi's Network struct has no field for this yet, so a
+	// configured value can never reach the controller. Fail fast at plan time
+	// with a clear message instead of Create/Update silently dropping it and
+	// producing a confusing "provider produced inconsistent result after
+	// apply" error (#413).
+	// Read from the plan (not config) so that unknown values derived from
+	// data sources are caught here too.
+	var ipv6Aliases types.List
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("ipv6_aliases"), &ipv6Aliases)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !ipv6Aliases.IsNull() {
+		resp.Diagnostics.AddError(
+			"ipv6_aliases is not yet supported",
+			"The underlying UniFi API client (go-unifi) does not currently expose "+
+				"a field for ipv6_aliases, so the provider cannot send this value to "+
+				"the controller even though the controller accepts and returns it. "+
+				"Remove ipv6_aliases from this configuration until upstream client "+
+				"support lands (see issue #413).",
+		)
+		return
+	}
+
+	// ip_address_pool inside nat_outbound_ip_addresses: the field is not yet
+	// wired to the API request side (modelToNetwork ignores it) and Read always
+	// writes null, which causes the same inconsistent-result-after-apply failure
+	// as ipv6_aliases. Reject any non-null value at plan time.
+	var natList types.List
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("nat_outbound_ip_addresses"), &natList)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !natList.IsNull() && !natList.IsUnknown() {
+		for i, elem := range natList.Elements() {
+			obj, ok := elem.(types.Object)
+			if !ok {
+				continue
+			}
+			if obj.IsNull() || obj.IsUnknown() {
+				continue
+			}
+			poolAttr, poolOk := obj.Attributes()["ip_address_pool"]
+			if poolOk && (!poolAttr.IsNull() || poolAttr.IsUnknown()) {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("nat_outbound_ip_addresses").AtListIndex(i).AtName("ip_address_pool"),
+					"ip_address_pool is not yet supported",
+					"The ip_address_pool field inside nat_outbound_ip_addresses is not yet "+
+						"wired to the API request side, so a configured value cannot be sent "+
+						"to the controller and Read will always return null, causing an "+
+						"inconsistent-result-after-apply error. Remove ip_address_pool from "+
+						"this configuration until end-to-end support lands.",
+				)
+				return
+			}
+		}
 	}
 
 	var configPref types.String
@@ -1433,15 +1499,9 @@ func (r *networkResource) modelToNetwork(
 		}
 	}
 
-	// Handle IPv6 aliases
-	if !model.IPv6Aliases.IsNull() && !model.IPv6Aliases.IsUnknown() {
-		var ipv6Aliases []string
-		d := model.IPv6Aliases.ElementsAs(ctx, &ipv6Aliases, false)
-		diags.Append(d...)
-		// if !diags.HasError() {
-		// 	// IPv6Aliases field not available in API
-		// }
-	}
+	// ipv6_aliases: go-unifi's Network struct has no field to send this to the
+	// API (#413), so there is nothing to map here. ModifyPlan rejects a
+	// non-empty configured value before modelToNetwork ever runs.
 
 	// A DHCP server and DHCP relay cannot coexist on a network: with relay on,
 	// emitting DHCPDEnabled=true (as the default branch below would) makes the
@@ -1982,11 +2042,65 @@ func (r *networkResource) networkToModel(
 
 	model.Vlan = types.Int64PointerValue(network.VLAN)
 
-	// Handle lists - for now set to null
-	model.NatOutboundIPAddresses = types.ListNull(
-		types.ObjectType{AttrTypes: natOutboundIPAddresses()},
-	)
-	model.IPAliases = types.ListNull(types.StringType)
+	// nat_outbound_ip_addresses: ip_address, mode and wan_network_group round-trip
+	// from the API. ip_address_pool is not wired end-to-end (ModifyPlan rejects
+	// a non-null configured value before Create/Update run) so it is always null.
+	// Only populate the field when:
+	//   1. It was already non-null in the previous state (i.e., the user manages
+	//      it), or
+	//   2. This is an import (previousModel == nil) and the controller returned data.
+	// This mirrors the dhcp_server "preserve null unless managed" pattern so that
+	// a controller-side non-empty list doesn't cause unexpected plan changes for
+	// users who haven't configured nat_outbound_ip_addresses.
+	shouldPopulateNAT := previousModel == nil || !previousModel.NatOutboundIPAddresses.IsNull()
+	if shouldPopulateNAT && len(network.NATOutboundIPAddresses) > 0 {
+		natValues := make([]natOutboundIPAddressesModel, 0, len(network.NATOutboundIPAddresses))
+		for _, nat := range network.NATOutboundIPAddresses {
+			natValues = append(natValues, natOutboundIPAddressesModel{
+				IPAddress:       types.StringValue(nat.IPAddress),
+				IPAddressPool:   types.ListNull(types.StringType),
+				Mode:            types.StringPointerValue(nat.Mode),
+				WANNetworkGroup: types.StringPointerValue(nat.WANNetworkGroup),
+			})
+		}
+		natList, d := types.ListValueFrom(
+			ctx,
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			natValues,
+		)
+		diags.Append(d...)
+		model.NatOutboundIPAddresses = natList
+	} else if shouldPopulateNAT {
+		// Managed but API returned nothing: write an empty list (not null) to
+		// avoid drift between empty vs null when the user configures [].
+		model.NatOutboundIPAddresses = types.ListValueMust(
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			[]attr.Value{},
+		)
+	} else {
+		model.NatOutboundIPAddresses = types.ListNull(
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+		)
+	}
+
+	if len(network.IPAliases) > 0 {
+		ipAliasesList, d := types.ListValueFrom(ctx, types.StringType, network.IPAliases)
+		diags.Append(d...)
+		model.IPAliases = ipAliasesList
+	} else if previousModel != nil && !previousModel.IPAliases.IsNull() &&
+		!previousModel.IPAliases.IsUnknown() {
+		// Managed but the API returned nothing: keep a known empty list (not
+		// null) so a configured `ip_aliases = []` doesn't fail apply with an
+		// inconsistent-result error (planned [] vs applied null).
+		model.IPAliases = types.ListValueMust(types.StringType, []attr.Value{})
+	} else {
+		model.IPAliases = types.ListNull(types.StringType)
+	}
+
+	// ipv6_aliases: go-unifi's Network struct has no field to carry this value
+	// yet, even though the controller accepts and returns it (#413). ModifyPlan
+	// rejects a non-empty configured value before Create/Update run, so this
+	// only ever needs to represent the "unset" case.
 	model.IPv6Aliases = types.ListNull(types.StringType)
 
 	// Only populate dhcp_server if:

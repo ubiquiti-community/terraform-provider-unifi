@@ -103,8 +103,8 @@ resource "unifi_network" "third_party" {
 - `gateway_type` (String) The gateway type. Must be one of `default` or `switch`.
 - `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled.
 - `internet_access` (Boolean) Specifies whether internet access is enabled.
-- `ip_aliases` (List of String) List of IP aliases for the network.
-- `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
+- `ip_aliases` (List of String) List of IP aliases for the network, in CIDR notation (e.g. `192.168.2.1/24`). The controller rejects entries without a prefix length.
+- `ipv6_aliases` (List of String) List of IPv6 aliases for the network. Not currently supported: the underlying UniFi API client has no field for this value, so a non-empty list is rejected at plan time (#413).
 - `ipv6_client_address_assignment` (String) How clients on this network obtain an IPv6 address (UI: Networks → IPv6 → Client Address Assignment). One of `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). Computed from the controller when not set.
 - `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.
 - `ipv6_pd_auto_prefixid_enabled` (Boolean) Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.
