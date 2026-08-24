@@ -63,6 +63,86 @@ func TestAccNetworkFramework_basic(t *testing.T) {
 	})
 }
 
+// TestAccNetworkFramework_ipAliases guards #413 end-to-end: a network with
+// ip_aliases configured must apply cleanly (no "provider produced inconsistent
+// result after apply"), round-trip the values, survive updates, and allow
+// removing the aliases again.
+func TestAccNetworkFramework_ipAliases(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkFrameworkConfig_ipAliases(
+					`["192.168.111.1/24", "192.168.112.1/24"]`,
+				),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_aliases",
+						"ip_aliases.#",
+						"2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_aliases",
+						"ip_aliases.0",
+						"192.168.111.1/24",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_aliases",
+						"ip_aliases.1",
+						"192.168.112.1/24",
+					),
+				),
+			},
+			{
+				Config: testAccNetworkFrameworkConfig_ipAliases(`["192.168.113.1/24"]`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_aliases",
+						"ip_aliases.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.test_aliases",
+						"ip_aliases.0",
+						"192.168.113.1/24",
+					),
+				),
+			},
+			{
+				Config: testAccNetworkFrameworkConfig_basicAliasNetwork(),
+				Check: resource.TestCheckNoResourceAttr(
+					"unifi_network.test_aliases",
+					"ip_aliases",
+				),
+			},
+		},
+	})
+}
+
+func testAccNetworkFrameworkConfig_ipAliases(aliases string) string {
+	return `
+resource "unifi_network" "test_aliases" {
+	name       = "Test Alias VLAN"
+	subnet     = "192.168.11.1/24"
+	vlan       = 11
+	enabled    = true
+	ip_aliases = ` + aliases + `
+}
+`
+}
+
+func testAccNetworkFrameworkConfig_basicAliasNetwork() string {
+	return `
+resource "unifi_network" "test_aliases" {
+	name       = "Test Alias VLAN"
+	subnet     = "192.168.11.1/24"
+	vlan       = 11
+	enabled    = true
+}
+`
+}
+
 func TestAccNetworkFramework_dhcp(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
@@ -1346,12 +1426,12 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 
 	t.Run("non-empty values round-trip (managed)", func(t *testing.T) {
 		network := &unifi.Network{
-			ID:          "net-1",
-			Name:        strPtr("aliased"),
-			Purpose:     unifi.PurposeCorporate,
-			Enabled:     true,
-			IPSubnet:    strPtr("10.0.2.1/24"),
-			IPAliases:   []string{"10.0.2.5", "10.0.2.6"},
+			ID:        "net-1",
+			Name:      strPtr("aliased"),
+			Purpose:   unifi.PurposeCorporate,
+			Enabled:   true,
+			IPSubnet:  strPtr("10.0.2.1/24"),
+			IPAliases: []string{"10.0.2.5", "10.0.2.6"},
 			NATOutboundIPAddresses: []unifi.NetworkNATOutboundIPAddresses{
 				{
 					IPAddress:       "203.0.113.5",
@@ -1370,7 +1450,11 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			t.Fatal("IPAliases: got null, want the two configured aliases")
 		}
 		var ipAliases []string
-		if diags := model.IPAliases.ElementsAs(context.Background(), &ipAliases, false); diags.HasError() {
+		if diags := model.IPAliases.ElementsAs(
+			context.Background(),
+			&ipAliases,
+			false,
+		); diags.HasError() {
 			t.Fatalf("ElementsAs: %v", diags)
 		}
 		if len(ipAliases) != 2 || ipAliases[0] != "10.0.2.5" || ipAliases[1] != "10.0.2.6" {
@@ -1381,13 +1465,20 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			t.Fatal("NatOutboundIPAddresses: got null, want the configured entry")
 		}
 		var natEntries []natOutboundIPAddressesModel
-		if diags := model.NatOutboundIPAddresses.ElementsAs(context.Background(), &natEntries, false); diags.HasError() {
+		if diags := model.NatOutboundIPAddresses.ElementsAs(
+			context.Background(),
+			&natEntries,
+			false,
+		); diags.HasError() {
 			t.Fatalf("ElementsAs: %v", diags)
 		}
 		if len(natEntries) != 1 || natEntries[0].IPAddress.ValueString() != "203.0.113.5" ||
 			natEntries[0].Mode.ValueString() != "ip_address" ||
 			natEntries[0].WANNetworkGroup.ValueString() != "WAN" {
-			t.Errorf("NatOutboundIPAddresses = %+v, want ip_address=203.0.113.5 mode=ip_address wan_network_group=WAN", natEntries)
+			t.Errorf(
+				"NatOutboundIPAddresses = %+v, want ip_address=203.0.113.5 mode=ip_address wan_network_group=WAN",
+				natEntries,
+			)
 		}
 	})
 
@@ -1399,7 +1490,11 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			Enabled:  true,
 			IPSubnet: strPtr("10.0.4.1/24"),
 			NATOutboundIPAddresses: []unifi.NetworkNATOutboundIPAddresses{
-				{IPAddress: "203.0.113.1", Mode: strPtr("ip_address"), WANNetworkGroup: strPtr("WAN")},
+				{
+					IPAddress:       "203.0.113.1",
+					Mode:            strPtr("ip_address"),
+					WANNetworkGroup: strPtr("WAN"),
+				},
 			},
 		}
 		var model networkResourceModel
@@ -1408,7 +1503,10 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			t.Fatalf("networkToModel: %v", d)
 		}
 		if !model.NatOutboundIPAddresses.IsNull() {
-			t.Errorf("NatOutboundIPAddresses = %v, want null (unmanaged)", model.NatOutboundIPAddresses)
+			t.Errorf(
+				"NatOutboundIPAddresses = %v, want null (unmanaged)",
+				model.NatOutboundIPAddresses,
+			)
 		}
 	})
 
@@ -1433,6 +1531,41 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 		}
 		if !model.IPv6Aliases.IsNull() {
 			t.Errorf("IPv6Aliases = %v, want null", model.IPv6Aliases)
+		}
+	})
+
+	t.Run("managed empty ip_aliases stays a known empty list", func(t *testing.T) {
+		// A configured `ip_aliases = []` plans a known empty list; the readback
+		// must echo an empty list, not null, or apply fails with an
+		// inconsistent-result error.
+		prevEmptyAliases := &networkResourceModel{
+			DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:   types.ListValueMust(types.StringType, []attr.Value{}),
+			IPv6Aliases: types.ListNull(types.StringType),
+		}
+		network := &unifi.Network{
+			ID:       "net-4",
+			Name:     strPtr("empty-aliases"),
+			Purpose:  unifi.PurposeCorporate,
+			Enabled:  true,
+			IPSubnet: strPtr("10.0.5.1/24"),
+		}
+		var model networkResourceModel
+		d := r.networkToModel(context.Background(), network, &model, "default", prevEmptyAliases)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+		if model.IPAliases.IsNull() || model.IPAliases.IsUnknown() {
+			t.Fatalf("IPAliases = %v, want known empty list", model.IPAliases)
+		}
+		if n := len(model.IPAliases.Elements()); n != 0 {
+			t.Errorf("IPAliases has %d elements, want 0", n)
 		}
 	})
 }
@@ -1858,9 +1991,12 @@ func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 			wantError:   false,
 		},
 		{
-			name:        "non-empty known list: error",
-			ipv6Aliases: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2001:db8::1")}),
-			wantError:   true,
+			name: "non-empty known list: error",
+			ipv6Aliases: types.ListValueMust(
+				types.StringType,
+				[]attr.Value{types.StringValue("2001:db8::1")},
+			),
+			wantError: true,
 		},
 		{
 			name:        "unknown list: error",
@@ -1907,9 +2043,9 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name        string
-		pool        types.List
-		wantError   bool
+		name      string
+		pool      types.List
+		wantError bool
 	}{
 		{
 			name:      "null pool: no error",
@@ -1917,8 +2053,11 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:      "non-empty pool: error",
-			pool:      types.ListValueMust(types.StringType, []attr.Value{types.StringValue("203.0.113.10")}),
+			name: "non-empty pool: error",
+			pool: types.ListValueMust(
+				types.StringType,
+				[]attr.Value{types.StringValue("203.0.113.10")},
+			),
 			wantError: true,
 		},
 		{
@@ -1939,7 +2078,11 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 
 			// Ensure ipv6_aliases is null so it doesn't trigger its own error
 			// before we reach the ip_address_pool check.
-			diags := plan.SetAttribute(ctx, path.Root("ipv6_aliases"), types.ListNull(types.StringType))
+			diags := plan.SetAttribute(
+				ctx,
+				path.Root("ipv6_aliases"),
+				types.ListNull(types.StringType),
+			)
 			if diags.HasError() {
 				t.Fatalf("SetAttribute(ipv6_aliases): %v", diags)
 			}
@@ -1949,9 +2092,9 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 			entry, d := types.ObjectValue(
 				natOutboundIPAddresses(),
 				map[string]attr.Value{
-					"ip_address":      types.StringNull(),
-					"ip_address_pool": tt.pool,
-					"mode":            types.StringNull(),
+					"ip_address":        types.StringNull(),
+					"ip_address_pool":   tt.pool,
+					"mode":              types.StringNull(),
 					"wan_network_group": types.StringNull(),
 				},
 			)

@@ -151,9 +151,9 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 }
 
 type natOutboundIPAddressesModel struct {
-	IPAddress       types.String `tfsdk:"ip_address"`       // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
-	IPAddressPool   types.List   `tfsdk:"ip_address_pool"`  // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
-	Mode            types.String `tfsdk:"mode"`             // all|ip_address|ip_address_pool
+	IPAddress       types.String `tfsdk:"ip_address"`        // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
+	IPAddressPool   types.List   `tfsdk:"ip_address_pool"`   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+	Mode            types.String `tfsdk:"mode"`              // all|ip_address|ip_address_pool
 	WANNetworkGroup types.String `tfsdk:"wan_network_group"` // WAN[2-9]?
 }
 
@@ -554,7 +554,9 @@ func (r *networkResource) Schema(
 				Default:  booldefault.StaticBool(true),
 			},
 			"ip_aliases": schema.ListAttribute{
-				MarkdownDescription: "List of IP aliases for the network.",
+				MarkdownDescription: "List of IP aliases for the network, in CIDR notation " +
+					"(e.g. `192.168.2.1/24`). The controller rejects entries without a " +
+					"prefix length.",
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
@@ -2085,6 +2087,12 @@ func (r *networkResource) networkToModel(
 		ipAliasesList, d := types.ListValueFrom(ctx, types.StringType, network.IPAliases)
 		diags.Append(d...)
 		model.IPAliases = ipAliasesList
+	} else if previousModel != nil && !previousModel.IPAliases.IsNull() &&
+		!previousModel.IPAliases.IsUnknown() {
+		// Managed but the API returned nothing: keep a known empty list (not
+		// null) so a configured `ip_aliases = []` doesn't fail apply with an
+		// inconsistent-result error (planned [] vs applied null).
+		model.IPAliases = types.ListValueMust(types.StringType, []attr.Value{})
 	} else {
 		model.IPAliases = types.ListNull(types.StringType)
 	}
