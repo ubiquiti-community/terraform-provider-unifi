@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
@@ -1603,6 +1604,12 @@ func (r *settingResource) Create(
 			resp.Diagnostics.AddError("Error Creating USG Setting", err.Error())
 			return
 		}
+		// Newer controllers store Region Blocking under the standalone
+		// usg_geo setting and ignore the usg geo fields (#374).
+		r.persistUsgGeoFiltering(ctx, site, &usg, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	if !data.IgmpSnooping.IsNull() && !data.IgmpSnooping.IsUnknown() {
@@ -1923,6 +1930,12 @@ func (r *settingResource) Update(
 		setting := r.usgModelToSetting(ctx, &usg)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating USG Setting", err.Error())
+			return
+		}
+		// Newer controllers store Region Blocking under the standalone
+		// usg_geo setting and ignore the usg geo fields (#374).
+		r.persistUsgGeoFiltering(ctx, site, &usg, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
@@ -2298,6 +2311,21 @@ func (r *settingResource) readSettings(
 			return
 		}
 
+		// Newer controllers store Region Blocking under the standalone
+		// usg_geo setting: when the controller has one it is authoritative
+		// for the geo fields, so mirror it into the usg struct before
+		// conversion (#374).
+		if usgGeoConfigured(&planUSG) {
+			rawData, found, err := r.readRawSettingData(ctx, site, usgGeoSettingKey)
+			if err != nil {
+				diags.AddError("Error Reading USG GeoIP Filtering Setting", err.Error())
+				return
+			}
+			if found {
+				applyUsgGeoIPFiltering(usgSetting, rawData)
+			}
+		}
+
 		usgModel := r.usgSettingToModel(ctx, usgSetting, &planUSG)
 		objValue, d := types.ObjectValueFrom(ctx, map[string]attr.Type{
 			"broadcast_ping": types.BoolType,
@@ -2607,6 +2635,118 @@ func (r *settingResource) radiusSettingToModel(
 }
 
 // USG conversion functions.
+// usgGeoSettingKey is the standalone setting key newer controllers (observed
+// on Network 10.4.x) use to store GeoIP Region Blocking, as
+// usg_geo.ip_filtering. Older controllers store the same data as
+// geo_ip_filtering_* fields on the usg setting itself and reject this key
+// with api.err.Invalid (#374).
+const usgGeoSettingKey = "usg_geo"
+
+// usgGeoConfigured reports whether the plan manages any Region Blocking
+// field.
+func usgGeoConfigured(plan *settingUSGModel) bool {
+	return (!plan.GeoIPFilteringEnabled.IsNull() && !plan.GeoIPFilteringEnabled.IsUnknown()) ||
+		(!plan.GeoIPFilteringBlock.IsNull() && !plan.GeoIPFilteringBlock.IsUnknown()) ||
+		(!plan.GeoIPFilteringCountries.IsNull() && !plan.GeoIPFilteringCountries.IsUnknown()) ||
+		(!plan.GeoIPFilteringTrafficDirection.IsNull() &&
+			!plan.GeoIPFilteringTrafficDirection.IsUnknown())
+}
+
+// usgGeoRawSetting builds the standalone usg_geo setting payload from the
+// usg geo fields. The legacy field names map onto usg_geo.ip_filtering:
+// geo_ip_filtering_block becomes action; countries, enabled and
+// traffic_direction keep their names and shapes.
+func usgGeoRawSetting(model *settingUSGModel) *settings.RawSetting {
+	ipFiltering := map[string]any{
+		// Always sent: the legacy usg field is likewise always serialized,
+		// so an unconfigured enabled reads as false on both paths.
+		"enabled": model.GeoIPFilteringEnabled.ValueBool(),
+	}
+	if !model.GeoIPFilteringBlock.IsNull() && !model.GeoIPFilteringBlock.IsUnknown() {
+		ipFiltering["action"] = model.GeoIPFilteringBlock.ValueString()
+	}
+	if !model.GeoIPFilteringCountries.IsNull() && !model.GeoIPFilteringCountries.IsUnknown() {
+		ipFiltering["countries"] = model.GeoIPFilteringCountries.ValueString()
+	}
+	if !model.GeoIPFilteringTrafficDirection.IsNull() &&
+		!model.GeoIPFilteringTrafficDirection.IsUnknown() {
+		ipFiltering["traffic_direction"] = model.GeoIPFilteringTrafficDirection.ValueString()
+	}
+	return &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: usgGeoSettingKey},
+		Data:        map[string]any{"ip_filtering": ipFiltering},
+	}
+}
+
+// applyUsgGeoIPFiltering overrides the usg setting's geo fields with the
+// values from a usg_geo setting's ip_filtering payload, which is
+// authoritative whenever the controller stores one.
+func applyUsgGeoIPFiltering(setting *settings.Usg, data map[string]any) {
+	ipf, ok := data["ip_filtering"].(map[string]any)
+	if !ok {
+		return
+	}
+	if v, ok := ipf["enabled"].(bool); ok {
+		setting.GeoIPFilteringEnabled = v
+	}
+	if v, ok := ipf["action"].(string); ok {
+		setting.GeoIPFilteringBlock = v
+	}
+	switch v := ipf["countries"].(type) {
+	case string:
+		setting.GeoIPFilteringCountries = v
+	case []any:
+		// Defensive: tolerate a list-of-codes shape by normalizing to the
+		// comma-separated form the schema exposes.
+		codes := make([]string, 0, len(v))
+		for _, c := range v {
+			if s, ok := c.(string); ok {
+				codes = append(codes, s)
+			}
+		}
+		setting.GeoIPFilteringCountries = strings.Join(codes, ",")
+	}
+	if v, ok := ipf["traffic_direction"].(string); ok {
+		setting.GeoIPFilteringTrafficDirection = v
+	}
+}
+
+// persistUsgGeoFiltering makes sure configured Region Blocking fields reach
+// the controller. Older controllers persist them as geo_ip_filtering_* on
+// the usg setting; newer controllers ignore those fields there and keep the
+// live configuration under usg_geo.ip_filtering instead, which used to leave
+// applies without effect and the plan permanently inconsistent (#374).
+func (r *settingResource) persistUsgGeoFiltering(
+	ctx context.Context,
+	site string,
+	model *settingUSGModel,
+	diags *diag.Diagnostics,
+) {
+	if !usgGeoConfigured(model) {
+		return
+	}
+
+	err := r.client.UpdateSetting(ctx, site, usgGeoRawSetting(model))
+	if err == nil {
+		return
+	}
+
+	// Older controllers reject the usg_geo key with api.err.Invalid; they
+	// persist the geo_ip_filtering_* fields on the usg setting itself, which
+	// the preceding usg update already wrote. Confirm that before treating
+	// the rejection as benign.
+	var apiErr *ui.APIError
+	if errors.As(err, &apiErr) && apiErr.Message == "api.err.Invalid" {
+		usgData, found, readErr := r.readRawSettingData(ctx, site, "usg")
+		if readErr == nil && found {
+			if _, ok := usgData["geo_ip_filtering_enabled"]; ok {
+				return
+			}
+		}
+	}
+	diags.AddError("Error Updating USG GeoIP Filtering Setting", err.Error())
+}
+
 func (r *settingResource) usgModelToSetting(
 	ctx context.Context,
 	model *settingUSGModel,
