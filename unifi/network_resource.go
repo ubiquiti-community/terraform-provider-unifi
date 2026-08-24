@@ -1058,12 +1058,12 @@ func (r *networkResource) warnUnsupportedDhcpGuarding(
 	var thirdPartyGateway types.Bool
 	resp.Diagnostics.Append(
 		req.Plan.GetAttribute(ctx, path.Root("third_party_gateway"), &thirdPartyGateway)...)
-	if resp.Diagnostics.HasError() {
+	if resp.Diagnostics.HasError() || thirdPartyGateway.IsUnknown() {
 		return
 	}
-	if thirdPartyGateway.ValueBool() {
+	if !thirdPartyGateway.IsNull() && thirdPartyGateway.ValueBool() {
 		// third_party_gateway forces purpose to vlan-only, which go-unifi
-		// serializes dhcp guarding fields for correctly.
+		// serializes dhcp guarding fields correctly.
 		return
 	}
 
