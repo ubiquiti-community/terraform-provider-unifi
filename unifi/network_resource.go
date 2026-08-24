@@ -600,12 +600,10 @@ func (r *networkResource) Schema(
 					},
 					"servers": schema.ListAttribute{
 						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3). " +
-							"**Known limitation:** for networks with `purpose = \"corporate\"` or " +
-							"`purpose = \"guest\"`, the underlying go-unifi API client currently " +
-							"drops this field before it reaches the controller (it is only sent " +
-							"for `purpose = \"vlan-only\"` networks; tracked upstream as " +
-							"go-unifi#68). Terraform will show a warning in this case. See " +
-							"https://github.com/ubiquiti-community/terraform-provider-unifi/issues/419.",
+							"On `corporate` and `guest` networks the controller only honors " +
+							"DHCP guarding with `setting_preference = \"manual\"`; when " +
+							"`setting_preference` is not configured, the provider sets it to " +
+							"`manual` automatically whenever `dhcp_guarding.enabled` is `true`.",
 						Optional:    true,
 						ElementType: types.StringType,
 						Validators: []validator.List{
@@ -927,13 +925,15 @@ func (r *networkResource) Configure(
 
 // ModifyPlan rejects a configured ipv6_aliases (#413, unsupported by the
 // underlying client) and forces setting_preference to "manual" when DHCP
-// relay is enabled.
+// relay or DHCP guarding is enabled.
 //
-// With setting_preference "auto" the controller auto-manages the network and
-// re-enables its built-in DHCP server, which silently turns dhcp_relay off
-// (the two cannot coexist). Forcing "manual" makes the controller honor the
-// explicit relay configuration. We only override the default; an explicit
-// user-provided value is left untouched.
+// With setting_preference "auto" the controller auto-manages the network:
+// it re-enables its built-in DHCP server, which silently turns dhcp_relay
+// off (the two cannot coexist), and it force-resets dhcpguard_enabled to
+// false on every write (#419). Forcing "manual" makes the controller honor
+// the explicit relay/guarding configuration. We only override the default;
+// an explicit user-provided value is left untouched (with a warning for the
+// unsatisfiable auto+guarding combination).
 func (r *networkResource) ModifyPlan(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
@@ -1003,24 +1003,103 @@ func (r *networkResource) ModifyPlan(
 		}
 	}
 
-	r.warnUnsupportedDhcpGuarding(ctx, req, resp)
+	// DHCP guarding on corporate/guest networks requires setting_preference =
+	// "manual": with "auto" the controller auto-manages the network and
+	// force-resets dhcpguard_enabled to false on write (verified against a
+	// live controller: a POST carrying dhcpguard_enabled=true with
+	// setting_preference="auto" is stored with dhcpguard_enabled=false for
+	// purpose corporate and guest; vlan-only keeps it). This surfaced as
+	// guarding silently dropped or as "provider produced inconsistent result
+	// after apply" on .dhcp_guarding.enabled (#419). It is controller
+	// behavior, not the historic go-unifi marshaling gap (go-unifi#68) —
+	// current go-unifi serializes dhcpd_ip_1..3 for corporate, guest, and
+	// vlan-only purposes alike.
+	guardEnabled := false
+	var guarding types.Object
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("dhcp_guarding"), &guarding)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !guarding.IsNull() && !guarding.IsUnknown() {
+		var dg dhcpGuardingModel
+		resp.Diagnostics.Append(guarding.As(ctx, &dg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		guardEnabled = dg.Enabled.ValueBool()
+	}
+
+	// Effective purpose mirrors modelToNetwork: default corporate when unset,
+	// third_party_gateway forces vlan-only. Only corporate/guest reset
+	// guarding under "auto"; an unknown purpose is treated as at risk.
+	guardAtRisk := false
+	if guardEnabled {
+		var purpose types.String
+		resp.Diagnostics.Append(
+			req.Plan.GetAttribute(ctx, path.Root("purpose"), &purpose)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		effectivePurpose := unifi.PurposeCorporate
+		if !purpose.IsNull() && !purpose.IsUnknown() && purpose.ValueString() != "" {
+			effectivePurpose = purpose.ValueString()
+		}
+		var thirdPartyGateway types.Bool
+		resp.Diagnostics.Append(
+			req.Plan.GetAttribute(ctx, path.Root("third_party_gateway"), &thirdPartyGateway)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !thirdPartyGateway.IsUnknown() && thirdPartyGateway.ValueBool() {
+			effectivePurpose = unifi.PurposeVLANOnly
+		}
+		guardAtRisk = effectivePurpose == unifi.PurposeCorporate ||
+			effectivePurpose == unifi.PurposeGuest
+	}
 
 	var configPref types.String
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("setting_preference"), &configPref)...)
-	if resp.Diagnostics.HasError() || !configPref.IsNull() {
-		return // user set it explicitly: respect their choice
+	if resp.Diagnostics.HasError() {
+		return
 	}
-
-	var relay types.Object
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("dhcp_relay"), &relay)...)
-	if resp.Diagnostics.HasError() || relay.IsNull() || relay.IsUnknown() {
+	if !configPref.IsNull() {
+		// The user set setting_preference explicitly: respect their choice,
+		// but surface the unsatisfiable combination instead of letting apply
+		// fail with a confusing inconsistent-result error.
+		if configPref.ValueString() == "auto" && guardAtRisk {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("setting_preference"),
+				"DHCP guarding is reset by the controller when setting_preference is \"auto\"",
+				"The controller force-disables dhcpguard_enabled on any write to an "+
+					"auto-managed network, so dhcp_guarding.enabled = true cannot take "+
+					"effect and apply is likely to fail with \"Provider produced "+
+					"inconsistent result after apply\". Set setting_preference = "+
+					"\"manual\", or remove it so the provider manages it, to use DHCP "+
+					"guarding (#419).",
+			)
+		}
 		return
 	}
 
-	var dr dhcpRelayModel
-	resp.Diagnostics.Append(relay.As(ctx, &dr, basetypes.ObjectAsOptions{})...)
-	if resp.Diagnostics.HasError() || !dr.Enabled.ValueBool() {
+	needManual := guardAtRisk
+
+	var relay types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("dhcp_relay"), &relay)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !relay.IsNull() && !relay.IsUnknown() {
+		var dr dhcpRelayModel
+		resp.Diagnostics.Append(relay.As(ctx, &dr, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		needManual = needManual || dr.Enabled.ValueBool()
+	}
+
+	if !needManual {
 		return
 	}
 
@@ -1030,70 +1109,6 @@ func (r *networkResource) ModifyPlan(
 			path.Root("setting_preference"),
 			types.StringValue("manual"),
 		)...)
-}
-
-// warnUnsupportedDhcpGuarding surfaces a plan-time warning when dhcp_guarding
-// servers are configured on a "corporate" or "guest" purpose network. The
-// go-unifi client only serializes dhcpd_ip_1..3 into the request body for
-// "vlan-only" networks (unifi/network_encode.go marshalCorporate/marshalGuest
-// omit those fields), so the servers are silently dropped before the
-// controller ever sees them. Tracked upstream as go-unifi#68; see also
-// https://github.com/ubiquiti-community/terraform-provider-unifi/issues/419.
-func (r *networkResource) warnUnsupportedDhcpGuarding(
-	ctx context.Context,
-	req resource.ModifyPlanRequest,
-	resp *resource.ModifyPlanResponse,
-) {
-	var purpose types.String
-	resp.Diagnostics.Append(
-		req.Plan.GetAttribute(ctx, path.Root("purpose"), &purpose)...)
-	if resp.Diagnostics.HasError() || purpose.IsNull() || purpose.IsUnknown() {
-		return
-	}
-	if purpose.ValueString() != unifi.PurposeCorporate &&
-		purpose.ValueString() != unifi.PurposeGuest {
-		return
-	}
-
-	var thirdPartyGateway types.Bool
-	resp.Diagnostics.Append(
-		req.Plan.GetAttribute(ctx, path.Root("third_party_gateway"), &thirdPartyGateway)...)
-	if resp.Diagnostics.HasError() || thirdPartyGateway.IsUnknown() {
-		return
-	}
-	if !thirdPartyGateway.IsNull() && thirdPartyGateway.ValueBool() {
-		// third_party_gateway forces purpose to vlan-only, which go-unifi
-		// serializes dhcp guarding fields correctly.
-		return
-	}
-
-	var guarding types.Object
-	resp.Diagnostics.Append(
-		req.Plan.GetAttribute(ctx, path.Root("dhcp_guarding"), &guarding)...)
-	if resp.Diagnostics.HasError() || guarding.IsNull() || guarding.IsUnknown() {
-		return
-	}
-
-	var dg dhcpGuardingModel
-	resp.Diagnostics.Append(guarding.As(ctx, &dg, basetypes.ObjectAsOptions{})...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	if dg.Servers.IsNull() || dg.Servers.IsUnknown() || len(dg.Servers.Elements()) == 0 {
-		return
-	}
-
-	resp.Diagnostics.AddAttributeWarning(
-		path.Root("dhcp_guarding").AtName("servers"),
-		"DHCP Guarding Servers Not Sent for This Network Purpose",
-		"The go-unifi API client currently only transmits dhcp_guarding.servers to the "+
-			"controller for networks with purpose = \"vlan-only\". For purpose = \""+
-			purpose.ValueString()+"\", the configured servers are accepted by Terraform "+
-			"but silently dropped before the request reaches the controller. This is a "+
-			"known upstream limitation in go-unifi (go-unifi#68), not a bug in this "+
-			"provider's configuration handling; track progress at "+
-			"https://github.com/ubiquiti-community/terraform-provider-unifi/issues/419.",
-	)
 }
 
 func (r *networkResource) Create(
