@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -2312,6 +2313,18 @@ func (r *deviceResource) reconcilePortOverrides(
 			}
 		}
 
+		// The guards above only resolve fields the user explicitly configured.
+		// Optional+Computed attributes left unset (e.g. flow_control_enabled,
+		// full_duplex, lldpmed_notify_enabled) plan as unknown and fall through
+		// every guard untouched, which the framework rejects as "unknown after
+		// apply". Resolve anything still unknown from the API response.
+		apiModel, modelDiags := apiPortOverrideToModel(apiPO)
+		diags.Append(modelDiags...)
+		if diags.HasError() {
+			return prior, diags
+		}
+		resolveUnknownPortOverrideAttrs(&updated, apiModel)
+
 		objVal, objDiags := types.ObjectValueFrom(ctx, updated.AttributeTypes(), updated)
 		diags.Append(objDiags...)
 		elements = append(elements, objVal)
@@ -2332,6 +2345,22 @@ func (r *deviceResource) reconcilePortOverrides(
 	return setValue, diags
 }
 
+// resolveUnknownPortOverrideAttrs fills any attribute in dst that is still
+// unknown with the corresponding value from src. An unknown attribute means
+// it was Optional+Computed and left out of config, so it plans as unknown and
+// is neither "configured" nor "absent" from the guards' point of view — it
+// needs its own resolution rather than a share of either branch.
+func resolveUnknownPortOverrideAttrs(dst *portOverrideModel, src portOverrideModel) {
+	dstVal := reflect.ValueOf(dst).Elem()
+	srcVal := reflect.ValueOf(src)
+	for i := 0; i < dstVal.NumField(); i++ {
+		field := dstVal.Field(i)
+		if v, ok := field.Interface().(attr.Value); ok && v.IsUnknown() {
+			field.Set(srcVal.Field(i))
+		}
+	}
+}
+
 func (r *deviceResource) portOverridesToFramework(
 	ctx context.Context,
 	pos []unifi.DevicePortOverrides,
@@ -2346,193 +2375,10 @@ func (r *deviceResource) portOverridesToFramework(
 
 	elements := make([]attr.Value, 0, len(pos))
 	for _, po := range pos {
-		model := portOverrideModel{
-			Index: types.Int64PointerValue(po.PortIDX),
-		}
-
-		// String attributes
-		if po.Name == "" {
-			model.Name = types.StringNull()
-		} else {
-			model.Name = types.StringValue(po.Name)
-		}
-
-		if po.PortProfileID == "" {
-			model.PortProfileID = types.StringNull()
-		} else {
-			model.PortProfileID = types.StringValue(po.PortProfileID)
-		}
-
-		if po.OpMode == "" {
-			model.OpMode = types.StringNull()
-		} else {
-			model.OpMode = types.StringValue(po.OpMode)
-		}
-
-		if po.PoeMode == "" {
-			model.PoeMode = types.StringNull()
-		} else {
-			model.PoeMode = types.StringValue(po.PoeMode)
-		}
-
-		if po.Dot1XCtrl == "" {
-			model.Dot1XCtrl = types.StringNull()
-		} else {
-			model.Dot1XCtrl = types.StringValue(po.Dot1XCtrl)
-		}
-
-		if po.FecMode == "" {
-			model.FecMode = types.StringNull()
-		} else {
-			model.FecMode = types.StringValue(po.FecMode)
-		}
-
-		if po.Forward == "" {
-			model.Forward = types.StringNull()
-		} else {
-			model.Forward = types.StringValue(po.Forward)
-		}
-
-		if po.NATiveNetworkID == "" {
-			model.NativeNetworkID = types.StringNull()
-		} else {
-			model.NativeNetworkID = types.StringValue(po.NATiveNetworkID)
-		}
-
-		if po.SettingPreference == "" {
-			model.SettingPreference = types.StringNull()
-		} else {
-			model.SettingPreference = types.StringValue(po.SettingPreference)
-		}
-
-		if po.StormctrlType == "" {
-			model.StormctrlType = types.StringNull()
-		} else {
-			model.StormctrlType = types.StringValue(po.StormctrlType)
-		}
-
-		if po.TaggedVLANMgmt == "" {
-			model.TaggedVLANMgmt = types.StringNull()
-		} else {
-			model.TaggedVLANMgmt = types.StringValue(po.TaggedVLANMgmt)
-		}
-
-		if po.VoiceNetworkID == "" {
-			model.VoiceNetworkID = types.StringNull()
-		} else {
-			model.VoiceNetworkID = types.StringValue(po.VoiceNetworkID)
-		}
-
-		// Boolean attributes
-		model.Autoneg = types.BoolValue(po.Autoneg)
-		model.EgressRateLimitKbpsEnabled = types.BoolValue(po.EgressRateLimitKbpsEnabled)
-		model.FlowControlEnabled = types.BoolValue(po.FlowControlEnabled)
-		model.FullDuplex = types.BoolValue(po.FullDuplex)
-		model.Isolation = types.BoolValue(po.Isolation)
-		model.LldpmedEnabled = types.BoolValue(po.LldpmedEnabled)
-		model.LldpmedNotifyEnabled = types.BoolValue(po.LldpmedNotifyEnabled)
-		model.PortKeepaliveEnabled = types.BoolValue(po.PortKeepaliveEnabled)
-		model.PortSecurityEnabled = types.BoolValue(po.PortSecurityEnabled)
-		model.StormctrlBroadcastEnabled = types.BoolValue(po.StormctrlBroadcastastEnabled)
-		model.StormctrlMcastEnabled = types.BoolValue(po.StormctrlMcastEnabled)
-		model.StormctrlUcastEnabled = types.BoolValue(po.StormctrlUcastEnabled)
-		model.StpPortMode = types.BoolValue(po.StpPortMode)
-
-		// Int64 attributes
-		model.Dot1XIDleTimeout = util.DurationPtrValue(po.Dot1XIDleTimeout, time.Second)
-
-		model.EgressRateLimitKbps = types.Int64PointerValue(po.EgressRateLimitKbps)
-
-		model.MirrorPortIDX = types.Int64PointerValue(po.MirrorPortIDX)
-
-		model.PriorityQueue1Level = types.Int64PointerValue(po.PriorityQueue1Level)
-
-		model.PriorityQueue2Level = types.Int64PointerValue(po.PriorityQueue2Level)
-		model.PriorityQueue3Level = types.Int64PointerValue(po.PriorityQueue3Level)
-		model.PriorityQueue4Level = types.Int64PointerValue(po.PriorityQueue4Level)
-		model.Speed = types.Int64PointerValue(po.Speed)
-
-		model.StormctrlBroadcastLevel = types.Int64PointerValue(po.StormctrlBroadcastastLevel)
-
-		model.StormctrlBroadcastRate = types.Int64PointerValue(po.StormctrlBroadcastastRate)
-
-		model.StormctrlMcastLevel = types.Int64PointerValue(po.StormctrlMcastLevel)
-
-		model.StormctrlMcastRate = types.Int64PointerValue(po.StormctrlMcastRate)
-
-		model.StormctrlUcastLevel = types.Int64PointerValue(po.StormctrlUcastLevel)
-
-		model.StormctrlUcastRate = types.Int64PointerValue(po.StormctrlUcastRate)
-
-		// List attributes
-		if len(po.AggregateMembers) == 0 {
-			model.AggregateMembers = types.ListNull(types.Int64Type)
-		} else {
-			aggrMemberValues := make([]attr.Value, 0, len(po.AggregateMembers))
-			for _, member := range po.AggregateMembers {
-				aggrMemberValues = append(aggrMemberValues, types.Int64Value(member))
-			}
-			listVal, listDiags := types.ListValue(types.Int64Type, aggrMemberValues)
-			diags.Append(listDiags...)
-			if diags.HasError() {
-				continue
-			}
-			model.AggregateMembers = listVal
-		}
-
-		if len(po.ExcludedNetworkIDs) == 0 {
-			model.ExcludedNetworkIDs = types.SetNull(types.StringType)
-		} else {
-			sortedExcluded := make([]string, len(po.ExcludedNetworkIDs))
-			copy(sortedExcluded, po.ExcludedNetworkIDs)
-			sort.Strings(sortedExcluded)
-			excludedValues := make([]attr.Value, 0, len(sortedExcluded))
-			for _, id := range sortedExcluded {
-				excludedValues = append(excludedValues, types.StringValue(id))
-			}
-			setVal, setDiags := types.SetValue(types.StringType, excludedValues)
-			diags.Append(setDiags...)
-			if diags.HasError() {
-				continue
-			}
-			model.ExcludedNetworkIDs = setVal
-		}
-
-		// FIX (#235): the pinned go-unifi SDK has no TaggedNetworkIDs field, so
-		// nothing populates it below. Without this assignment the model field
-		// stays an untyped zero-value types.Set, which makes ObjectValueFrom
-		// emit a "types.SetType[!!! MISSING TYPE !!!]" Value Conversion Error
-		// against the schema's SetAttribute{ElementType: types.StringType}.
-		model.TaggedNetworkIDs = types.SetNull(types.StringType)
-
-		if len(po.MulticastRouterNetworkIDs) == 0 {
-			model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
-		} else {
-			multicastValues := make([]attr.Value, 0, len(po.MulticastRouterNetworkIDs))
-			for _, id := range po.MulticastRouterNetworkIDs {
-				multicastValues = append(multicastValues, types.StringValue(id))
-			}
-			setVal, setDiags := types.SetValue(types.StringType, multicastValues)
-			diags.Append(setDiags...)
-			if diags.HasError() {
-				continue
-			}
-			model.MulticastRouterNetworkIDs = setVal
-		}
-
-		if len(po.PortSecurityMACAddress) == 0 {
-			model.PortSecurityMACAddress = types.ListNull(types.StringType)
-		} else {
-			macValues := make([]attr.Value, 0, len(po.PortSecurityMACAddress))
-			for _, mac := range po.PortSecurityMACAddress {
-				macValues = append(macValues, types.StringValue(mac))
-			}
-			listVal, listDiags := types.ListValue(types.StringType, macValues)
-			diags.Append(listDiags...)
-			if diags.HasError() {
-				continue
-			}
-			model.PortSecurityMACAddress = listVal
+		model, modelDiags := apiPortOverrideToModel(po)
+		diags.Append(modelDiags...)
+		if diags.HasError() {
+			continue
 		}
 
 		// Convert model to object
@@ -2555,6 +2401,205 @@ func (r *deviceResource) portOverridesToFramework(
 	}, elements)
 	diags.Append(setDiags...)
 	return setValue, diags
+}
+
+// apiPortOverrideToModel converts a single API port override into a fully
+// populated portOverrideModel. Every attribute is resolved to a concrete
+// value (never unknown), which makes this the source of truth for filling in
+// attributes the plan left unknown — see resolveUnknownPortOverrideAttrs.
+func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	model := portOverrideModel{
+		Index: types.Int64PointerValue(po.PortIDX),
+	}
+
+	// String attributes
+	if po.Name == "" {
+		model.Name = types.StringNull()
+	} else {
+		model.Name = types.StringValue(po.Name)
+	}
+
+	if po.PortProfileID == "" {
+		model.PortProfileID = types.StringNull()
+	} else {
+		model.PortProfileID = types.StringValue(po.PortProfileID)
+	}
+
+	if po.OpMode == "" {
+		model.OpMode = types.StringNull()
+	} else {
+		model.OpMode = types.StringValue(po.OpMode)
+	}
+
+	if po.PoeMode == "" {
+		model.PoeMode = types.StringNull()
+	} else {
+		model.PoeMode = types.StringValue(po.PoeMode)
+	}
+
+	if po.Dot1XCtrl == "" {
+		model.Dot1XCtrl = types.StringNull()
+	} else {
+		model.Dot1XCtrl = types.StringValue(po.Dot1XCtrl)
+	}
+
+	if po.FecMode == "" {
+		model.FecMode = types.StringNull()
+	} else {
+		model.FecMode = types.StringValue(po.FecMode)
+	}
+
+	if po.Forward == "" {
+		model.Forward = types.StringNull()
+	} else {
+		model.Forward = types.StringValue(po.Forward)
+	}
+
+	if po.NATiveNetworkID == "" {
+		model.NativeNetworkID = types.StringNull()
+	} else {
+		model.NativeNetworkID = types.StringValue(po.NATiveNetworkID)
+	}
+
+	if po.SettingPreference == "" {
+		model.SettingPreference = types.StringNull()
+	} else {
+		model.SettingPreference = types.StringValue(po.SettingPreference)
+	}
+
+	if po.StormctrlType == "" {
+		model.StormctrlType = types.StringNull()
+	} else {
+		model.StormctrlType = types.StringValue(po.StormctrlType)
+	}
+
+	if po.TaggedVLANMgmt == "" {
+		model.TaggedVLANMgmt = types.StringNull()
+	} else {
+		model.TaggedVLANMgmt = types.StringValue(po.TaggedVLANMgmt)
+	}
+
+	if po.VoiceNetworkID == "" {
+		model.VoiceNetworkID = types.StringNull()
+	} else {
+		model.VoiceNetworkID = types.StringValue(po.VoiceNetworkID)
+	}
+
+	// Boolean attributes
+	model.Autoneg = types.BoolValue(po.Autoneg)
+	model.EgressRateLimitKbpsEnabled = types.BoolValue(po.EgressRateLimitKbpsEnabled)
+	model.FlowControlEnabled = types.BoolValue(po.FlowControlEnabled)
+	model.FullDuplex = types.BoolValue(po.FullDuplex)
+	model.Isolation = types.BoolValue(po.Isolation)
+	model.LldpmedEnabled = types.BoolValue(po.LldpmedEnabled)
+	model.LldpmedNotifyEnabled = types.BoolValue(po.LldpmedNotifyEnabled)
+	model.PortKeepaliveEnabled = types.BoolValue(po.PortKeepaliveEnabled)
+	model.PortSecurityEnabled = types.BoolValue(po.PortSecurityEnabled)
+	model.StormctrlBroadcastEnabled = types.BoolValue(po.StormctrlBroadcastastEnabled)
+	model.StormctrlMcastEnabled = types.BoolValue(po.StormctrlMcastEnabled)
+	model.StormctrlUcastEnabled = types.BoolValue(po.StormctrlUcastEnabled)
+	model.StpPortMode = types.BoolValue(po.StpPortMode)
+
+	// Int64 attributes
+	model.Dot1XIDleTimeout = util.DurationPtrValue(po.Dot1XIDleTimeout, time.Second)
+
+	model.EgressRateLimitKbps = types.Int64PointerValue(po.EgressRateLimitKbps)
+
+	model.MirrorPortIDX = types.Int64PointerValue(po.MirrorPortIDX)
+
+	model.PriorityQueue1Level = types.Int64PointerValue(po.PriorityQueue1Level)
+
+	model.PriorityQueue2Level = types.Int64PointerValue(po.PriorityQueue2Level)
+	model.PriorityQueue3Level = types.Int64PointerValue(po.PriorityQueue3Level)
+	model.PriorityQueue4Level = types.Int64PointerValue(po.PriorityQueue4Level)
+	model.Speed = types.Int64PointerValue(po.Speed)
+
+	model.StormctrlBroadcastLevel = types.Int64PointerValue(po.StormctrlBroadcastastLevel)
+
+	model.StormctrlBroadcastRate = types.Int64PointerValue(po.StormctrlBroadcastastRate)
+
+	model.StormctrlMcastLevel = types.Int64PointerValue(po.StormctrlMcastLevel)
+
+	model.StormctrlMcastRate = types.Int64PointerValue(po.StormctrlMcastRate)
+
+	model.StormctrlUcastLevel = types.Int64PointerValue(po.StormctrlUcastLevel)
+
+	model.StormctrlUcastRate = types.Int64PointerValue(po.StormctrlUcastRate)
+
+	// List attributes
+	if len(po.AggregateMembers) == 0 {
+		model.AggregateMembers = types.ListNull(types.Int64Type)
+	} else {
+		aggrMemberValues := make([]attr.Value, 0, len(po.AggregateMembers))
+		for _, member := range po.AggregateMembers {
+			aggrMemberValues = append(aggrMemberValues, types.Int64Value(member))
+		}
+		listVal, listDiags := types.ListValue(types.Int64Type, aggrMemberValues)
+		diags.Append(listDiags...)
+		if diags.HasError() {
+			return model, diags
+		}
+		model.AggregateMembers = listVal
+	}
+
+	if len(po.ExcludedNetworkIDs) == 0 {
+		model.ExcludedNetworkIDs = types.SetNull(types.StringType)
+	} else {
+		sortedExcluded := make([]string, len(po.ExcludedNetworkIDs))
+		copy(sortedExcluded, po.ExcludedNetworkIDs)
+		sort.Strings(sortedExcluded)
+		excludedValues := make([]attr.Value, 0, len(sortedExcluded))
+		for _, id := range sortedExcluded {
+			excludedValues = append(excludedValues, types.StringValue(id))
+		}
+		setVal, setDiags := types.SetValue(types.StringType, excludedValues)
+		diags.Append(setDiags...)
+		if diags.HasError() {
+			return model, diags
+		}
+		model.ExcludedNetworkIDs = setVal
+	}
+
+	// FIX (#235): the pinned go-unifi SDK has no TaggedNetworkIDs field, so
+	// nothing populates it below. Without this assignment the model field
+	// stays an untyped zero-value types.Set, which makes ObjectValueFrom
+	// emit a "types.SetType[!!! MISSING TYPE !!!]" Value Conversion Error
+	// against the schema's SetAttribute{ElementType: types.StringType}.
+	model.TaggedNetworkIDs = types.SetNull(types.StringType)
+
+	if len(po.MulticastRouterNetworkIDs) == 0 {
+		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
+	} else {
+		multicastValues := make([]attr.Value, 0, len(po.MulticastRouterNetworkIDs))
+		for _, id := range po.MulticastRouterNetworkIDs {
+			multicastValues = append(multicastValues, types.StringValue(id))
+		}
+		setVal, setDiags := types.SetValue(types.StringType, multicastValues)
+		diags.Append(setDiags...)
+		if diags.HasError() {
+			return model, diags
+		}
+		model.MulticastRouterNetworkIDs = setVal
+	}
+
+	if len(po.PortSecurityMACAddress) == 0 {
+		model.PortSecurityMACAddress = types.ListNull(types.StringType)
+	} else {
+		macValues := make([]attr.Value, 0, len(po.PortSecurityMACAddress))
+		for _, mac := range po.PortSecurityMACAddress {
+			macValues = append(macValues, types.StringValue(mac))
+		}
+		listVal, listDiags := types.ListValue(types.StringType, macValues)
+		diags.Append(listDiags...)
+		if diags.HasError() {
+			return model, diags
+		}
+		model.PortSecurityMACAddress = listVal
+	}
+
+	return model, diags
 }
 
 func (r *deviceResource) frameworkToPortOverrides(
