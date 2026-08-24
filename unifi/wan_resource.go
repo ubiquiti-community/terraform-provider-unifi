@@ -60,6 +60,12 @@ type wanResource struct {
 	client *Client
 }
 
+// wanIdentityModel describes the resource identity data model.
+type wanIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // wanResourceModel describes the resource data model.
 type wanResourceModel struct {
 	ID           types.String `tfsdk:"id"`
@@ -312,6 +318,9 @@ func (r *wanResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -941,7 +950,10 @@ func (r *wanResource) Create(
 			r.overlayConfig(&state, &config, &plan)
 			state.Timeouts = plan.Timeouts
 
-			resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, wanIdentityModel{
+				ID:   state.ID,
+				Site: state.Site,
+			})...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 			return
 		}
@@ -973,7 +985,10 @@ func (r *wanResource) Create(
 	state.Timeouts = plan.Timeouts
 
 	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, wanIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1091,7 +1106,36 @@ func (r *wanResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support. When an identity comes in it must be passed through
+	// unchanged: Terraform treats any modification of a non-null identity
+	// (including filling a null attribute) as an error.
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	var identity wanIdentityModel
+	if haveIdentity {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+
+	// Tolerate identity-only state (the refresh right after an identity-based
+	// import): fill the missing lookup keys from identity.
+	id := ""
+	if !state.ID.IsNull() && !state.ID.IsUnknown() {
+		id = state.ID.ValueString()
+	}
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
+
 	site := state.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -1099,7 +1143,7 @@ func (r *wanResource) Read(
 	var network *unifi.Network
 	var err error
 
-	if state.ID.IsNull() || state.ID.IsUnknown() {
+	if id == "" {
 		network, err = r.client.GetNetworkByName(ctx, site, state.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -1110,7 +1154,7 @@ func (r *wanResource) Read(
 		}
 	} else {
 		// Get the network
-		network, err = r.client.GetNetwork(ctx, site, state.ID.ValueString())
+		network, err = r.client.GetNetwork(ctx, site, id)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Client Error",
@@ -1127,8 +1171,13 @@ func (r *wanResource) Read(
 		return
 	}
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Save updated data into Terraform state. A pre-existing identity is
+	// re-set unchanged; a fresh one is derived from the refreshed state.
+	if !haveIdentity {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1208,8 +1257,17 @@ func (r *wanResource) Update(
 		state.DsliteRemoteHost = plan.DsliteRemoteHost
 	}
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Save updated data into Terraform state. Identity is immutable once set:
+	// carry the incoming identity through unchanged, deriving a fresh one from
+	// state only when it was absent.
+	identity := wanIdentityModel{ID: state.ID, Site: state.Site}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1336,20 +1394,46 @@ func (r *wanResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		req.ID = idParts[1]
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// Formats: "site:id", "name=<name>", a bare 24-hex controller ObjectID, or
+	// a plain network name.
+	if req.ID != "" {
+		var site types.String
+
+		idParts := strings.Split(req.ID, ":")
+		if len(idParts) == 2 {
+			site = types.StringValue(idParts[0])
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+			req.ID = idParts[1]
+		}
+
+		if strings.HasPrefix(req.ID, "name=") {
+			req.ID = strings.TrimPrefix(req.ID, "name=")
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+			identity := wanIdentityModel{ID: types.StringValue(req.ID), Site: site}
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+		} else {
+			// Fall back to importing by name.
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		}
+		return
 	}
 
-	rootAttributeName := "name"
-	if strings.HasPrefix(req.ID, "name=") {
-		req.ID = strings.TrimPrefix(req.ID, "name=")
-	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
-		rootAttributeName = "id"
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var identity wanIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+	if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+	}
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
@@ -2086,11 +2170,10 @@ func (r *wanResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(network.ID),
-				)...,
+				result.Identity.Set(ctx, wanIdentityModel{
+					ID:   types.StringValue(network.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.

@@ -170,6 +170,29 @@ func TestAccStaticRouteFramework_basic(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
+			// String import in the "site:id" format.
+			{
+				ResourceName:      "unifi_static_route.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: func(s *terraform.State) (string, error) {
+					rs, ok := s.RootModule().Resources["unifi_static_route.test"]
+					if !ok {
+						return "", fmt.Errorf("resource not found in state")
+					}
+					site := rs.Primary.Attributes["site"]
+					if site == "" {
+						site = "default"
+					}
+					return site + ":" + rs.Primary.ID, nil
+				},
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_static_route.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 		},
 	})
 }

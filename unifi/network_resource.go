@@ -65,7 +65,8 @@ type networkResource struct {
 }
 
 type networkIdentityModel struct {
-	ID types.String `tfsdk:"id"`
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
 }
 
 // networkListConfigModel describes the list configuration model.
@@ -276,6 +277,9 @@ func (r *networkResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -1011,7 +1015,7 @@ func (r *networkResource) Create(
 	}
 
 	// Save data into Terraform state
-	idModel := networkIdentityModel{ID: data.ID}
+	idModel := networkIdentityModel{ID: data.ID, Site: data.Site}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -1037,7 +1041,36 @@ func (r *networkResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support. When an identity comes in it must be passed through
+	// unchanged: Terraform treats any modification of a non-null identity
+	// (including filling a null attribute) as an error.
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	var idModel networkIdentityModel
+	if haveIdentity {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		idModel.ID = data.ID
+		idModel.Site = data.Site
+	}
+
+	// Tolerate identity-only state (the refresh right after an identity-based
+	// import): fill the missing lookup keys from identity.
+	id := ""
+	if !data.ID.IsNull() && !data.ID.IsUnknown() {
+		id = data.ID.ValueString()
+	}
+	if id == "" {
+		id = idModel.ID.ValueString()
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		site = idModel.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -1045,13 +1078,13 @@ func (r *networkResource) Read(
 	var err error
 	var network *unifi.Network
 
-	if !data.ID.IsNull() && !data.ID.IsUnknown() {
+	if id != "" {
 		// Get the network by ID
-		network, err = r.client.GetNetwork(ctx, site, data.ID.ValueString())
+		network, err = r.client.GetNetwork(ctx, site, id)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Reading network",
-				"Could not read network ID "+data.ID.ValueString()+": "+err.Error(),
+				"Could not read network ID "+id+": "+err.Error(),
 			)
 			return
 		}
@@ -1080,8 +1113,12 @@ func (r *networkResource) Read(
 		return
 	}
 
-	// Save updated data into Terraform state
-	idModel := networkIdentityModel{ID: data.ID}
+	// Save updated data into Terraform state. A pre-existing identity is
+	// re-set unchanged; a fresh one is derived from the refreshed state.
+	if !haveIdentity {
+		idModel.ID = data.ID
+		idModel.Site = data.Site
+	}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -1164,8 +1201,16 @@ func (r *networkResource) Update(
 		return
 	}
 
-	// Save updated data into Terraform state
-	idModel := networkIdentityModel{ID: data.ID}
+	// Save updated data into Terraform state. Identity is immutable once set:
+	// carry the incoming identity through unchanged, deriving a fresh one from
+	// state only when it was absent.
+	idModel := networkIdentityModel{ID: data.ID, Site: data.Site}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -1213,30 +1258,45 @@ func (r *networkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		req.ID = idParts[1]
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// Formats: "site:id", "name=<name>", a bare 24-hex controller ObjectID, or
+	// a plain network name.
+	if req.ID != "" {
+		var site types.String
+
+		idParts := strings.Split(req.ID, ":")
+		if len(idParts) == 2 {
+			site = types.StringValue(idParts[0])
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+			req.ID = idParts[1]
+		}
+
+		if strings.HasPrefix(req.ID, "name=") {
+			req.ID = strings.TrimPrefix(req.ID, "name=")
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+			idModel := networkIdentityModel{ID: types.StringValue(req.ID), Site: site}
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("id"), idModel.ID)...)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+		} else {
+			// Fall back to importing by name.
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		}
+		return
 	}
 
-	if strings.HasPrefix(req.ID, "name=") {
-		req.ID = strings.TrimPrefix(req.ID, "name=")
-		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
-	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
-		idModel := networkIdentityModel{ID: types.StringValue(req.ID)}
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		resource.ImportStatePassthroughWithIdentity(
-			ctx,
-			path.Root("id"),
-			path.Root("id"),
-			req,
-			resp,
-		)
-	} else {
-		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var idModel networkIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idModel.ID)...)
+	if !idModel.Site.IsNull() && idModel.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), idModel.Site)...)
 	}
 }
 
@@ -2244,11 +2304,10 @@ func (r *networkResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(network.ID),
-				)...,
+				result.Identity.Set(ctx, networkIdentityModel{
+					ID:   types.StringValue(network.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.
