@@ -1765,27 +1765,7 @@ func (r *deviceResource) updateDevice(
 		deviceReq.Type = currentDevice.Type
 	}
 
-	// The UniFi PUT treats port_overrides as a full-replace array. Sending only the
-	// user-declared subset would wipe every other port's override (#266). When the
-	// user declared at least one port_override, merge the declared blocks (by
-	// port_idx) onto the device's current overrides so undeclared ports keep their
-	// existing controller-side config — i.e. partial management of just the declared
-	// ports. With no override declared we echo the controller's current overrides
-	// (below) so the diff never emits `port_overrides: null`, which UDM/Dream Machine
-	// gateways reject.
-	portOverrides := deviceReq.PortOverrides
-	if len(deviceReq.PortOverrides) > 0 {
-		portOverrides = mergePortOverridesByIndex(
-			currentDevice.PortOverrides,
-			deviceReq.PortOverrides,
-		)
-	} else {
-		// No port_override blocks are managed in config (e.g. gateways/APs and
-		// switches we only touch for name/LED/radio). Echo the controller's current
-		// overrides so the diff doesn't emit `port_overrides: null`, which UDM/Dream
-		// Machine gateways reject with api.err.InvalidPayload (400) (#177).
-		portOverrides = currentDevice.PortOverrides
-	}
+	portOverrides := resolvePortOverridesForUpdate(currentDevice, deviceReq)
 
 	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, portOverrides)
 
@@ -2177,6 +2157,26 @@ func carryUnwritableFields(
 		declared.OpMode = current.OpMode
 	}
 	return declared
+}
+
+// resolvePortOverridesForUpdate selects the port_overrides array to send in the
+// update PUT. The UniFi PUT treats port_overrides as a full-replace array, so:
+//
+//   - When config declares at least one port_override block, the declared blocks
+//     are merged (by port_idx) onto the device's current overrides (#266) so
+//     undeclared ports keep their existing controller-side config — partial
+//     management of just the declared ports.
+//   - When config declares zero port_override blocks (e.g. gateways/APs, or a
+//     switch only touched for name/LED/radio), the controller's current overrides
+//     are echoed unchanged. Skipping this — sending nil — marshals to
+//     `port_overrides: null`, which UDM/Dream Machine gateways reject with
+//     api.err.InvalidPayload (400), and would otherwise wipe every live override
+//     the switch actually has (#438).
+//
+// mergePortOverridesByIndex already returns `current` unchanged when `declared` is
+// empty, so both cases collapse to one call.
+func resolvePortOverridesForUpdate(currentDevice, deviceReq *unifi.Device) []unifi.DevicePortOverrides {
+	return mergePortOverridesByIndex(currentDevice.PortOverrides, deviceReq.PortOverrides)
 }
 
 func mergePortOverridesByIndex(
