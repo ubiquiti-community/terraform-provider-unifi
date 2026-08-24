@@ -918,6 +918,102 @@ func Test_deviceResource_reconcilePortOverrides(t *testing.T) {
 	}
 }
 
+// TestReconcilePortOverrides_NativeNetworkClearedRoundTrips guards #410: the
+// controller reports "" for a port's native_networkconf_id when the native
+// network is explicitly set to None (the device_resource analogue of #383's
+// unifi_port_profile fix). reconcilePortOverrides must surface that as a known
+// empty string (not null) for any port the user explicitly configured, so an
+// explicit native_networkconf_id = "" round-trips instead of drifting back to
+// "unset" on every subsequent plan.
+func TestReconcilePortOverrides_NativeNetworkClearedRoundTrips(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	priorModel := portOverrideModel{
+		Index:           types.Int64Value(1),
+		NativeNetworkID: types.StringValue(""),
+	}
+	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
+	if diags.HasError() {
+		t.Fatalf("building prior object: %v", diags)
+	}
+	priorSet, diags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		[]attr.Value{priorObj},
+	)
+	if diags.HasError() {
+		t.Fatalf("building prior set: %v", diags)
+	}
+
+	got, diags := r.reconcilePortOverrides(ctx, priorSet, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(1), NATiveNetworkID: ""},
+	})
+	if diags.HasError() {
+		t.Fatalf("reconcilePortOverrides returned errors: %v", diags)
+	}
+
+	var reconciled []portOverrideModel
+	diags = got.ElementsAs(ctx, &reconciled, false)
+	if diags.HasError() {
+		t.Fatalf("reading back reconciled set: %v", diags)
+	}
+	if len(reconciled) != 1 {
+		t.Fatalf("reconciled length = %d, want 1: %+v", len(reconciled), reconciled)
+	}
+	if reconciled[0].NativeNetworkID.IsNull() || reconciled[0].NativeNetworkID.IsUnknown() ||
+		reconciled[0].NativeNetworkID.ValueString() != "" {
+		t.Errorf(
+			"native_networkconf_id: want known empty string, got %#v",
+			reconciled[0].NativeNetworkID,
+		)
+	}
+}
+
+// TestReconcilePortOverrides_NativeNetworkAssignedKept is the companion to
+// #410: a controller-assigned native network ID must still surface its value.
+func TestReconcilePortOverrides_NativeNetworkAssignedKept(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	priorModel := portOverrideModel{
+		Index:           types.Int64Value(1),
+		NativeNetworkID: types.StringValue("net-old"),
+	}
+	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
+	if diags.HasError() {
+		t.Fatalf("building prior object: %v", diags)
+	}
+	priorSet, diags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		[]attr.Value{priorObj},
+	)
+	if diags.HasError() {
+		t.Fatalf("building prior set: %v", diags)
+	}
+
+	got, diags := r.reconcilePortOverrides(ctx, priorSet, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(1), NATiveNetworkID: "net-123"},
+	})
+	if diags.HasError() {
+		t.Fatalf("reconcilePortOverrides returned errors: %v", diags)
+	}
+
+	var reconciled []portOverrideModel
+	diags = got.ElementsAs(ctx, &reconciled, false)
+	if diags.HasError() {
+		t.Fatalf("reading back reconciled set: %v", diags)
+	}
+	if len(reconciled) != 1 {
+		t.Fatalf("reconciled length = %d, want 1: %+v", len(reconciled), reconciled)
+	}
+	if reconciled[0].NativeNetworkID.ValueString() != "net-123" {
+		t.Errorf(
+			"native_networkconf_id: want net-123, got %q",
+			reconciled[0].NativeNetworkID.ValueString(),
+		)
+	}
+}
+
 func Test_deviceResource_portOverridesToFramework(t *testing.T) {
 	type args struct {
 		ctx context.Context
