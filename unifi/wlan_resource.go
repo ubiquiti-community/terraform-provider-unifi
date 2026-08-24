@@ -820,6 +820,27 @@ func applyEnhancedIotOverrides(plan *wlanFrameworkResourceModel) bool {
 	return true
 }
 
+// containsString reports whether s is present in list.
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// removeString returns a copy of list with all occurrences of s removed.
+func removeString(list []string, s string) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		if v != s {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // setDefaultWLANGroupID populates wlan.WLANGroupID when it is empty. go-unifi
 // serializes WLANGroupID without `omitempty`, so leaving it blank sends
 // `"wlangroup_id":""` in every POST/PUT, which UniFi Network 10.x rejects with
@@ -925,6 +946,22 @@ func (r *wlanFrameworkResource) Create(
 		return
 	}
 
+	// The controller has been observed to silently drop the "6g" band when it
+	// is included in the very first create request for a WLAN, even though the
+	// same band is accepted on a subsequent update. Work around this by
+	// creating the WLAN without "6g" and immediately updating it to add the
+	// band back in, mirroring the sequence that is known to work.
+	requested6g := containsString(wlan.WLANBands, "6g")
+	fullWLANBands := wlan.WLANBands
+	if requested6g {
+		wlan.WLANBands = removeString(wlan.WLANBands, "6g")
+		if len(wlan.WLANBands) == 0 {
+			// Leave the controller something valid to create the WLAN with;
+			// the follow-up update below sets the final desired band list.
+			wlan.WLANBands = []string{"2g", "5g"}
+		}
+	}
+
 	// Create the WLAN
 	createdWLAN, err := r.client.CreateWLAN(ctx, site, wlan)
 	if err != nil {
@@ -933,6 +970,18 @@ func (r *wlanFrameworkResource) Create(
 			"Could not create WLAN: "+err.Error(),
 		)
 		return
+	}
+
+	if requested6g {
+		createdWLAN.WLANBands = fullWLANBands
+		createdWLAN, err = r.client.UpdateWLAN(ctx, site, createdWLAN)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating WLAN",
+				"Could not enable the 6g band after creating WLAN: "+err.Error(),
+			)
+			return
+		}
 	}
 
 	// Convert response back to model
