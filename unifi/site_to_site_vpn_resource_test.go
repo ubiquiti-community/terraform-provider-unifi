@@ -253,7 +253,10 @@ func TestSiteToSiteVPNRemoteSubnetsValid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := siteToSiteVPNRemoteSubnetsValid(tt.dynamicRouting, tt.remoteSubnets); got != tt.want {
+			if got := siteToSiteVPNRemoteSubnetsValid(
+				tt.dynamicRouting,
+				tt.remoteSubnets,
+			); got != tt.want {
 				t.Errorf("siteToSiteVPNRemoteSubnetsValid() = %v, want %v", got, tt.want)
 			}
 		})
