@@ -151,10 +151,10 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 }
 
 type natOutboundIPAddressesModel struct {
-	IPAddress       types.String `tfsdk:"ip_address"`                  // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
-	IPAddressPool   types.List   `tfsdk:"ip_address_pool,omitempty"`   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
-	Mode            types.String `tfsdk:"mode,omitempty"`              // all|ip_address|ip_address_pool
-	WANNetworkGroup types.String `tfsdk:"wan_network_group,omitempty"` // WAN[2-9]?
+	IPAddress       types.String `tfsdk:"ip_address"`       // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
+	IPAddressPool   types.List   `tfsdk:"ip_address_pool"`  // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+	Mode            types.String `tfsdk:"mode"`             // all|ip_address|ip_address_pool
+	WANNetworkGroup types.String `tfsdk:"wan_network_group"` // WAN[2-9]?
 }
 
 func (d natOutboundIPAddressesModel) AttributeTypes() map[string]attr.Type {
@@ -940,13 +940,15 @@ func (r *networkResource) ModifyPlan(
 	// with a clear message instead of Create/Update silently dropping it and
 	// producing a confusing "provider produced inconsistent result after
 	// apply" error (#413).
+	// Read from the plan (not config) so that unknown values derived from
+	// data sources are caught here too.
 	var ipv6Aliases types.List
 	resp.Diagnostics.Append(
-		req.Config.GetAttribute(ctx, path.Root("ipv6_aliases"), &ipv6Aliases)...)
+		req.Plan.GetAttribute(ctx, path.Root("ipv6_aliases"), &ipv6Aliases)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if !ipv6Aliases.IsNull() && !ipv6Aliases.IsUnknown() && len(ipv6Aliases.Elements()) > 0 {
+	if !ipv6Aliases.IsNull() {
 		resp.Diagnostics.AddError(
 			"ipv6_aliases is not yet supported",
 			"The underlying UniFi API client (go-unifi) does not currently expose "+
@@ -956,6 +958,41 @@ func (r *networkResource) ModifyPlan(
 				"support lands (see issue #413).",
 		)
 		return
+	}
+
+	// ip_address_pool inside nat_outbound_ip_addresses: the field is not yet
+	// wired to the API request side (modelToNetwork ignores it) and Read always
+	// writes null, which causes the same inconsistent-result-after-apply failure
+	// as ipv6_aliases. Reject any non-null value at plan time.
+	var natList types.List
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("nat_outbound_ip_addresses"), &natList)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !natList.IsNull() && !natList.IsUnknown() {
+		for i, elem := range natList.Elements() {
+			obj, ok := elem.(types.Object)
+			if !ok {
+				continue
+			}
+			if obj.IsNull() || obj.IsUnknown() {
+				continue
+			}
+			poolAttr, poolOk := obj.Attributes()["ip_address_pool"]
+			if poolOk && !poolAttr.IsNull() {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("nat_outbound_ip_addresses").AtListIndex(i).AtName("ip_address_pool"),
+					"ip_address_pool is not yet supported",
+					"The ip_address_pool field inside nat_outbound_ip_addresses is not yet "+
+						"wired to the API request side, so a configured value cannot be sent "+
+						"to the controller and Read will always return null, causing an "+
+						"inconsistent-result-after-apply error. Remove ip_address_pool from "+
+						"this configuration until end-to-end support lands.",
+				)
+				return
+			}
+		}
 	}
 
 	var configPref types.String
@@ -2004,9 +2041,17 @@ func (r *networkResource) networkToModel(
 	model.Vlan = types.Int64PointerValue(network.VLAN)
 
 	// nat_outbound_ip_addresses: ip_address, mode and wan_network_group round-trip
-	// from the API. ip_address_pool is never sent on the request side either
-	// (see modelToNetwork), so it is left null here rather than guessed at.
-	if len(network.NATOutboundIPAddresses) > 0 {
+	// from the API. ip_address_pool is not wired end-to-end (ModifyPlan rejects
+	// a non-null configured value before Create/Update run) so it is always null.
+	// Only populate the field when:
+	//   1. It was already non-null in the previous state (i.e., the user manages
+	//      it), or
+	//   2. This is an import (previousModel == nil) and the controller returned data.
+	// This mirrors the dhcp_server "preserve null unless managed" pattern so that
+	// a controller-side non-empty list doesn't cause unexpected plan changes for
+	// users who haven't configured nat_outbound_ip_addresses.
+	shouldPopulateNAT := previousModel == nil || !previousModel.NatOutboundIPAddresses.IsNull()
+	if shouldPopulateNAT && len(network.NATOutboundIPAddresses) > 0 {
 		natValues := make([]natOutboundIPAddressesModel, 0, len(network.NATOutboundIPAddresses))
 		for _, nat := range network.NATOutboundIPAddresses {
 			natValues = append(natValues, natOutboundIPAddressesModel{
@@ -2023,6 +2068,13 @@ func (r *networkResource) networkToModel(
 		)
 		diags.Append(d...)
 		model.NatOutboundIPAddresses = natList
+	} else if shouldPopulateNAT {
+		// Managed but API returned nothing: write an empty list (not null) to
+		// avoid drift between empty vs null when the user configures [].
+		model.NatOutboundIPAddresses = types.ListValueMust(
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			[]attr.Value{},
+		)
 	} else {
 		model.NatOutboundIPAddresses = types.ListNull(
 			types.ObjectType{AttrTypes: natOutboundIPAddresses()},

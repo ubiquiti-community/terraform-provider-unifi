@@ -11,8 +11,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -1306,14 +1309,30 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 	})
 }
 
-// Test_networkResource_networkToModel_ipAliases guards #413: ip_aliases and
-// nat_outbound_ip_addresses were hardcoded to null on read regardless of what
-// the API returned, so a non-empty configured value always failed apply with
-// "provider produced inconsistent result after apply". They must now
-// round-trip whatever the controller reports.
+// Test_networkResource_networkToModel_ipAliases guards #413: ip_aliases must
+// round-trip whatever the controller reports. nat_outbound_ip_addresses also
+// round-trips but only when it was already non-null in the previous state
+// (i.e., the user manages it); for unmanaged configurations the field stays
+// null even when the controller returns data.
 func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 	r := &networkResource{}
-	prev := &networkResourceModel{
+
+	// prevManaged has NatOutboundIPAddresses non-null: the user has configured it.
+	prevManaged := &networkResourceModel{
+		DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+		DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+		DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+		DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+		NatOutboundIPAddresses: types.ListValueMust(
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			[]attr.Value{},
+		),
+		IPAliases:   types.ListNull(types.StringType),
+		IPv6Aliases: types.ListNull(types.StringType),
+	}
+
+	// prevUnmanaged has NatOutboundIPAddresses null: the user did not configure it.
+	prevUnmanaged := &networkResourceModel{
 		DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
 		DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
 		DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
@@ -1325,7 +1344,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 		IPv6Aliases: types.ListNull(types.StringType),
 	}
 
-	t.Run("non-empty values round-trip", func(t *testing.T) {
+	t.Run("non-empty values round-trip (managed)", func(t *testing.T) {
 		network := &unifi.Network{
 			ID:          "net-1",
 			Name:        strPtr("aliased"),
@@ -1342,7 +1361,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			},
 		}
 		var model networkResourceModel
-		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		d := r.networkToModel(context.Background(), network, &model, "default", prevManaged)
 		if d.HasError() {
 			t.Fatalf("networkToModel: %v", d)
 		}
@@ -1372,6 +1391,27 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 		}
 	})
 
+	t.Run("unmanaged nat stays null when API returns data", func(t *testing.T) {
+		network := &unifi.Network{
+			ID:       "net-3",
+			Name:     strPtr("nat-unmanaged"),
+			Purpose:  unifi.PurposeCorporate,
+			Enabled:  true,
+			IPSubnet: strPtr("10.0.4.1/24"),
+			NATOutboundIPAddresses: []unifi.NetworkNATOutboundIPAddresses{
+				{IPAddress: "203.0.113.1", Mode: strPtr("ip_address"), WANNetworkGroup: strPtr("WAN")},
+			},
+		}
+		var model networkResourceModel
+		d := r.networkToModel(context.Background(), network, &model, "default", prevUnmanaged)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+		if !model.NatOutboundIPAddresses.IsNull() {
+			t.Errorf("NatOutboundIPAddresses = %v, want null (unmanaged)", model.NatOutboundIPAddresses)
+		}
+	})
+
 	t.Run("empty values stay null", func(t *testing.T) {
 		network := &unifi.Network{
 			ID:       "net-2",
@@ -1381,7 +1421,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			IPSubnet: strPtr("10.0.3.1/24"),
 		}
 		var model networkResourceModel
-		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		d := r.networkToModel(context.Background(), network, &model, "default", prevUnmanaged)
 		if d.HasError() {
 			t.Fatalf("networkToModel: %v", d)
 		}
@@ -1771,4 +1811,173 @@ func Test_preserveUnmanagedDhcpGuarding(t *testing.T) {
 			t.Error("expected the outgoing network to be untouched")
 		}
 	})
+}
+
+// minimalNetworkPlan returns a tfsdk.Plan with every attribute at its null/zero
+// value so that individual attributes can be overridden via SetAttribute before
+// being passed to ModifyPlan in unit tests.
+func minimalNetworkPlan(ctx context.Context, t *testing.T) (tfsdk.Plan, tfsdk.Config) {
+	t.Helper()
+	r := &networkResource{}
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	// Build a null (destroying) plan — callers will SetAttribute to make it
+	// non-null where needed, or replace Raw with a non-null tftypes value.
+	// For "normal" (non-destroy) plan tests we need a non-null Raw value, so
+	// we use tftypes.UnknownValue to indicate "unknown object" instead of null.
+	planRaw := tftypes.NewValue(schemaType, tftypes.UnknownValue)
+	plan := tfsdk.Plan{
+		Schema: schemaResp.Schema,
+		Raw:    planRaw,
+	}
+	config := tfsdk.Config{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(schemaType, nil),
+	}
+	return plan, config
+}
+
+// Test_networkResource_ModifyPlan_ipv6Aliases guards that ModifyPlan rejects
+// any non-null ipv6_aliases value (known, unknown, or empty list) with a clear
+// error instead of letting Create/Update silently drop it and produce a
+// confusing "provider produced inconsistent result after apply" failure (#413).
+func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
+	r := &networkResource{}
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		ipv6Aliases types.List
+		wantError   bool
+	}{
+		{
+			name:        "null list: no error",
+			ipv6Aliases: types.ListNull(types.StringType),
+			wantError:   false,
+		},
+		{
+			name:        "non-empty known list: error",
+			ipv6Aliases: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("2001:db8::1")}),
+			wantError:   true,
+		},
+		{
+			name:        "unknown list: error",
+			ipv6Aliases: types.ListUnknown(types.StringType),
+			wantError:   true,
+		},
+		{
+			name:        "empty known list: error",
+			ipv6Aliases: types.ListValueMust(types.StringType, []attr.Value{}),
+			wantError:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, config := minimalNetworkPlan(ctx, t)
+			diags := plan.SetAttribute(ctx, path.Root("ipv6_aliases"), tt.ipv6Aliases)
+			if diags.HasError() {
+				t.Fatalf("SetAttribute(ipv6_aliases): %v", diags)
+			}
+
+			req := fwresource.ModifyPlanRequest{
+				Plan:   plan,
+				Config: config,
+			}
+			resp := &fwresource.ModifyPlanResponse{Plan: plan}
+			r.ModifyPlan(ctx, req, resp)
+
+			if tt.wantError && !resp.Diagnostics.HasError() {
+				t.Error("expected error diagnostic, got none")
+			}
+			if !tt.wantError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
+		})
+	}
+}
+
+// Test_networkResource_ModifyPlan_ipAddressPool guards that ModifyPlan rejects
+// a non-null ip_address_pool inside nat_outbound_ip_addresses entries, since
+// the field is not yet wired to the API request side.
+func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
+	r := &networkResource{}
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		pool        types.List
+		wantError   bool
+	}{
+		{
+			name:      "null pool: no error",
+			pool:      types.ListNull(types.StringType),
+			wantError: false,
+		},
+		{
+			name:      "non-empty pool: error",
+			pool:      types.ListValueMust(types.StringType, []attr.Value{types.StringValue("203.0.113.10")}),
+			wantError: true,
+		},
+		{
+			name:      "empty pool list: error",
+			pool:      types.ListValueMust(types.StringType, []attr.Value{}),
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, config := minimalNetworkPlan(ctx, t)
+
+			// Ensure ipv6_aliases is null so it doesn't trigger its own error
+			// before we reach the ip_address_pool check.
+			diags := plan.SetAttribute(ctx, path.Root("ipv6_aliases"), types.ListNull(types.StringType))
+			if diags.HasError() {
+				t.Fatalf("SetAttribute(ipv6_aliases): %v", diags)
+			}
+
+			// Build a nat_outbound_ip_addresses list with one entry whose
+			// ip_address_pool is set to the test value.
+			entry, d := types.ObjectValue(
+				natOutboundIPAddresses(),
+				map[string]attr.Value{
+					"ip_address":      types.StringNull(),
+					"ip_address_pool": tt.pool,
+					"mode":            types.StringNull(),
+					"wan_network_group": types.StringNull(),
+				},
+			)
+			if d.HasError() {
+				t.Fatalf("types.ObjectValue: %v", d)
+			}
+			natList, d := types.ListValue(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+				[]attr.Value{entry},
+			)
+			if d.HasError() {
+				t.Fatalf("types.ListValue: %v", d)
+			}
+			diags = plan.SetAttribute(ctx, path.Root("nat_outbound_ip_addresses"), natList)
+			if diags.HasError() {
+				t.Fatalf("SetAttribute(nat_outbound_ip_addresses): %v", diags)
+			}
+
+			req := fwresource.ModifyPlanRequest{
+				Plan:   plan,
+				Config: config,
+			}
+			resp := &fwresource.ModifyPlanResponse{Plan: plan}
+			r.ModifyPlan(ctx, req, resp)
+
+			if tt.wantError && !resp.Diagnostics.HasError() {
+				t.Error("expected error diagnostic, got none")
+			}
+			if !tt.wantError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
+		})
+	}
 }
