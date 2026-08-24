@@ -1604,7 +1604,7 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 		}
 	}
 
-	dhcpServerObj := func(dnsServers, winsAddresses types.List) types.Object {
+	dhcpServerObj := func(dnsServers, winsAddresses, ntpServers types.List) types.Object {
 		wins := types.ObjectValueMust(winsModel{}.AttributeTypes(), map[string]attr.Value{
 			"enabled":   types.BoolValue(false),
 			"addresses": winsAddresses,
@@ -1617,7 +1617,7 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 			"gateway_enabled":     types.BoolValue(false),
 			"conflict_checking":   types.BoolValue(true),
 			"ntp_enabled":         types.BoolValue(false),
-			"ntp_servers":         types.ListNull(types.StringType),
+			"ntp_servers":         ntpServers,
 			"time_offset_enabled": types.BoolValue(false),
 			"dns_enabled":         types.BoolValue(false),
 			"leasetime":           timetypes.NewGoDurationNull(),
@@ -1634,7 +1634,7 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 
 	t.Run("empty config list round-trips as empty list, not null", func(t *testing.T) {
 		prev := base()
-		prev.DhcpServer = dhcpServerObj(emptyList, emptyList)
+		prev.DhcpServer = dhcpServerObj(emptyList, emptyList, emptyList)
 
 		var model networkResourceModel
 		d := r.networkToModel(ctx, network, &model, "default", prev)
@@ -1653,6 +1653,12 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 		if len(got.DnsServers.Elements()) != 0 {
 			t.Errorf("dns_servers = %v, want 0 elements", got.DnsServers.Elements())
 		}
+		if got.NtpServers.IsNull() {
+			t.Errorf("ntp_servers = null, want empty list")
+		}
+		if len(got.NtpServers.Elements()) != 0 {
+			t.Errorf("ntp_servers = %v, want 0 elements", got.NtpServers.Elements())
+		}
 
 		var gotWins winsModel
 		d = got.Wins.As(ctx, &gotWins, basetypes.ObjectAsOptions{})
@@ -1666,7 +1672,7 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 
 	t.Run("never-configured stays null", func(t *testing.T) {
 		prev := base()
-		prev.DhcpServer = dhcpServerObj(nullList, nullList)
+		prev.DhcpServer = dhcpServerObj(nullList, nullList, nullList)
 
 		var model networkResourceModel
 		d := r.networkToModel(ctx, network, &model, "default", prev)
@@ -1681,6 +1687,9 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 		}
 		if !got.DnsServers.IsNull() {
 			t.Errorf("dns_servers = %v, want null", got.DnsServers)
+		}
+		if !got.NtpServers.IsNull() {
+			t.Errorf("ntp_servers = %v, want null", got.NtpServers)
 		}
 
 		var gotWins winsModel
