@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -111,26 +112,47 @@ func Test_resolvePortOverridesForUpdate_zeroDeclaredEchoesCurrent(t *testing.T) 
 	}
 }
 
-// Test_resolvePortOverridesForUpdate_noCurrentOverridesSendsEmpty guards the #436
-// case: a device with no current overrides at all (an AP/gateway) and zero
-// declared blocks must send `[]`, not `null`.
-func Test_resolvePortOverridesForUpdate_noCurrentOverridesSendsEmpty(t *testing.T) {
-	currentDevice := &unifi.Device{PortOverrides: nil}
-	deviceReq := &unifi.Device{PortOverrides: nil}
+// Test_resolvePortOverridesForUpdate_noCurrentOverridesMirrorsDevice guards the
+// #436/#427 case: a device with no current overrides at all (an AP/gateway) and
+// zero declared blocks must mirror the existing device's representation exactly
+// — nil when the device reports null, [] when it reports [] — so go-unifi's
+// diff-based UpdateDevice drops the unchanged key from the PUT instead of
+// manufacturing a null→[] change some controllers reject with api.err.Invalid.
+func Test_resolvePortOverridesForUpdate_noCurrentOverridesMirrorsDevice(t *testing.T) {
+	t.Run("device reports null", func(t *testing.T) {
+		currentDevice := &unifi.Device{PortOverrides: nil}
+		deviceReq := &unifi.Device{PortOverrides: nil}
 
-	got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
-	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
-	if minimalDevice.PortOverrides == nil {
-		t.Error(
-			"buildMinimalUpdateDevice() PortOverrides is nil, want a non-nil empty slice (would marshal to `port_overrides: null`)",
-		)
-	}
-	if len(minimalDevice.PortOverrides) != 0 {
-		t.Errorf(
-			"buildMinimalUpdateDevice() PortOverrides length = %d, want 0",
-			len(minimalDevice.PortOverrides),
-		)
-	}
+		got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
+		minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
+		if minimalDevice.PortOverrides != nil {
+			t.Errorf(
+				"buildMinimalUpdateDevice() PortOverrides = %#v, want nil to mirror the "+
+					"device's null so the diff drops the key",
+				minimalDevice.PortOverrides,
+			)
+		}
+	})
+
+	t.Run("device reports empty array", func(t *testing.T) {
+		currentDevice := &unifi.Device{PortOverrides: []unifi.DevicePortOverrides{}}
+		deviceReq := &unifi.Device{PortOverrides: nil}
+
+		got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
+		minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
+		if minimalDevice.PortOverrides == nil {
+			t.Error(
+				"buildMinimalUpdateDevice() PortOverrides is nil, want a non-nil empty " +
+					"slice to mirror the device's [] (nil would marshal to `port_overrides: null`)",
+			)
+		}
+		if len(minimalDevice.PortOverrides) != 0 {
+			t.Errorf(
+				"buildMinimalUpdateDevice() PortOverrides length = %d, want 0",
+				len(minimalDevice.PortOverrides),
+			)
+		}
+	})
 }
 
 func indexOverrides(pos []unifi.DevicePortOverrides) map[int64]unifi.DevicePortOverrides {
@@ -1734,4 +1756,411 @@ func Test_deviceResource_List(t *testing.T) {
 			tt.r.List(tt.args.ctx, tt.args.req, tt.args.stream)
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// #427: declared radio_table entries must not zero-fill undeclared sub-fields
+// ---------------------------------------------------------------------------
+
+// unknownRadioTableModel returns a radioTableModel with every sub-attribute
+// Unknown — the exact shape the plan produces for a radio_table entry whose
+// Optional+Computed sub-attributes the practitioner did not declare.
+func unknownRadioTableModel() radioTableModel {
+	return radioTableModel{
+		Radio:                  types.StringUnknown(),
+		Channel:                types.StringUnknown(),
+		Ht:                     types.Int64Unknown(),
+		TxPower:                types.StringUnknown(),
+		TxPowerMode:            types.StringUnknown(),
+		MinRssiEnabled:         types.BoolUnknown(),
+		MinRssi:                types.Int64Unknown(),
+		AntennaGain:            types.Int64Unknown(),
+		AntennaID:              types.Int64Unknown(),
+		AssistedRoamingEnabled: types.BoolUnknown(),
+		AssistedRoamingRssi:    types.Int64Unknown(),
+		Dfs:                    types.BoolUnknown(),
+		HardNoiseFloorEnabled:  types.BoolUnknown(),
+		LoadbalanceEnabled:     types.BoolUnknown(),
+		Maxsta:                 types.Int64Unknown(),
+		Name:                   types.StringUnknown(),
+		SensLevel:              types.Int64Unknown(),
+		SensLevelEnabled:       types.BoolUnknown(),
+		VwireEnabled:           types.BoolUnknown(),
+	}
+}
+
+func radioTableListFromModels(t *testing.T, models ...radioTableModel) types.List {
+	t.Helper()
+	ctx := context.Background()
+	elems := make([]attr.Value, 0, len(models))
+	for _, m := range models {
+		obj, diags := types.ObjectValueFrom(ctx, radioTableAttrTypes(), m)
+		if diags.HasError() {
+			t.Fatalf("building radio object: %v", diags)
+		}
+		elems = append(elems, obj)
+	}
+	list, diags := types.ListValue(
+		types.ObjectType{AttrTypes: radioTableAttrTypes()},
+		elems,
+	)
+	if diags.HasError() {
+		t.Fatalf("building radio list: %v", diags)
+	}
+	return list
+}
+
+// Test_frameworkToRadioTable_unknownStaysOffTheWire is the exact repro of #427:
+// a radio_table entry declared with only radio/channel/ht/tx_power_mode leaves
+// every other Optional+Computed sub-attribute Unknown (not Null) in the plan.
+// ValueInt64Pointer() maps Unknown to a pointer at the Go zero value, so the
+// PUT carried "antenna_gain":0,"antenna_id":0,"min_rssi":0,… — rejected by the
+// controller with api.err.InvalidPayload (400). Unknown must serialize exactly
+// like Null: off the wire.
+func Test_frameworkToRadioTable_unknownStaysOffTheWire(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	declared := unknownRadioTableModel()
+	declared.Radio = types.StringValue("ng")
+	declared.Channel = types.StringValue("11")
+	declared.Ht = types.Int64Value(20)
+	declared.TxPowerMode = types.StringValue("auto")
+
+	radios, diags := r.frameworkToRadioTable(ctx, radioTableListFromModels(t, declared))
+	if diags.HasError() {
+		t.Fatalf("frameworkToRadioTable: %v", diags)
+	}
+	if len(radios) != 1 {
+		t.Fatalf("got %d radios, want 1", len(radios))
+	}
+
+	raw, err := json.Marshal(radios[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	body := string(raw)
+
+	for _, key := range []string{
+		`"min_rssi":`,
+		`"sens_level":`,
+		`"assisted_roaming_rssi":`,
+		`"maxsta":`,
+		`"antenna_gain":`,
+		`"antenna_id":`,
+		`"name":`,
+		`"tx_power":`,
+	} {
+		if strings.Contains(body, key) {
+			t.Errorf("undeclared %s zero-filled into PUT body: %s", key, body)
+		}
+	}
+	for _, want := range []string{
+		`"radio":"ng"`,
+		`"channel":"11"`,
+		`"ht":20`,
+		`"tx_power_mode":"auto"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("declared %s missing from PUT body: %s", want, body)
+		}
+	}
+}
+
+// Test_mergeRadioTableFromDevice guards the echo half of #427: the controller
+// requires each radio_table entry to carry the hardware-assigned radio `name`
+// (omitting it fails with api.err.MissingValue, key "radio"), and
+// hardware-derived antenna fields must match the device. Fields the user left
+// unset are filled from the device's current radio table; declared values win;
+// fields absent on the device stay off the wire; and the gated RSSI-style
+// fields are never merged (sanitizeRadioForUpdate owns those, #378).
+func Test_mergeRadioTableFromDevice(t *testing.T) {
+	current := []unifi.DeviceRadioTable{
+		{
+			Radio:       "na",
+			Name:        "wifi1",
+			Channel:     "auto",
+			Ht:          ptrInt64(80),
+			AntennaGain: ptrInt64(6),
+			AntennaID:   ptrInt64(-1),
+			TxPowerMode: "auto",
+			MinRssi:     ptrInt64(-90),
+		},
+		{
+			Radio:       "ng",
+			Name:        "wifi0",
+			Channel:     "auto",
+			Ht:          ptrInt64(20),
+			AntennaGain: ptrInt64(4),
+			AntennaID:   ptrInt64(-1),
+			TxPowerMode: "auto",
+		},
+	}
+
+	target := []unifi.DeviceRadioTable{
+		{Radio: "ng", Channel: "11", Ht: ptrInt64(20), TxPowerMode: "auto"},
+		{Radio: "na", Channel: "149", Ht: ptrInt64(80), TxPowerMode: "custom", TxPower: "23"},
+		{Radio: "6e", Channel: "117"},
+	}
+
+	mergeRadioTableFromDevice(target, current)
+
+	ng := target[0]
+	if ng.Name != "wifi0" {
+		t.Errorf("ng name = %q, want %q (controller-required, must be echoed)", ng.Name, "wifi0")
+	}
+	if ng.AntennaGain == nil || *ng.AntennaGain != 4 {
+		t.Errorf("ng antenna_gain = %v, want 4 (echoed from device)", ng.AntennaGain)
+	}
+	if ng.AntennaID == nil || *ng.AntennaID != -1 {
+		t.Errorf("ng antenna_id = %v, want -1 (echoed from device)", ng.AntennaID)
+	}
+	if ng.Channel != "11" {
+		t.Errorf(
+			"ng channel = %q, want declared %q to win over device %q",
+			ng.Channel,
+			"11",
+			"auto",
+		)
+	}
+
+	na := target[1]
+	if na.Name != "wifi1" {
+		t.Errorf("na name = %q, want %q", na.Name, "wifi1")
+	}
+	if na.TxPower != "23" || na.TxPowerMode != "custom" {
+		t.Errorf(
+			"na tx_power/mode = %q/%q, want declared 23/custom kept",
+			na.TxPower,
+			na.TxPowerMode,
+		)
+	}
+	if na.MinRssi != nil {
+		t.Errorf(
+			"na min_rssi = %v, want nil — gated fields must never be merged back (#378)",
+			*na.MinRssi,
+		)
+	}
+
+	sixE := target[2]
+	if sixE.Name != "" || sixE.AntennaGain != nil || sixE.AntennaID != nil {
+		t.Errorf("6e radio has no device entry; nothing may be invented: %+v", sixE)
+	}
+}
+
+// Test_reconcileRadioTableWithPlan guards the post-apply half of #427: the
+// controller reports its radios in hardware order with every field populated,
+// but Terraform requires the applied value to keep the declared list's count,
+// order, and known values. Only Unknown sub-attributes may resolve from the
+// controller's entry for the same band.
+func Test_reconcileRadioTableWithPlan(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	plannedNg := unknownRadioTableModel()
+	plannedNg.Radio = types.StringValue("ng")
+	plannedNg.Channel = types.StringValue("11")
+	plannedNg.Ht = types.Int64Value(20)
+	plannedNg.TxPowerMode = types.StringValue("auto")
+
+	plannedNa := unknownRadioTableModel()
+	plannedNa.Radio = types.StringValue("na")
+	plannedNa.Channel = types.StringValue("149")
+	plannedNa.Ht = types.Int64Value(80)
+	plannedNa.TxPowerMode = types.StringValue("auto")
+
+	// Device order is reversed relative to the declared order.
+	actualNa := unknownRadioTableModel()
+	actualNa.Radio = types.StringValue("na")
+	actualNa.Channel = types.StringValue("149")
+	actualNa.Ht = types.Int64Value(80)
+	actualNa.TxPowerMode = types.StringValue("auto")
+	actualNa.Name = types.StringValue("wifi1")
+	actualNa.AntennaGain = types.Int64Value(6)
+	actualNa.AntennaID = types.Int64Value(-1)
+	actualNa.MinRssi = types.Int64Null()
+	actualNa.MinRssiEnabled = types.BoolValue(false)
+	actualNa.TxPower = types.StringNull()
+	actualNa.AssistedRoamingEnabled = types.BoolValue(false)
+	actualNa.AssistedRoamingRssi = types.Int64Null()
+	actualNa.Dfs = types.BoolValue(false)
+	actualNa.HardNoiseFloorEnabled = types.BoolValue(false)
+	actualNa.LoadbalanceEnabled = types.BoolValue(false)
+	actualNa.Maxsta = types.Int64Null()
+	actualNa.SensLevel = types.Int64Null()
+	actualNa.SensLevelEnabled = types.BoolValue(false)
+	actualNa.VwireEnabled = types.BoolValue(false)
+
+	actualNg := actualNa
+	actualNg.Radio = types.StringValue("ng")
+	actualNg.Channel = types.StringValue("11")
+	actualNg.Ht = types.Int64Value(20)
+	actualNg.Name = types.StringValue("wifi0")
+	actualNg.AntennaGain = types.Int64Value(4)
+
+	planned := radioTableListFromModels(t, plannedNg, plannedNa)
+	actual := radioTableListFromModels(t, actualNa, actualNg)
+
+	got, diags := r.reconcileRadioTableWithPlan(ctx, planned, actual)
+	if diags.HasError() {
+		t.Fatalf("reconcileRadioTableWithPlan: %v", diags)
+	}
+
+	elems := got.Elements()
+	if len(elems) != 2 {
+		t.Fatalf("got %d elements, want 2 (planned count preserved)", len(elems))
+	}
+
+	var first, second radioTableModel
+	firstObj, ok := elems[0].(types.Object)
+	if !ok {
+		t.Fatalf("first element is %T, want types.Object", elems[0])
+	}
+	if d := firstObj.As(ctx, &first, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("decode first: %v", d)
+	}
+	secondObj, ok := elems[1].(types.Object)
+	if !ok {
+		t.Fatalf("second element is %T, want types.Object", elems[1])
+	}
+	if d := secondObj.As(ctx, &second, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("decode second: %v", d)
+	}
+
+	if first.Radio.ValueString() != "ng" || second.Radio.ValueString() != "na" {
+		t.Errorf("planned order not preserved: got %s, %s",
+			first.Radio.ValueString(), second.Radio.ValueString())
+	}
+	if first.Channel.ValueString() != "11" {
+		t.Errorf("declared channel lost: %s", first.Channel)
+	}
+	if first.Name.ValueString() != "wifi0" {
+		t.Errorf("unknown name not resolved from matching band: %s", first.Name)
+	}
+	if first.AntennaGain.ValueInt64() != 4 {
+		t.Errorf("unknown antenna_gain not resolved from matching band: %s", first.AntennaGain)
+	}
+	if second.Name.ValueString() != "wifi1" {
+		t.Errorf("unknown name not resolved for na: %s", second.Name)
+	}
+	if first.IsUnknownAny() {
+		t.Errorf("reconciled first entry still carries Unknown values: %+v", first)
+	}
+	if second.IsUnknownAny() {
+		t.Errorf("reconciled second entry still carries Unknown values: %+v", second)
+	}
+
+	// A null/unknown plan (radio_table not declared) keeps the applied value.
+	nullPlan := types.ListNull(types.ObjectType{AttrTypes: radioTableAttrTypes()})
+	kept, diags := r.reconcileRadioTableWithPlan(ctx, nullPlan, actual)
+	if diags.HasError() {
+		t.Fatalf("null plan reconcile: %v", diags)
+	}
+	if !kept.Equal(actual) {
+		t.Errorf("null plan must keep applied value")
+	}
+}
+
+// IsUnknownAny reports whether any sub-attribute of the model is Unknown.
+func (m radioTableModel) IsUnknownAny() bool {
+	for _, v := range []attr.Value{
+		m.Radio, m.Channel, m.Ht, m.TxPower, m.TxPowerMode,
+		m.MinRssiEnabled, m.MinRssi, m.AntennaGain, m.AntennaID,
+		m.AssistedRoamingEnabled, m.AssistedRoamingRssi, m.Dfs,
+		m.HardNoiseFloorEnabled, m.LoadbalanceEnabled, m.Maxsta,
+		m.Name, m.SensLevel, m.SensLevelEnabled, m.VwireEnabled,
+	} {
+		if v.IsUnknown() {
+			return true
+		}
+	}
+	return false
+}
+
+// TestAccDeviceFramework_radioTable applies the exact configuration shape from
+// #427 — radio_table entries declaring only radio/channel/ht/tx_power_mode —
+// against a simulated UAP. Before the fix the controller rejected the PUT with
+// api.err.InvalidPayload (zero-filled undeclared fields) or, with those fields
+// merely omitted, api.err.MissingValue key "radio" (missing hardware radio
+// name). Both halves are exercised: unknowns stay off the wire, and the
+// controller-required name is echoed from the device.
+func TestAccDeviceFramework_radioTable(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDeviceFrameworkConfig_radioTable("6", "36"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_device.test_ap", "adopted", "true"),
+					resource.TestCheckResourceAttr("unifi_device.test_ap", "radio_table.#", "2"),
+					resource.TestCheckResourceAttr(
+						"unifi_device.test_ap",
+						"radio_table.0.radio",
+						"ng",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_device.test_ap",
+						"radio_table.0.channel",
+						"6",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_device.test_ap",
+						"radio_table.1.radio",
+						"na",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_device.test_ap",
+						"radio_table.1.channel",
+						"36",
+					),
+					// The hardware radio name must be echoed from the device.
+					resource.TestCheckResourceAttrSet("unifi_device.test_ap", "radio_table.0.name"),
+					resource.TestCheckResourceAttrSet("unifi_device.test_ap", "radio_table.1.name"),
+				),
+			},
+			{
+				// In-place channel change on the declared entries.
+				Config: testAccDeviceFrameworkConfig_radioTable("11", "40"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_device.test_ap",
+						"radio_table.0.channel",
+						"11",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_device.test_ap",
+						"radio_table.1.channel",
+						"40",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccDeviceFrameworkConfig_radioTable(ngChannel, naChannel string) string {
+	return fmt.Sprintf(`
+resource "unifi_device" "test_ap" {
+	mac  = "00:15:6d:00:00:01"
+	name = "Test AP Radio"
+	allow_adoption    = true
+	forget_on_destroy = false
+
+	radio_table = [
+		{
+			radio         = "ng"
+			channel       = %q
+			ht            = 20
+			tx_power_mode = "auto"
+		},
+		{
+			radio         = "na"
+			channel       = %q
+			ht            = 40
+			tx_power_mode = "auto"
+		},
+	]
+}
+`, ngChannel, naChannel)
 }

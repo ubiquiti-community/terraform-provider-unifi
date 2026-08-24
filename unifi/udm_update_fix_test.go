@@ -226,29 +226,47 @@ func TestBuildMinimalUpdateDevice_UsesProvidedPortOverrides(t *testing.T) {
 	}
 }
 
-// TestBuildMinimalUpdateDevice_EmptyOverridesMarshalAsArrayNotNull: a device
-// with no port overrides at all (an access point, a gateway) must send
-// `port_overrides: []`, never `null`, which UDM/Dream Machine gateways reject
-// with api.err.InvalidPayload (400).
-func TestBuildMinimalUpdateDevice_EmptyOverridesMarshalAsArrayNotNull(t *testing.T) {
-	req := &unifi.Device{ID: "x", MAC: "aa", MgmtNetworkID: "net99"}
-	current := &unifi.Device{} // no overrides, e.g. an access point
+// TestBuildMinimalUpdateDevice_EmptyOverridesMirrorCurrentDevice: when nothing
+// is declared and the device has no overrides, the body must mirror the
+// current device's exact representation. go-unifi's UpdateDevice diffs the
+// body against the existing device and only sends changed keys, so an
+// identical value (null-for-null, []-for-[]) always drops out of the PUT.
+// The previous unconditional `[]` manufactured a spurious null→[] diff on
+// access points (whose existing port_overrides is null) and some controllers
+// reject `port_overrides: []` on such devices with api.err.Invalid (#427).
+func TestBuildMinimalUpdateDevice_EmptyOverridesMirrorCurrentDevice(t *testing.T) {
+	t.Run("current null stays null so the diff drops the key", func(t *testing.T) {
+		req := &unifi.Device{ID: "x", MAC: "aa", MgmtNetworkID: "net99"}
+		current := &unifi.Device{} // no overrides at all, e.g. an access point
 
-	// No declared overrides and none on the device: updateDevice's fallback
-	// passes currentDevice.PortOverrides through, which is nil here.
-	out := buildMinimalUpdateDevice(req, current, current.PortOverrides)
-	if out.PortOverrides == nil {
-		t.Fatalf("port_overrides must be non-nil so it marshals to [] not null")
-	}
+		out := buildMinimalUpdateDevice(req, current, current.PortOverrides)
+		if out.PortOverrides != nil {
+			t.Fatalf(
+				"port_overrides = %#v, want nil to mirror the existing device's null "+
+					"(anything else manufactures a diff and gets sent)",
+				out.PortOverrides,
+			)
+		}
+	})
 
-	body, err := json.Marshal(out)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if strings.Contains(string(body), `"port_overrides":null`) {
-		t.Fatalf("body must not contain port_overrides:null, got: %s", body)
-	}
-	if !strings.Contains(string(body), `"port_overrides":[]`) {
-		t.Fatalf("body must contain port_overrides:[], got: %s", body)
-	}
+	t.Run("current [] stays [] so the diff drops the key", func(t *testing.T) {
+		req := &unifi.Device{ID: "x", MAC: "aa"}
+		current := &unifi.Device{PortOverrides: []unifi.DevicePortOverrides{}}
+
+		out := buildMinimalUpdateDevice(req, current, current.PortOverrides)
+		if out.PortOverrides == nil {
+			t.Fatalf("port_overrides must stay non-nil to mirror the existing device's []")
+		}
+
+		body, err := json.Marshal(out)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(body), `"port_overrides":null`) {
+			t.Fatalf("body must not contain port_overrides:null, got: %s", body)
+		}
+		if !strings.Contains(string(body), `"port_overrides":[]`) {
+			t.Fatalf("body must contain port_overrides:[], got: %s", body)
+		}
+	})
 }

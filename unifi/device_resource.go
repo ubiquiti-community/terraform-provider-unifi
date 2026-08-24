@@ -1184,6 +1184,7 @@ func (r *deviceResource) Create(
 	allowAdoption := plan.AllowAdoption
 	forgetOnDestroy := plan.ForgetOnDestroy
 	plannedPortOverride := plan.PortOverride
+	plannedRadioTable := plan.RadioTable
 
 	// Set Type from the API so updateDevice can include it in the PUT body.
 	// We deliberately do NOT call setResourceData here — it would fill the model
@@ -1222,6 +1223,17 @@ func (r *deviceResource) Create(
 	// requires the set length to match the plan. On subsequent Read, the full
 	// port state will be loaded, which may cause a one-time update on next apply.
 	plan.PortOverride = plannedPortOverride
+
+	// Keep the practitioner's declared radio_table shape (count/order/declared
+	// values); resolve only the sub-fields they left undeclared from the
+	// applied controller values (#427).
+	reconciledRadios, radioDiags := r.reconcileRadioTableWithPlan(
+		ctx, plannedRadioTable, plan.RadioTable)
+	resp.Diagnostics.Append(radioDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.RadioTable = reconciledRadios
 
 	// Restore plan-only flags
 	plan.AllowAdoption = allowAdoption
@@ -1434,6 +1446,11 @@ func (r *deviceResource) Update(
 	// Save planned port overrides for post-update restore
 	plannedPortOverride := plan.PortOverride
 
+	// Save the planned radio table: the post-update read replaces it with the
+	// controller's full, device-ordered table, which may not match the shape
+	// the practitioner declared (#427).
+	plannedRadioTable := plan.RadioTable
+
 	// Save planned LED overrides too. The controller applies these to APs
 	// asynchronously, so the immediate post-update read can still report the old
 	// values, which would conflict with the plan (#337). Re-assert the planned
@@ -1464,6 +1481,17 @@ func (r *deviceResource) Update(
 
 	// Restore port_override from plan (API returns all ports, plan has subset)
 	plan.PortOverride = plannedPortOverride
+
+	// Keep the practitioner's declared radio_table shape (count/order/declared
+	// values); resolve only the sub-fields they left undeclared from the
+	// applied controller values (#427).
+	reconciledRadios, radioDiags := r.reconcileRadioTableWithPlan(
+		ctx, plannedRadioTable, plan.RadioTable)
+	resp.Diagnostics.Append(radioDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	plan.RadioTable = reconciledRadios
 
 	// Re-assert the planned LED values when the user configured them, so an
 	// asynchronously-applied controller value doesn't trip the consistency
@@ -1699,11 +1727,20 @@ func buildMinimalUpdateDevice(
 	portOverrides []unifi.DevicePortOverrides,
 ) *unifi.Device {
 	// A nil slice marshals to `port_overrides: null`, which UDM/Dream Machine
-	// gateways reject with api.err.InvalidPayload (400). Force a non-nil empty
-	// slice so a device with no overrides at all (an access point, a gateway)
-	// sends `port_overrides: []` instead.
-	if portOverrides == nil {
-		portOverrides = []unifi.DevicePortOverrides{}
+	// gateways reject with api.err.InvalidPayload (400) — but go-unifi's
+	// UpdateDevice diffs this body against the existing device and only sends
+	// the keys that changed, so `null` can only ever be SENT when the existing
+	// device's port_overrides is something other than null. Mirror the current
+	// device's exact representation (nil-for-null, empty-for-[]) so an
+	// unchanged port_overrides always drops out of the PUT: the previous
+	// unconditional `[]` manufactured a spurious null→[] diff on devices whose
+	// existing port_overrides is null (access points), and some controllers
+	// reject `port_overrides: []` on such devices with api.err.Invalid (#427's
+	// simulated UAP repro). A declared or controller-side override list is
+	// passed through unchanged, so #436 (never wipe live overrides with [])
+	// and #177 (never send bare null over a real list) both hold.
+	if portOverrides == nil && currentDevice != nil {
+		portOverrides = currentDevice.PortOverrides
 	}
 	minimalDevice := &unifi.Device{
 		ID:                         deviceReq.ID,
@@ -1806,6 +1843,14 @@ func (r *deviceResource) updateDevice(
 	}
 	if deviceReq.Type == "" {
 		deviceReq.Type = currentDevice.Type
+	}
+
+	// Echo hardware-derived radio fields the user left unset (radio name,
+	// antenna_gain, antenna_id, …) from the device's current radio table, so a
+	// partially-declared radio_table entry neither zero-fills them nor omits a
+	// controller-required field (#427).
+	if len(deviceReq.RadioTable) > 0 {
+		mergeRadioTableFromDevice(deviceReq.RadioTable, currentDevice.RadioTable)
 	}
 
 	portOverrides := resolvePortOverridesForUpdate(currentDevice, deviceReq)
@@ -3163,6 +3208,207 @@ func (r *deviceResource) frameworkToConfigNetwork(
 	return cn, diags
 }
 
+// resolveUnknown keeps the planned value unless the practitioner left it
+// undeclared (Unknown), in which case the applied controller value is used.
+func resolveUnknown[T attr.Value](planned, applied T) T {
+	if planned.IsUnknown() {
+		return applied
+	}
+	return planned
+}
+
+// reconcileRadioTableWithPlan resolves the post-apply radio_table state
+// against the planned value. setResourceData replaces the model's radio_table
+// with the controller's full, device-ordered table; when the practitioner
+// declared radio_table, Terraform's post-apply consistency check requires the
+// applied value to preserve every known planned element (count, order, and
+// declared sub-values), so a device that reports its radios in a different
+// order — or with more radios than were declared — would fail the apply.
+// Keep the planned list shape and resolve only the Unknown sub-attributes
+// (the ones the practitioner left undeclared) from the controller's entry for
+// the same radio band. The next Read converges state with the controller,
+// mirroring how port_override and the LED overrides are handled (#337, #427).
+func (r *deviceResource) reconcileRadioTableWithPlan(
+	ctx context.Context,
+	planned types.List,
+	actual types.List,
+) (types.List, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if planned.IsNull() || planned.IsUnknown() {
+		return actual, diags
+	}
+
+	// Decode the controller's applied entries, indexed by radio band.
+	actualByRadio := map[string]radioTableModel{}
+	var actualModels []radioTableModel
+	if !actual.IsNull() && !actual.IsUnknown() {
+		for _, elem := range actual.Elements() {
+			obj, ok := elem.(types.Object)
+			if !ok {
+				continue
+			}
+			var m radioTableModel
+			diags.Append(obj.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+			if diags.HasError() {
+				return actual, diags
+			}
+			actualModels = append(actualModels, m)
+			if radio := m.Radio.ValueString(); radio != "" {
+				actualByRadio[radio] = m
+			}
+		}
+	}
+
+	plannedElements := planned.Elements()
+	elements := make([]attr.Value, 0, len(plannedElements))
+	for i, elem := range plannedElements {
+		obj, ok := elem.(types.Object)
+		if !ok {
+			continue
+		}
+		var p radioTableModel
+		diags.Append(obj.As(ctx, &p, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return actual, diags
+		}
+
+		// Prefer the applied entry for the same radio band; fall back to the
+		// same index. The zero radioTableModel is all-null, so a radio the
+		// controller did not report resolves its undeclared fields to null.
+		a, found := actualByRadio[p.Radio.ValueString()]
+		if !found && i < len(actualModels) {
+			a = actualModels[i]
+		}
+
+		resolved := radioTableModel{
+			Radio:          resolveUnknown(p.Radio, a.Radio),
+			Channel:        resolveUnknown(p.Channel, a.Channel),
+			Ht:             resolveUnknown(p.Ht, a.Ht),
+			TxPower:        resolveUnknown(p.TxPower, a.TxPower),
+			TxPowerMode:    resolveUnknown(p.TxPowerMode, a.TxPowerMode),
+			MinRssiEnabled: resolveUnknown(p.MinRssiEnabled, a.MinRssiEnabled),
+			MinRssi:        resolveUnknown(p.MinRssi, a.MinRssi),
+			AntennaGain:    resolveUnknown(p.AntennaGain, a.AntennaGain),
+			AntennaID:      resolveUnknown(p.AntennaID, a.AntennaID),
+			AssistedRoamingEnabled: resolveUnknown(
+				p.AssistedRoamingEnabled,
+				a.AssistedRoamingEnabled,
+			),
+			AssistedRoamingRssi: resolveUnknown(p.AssistedRoamingRssi, a.AssistedRoamingRssi),
+			Dfs:                 resolveUnknown(p.Dfs, a.Dfs),
+			HardNoiseFloorEnabled: resolveUnknown(
+				p.HardNoiseFloorEnabled,
+				a.HardNoiseFloorEnabled,
+			),
+			LoadbalanceEnabled: resolveUnknown(p.LoadbalanceEnabled, a.LoadbalanceEnabled),
+			Maxsta:             resolveUnknown(p.Maxsta, a.Maxsta),
+			Name:               resolveUnknown(p.Name, a.Name),
+			SensLevel:          resolveUnknown(p.SensLevel, a.SensLevel),
+			SensLevelEnabled:   resolveUnknown(p.SensLevelEnabled, a.SensLevelEnabled),
+			VwireEnabled:       resolveUnknown(p.VwireEnabled, a.VwireEnabled),
+		}
+
+		objVal, objDiags := types.ObjectValueFrom(ctx, radioTableAttrTypes(), resolved)
+		diags.Append(objDiags...)
+		if diags.HasError() {
+			return actual, diags
+		}
+		elements = append(elements, objVal)
+	}
+
+	listVal, listDiags := types.ListValue(
+		types.ObjectType{AttrTypes: radioTableAttrTypes()},
+		elements,
+	)
+	diags.Append(listDiags...)
+	if diags.HasError() {
+		return actual, diags
+	}
+	return listVal, diags
+}
+
+// int64PointerIfKnown returns the value pointer only for a KNOWN, non-null Int64.
+//
+// A radio_table entry declared with only some sub-fields (e.g. just
+// radio/channel/ht/tx_power_mode) leaves the remaining Optional+Computed
+// sub-attributes Unknown in the plan — not Null. Int64.ValueInt64Pointer()
+// only maps Null to nil; for Unknown it returns a pointer to the Go zero
+// value, so every undeclared numeric sub-field went out on the wire as a
+// literal 0 (`"antenna_gain":0,"min_rssi":0,…`), which controllers reject
+// with api.err.InvalidPayload (400) because 0 is not a legal value for any
+// of them (#427). Treat Unknown exactly like Null: leave the pointer nil so
+// `omitempty` keeps the field off the wire.
+func int64PointerIfKnown(v types.Int64) *int64 {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	return v.ValueInt64Pointer()
+}
+
+// mergeRadioTableFromDevice fills radio_table fields the user left unset from
+// the device's current radio table (entries matched by radio band, falling
+// back to radio name). Two controller behaviors make this necessary (#427):
+//
+//   - every radio_table entry must carry the radio's `name` (wifi0/wifi1/…) —
+//     omitting it fails the whole PUT with api.err.MissingValue, key "radio" —
+//     and the name is hardware-assigned, so requiring it in configuration
+//     would be hostile;
+//   - hardware-derived fields (antenna_gain, antenna_id, ht, channel,
+//     tx_power_mode) are validated against the device, so echoing the
+//     device's own current values is always safe, while zero values are not.
+//
+// Only fields the user did NOT declare (nil pointer / empty string) are
+// filled; declared values always win. Fields absent from the device stay
+// unset and therefore off the wire — firmwares differ in which fields exist
+// (#427: min_rssi exists on 8.7.x but not 8.6.x). The gated RSSI-style
+// fields (min_rssi, sens_level, assisted_roaming_rssi, maxsta) are
+// deliberately never merged: sanitizeRadioForUpdate owns those (#378), and
+// re-adding them behind the user's back could reintroduce the exact
+// InvalidPayload this fixes.
+func mergeRadioTableFromDevice(target, current []unifi.DeviceRadioTable) {
+	findCurrent := func(radio, name string) *unifi.DeviceRadioTable {
+		for i := range current {
+			if radio != "" && current[i].Radio == radio {
+				return &current[i]
+			}
+			if radio == "" && name != "" && current[i].Name == name {
+				return &current[i]
+			}
+		}
+		return nil
+	}
+
+	for i := range target {
+		cur := findCurrent(target[i].Radio, target[i].Name)
+		if cur == nil {
+			continue
+		}
+		t := &target[i]
+		if t.Name == "" {
+			t.Name = cur.Name
+		}
+		if t.Channel == "" {
+			t.Channel = cur.Channel
+		}
+		if t.Ht == nil {
+			t.Ht = cur.Ht
+		}
+		if t.TxPowerMode == "" {
+			t.TxPowerMode = cur.TxPowerMode
+		}
+		if t.TxPower == "" {
+			t.TxPower = cur.TxPower
+		}
+		if t.AntennaGain == nil {
+			t.AntennaGain = cur.AntennaGain
+		}
+		if t.AntennaID == nil {
+			t.AntennaID = cur.AntennaID
+		}
+	}
+}
+
 // frameworkToRadioTable converts Framework types to API RadioTable.
 // sanitizeRadioForUpdate drops numeric radio fields whose zero/out-of-range values
 // the controller rejects with api.err.InvalidPayload (400) on UDM/Dream Machine
@@ -3260,21 +3506,21 @@ func (r *deviceResource) frameworkToRadioTable(
 		radio := unifi.DeviceRadioTable{
 			Radio:                  model.Radio.ValueString(),
 			Channel:                model.Channel.ValueString(),
-			Ht:                     model.Ht.ValueInt64Pointer(),
+			Ht:                     int64PointerIfKnown(model.Ht),
 			TxPower:                model.TxPower.ValueString(),
 			TxPowerMode:            model.TxPowerMode.ValueString(),
 			MinRssiEnabled:         model.MinRssiEnabled.ValueBool(),
-			MinRssi:                model.MinRssi.ValueInt64Pointer(),
-			AntennaGain:            model.AntennaGain.ValueInt64Pointer(),
-			AntennaID:              model.AntennaID.ValueInt64Pointer(),
+			MinRssi:                int64PointerIfKnown(model.MinRssi),
+			AntennaGain:            int64PointerIfKnown(model.AntennaGain),
+			AntennaID:              int64PointerIfKnown(model.AntennaID),
 			AssistedRoamingEnabled: model.AssistedRoamingEnabled.ValueBool(),
-			AssistedRoamingRssi:    model.AssistedRoamingRssi.ValueInt64Pointer(),
+			AssistedRoamingRssi:    int64PointerIfKnown(model.AssistedRoamingRssi),
 			Dfs:                    model.Dfs.ValueBool(),
 			HardNoiseFloorEnabled:  model.HardNoiseFloorEnabled.ValueBool(),
 			LoadbalanceEnabled:     model.LoadbalanceEnabled.ValueBool(),
-			Maxsta:                 model.Maxsta.ValueInt64Pointer(),
+			Maxsta:                 int64PointerIfKnown(model.Maxsta),
 			Name:                   model.Name.ValueString(),
-			SensLevel:              model.SensLevel.ValueInt64Pointer(),
+			SensLevel:              int64PointerIfKnown(model.SensLevel),
 			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
 			VwireEnabled:           model.VwireEnabled.ValueBool(),
 		}
