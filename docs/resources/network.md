@@ -99,6 +99,7 @@ resource "unifi_network" "third_party" {
 - `dhcp_v6_server` (Attributes) DHCPv6 server configuration. (see [below for nested schema](#nestedatt--dhcp_v6_server))
 - `domain_name` (String) The domain name for the network.
 - `enabled` (Boolean) Specifies whether the network is enabled.
+- `firewall_zone_id` (String) The firewall zone ID assigned to this network. Note: This field is dual-managed and can compete with `unifi_firewall_zone.network_ids`. To prevent state drift loops, ensure you manage zone membership from exactly one side. On Zone-Based Firewall (ZBF) controllers, this field is tightly coupled to the network's `purpose` field.
 - `gateway_type` (String) The gateway type. Must be one of `default` or `switch`.
 - `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled.
 - `internet_access` (Boolean) Specifies whether internet access is enabled.

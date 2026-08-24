@@ -254,6 +254,7 @@ type networkResourceModel struct {
 	DhcpServer                  types.Object         `tfsdk:"dhcp_server"`
 	DhcpV6Server                types.Object         `tfsdk:"dhcp_v6_server"`
 	DhcpRelay                   types.Object         `tfsdk:"dhcp_relay"`
+	FirewallZoneID              types.String         `tfsdk:"firewall_zone_id"`
 	Timeouts                    timeouts.Value       `tfsdk:"timeouts"`
 }
 
@@ -827,6 +828,14 @@ func (r *networkResource) Schema(
 						},
 					},
 				},
+			},
+			"firewall_zone_id": schema.StringAttribute{
+				MarkdownDescription: "The firewall zone ID assigned to this network. " +
+					"Note: This field is dual-managed and can compete with `unifi_firewall_zone.network_ids`. " +
+					"To prevent state drift loops, ensure you manage zone membership from exactly one side. " +
+					"On Zone-Based Firewall (ZBF) controllers, this field is tightly coupled to the network's `purpose` field.",
+				Optional: true,
+				Computed: true,
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
@@ -1630,6 +1639,12 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPRelayEnabled = false
 	}
 
+	if !model.FirewallZoneID.IsNull() && !model.FirewallZoneID.IsUnknown() &&
+		model.FirewallZoneID.ValueString() != "" {
+		zoneID := model.FirewallZoneID.ValueString()
+		network.FirewallZoneID = &zoneID
+	}
+
 	return network, diags
 }
 
@@ -2057,6 +2072,12 @@ func (r *networkResource) networkToModel(
 	} else {
 		// Keep dhcp_relay null if it wasn't in the plan/state
 		model.DhcpRelay = types.ObjectNull(dhcpRelayModel{}.AttributeTypes())
+	}
+
+	if network.FirewallZoneID != nil {
+		model.FirewallZoneID = types.StringPointerValue(network.FirewallZoneID)
+	} else {
+		model.FirewallZoneID = types.StringNull()
 	}
 
 	return diags
