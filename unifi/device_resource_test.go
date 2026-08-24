@@ -14,6 +14,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -66,6 +67,55 @@ func TestMergePortOverridesByIndex(t *testing.T) {
 			t.Errorf("merged length = %d, want 3", len(got))
 		}
 	})
+}
+
+// Test_resolvePortOverridesForUpdate_zeroDeclaredEchoesCurrent guards #438: a
+// switch with live port_overrides, updated while config declares zero
+// port_override blocks, must echo the controller's current overrides — not send
+// `port_overrides: null` (rejected with api.err.InvalidPayload) and not send `[]`
+// (which would silently wipe every live override).
+func Test_resolvePortOverridesForUpdate_zeroDeclaredEchoesCurrent(t *testing.T) {
+	current := []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(1), NATiveNetworkID: "vlan-a"},
+		{PortIDX: ptrInt64(2), NATiveNetworkID: "vlan-b"},
+	}
+	currentDevice := &unifi.Device{PortOverrides: current}
+	deviceReq := &unifi.Device{PortOverrides: nil}
+
+	got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
+	if len(got) != len(current) {
+		t.Fatalf("resolvePortOverridesForUpdate() length = %d, want %d (must echo current, not null/empty): %+v",
+			len(got), len(current), got)
+	}
+	byIdx := indexOverrides(got)
+	if byIdx[1].NATiveNetworkID != "vlan-a" || byIdx[2].NATiveNetworkID != "vlan-b" {
+		t.Errorf("current overrides not echoed unchanged: %+v", got)
+	}
+
+	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
+	if minimalDevice.PortOverrides == nil {
+		t.Error("buildMinimalUpdateDevice() PortOverrides is nil, want the live overrides echoed (would marshal to `port_overrides: null`)")
+	}
+	if len(minimalDevice.PortOverrides) != len(current) {
+		t.Errorf("buildMinimalUpdateDevice() PortOverrides length = %d, want %d", len(minimalDevice.PortOverrides), len(current))
+	}
+}
+
+// Test_resolvePortOverridesForUpdate_noCurrentOverridesSendsEmpty guards the #436
+// case: a device with no current overrides at all (an AP/gateway) and zero
+// declared blocks must send `[]`, not `null`.
+func Test_resolvePortOverridesForUpdate_noCurrentOverridesSendsEmpty(t *testing.T) {
+	currentDevice := &unifi.Device{PortOverrides: nil}
+	deviceReq := &unifi.Device{PortOverrides: nil}
+
+	got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
+	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
+	if minimalDevice.PortOverrides == nil {
+		t.Error("buildMinimalUpdateDevice() PortOverrides is nil, want a non-nil empty slice (would marshal to `port_overrides: null`)")
+	}
+	if len(minimalDevice.PortOverrides) != 0 {
+		t.Errorf("buildMinimalUpdateDevice() PortOverrides length = %d, want 0", len(minimalDevice.PortOverrides))
+	}
 }
 
 func indexOverrides(pos []unifi.DevicePortOverrides) map[int64]unifi.DevicePortOverrides {
@@ -922,6 +972,102 @@ func Test_deviceResource_reconcilePortOverrides(t *testing.T) {
 	}
 }
 
+// TestReconcilePortOverrides_NativeNetworkClearedRoundTrips guards #410: the
+// controller reports "" for a port's native_networkconf_id when the native
+// network is explicitly set to None (the device_resource analogue of #383's
+// unifi_port_profile fix). reconcilePortOverrides must surface that as a known
+// empty string (not null) for any port the user explicitly configured, so an
+// explicit native_networkconf_id = "" round-trips instead of drifting back to
+// "unset" on every subsequent plan.
+func TestReconcilePortOverrides_NativeNetworkClearedRoundTrips(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	priorModel := portOverrideModel{
+		Index:           types.Int64Value(1),
+		NativeNetworkID: types.StringValue(""),
+	}
+	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
+	if diags.HasError() {
+		t.Fatalf("building prior object: %v", diags)
+	}
+	priorSet, diags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		[]attr.Value{priorObj},
+	)
+	if diags.HasError() {
+		t.Fatalf("building prior set: %v", diags)
+	}
+
+	got, diags := r.reconcilePortOverrides(ctx, priorSet, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(1), NATiveNetworkID: ""},
+	})
+	if diags.HasError() {
+		t.Fatalf("reconcilePortOverrides returned errors: %v", diags)
+	}
+
+	var reconciled []portOverrideModel
+	diags = got.ElementsAs(ctx, &reconciled, false)
+	if diags.HasError() {
+		t.Fatalf("reading back reconciled set: %v", diags)
+	}
+	if len(reconciled) != 1 {
+		t.Fatalf("reconciled length = %d, want 1: %+v", len(reconciled), reconciled)
+	}
+	if reconciled[0].NativeNetworkID.IsNull() || reconciled[0].NativeNetworkID.IsUnknown() ||
+		reconciled[0].NativeNetworkID.ValueString() != "" {
+		t.Errorf(
+			"native_networkconf_id: want known empty string, got %#v",
+			reconciled[0].NativeNetworkID,
+		)
+	}
+}
+
+// TestReconcilePortOverrides_NativeNetworkAssignedKept is the companion to
+// #410: a controller-assigned native network ID must still surface its value.
+func TestReconcilePortOverrides_NativeNetworkAssignedKept(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	priorModel := portOverrideModel{
+		Index:           types.Int64Value(1),
+		NativeNetworkID: types.StringValue("net-old"),
+	}
+	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
+	if diags.HasError() {
+		t.Fatalf("building prior object: %v", diags)
+	}
+	priorSet, diags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		[]attr.Value{priorObj},
+	)
+	if diags.HasError() {
+		t.Fatalf("building prior set: %v", diags)
+	}
+
+	got, diags := r.reconcilePortOverrides(ctx, priorSet, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(1), NATiveNetworkID: "net-123"},
+	})
+	if diags.HasError() {
+		t.Fatalf("reconcilePortOverrides returned errors: %v", diags)
+	}
+
+	var reconciled []portOverrideModel
+	diags = got.ElementsAs(ctx, &reconciled, false)
+	if diags.HasError() {
+		t.Fatalf("reading back reconciled set: %v", diags)
+	}
+	if len(reconciled) != 1 {
+		t.Fatalf("reconciled length = %d, want 1: %+v", len(reconciled), reconciled)
+	}
+	if reconciled[0].NativeNetworkID.ValueString() != "net-123" {
+		t.Errorf(
+			"native_networkconf_id: want net-123, got %q",
+			reconciled[0].NativeNetworkID.ValueString(),
+		)
+	}
+}
+
 func Test_deviceResource_portOverridesToFramework(t *testing.T) {
 	type args struct {
 		ctx context.Context
@@ -952,6 +1098,90 @@ func Test_deviceResource_portOverridesToFramework(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+// TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs is a
+// regression test for #431. Optional+Computed attributes left out of config
+// (e.g. flow_control_enabled) plan as unknown, and the six field guards in
+// reconcilePortOverrides only handle "configured" (non-null) or "absent"
+// (null) prior values — an unknown value falls through both and reaches
+// ObjectValueFrom untouched, which the framework rejects with "produced an
+// unexpected new value: ... is unknown after apply". reconcilePortOverrides
+// must resolve any attribute still unknown from the API response.
+func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	baseline, diags := r.portOverridesToFramework(ctx, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: false},
+	})
+	if diags.HasError() {
+		t.Fatalf("portOverridesToFramework errored: %v", diags.Errors())
+	}
+
+	elems := baseline.Elements()
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 port_override element, got %d", len(elems))
+	}
+	obj, ok := elems[0].(types.Object)
+	if !ok {
+		t.Fatalf("expected port_override element to be types.Object, got %T", elems[0])
+	}
+
+	var model portOverrideModel
+	if diags = obj.As(ctx, &model, basetypes.ObjectAsOptions{}); diags.HasError() {
+		t.Fatalf("Object.As errored: %v", diags.Errors())
+	}
+
+	// Simulate the plan: flow_control_enabled was left out of config, so it
+	// plans as unknown rather than the null/known value portOverridesToFramework
+	// (a Read) would have produced.
+	model.FlowControlEnabled = types.BoolUnknown()
+
+	objVal, objDiags := types.ObjectValueFrom(ctx, model.AttributeTypes(), model)
+	if objDiags.HasError() {
+		t.Fatalf("ObjectValueFrom errored: %v", objDiags.Errors())
+	}
+
+	prior, setDiags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		[]attr.Value{objVal},
+	)
+	if setDiags.HasError() {
+		t.Fatalf("SetValue errored: %v", setDiags.Errors())
+	}
+
+	got, gotDiags := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: true},
+	})
+	if gotDiags.HasError() {
+		t.Fatalf("reconcilePortOverrides errored: %v", gotDiags.Errors())
+	}
+
+	gotElems := got.Elements()
+	if len(gotElems) != 1 {
+		t.Fatalf("expected 1 reconciled element, got %d", len(gotElems))
+	}
+	gotObj, ok := gotElems[0].(types.Object)
+	if !ok {
+		t.Fatalf("expected reconciled element to be types.Object, got %T", gotElems[0])
+	}
+
+	flowControl, ok := gotObj.Attributes()["flow_control_enabled"]
+	if !ok {
+		t.Fatal("reconciled port_override is missing flow_control_enabled")
+	}
+	if flowControl.IsUnknown() {
+		t.Fatal("flow_control_enabled is still unknown after reconcile — apply would fail with " +
+			`"Provider returned invalid result object after apply" (#431)`)
+	}
+	boolVal, ok := flowControl.(types.Bool)
+	if !ok {
+		t.Fatalf("expected flow_control_enabled to be types.Bool, got %T", flowControl)
+	}
+	if !boolVal.ValueBool() {
+		t.Errorf("flow_control_enabled = %v, want true (from API response)", boolVal)
 	}
 }
 
