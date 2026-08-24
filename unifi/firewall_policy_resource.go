@@ -72,6 +72,12 @@ type firewallPolicyResource struct {
 	client *Client
 }
 
+// firewallPolicyIdentityModel describes the resource identity data model.
+type firewallPolicyIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // firewallPolicyModel is the Terraform resource model.
 type firewallPolicyModel struct {
 	ID                 types.String `tfsdk:"id"`
@@ -251,6 +257,9 @@ func (r *firewallPolicyResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -608,7 +617,11 @@ func (r *firewallPolicyResource) Create(
 
 	resp.Diagnostics.Append(firewallPolicyToModel(ctx, created, &plan)...)
 	plan.Site = types.StringValue(site)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+	identity := firewallPolicyIdentityModel{
+		ID:   plan.ID,
+		Site: plan.Site,
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -631,12 +644,33 @@ func (r *firewallPolicyResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Read identity, falling back to state for resources created before
+	// identity support. This also lets Read work from an identity-only state
+	// (the refresh right after an identity-based import).
+	var identity firewallPolicyIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+
+	id := state.ID.ValueString()
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
 	site := state.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
 
-	fp, err := r.client.GetFirewallPolicy(ctx, site, state.ID.ValueString())
+	fp, err := r.client.GetFirewallPolicy(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -644,14 +678,17 @@ func (r *firewallPolicyResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Firewall Policy",
-			"Could not read firewall policy "+state.ID.ValueString()+": "+err.Error(),
+			"Could not read firewall policy "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	resp.Diagnostics.Append(firewallPolicyToModel(ctx, fp, &state)...)
 	state.Site = types.StringValue(site)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = state.ID
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -732,7 +769,23 @@ func (r *firewallPolicyResource) Update(
 	}
 
 	plan.Site = types.StringValue(site)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+
+	// Identity should not change during update; fall back to state for
+	// resources created before identity support.
+	identity := firewallPolicyIdentityModel{
+		ID:   plan.ID,
+		Site: plan.Site,
+	}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			identity.ID = plan.ID
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -776,28 +829,42 @@ func (r *firewallPolicyResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by ID string ("id" or "site:id").
 	if req.ID != "" {
 		id := req.ID
+		site := ""
 		idParts := strings.SplitN(req.ID, ":", 2)
 		if len(idParts) == 2 {
-			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-			id = idParts[1]
+			site, id = idParts[0], idParts[1]
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		}
 
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+
+		// Mirror into identity so it is populated from the first refresh on.
 		if resp.Identity != nil {
 			resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
+			if site != "" {
+				resp.Diagnostics.Append(
+					resp.Identity.SetAttribute(ctx, path.Root("site"), site)...,
+				)
+			}
 		}
 		return
 	}
 
-	resource.ImportStatePassthroughWithIdentity(
-		ctx,
-		path.Root("id"),
-		path.Root("id"),
-		req,
-		resp,
-	)
+	// Identity-based import (import block with identity, Terraform 1.12+).
+	var identity firewallPolicyIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+	if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...,
+		)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1453,6 +1520,13 @@ func (r *firewallPolicyResource) List(
 					ctx,
 					path.Root("id"),
 					types.StringValue(policy.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
 				)...,
 			)
 
