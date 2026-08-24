@@ -1,6 +1,7 @@
 package unifi
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -222,5 +223,32 @@ func TestBuildMinimalUpdateDevice_UsesProvidedPortOverrides(t *testing.T) {
 	}
 	if len(out.PortOverrides) != 1 {
 		t.Fatalf("expected 1 preserved override, got %d", len(out.PortOverrides))
+	}
+}
+
+// TestBuildMinimalUpdateDevice_EmptyOverridesMarshalAsArrayNotNull: a device
+// with no port overrides at all (an access point, a gateway) must send
+// `port_overrides: []`, never `null`, which UDM/Dream Machine gateways reject
+// with api.err.InvalidPayload (400).
+func TestBuildMinimalUpdateDevice_EmptyOverridesMarshalAsArrayNotNull(t *testing.T) {
+	req := &unifi.Device{ID: "x", MAC: "aa", MgmtNetworkID: "net99"}
+	current := &unifi.Device{} // no overrides, e.g. an access point
+
+	// No declared overrides and none on the device: updateDevice's fallback
+	// passes currentDevice.PortOverrides through, which is nil here.
+	out := buildMinimalUpdateDevice(req, current, current.PortOverrides)
+	if out.PortOverrides == nil {
+		t.Fatalf("port_overrides must be non-nil so it marshals to [] not null")
+	}
+
+	body, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(body), `"port_overrides":null`) {
+		t.Fatalf("body must not contain port_overrides:null, got: %s", body)
+	}
+	if !strings.Contains(string(body), `"port_overrides":[]`) {
+		t.Fatalf("body must contain port_overrides:[], got: %s", body)
 	}
 }
