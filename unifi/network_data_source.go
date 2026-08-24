@@ -287,6 +287,11 @@ func (d *networkDataSource) Schema(
 						MarkdownDescription: "Specifies whether DHCP NTP is enabled.",
 						Computed:            true,
 					},
+					"ntp_servers": schema.ListAttribute{
+						MarkdownDescription: "List of NTP server addresses for DHCP clients.",
+						Computed:            true,
+						ElementType:         types.StringType,
+					},
 					"time_offset_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Specifies whether DHCP time offset is enabled.",
 						Computed:            true,
@@ -700,6 +705,15 @@ func (d *networkDataSource) setDataSourceData(
 		winsObj, d := types.ObjectValueFrom(ctx, winsValue.AttributeTypes(), winsValue)
 		diags.Append(d...)
 
+		ntpServers := collectNonEmptyStringPointers(network.DHCPDNtp1, network.DHCPDNtp2)
+		var ntpServersList types.List
+		if len(ntpServers) > 0 {
+			ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)
+			diags.Append(d...)
+		} else {
+			ntpServersList = types.ListNull(types.StringType)
+		}
+
 		dhcpServerValue := dhcpServerModel{
 			Boot:              dhcpBootObj,
 			Enabled:           types.BoolValue(network.DHCPDEnabled),
@@ -708,6 +722,7 @@ func (d *networkDataSource) setDataSourceData(
 			GatewayEnabled:    types.BoolValue(network.DHCPDGatewayEnabled),
 			ConflictChecking:  types.BoolValue(network.DHCPDConflictChecking),
 			NtpEnabled:        types.BoolValue(network.DHCPDNtpEnabled),
+			NtpServers:        ntpServersList,
 			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
 			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
 			Leasetime:         util.DurationPtrValue(network.DHCPDLeaseTime, time.Second),

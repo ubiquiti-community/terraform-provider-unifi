@@ -654,6 +654,7 @@ func Test_dhcpServerModel_AttributeTypes(t *testing.T) {
 				"gateway_enabled":     types.BoolType,
 				"conflict_checking":   types.BoolType,
 				"ntp_enabled":         types.BoolType,
+				"ntp_servers":         types.ListType{ElemType: types.StringType},
 				"time_offset_enabled": types.BoolType,
 				"dns_enabled":         types.BoolType,
 				"leasetime":           timetypes.GoDurationType{},
