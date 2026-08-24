@@ -14,6 +14,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -947,6 +948,90 @@ func Test_deviceResource_portOverridesToFramework(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+// TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs is a
+// regression test for #431. Optional+Computed attributes left out of config
+// (e.g. flow_control_enabled) plan as unknown, and the six field guards in
+// reconcilePortOverrides only handle "configured" (non-null) or "absent"
+// (null) prior values — an unknown value falls through both and reaches
+// ObjectValueFrom untouched, which the framework rejects with "produced an
+// unexpected new value: ... is unknown after apply". reconcilePortOverrides
+// must resolve any attribute still unknown from the API response.
+func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	baseline, diags := r.portOverridesToFramework(ctx, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: false},
+	})
+	if diags.HasError() {
+		t.Fatalf("portOverridesToFramework errored: %v", diags.Errors())
+	}
+
+	elems := baseline.Elements()
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 port_override element, got %d", len(elems))
+	}
+	obj, ok := elems[0].(types.Object)
+	if !ok {
+		t.Fatalf("expected port_override element to be types.Object, got %T", elems[0])
+	}
+
+	var model portOverrideModel
+	if diags = obj.As(ctx, &model, basetypes.ObjectAsOptions{}); diags.HasError() {
+		t.Fatalf("Object.As errored: %v", diags.Errors())
+	}
+
+	// Simulate the plan: flow_control_enabled was left out of config, so it
+	// plans as unknown rather than the null/known value portOverridesToFramework
+	// (a Read) would have produced.
+	model.FlowControlEnabled = types.BoolUnknown()
+
+	objVal, objDiags := types.ObjectValueFrom(ctx, model.AttributeTypes(), model)
+	if objDiags.HasError() {
+		t.Fatalf("ObjectValueFrom errored: %v", objDiags.Errors())
+	}
+
+	prior, setDiags := types.SetValue(
+		types.ObjectType{AttrTypes: portOverrideAttrTypes()},
+		[]attr.Value{objVal},
+	)
+	if setDiags.HasError() {
+		t.Fatalf("SetValue errored: %v", setDiags.Errors())
+	}
+
+	got, gotDiags := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: true},
+	})
+	if gotDiags.HasError() {
+		t.Fatalf("reconcilePortOverrides errored: %v", gotDiags.Errors())
+	}
+
+	gotElems := got.Elements()
+	if len(gotElems) != 1 {
+		t.Fatalf("expected 1 reconciled element, got %d", len(gotElems))
+	}
+	gotObj, ok := gotElems[0].(types.Object)
+	if !ok {
+		t.Fatalf("expected reconciled element to be types.Object, got %T", gotElems[0])
+	}
+
+	flowControl, ok := gotObj.Attributes()["flow_control_enabled"]
+	if !ok {
+		t.Fatal("reconciled port_override is missing flow_control_enabled")
+	}
+	if flowControl.IsUnknown() {
+		t.Fatal("flow_control_enabled is still unknown after reconcile — apply would fail with " +
+			`"Provider returned invalid result object after apply" (#431)`)
+	}
+	boolVal, ok := flowControl.(types.Bool)
+	if !ok {
+		t.Fatalf("expected flow_control_enabled to be types.Bool, got %T", flowControl)
+	}
+	if !boolVal.ValueBool() {
+		t.Errorf("flow_control_enabled = %v, want true (from API response)", boolVal)
 	}
 }
 
