@@ -1306,6 +1306,97 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 	})
 }
 
+// Test_networkResource_networkToModel_ipAliases guards #413: ip_aliases and
+// nat_outbound_ip_addresses were hardcoded to null on read regardless of what
+// the API returned, so a non-empty configured value always failed apply with
+// "provider produced inconsistent result after apply". They must now
+// round-trip whatever the controller reports.
+func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
+	r := &networkResource{}
+	prev := &networkResourceModel{
+		DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+		DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+		DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+		DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+		NatOutboundIPAddresses: types.ListNull(
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+		),
+		IPAliases:   types.ListNull(types.StringType),
+		IPv6Aliases: types.ListNull(types.StringType),
+	}
+
+	t.Run("non-empty values round-trip", func(t *testing.T) {
+		network := &unifi.Network{
+			ID:          "net-1",
+			Name:        strPtr("aliased"),
+			Purpose:     unifi.PurposeCorporate,
+			Enabled:     true,
+			IPSubnet:    strPtr("10.0.2.1/24"),
+			IPAliases:   []string{"10.0.2.5", "10.0.2.6"},
+			NATOutboundIPAddresses: []unifi.NetworkNATOutboundIPAddresses{
+				{
+					IPAddress:       "203.0.113.5",
+					Mode:            strPtr("ip_address"),
+					WANNetworkGroup: strPtr("WAN"),
+				},
+			},
+		}
+		var model networkResourceModel
+		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+
+		if model.IPAliases.IsNull() {
+			t.Fatal("IPAliases: got null, want the two configured aliases")
+		}
+		var ipAliases []string
+		if diags := model.IPAliases.ElementsAs(context.Background(), &ipAliases, false); diags.HasError() {
+			t.Fatalf("ElementsAs: %v", diags)
+		}
+		if len(ipAliases) != 2 || ipAliases[0] != "10.0.2.5" || ipAliases[1] != "10.0.2.6" {
+			t.Errorf("IPAliases = %v, want [10.0.2.5 10.0.2.6]", ipAliases)
+		}
+
+		if model.NatOutboundIPAddresses.IsNull() {
+			t.Fatal("NatOutboundIPAddresses: got null, want the configured entry")
+		}
+		var natEntries []natOutboundIPAddressesModel
+		if diags := model.NatOutboundIPAddresses.ElementsAs(context.Background(), &natEntries, false); diags.HasError() {
+			t.Fatalf("ElementsAs: %v", diags)
+		}
+		if len(natEntries) != 1 || natEntries[0].IPAddress.ValueString() != "203.0.113.5" ||
+			natEntries[0].Mode.ValueString() != "ip_address" ||
+			natEntries[0].WANNetworkGroup.ValueString() != "WAN" {
+			t.Errorf("NatOutboundIPAddresses = %+v, want ip_address=203.0.113.5 mode=ip_address wan_network_group=WAN", natEntries)
+		}
+	})
+
+	t.Run("empty values stay null", func(t *testing.T) {
+		network := &unifi.Network{
+			ID:       "net-2",
+			Name:     strPtr("no-aliases"),
+			Purpose:  unifi.PurposeCorporate,
+			Enabled:  true,
+			IPSubnet: strPtr("10.0.3.1/24"),
+		}
+		var model networkResourceModel
+		d := r.networkToModel(context.Background(), network, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+		if !model.IPAliases.IsNull() {
+			t.Errorf("IPAliases = %v, want null", model.IPAliases)
+		}
+		if !model.NatOutboundIPAddresses.IsNull() {
+			t.Errorf("NatOutboundIPAddresses = %v, want null", model.NatOutboundIPAddresses)
+		}
+		if !model.IPv6Aliases.IsNull() {
+			t.Errorf("IPv6Aliases = %v, want null", model.IPv6Aliases)
+		}
+	})
+}
+
 // Test_networkResource_networkToModel_normalizesControllerDefaults guards #414:
 // UniFi may omit gateway_type and ipv6_interface_type when they have their
 // implicit defaults. Import must write the provider defaults into state instead
