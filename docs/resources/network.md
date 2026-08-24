@@ -163,6 +163,7 @@ Optional:
 - `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
 - `leasetime` (String) Specifies the DHCP lease time, as a Go duration string (e.g. `24h`, `86400s`). Defaults to `24h0m0s`.
 - `ntp_enabled` (Boolean) Specifies whether DHCP NTP is enabled.
+- `ntp_servers` (List of String) List of NTP server addresses for DHCP clients.
 - `start` (String) The IPv4 address where the DHCP range starts.
 - `stop` (String) The IPv4 address where the DHCP range stops.
 - `tftp_server` (String) TFTP server address.
