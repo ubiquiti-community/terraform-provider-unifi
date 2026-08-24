@@ -3,6 +3,8 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -637,6 +639,137 @@ func TestFirewallZoneImportStateByIdentityWithSite(t *testing.T) {
 	assertFirewallZoneImportString(t, ctx, resp.State, "site", site)
 	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "id", id)
 	assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "site", site)
+}
+
+// newFirewallZoneFakeControllerClient spins up a minimal fake controller
+// (old-style API: 302 on /, cookie login at /api/login) that serves the given
+// zones per site, and returns a provider client wired to it. This covers the
+// import-by-name path (#396), which needs a live ListFirewallZone call and
+// cannot run against the demo acceptance controller (no zone-based firewall).
+func newFirewallZoneFakeControllerClient(
+	t *testing.T,
+	zonesBySite map[string][]unifi.FirewallZone,
+) *Client {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			// Old-style controllers redirect / to /manage.
+			http.Redirect(w, r, "/manage", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "unifises", Value: "fake-session", Path: "/"})
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"meta":{"rc":"ok"},"data":[]}`))
+	})
+	for site, zones := range zonesBySite {
+		payload, err := json.Marshal(zones)
+		if err != nil {
+			t.Fatalf("marshaling zones: %v", err)
+		}
+		mux.HandleFunc(
+			"/v2/api/site/"+site+"/firewall/zone",
+			func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write(payload)
+			},
+		)
+	}
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	apiClient, err := unifi.New(context.Background(), &unifi.Config{
+		BaseURL:  srv.URL,
+		Username: "admin",
+		Password: "admin",
+	})
+	if err != nil {
+		t.Fatalf("creating client against fake controller: %v", err)
+	}
+	return &Client{ApiClient: apiClient, Site: "default"}
+}
+
+func TestFirewallZoneImportStateByName(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallZoneResource{
+		client: newFirewallZoneFakeControllerClient(t, map[string][]unifi.FirewallZone{
+			"default": {
+				{
+					ID:          "hotspot-zone-id",
+					Name:        "Hotspot",
+					ZoneKey:     "hotspot",
+					DefaultZone: boolPtr(true),
+				},
+				{
+					ID:          "internal-zone-id",
+					Name:        "Internal",
+					ZoneKey:     "lan",
+					DefaultZone: boolPtr(true),
+				},
+			},
+			"other-site": {
+				{
+					ID:          "other-hotspot-id",
+					Name:        "Hotspot",
+					ZoneKey:     "hotspot",
+					DefaultZone: boolPtr(true),
+				},
+			},
+		}),
+	}
+
+	t.Run("default site", func(t *testing.T) {
+		resp := newFirewallZoneImportResponse(ctx, r)
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "name=Hotspot"}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+		}
+		assertFirewallZoneImportString(t, ctx, resp.State, "id", "hotspot-zone-id")
+		assertFirewallZoneImportString(t, ctx, resp.State, "site", "default")
+		assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "id", "hotspot-zone-id")
+		assertFirewallZoneImportIdentityAttr(t, ctx, resp.Identity, "site", "default")
+	})
+
+	t.Run("explicit site", func(t *testing.T) {
+		resp := newFirewallZoneImportResponse(ctx, r)
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "other-site:name=Hotspot"}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("ImportState returned diagnostics: %v", resp.Diagnostics)
+		}
+		assertFirewallZoneImportString(t, ctx, resp.State, "id", "other-hotspot-id")
+		assertFirewallZoneImportString(t, ctx, resp.State, "site", "other-site")
+	})
+
+	t.Run("unknown name", func(t *testing.T) {
+		resp := newFirewallZoneImportResponse(ctx, r)
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "name=Nope"}, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected a Firewall Zone Not Found diagnostic")
+		}
+	})
+}
+
+func TestFirewallZoneImportStateByNameAmbiguous(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallZoneResource{
+		client: newFirewallZoneFakeControllerClient(t, map[string][]unifi.FirewallZone{
+			"default": {
+				{ID: "dup-a", Name: "Dup"},
+				{ID: "dup-b", Name: "Dup"},
+			},
+		}),
+	}
+
+	resp := newFirewallZoneImportResponse(ctx, r)
+	r.ImportState(ctx, fwresource.ImportStateRequest{ID: "name=Dup"}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an Ambiguous Firewall Zone Name diagnostic")
+	}
 }
 
 // ---------------------------------------------------------------------------
