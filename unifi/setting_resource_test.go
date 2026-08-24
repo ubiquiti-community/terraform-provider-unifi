@@ -121,6 +121,54 @@ func TestAccSettingResource_usg(t *testing.T) {
 	})
 }
 
+// TestAccSettingResource_import exercises both import paths: the classic
+// string import (the import id is the site name, with state verification) and
+// the Terraform 1.12+ identity-based import block.
+//
+// The config intentionally manages no setting sections: readSettings only
+// refreshes sections already present in state, so a freshly imported setting
+// has every section null and any configured section would make the
+// post-import plan non-empty (the same reason the string-import tests above
+// need ImportStateVerifyIgnore for their section attributes).
+func TestAccSettingResource_import(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSettingConfig_import(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_setting.test_import", "id", "default"),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test_import",
+						"site",
+						"default",
+					),
+				),
+			},
+			// Classic string import (the import id is the site name).
+			{
+				ResourceName:      "unifi_setting.test_import",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_setting.test_import",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+		},
+	})
+}
+
+func testAccSettingConfig_import() string {
+	return `
+resource "unifi_setting" "test_import" {
+}
+`
+}
+
 func TestAccSettingResource_combined(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },

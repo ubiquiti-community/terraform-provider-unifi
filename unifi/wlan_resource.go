@@ -180,6 +180,12 @@ func (r *wlanFrameworkResource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_wlan"
 }
 
+// wlanIdentityModel describes the resource identity data model.
+type wlanIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // IdentitySchema implements [resource.ResourceWithIdentity].
 func (r *wlanFrameworkResource) IdentitySchema(
 	_ context.Context,
@@ -190,6 +196,9 @@ func (r *wlanFrameworkResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -948,7 +957,11 @@ func (r *wlanFrameworkResource) Create(
 		plan.Passphrase = types.StringNull()
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+	identity := wlanIdentityModel{
+		ID:   plan.ID,
+		Site: types.StringValue(site),
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -973,6 +986,27 @@ func (r *wlanFrameworkResource) Read(
 	}
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
+
+	// Read identity, falling back to state for resources created before
+	// identity support (or refreshed from a string import).
+	var identity wlanIdentityModel
+	identityStored := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
+	if identityStored {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	if (state.ID.IsNull() || state.ID.IsUnknown()) &&
+		!identity.ID.IsNull() && identity.ID.ValueString() != "" {
+		// Identity-only state (e.g. the refresh right after an identity-based
+		// import of an old state): look the WLAN up by the identity id.
+		state.ID = identity.ID
+	}
+	if (state.Site.IsNull() || state.Site.IsUnknown()) &&
+		!identity.Site.IsNull() && identity.Site.ValueString() != "" {
+		state.Site = identity.Site
+	}
 
 	site := state.Site.ValueString()
 	if site == "" {
@@ -1021,7 +1055,17 @@ func (r *wlanFrameworkResource) Read(
 		state.Passphrase = types.StringNull()
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Terraform rejects any modification of a stored identity (even filling a
+	// previously-null attribute), so pass a stored identity through untouched
+	// (resp.Identity is pre-populated from it) and only derive a fresh one
+	// from state when none exists yet.
+	if !identityStored {
+		identity = wlanIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -1109,7 +1153,15 @@ func (r *wlanFrameworkResource) Update(
 		state.Passphrase = types.StringNull()
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		identity := wlanIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1322,9 +1374,38 @@ func (r *wlanFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform
+	// 1.12+). ImportStatePassthroughID leaves the state empty on this path, so
+	// copy the identity attributes into state by hand.
+	if req.ID == "" {
+		var identity wlanIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"WLAN identity must have `id` set.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
+	// Import by ID string (terraform import CLI, or import block with id set):
+	// `[site:]id`, `[site:]name=<name>`, or `[site:]<name>`.
+	site := ""
 	idParts := strings.Split(req.ID, ":")
 	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+		site = idParts[0]
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		req.ID = idParts[1]
 	}
 
@@ -1335,7 +1416,20 @@ func (r *wlanFrameworkResource) ImportState(
 		rootAttributeName = "id"
 	}
 
-	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
+	resp.Diagnostics.Append(
+		resp.State.SetAttribute(ctx, path.Root(rootAttributeName), req.ID)...)
+	if rootAttributeName == "id" {
+		// Mirror the import values into the resource identity; a name-based
+		// import leaves the identity to be filled in by the first Read (the
+		// id is not known yet, and a partially-null identity would otherwise
+		// be locked in by the identity passthrough on refresh).
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), req.ID)...)
+		if site != "" {
+			resp.Diagnostics.Append(
+				resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
+		}
+	}
 }
 
 // Helper functions for conversion and merging
@@ -1956,6 +2050,13 @@ func (r *wlanFrameworkResource) List(
 					ctx,
 					path.Root("id"),
 					types.StringValue(wlan.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
 				)...,
 			)
 

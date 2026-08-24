@@ -76,6 +76,12 @@ type radiusProfileResourceModel struct {
 	Timeouts              timeouts.Value       `tfsdk:"timeouts"`
 }
 
+// radiusProfileIdentityModel describes the resource identity data model.
+type radiusProfileIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // radiusProfileListConfigModel describes the list configuration model.
 type radiusProfileListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -106,6 +112,9 @@ func (r *radiusProfileResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -362,7 +371,11 @@ func (r *radiusProfileResource) Create(
 
 	r.radiusProfileToModel(ctx, createdRadiusProfile, &data, site)
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	identity := radiusProfileIdentityModel{
+		ID:   data.ID,
+		Site: types.StringValue(site),
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -386,12 +399,36 @@ func (r *radiusProfileResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
-	site := data.Site.ValueString()
+	// Read identity, falling back to state for resources created before
+	// identity support (or refreshed from a string import).
+	var identity radiusProfileIdentityModel
+	identityStored := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
+	if identityStored {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = data.ID
+	}
+	if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+		identity.Site = data.Site
+	}
+
+	id := data.ID.ValueString()
+	if id == "" {
+		// Identity-only state (e.g. the refresh right after an identity-based
+		// import of an old state): look the profile up by the identity id.
+		id = identity.ID.ValueString()
+	}
+
+	site := identity.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
-	radiusProfile, err := r.client.GetRADIUSProfile(ctx, site, data.ID.ValueString())
+	radiusProfile, err := r.client.GetRADIUSProfile(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -399,14 +436,24 @@ func (r *radiusProfileResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading RADIUS Profile",
-			"Could not read RADIUS profile with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read RADIUS profile with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	r.radiusProfileToModel(ctx, radiusProfile, &data, site)
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	// Terraform rejects any modification of a stored identity (even filling a
+	// previously-null attribute), so pass a stored identity through untouched
+	// (resp.Identity is pre-populated from it) and only derive a fresh one
+	// from state when none exists yet.
+	if !identityStored {
+		identity = radiusProfileIdentityModel{
+			ID:   data.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -459,7 +506,15 @@ func (r *radiusProfileResource) Update(
 
 	state.Timeouts = plan.Timeouts
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		identity := radiusProfileIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -506,6 +561,30 @@ func (r *radiusProfileResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity radiusProfileIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"RADIUS profile identity must have `id` set.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
+	// Import by ID string (terraform import CLI, or import block with id set).
 	idParts := strings.Split(req.ID, ":")
 
 	if len(idParts) == 2 {
@@ -514,11 +593,14 @@ func (r *radiusProfileResource) ImportState(
 
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
 		return
 	}
 
 	if len(idParts) == 1 {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), req.ID)...)
 		return
 	}
 
@@ -739,6 +821,13 @@ func (r *radiusProfileResource) List(
 					ctx,
 					path.Root("id"),
 					types.StringValue(profile.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
 				)...,
 			)
 

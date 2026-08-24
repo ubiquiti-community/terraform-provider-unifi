@@ -8,9 +8,12 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -78,6 +81,9 @@ func TestNewBGPResource(t *testing.T) {
 	}
 	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
 		t.Error("expected ResourceWithImportState interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithIdentity); !ok {
+		t.Error("expected ResourceWithIdentity interface")
 	}
 }
 
@@ -296,12 +302,146 @@ func Test_bgpResource_Configure(t *testing.T) {
 	}
 }
 
-// Test_bgpResource_ImportState is skipped because ImportStatePassthroughID
-// requires a valid state schema which is complex to set up in a unit test.
+func Test_bgpResource_IdentitySchema(t *testing.T) {
+	r := &bgpResource{}
+	resp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(context.Background(), fwresource.IdentitySchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("IdentitySchema() diagnostics: %v", resp.Diagnostics)
+	}
+	attr, ok := resp.IdentitySchema.Attributes["site"]
+	if !ok {
+		t.Fatal("identity schema missing `site` attribute")
+	}
+	if !attr.IsRequiredForImport() {
+		t.Error("`site` should be RequiredForImport")
+	}
+}
+
+// bgpImportStateResponse builds an ImportStateResponse with an empty state and
+// identity, the way the framework server hands them to ImportState.
+func bgpImportStateResponse(t *testing.T) *fwresource.ImportStateResponse {
+	t.Helper()
+	ctx := context.Background()
+	r := &bgpResource{}
+
+	schemaResp := &fwresource.SchemaResponse{}
+	r.Schema(ctx, fwresource.SchemaRequest{}, schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("Schema() diagnostics: %v", schemaResp.Diagnostics)
+	}
+	identityResp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, identityResp)
+
+	return &fwresource.ImportStateResponse{
+		State: tfsdk.State{
+			Schema: schemaResp.Schema,
+			Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+		},
+		Identity: &tfsdk.ResourceIdentity{
+			Schema: identityResp.IdentitySchema,
+			Raw: tftypes.NewValue(
+				identityResp.IdentitySchema.Type().TerraformType(ctx),
+				nil,
+			),
+		},
+	}
+}
+
+// bgpIdentity builds a populated resource identity for import requests.
+func bgpIdentity(t *testing.T, site any) *tfsdk.ResourceIdentity {
+	t.Helper()
+	ctx := context.Background()
+	r := &bgpResource{}
+
+	identityResp := &fwresource.IdentitySchemaResponse{}
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, identityResp)
+	identityType := identityResp.IdentitySchema.Type().TerraformType(ctx)
+
+	return &tfsdk.ResourceIdentity{
+		Schema: identityResp.IdentitySchema,
+		Raw: tftypes.NewValue(identityType, map[string]tftypes.Value{
+			"site": tftypes.NewValue(tftypes.String, site),
+		}),
+	}
+}
+
 func Test_bgpResource_ImportState(t *testing.T) {
-	t.Skip(
-		"ImportState delegates to ImportStatePassthroughID which requires full state schema setup",
-	)
+	ctx := context.Background()
+	r := &bgpResource{}
+
+	t.Run("string import by site name", func(t *testing.T) {
+		resp := bgpImportStateResponse(t)
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "mysite"}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+
+		var site types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("site"), &site)...)
+		if site.ValueString() != "mysite" {
+			t.Errorf("state site = %q, want %q", site.ValueString(), "mysite")
+		}
+
+		var identitySite types.String
+		resp.Diagnostics.Append(
+			resp.Identity.GetAttribute(ctx, path.Root("site"), &identitySite)...)
+		if identitySite.ValueString() != "mysite" {
+			t.Errorf("identity site = %q, want %q", identitySite.ValueString(), "mysite")
+		}
+	})
+
+	t.Run("string import by 24-hex id keeps passthrough behavior", func(t *testing.T) {
+		resp := bgpImportStateResponse(t)
+		r.ImportState(
+			ctx,
+			fwresource.ImportStateRequest{ID: "5dc28e5e9106d105bdc87217"},
+			resp,
+		)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+
+		var id types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("id"), &id)...)
+		if id.ValueString() != "5dc28e5e9106d105bdc87217" {
+			t.Errorf("state id = %q, want the import id", id.ValueString())
+		}
+
+		var site types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("site"), &site)...)
+		if !site.IsNull() {
+			t.Errorf("state site = %v, want null (provider default site)", site)
+		}
+	})
+
+	t.Run("identity import", func(t *testing.T) {
+		resp := bgpImportStateResponse(t)
+		r.ImportState(ctx, fwresource.ImportStateRequest{
+			ID:       "",
+			Identity: bgpIdentity(t, "othersite"),
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected error: %v", resp.Diagnostics)
+		}
+
+		var site types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("site"), &site)...)
+		if site.ValueString() != "othersite" {
+			t.Errorf("state site = %q, want %q", site.ValueString(), "othersite")
+		}
+	})
+
+	t.Run("identity import with null site errors", func(t *testing.T) {
+		resp := bgpImportStateResponse(t)
+		r.ImportState(ctx, fwresource.ImportStateRequest{
+			ID:       "",
+			Identity: bgpIdentity(t, nil),
+		}, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error for a null identity site")
+		}
+	})
 }
 
 func Test_bgpResource_applyPlanToState(t *testing.T) {

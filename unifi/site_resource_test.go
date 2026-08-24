@@ -41,6 +41,71 @@ resource "unifi_site" "test" {
 `
 }
 
+// TestAccSiteFramework_import exercises both import paths against the
+// controller's default site: the classic string import (by name and by 24-hex
+// controller id, with state verification) and the Terraform 1.12+
+// identity-based import block.
+//
+// The demo controller cannot create or delete sites through the provider
+// (go-unifi's sitemgr commands 404 on legacy-style controllers), so the test
+// imports the pre-existing default site instead of creating one, and finishes
+// with a `removed` block so the final destroy never deletes the default site.
+func TestAccSiteFramework_import(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Seed the test state via a classic string import by name.
+			{
+				Config:             testAccSiteFrameworkConfig_import(),
+				ResourceName:       "unifi_site.test_import",
+				ImportState:        true,
+				ImportStateId:      "name=default",
+				ImportStatePersist: true,
+			},
+			// Classic string import by 24-hex controller id (the default
+			// import id is the `id` attribute of the seeded state).
+			{
+				Config:            testAccSiteFrameworkConfig_import(),
+				ResourceName:      "unifi_site.test_import",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				Config:          testAccSiteFrameworkConfig_import(),
+				ResourceName:    "unifi_site.test_import",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+			// Forget the default site (never destroy it).
+			{
+				Config: testAccSiteFrameworkConfig_importRemoved(),
+			},
+		},
+	})
+}
+
+func testAccSiteFrameworkConfig_import() string {
+	return `
+resource "unifi_site" "test_import" {
+	description = "Default"
+}
+`
+}
+
+func testAccSiteFrameworkConfig_importRemoved() string {
+	return `
+removed {
+	from = unifi_site.test_import
+
+	lifecycle {
+		destroy = false
+	}
+}
+`
+}
+
 // TestSiteToModelNilDoesNotPanic guards #261: siteToModel must return an error
 // for a nil site instead of dereferencing it (the read path used to fall
 // through to a nil siteToModel on a not-found, panicking the provider).
