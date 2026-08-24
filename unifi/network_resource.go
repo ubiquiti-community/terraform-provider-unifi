@@ -557,8 +557,8 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "List of IP aliases for the network, in CIDR notation " +
 					"(e.g. `192.168.2.1/24`). The controller rejects entries without a " +
 					"prefix length.",
-				Optional:            true,
-				ElementType:         types.StringType,
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 			"ipv6_aliases": schema.ListAttribute{
 				MarkdownDescription: "List of IPv6 aliases for the network. Not currently supported: " +
@@ -941,6 +941,40 @@ func (r *networkResource) ModifyPlan(
 ) {
 	if req.Plan.Raw.IsNull() {
 		return // resource is being destroyed
+	}
+
+	// firewall_zone_id: Optional+Computed with no plan modifier, so on any
+	// update the framework re-plans it as unknown when the config is null —
+	// including updates manufactured purely by the setting_preference
+	// default ("auto") flapping against a state pinned to "manual" below.
+	// On controllers without zone-based firewalling the applied value is
+	// always null, so the unknown never resolves to anything else, yet it
+	// makes every follow-up plan non-empty (a perpetual diff for any relay
+	// or guarding network). Pin the plan back to null when neither state nor
+	// config carry a value; ZBF controllers assign a zone on first apply, so
+	// a genuinely zone-managed network never has a null prior state here.
+	if !req.State.Raw.IsNull() {
+		var stateZone, configZone, planZone types.String
+		resp.Diagnostics.Append(
+			req.State.GetAttribute(ctx, path.Root("firewall_zone_id"), &stateZone)...)
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root("firewall_zone_id"), &configZone)...)
+		resp.Diagnostics.Append(
+			req.Plan.GetAttribute(ctx, path.Root("firewall_zone_id"), &planZone)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if stateZone.IsNull() && configZone.IsNull() && planZone.IsUnknown() {
+			resp.Diagnostics.Append(
+				resp.Plan.SetAttribute(
+					ctx,
+					path.Root("firewall_zone_id"),
+					types.StringNull(),
+				)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
 	}
 
 	// ipv6_aliases: go-unifi's Network struct has no field for this yet, so a

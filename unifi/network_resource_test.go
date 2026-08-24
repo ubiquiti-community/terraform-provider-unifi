@@ -2129,3 +2129,259 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 		})
 	}
 }
+
+// Test_networkResource_ModifyPlan_dhcpGuardingForcesManual guards #419: the
+// controller force-resets dhcpguard_enabled to false on any write to a
+// corporate or guest network whose setting_preference is "auto" (the provider
+// default), so ModifyPlan must pin setting_preference to "manual" whenever the
+// plan enables dhcp_guarding on those purposes and the practitioner has not
+// chosen a preference explicitly. vlan-only networks keep guarding under
+// "auto" and must be left alone, and an explicit choice is never overridden
+// (an explicit "auto" with guarding enabled gets a warning instead).
+func Test_networkResource_ModifyPlan_dhcpGuardingForcesManual(t *testing.T) {
+	r := &networkResource{}
+	ctx := context.Background()
+
+	guardingObj := func(enabled bool) types.Object {
+		return types.ObjectValueMust(
+			dhcpGuardingModel{}.AttributeTypes(),
+			map[string]attr.Value{
+				"enabled": types.BoolValue(enabled),
+				"servers": types.ListNull(types.StringType),
+			},
+		)
+	}
+
+	// explicitAutoConfig builds a Config whose only non-null attribute is
+	// setting_preference = "auto", i.e. the practitioner set it explicitly.
+	explicitAutoConfig := func(t *testing.T) tfsdk.Config {
+		t.Helper()
+		var schemaResp fwresource.SchemaResponse
+		r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+		schemaType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+		if !ok {
+			t.Fatal("schema type is not tftypes.Object")
+		}
+		attrVals := make(map[string]tftypes.Value, len(schemaType.AttributeTypes))
+		for name, typ := range schemaType.AttributeTypes {
+			attrVals[name] = tftypes.NewValue(typ, nil)
+		}
+		attrVals["setting_preference"] = tftypes.NewValue(tftypes.String, "auto")
+		return tfsdk.Config{
+			Schema: schemaResp.Schema,
+			Raw:    tftypes.NewValue(schemaType, attrVals),
+		}
+	}
+
+	tests := []struct {
+		name         string
+		purpose      types.String
+		tpg          types.Bool
+		guarding     types.Object
+		explicitAuto bool
+		wantPref     string
+		wantWarn     bool
+	}{
+		{
+			name:     "guard enabled, default purpose: forces manual",
+			purpose:  types.StringNull(),
+			tpg:      types.BoolNull(),
+			guarding: guardingObj(true),
+			wantPref: "manual",
+		},
+		{
+			name:     "guard enabled, corporate: forces manual",
+			purpose:  types.StringValue("corporate"),
+			tpg:      types.BoolValue(false),
+			guarding: guardingObj(true),
+			wantPref: "manual",
+		},
+		{
+			name:     "guard enabled, guest: forces manual",
+			purpose:  types.StringValue("guest"),
+			tpg:      types.BoolValue(false),
+			guarding: guardingObj(true),
+			wantPref: "manual",
+		},
+		{
+			name:     "guard enabled, vlan-only purpose: left alone",
+			purpose:  types.StringValue("vlan-only"),
+			tpg:      types.BoolValue(false),
+			guarding: guardingObj(true),
+			wantPref: "auto",
+		},
+		{
+			name:     "guard enabled, third_party_gateway: left alone",
+			purpose:  types.StringNull(),
+			tpg:      types.BoolValue(true),
+			guarding: guardingObj(true),
+			wantPref: "auto",
+		},
+		{
+			name:     "guard disabled: left alone",
+			purpose:  types.StringNull(),
+			tpg:      types.BoolNull(),
+			guarding: guardingObj(false),
+			wantPref: "auto",
+		},
+		{
+			name:     "guard block absent: left alone",
+			purpose:  types.StringNull(),
+			tpg:      types.BoolNull(),
+			guarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			wantPref: "auto",
+		},
+		{
+			name:         "explicit auto + guard enabled: warned, not overridden",
+			purpose:      types.StringNull(),
+			tpg:          types.BoolNull(),
+			guarding:     guardingObj(true),
+			explicitAuto: true,
+			wantPref:     "auto",
+			wantWarn:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, config := minimalNetworkPlan(ctx, t)
+			if tt.explicitAuto {
+				config = explicitAutoConfig(t)
+			}
+
+			for _, set := range []struct {
+				p path.Path
+				v attr.Value
+			}{
+				{path.Root("ipv6_aliases"), types.ListNull(types.StringType)},
+				{path.Root("nat_outbound_ip_addresses"), types.ListNull(
+					types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+				)},
+				{path.Root("dhcp_relay"), types.ObjectNull(dhcpRelayModel{}.AttributeTypes())},
+				{path.Root("purpose"), tt.purpose},
+				{path.Root("third_party_gateway"), tt.tpg},
+				{path.Root("dhcp_guarding"), tt.guarding},
+				{path.Root("setting_preference"), types.StringValue("auto")},
+			} {
+				if d := plan.SetAttribute(ctx, set.p, set.v); d.HasError() {
+					t.Fatalf("SetAttribute(%s): %v", set.p, d)
+				}
+			}
+
+			req := fwresource.ModifyPlanRequest{Plan: plan, Config: config}
+			resp := &fwresource.ModifyPlanResponse{Plan: plan}
+			r.ModifyPlan(ctx, req, resp)
+
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("unexpected error: %v", resp.Diagnostics)
+			}
+
+			var gotPref types.String
+			if d := resp.Plan.GetAttribute(
+				ctx,
+				path.Root("setting_preference"),
+				&gotPref,
+			); d.HasError() {
+				t.Fatalf("GetAttribute(setting_preference): %v", d)
+			}
+			if gotPref.ValueString() != tt.wantPref {
+				t.Errorf("setting_preference = %q, want %q", gotPref.ValueString(), tt.wantPref)
+			}
+
+			gotWarn := resp.Diagnostics.WarningsCount() > 0
+			if gotWarn != tt.wantWarn {
+				t.Errorf("warnings = %v (%d), want warning: %v",
+					resp.Diagnostics, resp.Diagnostics.WarningsCount(), tt.wantWarn)
+			}
+		})
+	}
+}
+
+// TestAccNetworkFramework_dhcpGuardingCorporate guards #419 end-to-end: DHCP
+// guarding on corporate and guest purpose networks must survive the write —
+// the controller resets dhcpguard_enabled under setting_preference "auto", so
+// the provider pins "manual" and the applied state must read back enabled with
+// the configured servers (a failure here historically surfaced as "Provider
+// produced inconsistent result after apply: .dhcp_guarding.enabled").
+func TestAccNetworkFramework_dhcpGuardingCorporate(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "unifi_network" "guard_corp" {
+	name    = "Guard Corporate"
+	purpose = "corporate"
+	subnet  = "10.0.53.1/24"
+	vlan    = 53
+
+	dhcp_guarding = {
+		enabled = true
+		servers = ["10.0.53.5", "10.0.53.6"]
+	}
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"dhcp_guarding.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"dhcp_guarding.servers.#",
+						"2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"dhcp_guarding.servers.0",
+						"10.0.53.5",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"setting_preference",
+						"manual",
+					),
+				),
+			},
+			{
+				Config: `
+resource "unifi_network" "guard_corp" {
+	name    = "Guard Corporate"
+	purpose = "guest"
+	subnet  = "10.0.53.1/24"
+	vlan    = 53
+
+	dhcp_guarding = {
+		enabled = true
+		servers = ["10.0.53.7"]
+	}
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"dhcp_guarding.enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"dhcp_guarding.servers.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"dhcp_guarding.servers.0",
+						"10.0.53.7",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_network.guard_corp",
+						"setting_preference",
+						"manual",
+					),
+				),
+			},
+		},
+	})
+}
