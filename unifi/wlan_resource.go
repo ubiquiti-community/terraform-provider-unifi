@@ -34,6 +34,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
@@ -944,6 +945,11 @@ func (r *wlanFrameworkResource) Create(
 		return
 	}
 
+	// #406: some controllers silently drop "6g" from wlan_bands on the
+	// initial create, yet accept the identical payload on a subsequent
+	// update. Re-assert the intended band list once before giving up.
+	createdWLAN = reassertWLANBands(ctx, r.client, site, wlan, createdWLAN)
+
 	// Convert response back to model
 	diags = r.wlanToModel(ctx, createdWLAN, &plan, site)
 	resp.Diagnostics.Append(diags...)
@@ -964,6 +970,85 @@ func (r *wlanFrameworkResource) Create(
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
+
+	// If the controller still refuses a requested band after the re-assert,
+	// fail with an actionable message instead of letting Terraform surface a
+	// generic "Provider produced inconsistent result after apply". State was
+	// set above, so the created WLAN is tracked (and tainted) rather than
+	// orphaned on the controller (#406).
+	if still := missingWLANBands(wlan.WLANBands, createdWLAN.WLANBands); len(still) > 0 {
+		resp.Diagnostics.AddError(
+			"Controller Refused Requested WLAN Band(s)",
+			fmt.Sprintf(
+				"WLAN %q was created, but the controller dropped the requested band(s) %v from "+
+					"wlan_bands (it kept %v) and refused them again on an immediate follow-up "+
+					"update. Controllers gate the 6GHz band on the WLAN's security settings "+
+					"(WPA3/SAE with Protected Management Frames) and on the site having "+
+					"6GHz-capable access points — adjust those, or remove the refused band(s) "+
+					"from wlan_bands. The WLAN is recorded in state and marked tainted.",
+				createdWLAN.Name, still, createdWLAN.WLANBands,
+			),
+		)
+	}
+}
+
+// wlanUpdater is the narrow slice of the UniFi client that reassertWLANBands
+// needs, so the retry can be unit-tested without a live controller.
+type wlanUpdater interface {
+	UpdateWLAN(ctx context.Context, site string, d *unifi.WLAN) (*unifi.WLAN, error)
+}
+
+// reassertWLANBands handles the controller-side half of #406: some controllers
+// (observed on Network 10.4.x) silently drop "6g" from wlan_bands on the
+// initial create, yet accept the identical payload on a subsequent update —
+// which is exactly the manual workaround the issue reporter confirmed (create
+// without 6g, then add it). The provider marshals the full requested band list
+// on both paths, so when the create response comes back missing a requested
+// band, re-assert the intended configuration once with an immediate update
+// instead of failing the apply with a cryptic "inconsistent result" error.
+// When the retry cannot help (update error or still-missing bands), the create
+// response is kept and Create raises an actionable diagnostic.
+func reassertWLANBands(
+	ctx context.Context,
+	client wlanUpdater,
+	site string,
+	requested *unifi.WLAN,
+	created *unifi.WLAN,
+) *unifi.WLAN {
+	missing := missingWLANBands(requested.WLANBands, created.WLANBands)
+	if len(missing) == 0 {
+		return created
+	}
+
+	tflog.Warn(ctx, "Controller dropped requested wlan_bands on create; re-asserting via update",
+		map[string]any{"wlan": created.Name, "missing_bands": missing})
+
+	requested.ID = created.ID
+	reasserted, err := client.UpdateWLAN(ctx, site, requested)
+	if err != nil || reasserted == nil {
+		if err != nil {
+			tflog.Warn(ctx, "Re-asserting wlan_bands failed; keeping the create response",
+				map[string]any{"wlan": created.Name, "error": err.Error()})
+		}
+		return created
+	}
+	return reasserted
+}
+
+// missingWLANBands returns the bands in requested that are absent from actual.
+// A nil result means the controller kept every requested band (#406).
+func missingWLANBands(requested, actual []string) []string {
+	have := make(map[string]bool, len(actual))
+	for _, band := range actual {
+		have[band] = true
+	}
+	var missing []string
+	for _, band := range requested {
+		if !have[band] {
+			missing = append(missing, band)
+		}
+	}
+	return missing
 }
 
 func (r *wlanFrameworkResource) Read(

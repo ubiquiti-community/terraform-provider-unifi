@@ -959,3 +959,243 @@ func TestAccWLANList_basic(t *testing.T) {
 	// the dockerized test environment; skip until the basic create path works.
 	t.Skip("WLAN creation requires user_group_id; skipping list acceptance test")
 }
+
+// ---------------------------------------------------------------------------
+// #406: unifi_wlan creation with "6g" in wlan_bands
+// ---------------------------------------------------------------------------
+
+func Test_missingWLANBands(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested []string
+		actual    []string
+		want      []string
+	}{
+		{
+			name:      "controller kept everything",
+			requested: []string{"2g", "5g", "6g"},
+			actual:    []string{"2g", "5g", "6g"},
+			want:      nil,
+		},
+		{
+			name:      "controller dropped 6g (the #406 report)",
+			requested: []string{"2g", "5g", "6g"},
+			actual:    []string{"2g", "5g"},
+			want:      []string{"6g"},
+		},
+		{
+			name:      "order does not matter",
+			requested: []string{"6g", "2g"},
+			actual:    []string{"2g", "6g"},
+			want:      nil,
+		},
+		{
+			name:      "no bands requested",
+			requested: nil,
+			actual:    []string{"2g"},
+			want:      nil,
+		},
+		{
+			name:      "controller returned nothing",
+			requested: []string{"6g"},
+			actual:    nil,
+			want:      []string{"6g"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := missingWLANBands(tt.requested, tt.actual)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("missingWLANBands(%v, %v) = %v, want %v",
+					tt.requested, tt.actual, got, tt.want)
+			}
+		})
+	}
+}
+
+// Test_planToWLAN_keeps6gBand pins down where #406 does NOT come from: the
+// provider marshals the full declared band list — "6g" included — into the
+// create/update payload, and derives the legacy wlan_band field only from the
+// 2g/5g members. The drop reported in #406 happens controller-side on create,
+// which is why Create re-asserts the band list when the response is missing a
+// requested band.
+func Test_planToWLAN_keeps6gBand(t *testing.T) {
+	ctx := context.Background()
+	r := &wlanFrameworkResource{}
+
+	bands, diags := types.SetValueFrom(ctx, types.StringType, []string{"2g", "5g", "6g"})
+	if diags.HasError() {
+		t.Fatalf("building band set: %v", diags)
+	}
+
+	plan := wlanFrameworkResourceModel{
+		Name:      types.StringValue("tfacc-6g"),
+		Security:  types.StringValue("wpapsk"),
+		WLANBands: bands,
+	}
+
+	wlan, diags := r.planToWLAN(ctx, plan)
+	if diags.HasError() {
+		t.Fatalf("planToWLAN: %v", diags)
+	}
+
+	got := map[string]bool{}
+	for _, b := range wlan.WLANBands {
+		got[b] = true
+	}
+	for _, want := range []string{"2g", "5g", "6g"} {
+		if !got[want] {
+			t.Errorf("wlan_bands missing %q in payload: %v", want, wlan.WLANBands)
+		}
+	}
+	if wlan.WLANBand != "both" {
+		t.Errorf("legacy wlan_band = %q, want %q (derived from 2g+5g)", wlan.WLANBand, "both")
+	}
+}
+
+// TestAccWLANFramework_wifi6ghzBand creates a WLAN with the exact band/security
+// shape from #406 — wlan_bands ["2g","5g","6g"] with WPA3 transition and
+// optional PMF — in a single apply, then removes 6g in-place. On controllers
+// that drop 6g at create time, Create's re-assert update kicks in; on
+// controllers that keep it (like this one), the path is a plain create. Either
+// way the resulting state must carry all three bands.
+func TestAccWLANFramework_wifi6ghzBand(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set, skipping acceptance test")
+	}
+
+	userGroupID := testAccWLANDefaultUserGroupID(t)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWLANFrameworkConfig_wifi6ghzBand(userGroupID, `"2g", "5g", "6g"`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_wlan.test_6g", "wlan_bands.#", "3"),
+					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "2g"),
+					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "5g"),
+					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "6g"),
+					resource.TestCheckResourceAttr("unifi_wlan.test_6g", "wpa3_support", "true"),
+				),
+			},
+			{
+				// Dropping 6g afterwards must be a clean in-place update.
+				Config: testAccWLANFrameworkConfig_wifi6ghzBand(userGroupID, `"2g", "5g"`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_wlan.test_6g", "wlan_bands.#", "2"),
+					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "2g"),
+					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "5g"),
+				),
+			},
+		},
+	})
+}
+
+func testAccWLANFrameworkConfig_wifi6ghzBand(userGroupID, bands string) string {
+	// network_id and ap_group_ids are pinned in config for the same reason as
+	// the import test: they are optional, non-computed attributes the
+	// controller always assigns, so leaving them out makes the apply result
+	// inconsistent with the plan.
+	return fmt.Sprintf(`
+data "unifi_ap_group" "default" {
+	name = "All APs"
+}
+
+data "unifi_network" "default" {
+	name = "Default"
+}
+
+resource "unifi_wlan" "test_6g" {
+	name            = "tfacc-wlan-6g"
+	security        = "wpapsk"
+	passphrase      = "pwd12345678"
+	wpa3_support    = true
+	wpa3_transition = true
+	pmf_mode        = "optional"
+	user_group_id   = %q
+	network_id      = data.unifi_network.default.id
+	ap_group_ids    = [data.unifi_ap_group.default.id]
+	wlan_bands      = [%s]
+}
+`, userGroupID, bands)
+}
+
+// fakeWLANUpdater records UpdateWLAN calls for reassertWLANBands tests.
+type fakeWLANUpdater struct {
+	calls  int
+	gotID  string
+	got    *unifi.WLAN
+	result *unifi.WLAN
+	err    error
+}
+
+func (f *fakeWLANUpdater) UpdateWLAN(
+	_ context.Context,
+	_ string,
+	d *unifi.WLAN,
+) (*unifi.WLAN, error) {
+	f.calls++
+	f.gotID = d.ID
+	f.got = d
+	return f.result, f.err
+}
+
+// Test_reassertWLANBands covers the #406 retry: when the controller's create
+// response is missing a requested band, the full intended configuration is
+// re-asserted exactly once via update; when nothing is missing, no update is
+// issued; and an update failure falls back to the create response so Create
+// can raise its actionable diagnostic.
+func Test_reassertWLANBands(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("controller kept all bands: no update issued", func(t *testing.T) {
+		fake := &fakeWLANUpdater{}
+		requested := &unifi.WLAN{Name: "w", WLANBands: []string{"2g", "5g", "6g"}}
+		created := &unifi.WLAN{ID: "id-1", Name: "w", WLANBands: []string{"6g", "2g", "5g"}}
+
+		got := reassertWLANBands(ctx, fake, "default", requested, created)
+		if fake.calls != 0 {
+			t.Errorf("UpdateWLAN called %d times, want 0", fake.calls)
+		}
+		if got != created {
+			t.Errorf("result = %+v, want the create response untouched", got)
+		}
+	})
+
+	t.Run("controller dropped 6g: full band list re-asserted once", func(t *testing.T) {
+		reasserted := &unifi.WLAN{ID: "id-1", Name: "w", WLANBands: []string{"2g", "5g", "6g"}}
+		fake := &fakeWLANUpdater{result: reasserted}
+		requested := &unifi.WLAN{Name: "w", WLANBands: []string{"2g", "5g", "6g"}}
+		created := &unifi.WLAN{ID: "id-1", Name: "w", WLANBands: []string{"2g", "5g"}}
+
+		got := reassertWLANBands(ctx, fake, "default", requested, created)
+		if fake.calls != 1 {
+			t.Fatalf("UpdateWLAN called %d times, want 1", fake.calls)
+		}
+		if fake.gotID != "id-1" {
+			t.Errorf("update sent ID %q, want the created WLAN's id-1", fake.gotID)
+		}
+		if !reflect.DeepEqual(fake.got.WLANBands, []string{"2g", "5g", "6g"}) {
+			t.Errorf("update sent bands %v, want the full requested list", fake.got.WLANBands)
+		}
+		if got != reasserted {
+			t.Errorf("result = %+v, want the reasserted response", got)
+		}
+	})
+
+	t.Run("update fails: create response kept for the diagnostic", func(t *testing.T) {
+		fake := &fakeWLANUpdater{err: fmt.Errorf("api.err.InvalidPayload")}
+		requested := &unifi.WLAN{Name: "w", WLANBands: []string{"2g", "6g"}}
+		created := &unifi.WLAN{ID: "id-2", Name: "w", WLANBands: []string{"2g"}}
+
+		got := reassertWLANBands(ctx, fake, "default", requested, created)
+		if fake.calls != 1 {
+			t.Fatalf("UpdateWLAN called %d times, want 1", fake.calls)
+		}
+		if got != created {
+			t.Errorf("result = %+v, want the create response", got)
+		}
+	})
+}

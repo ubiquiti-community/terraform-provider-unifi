@@ -557,8 +557,8 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "List of IP aliases for the network, in CIDR notation " +
 					"(e.g. `192.168.2.1/24`). The controller rejects entries without a " +
 					"prefix length.",
-				Optional:            true,
-				ElementType:         types.StringType,
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 			"ipv6_aliases": schema.ListAttribute{
 				MarkdownDescription: "List of IPv6 aliases for the network. Not currently supported: " +
