@@ -168,8 +168,8 @@ Optional:
 - `ips_mode` (String) IPS operating mode: ids (detect only), ips (detect and block), ipsInline, or disabled.
 - `memory_optimized` (Boolean) Use memory-optimized IPS ruleset (reduced rule set for low-memory devices).
 - `restrict_torrents` (Boolean) Block BitTorrent traffic.
-- `suppression_alerts` (Attributes List) IPS signature alert suppression entries — silence specific signatures or categories. (see [below for nested schema](#nestedatt--ips--suppression_alerts))
-- `suppression_whitelist` (Attributes List) IPS suppression whitelist entries — sources/destinations to exclude from inspection. (see [below for nested schema](#nestedatt--ips--suppression_whitelist))
+- `suppression_alerts` (Attributes List) IPS signature alert suppression entries — silence specific signatures or categories. **Known limitation:** the controller stores suppression entries under a separate `ips_suppression` API endpoint that this provider does not yet read from or write to (see [issue #381](https://github.com/ubiquiti-community/terraform-provider-unifi/issues/381)). Terraform keeps the configured value in state but cannot confirm it was applied on the controller. (see [below for nested schema](#nestedatt--ips--suppression_alerts))
+- `suppression_whitelist` (Attributes List) IPS suppression whitelist entries — sources/destinations to exclude from inspection. **Known limitation:** the controller stores whitelist entries under a separate `ips_suppression` API endpoint that this provider does not yet read from or write to (see [issue #381](https://github.com/ubiquiti-community/terraform-provider-unifi/issues/381)). Terraform keeps the configured value in state but cannot confirm it was applied on the controller. (see [below for nested schema](#nestedatt--ips--suppression_whitelist))
 
 <a id="nestedatt--ips--honeypot"></a>
 ### Nested Schema for `ips.honeypot`

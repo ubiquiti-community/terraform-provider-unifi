@@ -789,7 +789,11 @@ func (r *settingResource) Schema(
 						},
 					},
 					"suppression_alerts": schema.ListNestedAttribute{
-						MarkdownDescription: "IPS signature alert suppression entries — silence specific signatures or categories.",
+						MarkdownDescription: "IPS signature alert suppression entries — silence specific signatures or categories. " +
+							"**Known limitation:** the controller stores suppression entries under a separate " +
+							"`ips_suppression` API endpoint that this provider does not yet read from or write to " +
+							"(see [issue #381](https://github.com/ubiquiti-community/terraform-provider-unifi/issues/381)). " +
+							"Terraform keeps the configured value in state but cannot confirm it was applied on the controller.",
 						Optional:            true,
 						Computed:            true,
 						NestedObject: schema.NestedAttributeObject{
@@ -857,7 +861,11 @@ func (r *settingResource) Schema(
 						},
 					},
 					"suppression_whitelist": schema.ListNestedAttribute{
-						MarkdownDescription: "IPS suppression whitelist entries — sources/destinations to exclude from inspection.",
+						MarkdownDescription: "IPS suppression whitelist entries — sources/destinations to exclude from inspection. " +
+							"**Known limitation:** the controller stores whitelist entries under a separate " +
+							"`ips_suppression` API endpoint that this provider does not yet read from or write to " +
+							"(see [issue #381](https://github.com/ubiquiti-community/terraform-provider-unifi/issues/381)). " +
+							"Terraform keeps the configured value in state but cannot confirm it was applied on the controller.",
 						Optional:            true,
 						Computed:            true,
 						NestedObject: schema.NestedAttributeObject{
@@ -3391,60 +3399,34 @@ func (r *settingResource) ipsSettingToModel(
 		model.Honeypot = types.ListNull(honeypotType)
 	}
 
+	// The controller stores suppression alerts/whitelist entries under a separate
+	// "ips_suppression" API endpoint that this provider does not yet read from or
+	// write to (#381), so the "ips" setting response never echoes them back. Mirror
+	// the plan instead of the (always empty) server value here to avoid reporting a
+	// perpetual diff; the warning below tells the user these values are unverified.
 	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
 	if !plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown() {
-		var whitelist []settings.SettingIpsWhitelist
-		if setting.Suppression != nil {
-			whitelist = setting.Suppression.Whitelist
-		}
-		entries := make([]settingIpsWhitelistModel, 0, len(whitelist))
-		for _, w := range whitelist {
-			entries = append(entries, settingIpsWhitelistModel{
-				Direction: types.StringValue(w.Direction),
-				Mode:      types.StringValue(w.Mode),
-				Value:     types.StringValue(w.Value),
-			})
-		}
-		listVal, d := types.ListValueFrom(ctx, whitelistType, entries)
-		diags.Append(d...)
-		model.SuppressionWhitelist = listVal
+		model.SuppressionWhitelist = plan.SuppressionWhitelist
 	} else {
 		model.SuppressionWhitelist = types.ListNull(whitelistType)
 	}
 
-	trackingType := types.ObjectType{AttrTypes: ipsTrackingAttrTypes}
 	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
 	if !plan.SuppressionAlerts.IsNull() && !plan.SuppressionAlerts.IsUnknown() {
-		var alerts []settings.SettingIpsAlerts
-		if setting.Suppression != nil {
-			alerts = setting.Suppression.Alerts
-		}
-		entries := make([]settingIpsAlertModel, 0, len(alerts))
-		for _, a := range alerts {
-			tracking := make([]settingIpsTrackingModel, 0, len(a.Tracking))
-			for _, t := range a.Tracking {
-				tracking = append(tracking, settingIpsTrackingModel{
-					Direction: types.StringValue(t.Direction),
-					Mode:      types.StringValue(t.Mode),
-					Value:     types.StringValue(t.Value),
-				})
-			}
-			trackingList, d := types.ListValueFrom(ctx, trackingType, tracking)
-			diags.Append(d...)
-			entries = append(entries, settingIpsAlertModel{
-				Category:  util.StringValueOrNull(a.Category),
-				Gid:       types.Int64PointerValue(a.Gid),
-				ID:        types.Int64PointerValue(a.ID),
-				Signature: util.StringValueOrNull(a.Signature),
-				Type:      util.StringValueOrNull(a.Type),
-				Tracking:  trackingList,
-			})
-		}
-		listVal, d := types.ListValueFrom(ctx, alertType, entries)
-		diags.Append(d...)
-		model.SuppressionAlerts = listVal
+		model.SuppressionAlerts = plan.SuppressionAlerts
 	} else {
 		model.SuppressionAlerts = types.ListNull(alertType)
+	}
+
+	if len(model.SuppressionWhitelist.Elements()) > 0 || len(model.SuppressionAlerts.Elements()) > 0 {
+		diags.AddWarning(
+			"IPS Suppression Settings Not Verified",
+			"The UniFi controller manages `ips.suppression_alerts` and `ips.suppression_whitelist` "+
+				"through a separate `ips_suppression` API endpoint that this provider does not yet "+
+				"support (see https://github.com/ubiquiti-community/terraform-provider-unifi/issues/381). "+
+				"Terraform will keep the configured values in state, but cannot confirm they were "+
+				"actually applied on the controller.",
+		)
 	}
 
 	return model

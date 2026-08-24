@@ -1504,6 +1504,48 @@ func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
 	}
 }
 
+// TestIpsSuppressionSurvivesEmptyServerResponse guards #381: the controller stores
+// suppression entries under a separate "ips_suppression" endpoint that this provider
+// does not manage, so the "ips" setting response never echoes configured entries
+// back. Read must mirror the plan (not the empty server value) to avoid reporting a
+// perpetual diff, and warn that the values could not be verified against the
+// controller.
+func TestIpsSuppressionSurvivesEmptyServerResponse(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	r := &settingResource{}
+
+	whitelist, _ := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
+		[]settingIpsWhitelistModel{{
+			Direction: types.StringValue("both"),
+			Mode:      types.StringValue("ip"),
+			Value:     types.StringValue("10.0.0.9"),
+		}})
+
+	plan := &settingIpsModel{
+		EnabledCategories:    types.ListNull(types.StringType),
+		EnabledNetworks:      types.ListNull(types.StringType),
+		Honeypot:             types.ListNull(types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}),
+		SuppressionWhitelist: whitelist,
+		SuppressionAlerts:    types.ListNull(types.ObjectType{AttrTypes: ipsAlertAttrTypes}),
+	}
+
+	// The controller never returns suppression data under the "ips" key.
+	setting := &settings.Ips{}
+
+	out := r.ipsSettingToModel(ctx, setting, plan, &diags)
+
+	var outWhitelist []settingIpsWhitelistModel
+	out.SuppressionWhitelist.ElementsAs(ctx, &outWhitelist, false)
+	if len(outWhitelist) != 1 || outWhitelist[0].Value.ValueString() != "10.0.0.9" {
+		t.Fatalf("suppression_whitelist did not mirror plan, got: %+v", outWhitelist)
+	}
+
+	if diags.WarningsCount() == 0 {
+		t.Error("expected a warning diagnostic about unverified IPS suppression settings")
+	}
+}
+
 // TestSyslogOmitsUnsetPorts guards #303: an unset port / netconsole_port must be
 // omitted (nil pointer), not serialized as 0 — the controller rejects port 0.
 func TestSyslogOmitsUnsetPorts(t *testing.T) {
