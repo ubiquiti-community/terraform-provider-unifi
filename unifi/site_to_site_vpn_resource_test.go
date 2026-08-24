@@ -6,9 +6,14 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -158,6 +163,197 @@ func Test_siteToSiteVPNResource_IdentitySchema(t *testing.T) {
 	if _, ok := resp.IdentitySchema.Attributes["id"]; !ok {
 		t.Error("IdentitySchema missing 'id' attribute")
 	}
+	if _, ok := resp.IdentitySchema.Attributes["site"]; !ok {
+		t.Error("IdentitySchema missing 'site' attribute")
+	}
+}
+
+// siteToSiteVPNImportHarness builds the empty state and null identity
+// containers the framework hands to ImportState, so the import logic can be
+// unit tested without a live controller.
+func siteToSiteVPNImportHarness(t *testing.T) (tfsdk.State, tfsdk.ResourceIdentity) {
+	t.Helper()
+	ctx := context.Background()
+	r := &siteToSiteVPNResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("schema: %v", schemaResp.Diagnostics)
+	}
+
+	var idResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &idResp)
+	if idResp.Diagnostics.HasError() {
+		t.Fatalf("identity schema: %v", idResp.Diagnostics)
+	}
+
+	state := tfsdk.State{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+	}
+	identity := tfsdk.ResourceIdentity{
+		Schema: idResp.IdentitySchema,
+		Raw:    tftypes.NewValue(idResp.IdentitySchema.Type().TerraformType(ctx), nil),
+	}
+	return state, identity
+}
+
+// siteToSiteVPNIdentityValue builds a populated identity container for
+// identity-based import requests. Pass "" to leave site null.
+func siteToSiteVPNIdentityValue(t *testing.T, id, site string) tfsdk.ResourceIdentity {
+	t.Helper()
+	ctx := context.Background()
+	_, identity := siteToSiteVPNImportHarness(t)
+
+	siteVal := tftypes.NewValue(tftypes.String, nil)
+	if site != "" {
+		siteVal = tftypes.NewValue(tftypes.String, site)
+	}
+	identity.Raw = tftypes.NewValue(
+		identity.Schema.Type().TerraformType(ctx),
+		map[string]tftypes.Value{
+			"id":   tftypes.NewValue(tftypes.String, id),
+			"site": siteVal,
+		},
+	)
+	return identity
+}
+
+func Test_siteToSiteVPNResource_ImportState(t *testing.T) {
+	ctx := context.Background()
+	const oid = "0123456789abcdef01234567"
+
+	newRes := func() *siteToSiteVPNResource {
+		return &siteToSiteVPNResource{client: &Client{Site: "default"}}
+	}
+
+	getString := func(t *testing.T, get func(context.Context, path.Path, any) diag.Diagnostics, p path.Path) types.String {
+		t.Helper()
+		var v types.String
+		if d := get(ctx, p, &v); d.HasError() {
+			t.Fatalf("get %s: %v", p, d)
+		}
+		return v
+	}
+
+	t.Run("identity import defaults omitted site to provider site", func(t *testing.T) {
+		r := newRes()
+		state, _ := siteToSiteVPNImportHarness(t)
+		reqIdentity := siteToSiteVPNIdentityValue(t, oid, "")
+		respIdentity := siteToSiteVPNIdentityValue(t, oid, "")
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "", Identity: &reqIdentity}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
+			t.Errorf("state id = %v, want %s", got, oid)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+			t.Errorf("state site = %v, want default", got)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+			t.Errorf("identity site = %v, want default", got)
+		}
+	})
+
+	t.Run("string import by id mirrors identity", func(t *testing.T) {
+		r := newRes()
+		state, respIdentity := siteToSiteVPNImportHarness(t)
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: oid}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("id")); got.ValueString() != oid {
+			t.Errorf("state id = %v, want %s", got, oid)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("id")); got.ValueString() != oid {
+			t.Errorf("identity id = %v, want %s", got, oid)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "default" {
+			t.Errorf("identity site = %v, want default", got)
+		}
+	})
+
+	t.Run("string import with site prefix", func(t *testing.T) {
+		r := newRes()
+		state, respIdentity := siteToSiteVPNImportHarness(t)
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "other:" + oid}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		if got := getString(t, resp.State.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+			t.Errorf("state site = %v, want other", got)
+		}
+		if got := getString(t, resp.Identity.GetAttribute, path.Root("site")); got.ValueString() != "other" {
+			t.Errorf("identity site = %v, want other", got)
+		}
+	})
+}
+
+func TestAccSiteToSiteVPN_import(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSiteToSiteVPNConfig_writeOnlyPSK(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_site_to_site_vpn.test",
+						"name",
+						"tfacc-s2s-vpn",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_site_to_site_vpn.test",
+						"peer_ip",
+						"203.0.113.9",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_site_to_site_vpn.test",
+						"remote_subnets.#",
+						"1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_site_to_site_vpn.test",
+						"remote_subnets.0",
+						"192.0.2.0/24",
+					),
+					resource.TestCheckResourceAttrSet("unifi_site_to_site_vpn.test", "id"),
+				),
+			},
+			// String-ID import. The pre-shared key is write-only, so it is
+			// null in both the prior and imported state.
+			{
+				ResourceName:      "unifi_site_to_site_vpn.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_site_to_site_vpn.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+		},
+	})
+}
+
+func testAccSiteToSiteVPNConfig_writeOnlyPSK() string {
+	return `
+resource "unifi_site_to_site_vpn" "test" {
+  name              = "tfacc-s2s-vpn"
+  peer_ip           = "203.0.113.9"
+  pre_shared_key_wo = "tfacc-s2s-psk-secret"
+  remote_subnets    = ["192.0.2.0/24"]
+}
+`
 }
 
 func Test_siteToSiteVPNResource_Schema(t *testing.T) {
