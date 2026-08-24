@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 📚 Documentation
+
+- **`unifi_network` / `unifi_firewall_zone`: document how to fully author a guest network in code.** `terraform import unifi_firewall_zone.hotspot name=Hotspot` (or the `data "unifi_firewall_zone"` lookup) plus `unifi_network.firewall_zone_id` were already sufficient to attach a network to a built-in zone like Hotspot without hand-editing state, but neither was demonstrated together end-to-end. Added a worked example wiring a `purpose = "guest"` network to the Hotspot zone via `firewall_zone_id` (#396)
+
 ### 🐛 Bug Fixes
 
 - **`unifi_network`: stop updates silently disabling DHCP guarding configured outside Terraform.** The update PUT is assembled from the Terraform model alone, so when the `dhcp_guarding` block is absent from configuration the body carries `dhcpguard_enabled: false` (with the trusted-server fields empty or, for corporate/guest networks on current go-unifi, absent from the wire entirely) — any unrelated update (changing the DHCP pool, DNS, anything) wiped guarding that was enabled on the controller, with no plan diff and no error. When the block is unmanaged the provider now reads the network first and carries the controller's current guarding fields through the update; removing the block therefore preserves guarding rather than disabling it — disable explicitly with `enabled = false`. Managing `dhcp_guarding` end-to-end additionally requires go-unifi to marshal `dhcpd_ip_1..3` for corporate/guest networks (go-unifi#68) — without that fix the controller rejects an enabled guard with `api.err.MissingIPAddress` (#439)
