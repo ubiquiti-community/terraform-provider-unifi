@@ -320,19 +320,23 @@ Clients are created in the controller when observed on the network, so the resou
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			// last_ip and hostname are purely observed values reported by the
+			// controller, not derived from any configured attribute. The
+			// controller can legitimately report a new value between plan and
+			// apply (e.g. the client re-associates or renews its lease), so
+			// UseStateForUnknown must NOT be used here: pinning the plan to the
+			// prior state value causes "Provider produced inconsistent result
+			// after apply" whenever the observed value actually changes during
+			// an otherwise-unrelated update. Leaving these as plain Computed
+			// attributes lets them show as (known after apply) on update, so
+			// the real post-apply value is always accepted.
 			"last_ip": schema.StringAttribute{
 				MarkdownDescription: "The most recent IP address the controller has seen for this client (read-only).",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "The hostname of the client.",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
