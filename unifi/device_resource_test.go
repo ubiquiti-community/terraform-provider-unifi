@@ -68,6 +68,55 @@ func TestMergePortOverridesByIndex(t *testing.T) {
 	})
 }
 
+// Test_resolvePortOverridesForUpdate_zeroDeclaredEchoesCurrent guards #438: a
+// switch with live port_overrides, updated while config declares zero
+// port_override blocks, must echo the controller's current overrides — not send
+// `port_overrides: null` (rejected with api.err.InvalidPayload) and not send `[]`
+// (which would silently wipe every live override).
+func Test_resolvePortOverridesForUpdate_zeroDeclaredEchoesCurrent(t *testing.T) {
+	current := []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(1), NATiveNetworkID: "vlan-a"},
+		{PortIDX: ptrInt64(2), NATiveNetworkID: "vlan-b"},
+	}
+	currentDevice := &unifi.Device{PortOverrides: current}
+	deviceReq := &unifi.Device{PortOverrides: nil}
+
+	got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
+	if len(got) != len(current) {
+		t.Fatalf("resolvePortOverridesForUpdate() length = %d, want %d (must echo current, not null/empty): %+v",
+			len(got), len(current), got)
+	}
+	byIdx := indexOverrides(got)
+	if byIdx[1].NATiveNetworkID != "vlan-a" || byIdx[2].NATiveNetworkID != "vlan-b" {
+		t.Errorf("current overrides not echoed unchanged: %+v", got)
+	}
+
+	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
+	if minimalDevice.PortOverrides == nil {
+		t.Error("buildMinimalUpdateDevice() PortOverrides is nil, want the live overrides echoed (would marshal to `port_overrides: null`)")
+	}
+	if len(minimalDevice.PortOverrides) != len(current) {
+		t.Errorf("buildMinimalUpdateDevice() PortOverrides length = %d, want %d", len(minimalDevice.PortOverrides), len(current))
+	}
+}
+
+// Test_resolvePortOverridesForUpdate_noCurrentOverridesSendsEmpty guards the #436
+// case: a device with no current overrides at all (an AP/gateway) and zero
+// declared blocks must send `[]`, not `null`.
+func Test_resolvePortOverridesForUpdate_noCurrentOverridesSendsEmpty(t *testing.T) {
+	currentDevice := &unifi.Device{PortOverrides: nil}
+	deviceReq := &unifi.Device{PortOverrides: nil}
+
+	got := resolvePortOverridesForUpdate(currentDevice, deviceReq)
+	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, got)
+	if minimalDevice.PortOverrides == nil {
+		t.Error("buildMinimalUpdateDevice() PortOverrides is nil, want a non-nil empty slice (would marshal to `port_overrides: null`)")
+	}
+	if len(minimalDevice.PortOverrides) != 0 {
+		t.Errorf("buildMinimalUpdateDevice() PortOverrides length = %d, want 0", len(minimalDevice.PortOverrides))
+	}
+}
+
 func indexOverrides(pos []unifi.DevicePortOverrides) map[int64]unifi.DevicePortOverrides {
 	m := make(map[int64]unifi.DevicePortOverrides, len(pos))
 	for _, po := range pos {
