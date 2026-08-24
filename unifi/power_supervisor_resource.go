@@ -72,6 +72,12 @@ type powerSupervisorResourceModel struct {
 	Timeouts            timeouts.Value       `tfsdk:"timeouts"`
 }
 
+// powerSupervisorIdentityModel describes the resource identity data model.
+type powerSupervisorIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
 // powerSupervisorListConfigModel describes the list configuration model.
 type powerSupervisorListConfigModel struct {
 	Site   types.String `tfsdk:"site"`
@@ -112,6 +118,9 @@ func (r *powerSupervisorResource) IdentitySchema(
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
 			},
 		},
 	}
@@ -341,7 +350,10 @@ func (r *powerSupervisorResource) Create(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(created, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
+		ID:   data.ID,
+		Site: data.Site,
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -365,6 +377,23 @@ func (r *powerSupervisorResource) Read(
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	// Fall back to the resource identity when the state carries no ID (e.g.
+	// old states, or a state written by an identity-based import).
+	if data.ID.IsNull() || data.ID.IsUnknown() {
+		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+			var identity powerSupervisorIdentityModel
+			resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			data.ID = identity.ID
+			if (data.Site.IsNull() || data.Site.IsUnknown()) &&
+				identity.Site.ValueString() != "" {
+				data.Site = identity.Site
+			}
+		}
+	}
+
 	site := data.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -384,7 +413,10 @@ func (r *powerSupervisorResource) Read(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(supervisor, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
+		ID:   data.ID,
+		Site: data.Site,
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -423,7 +455,10 @@ func (r *powerSupervisorResource) Update(
 	}
 
 	resp.Diagnostics.Append(r.powerSupervisorToModel(updated, &data, site)...)
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), data.ID)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
+		ID:   data.ID,
+		Site: data.Site,
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -467,6 +502,23 @@ func (r *powerSupervisorResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity powerSupervisorIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
+	// Import by ID string.
 	// Accept "site:id", "site:mac", a bare controller id, or the supervised
 	// device's MAC. A MAC contains colons, so a bare MAC must be detected before
 	// splitting on ":" (otherwise "9c:05:..." would parse as site "9c").
@@ -496,6 +548,9 @@ func (r *powerSupervisorResource) ImportState(
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identifier)...)
+	// Mirror the import key into the resource identity.
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), identifier)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
 }
 
 // modelToPowerSupervisor converts the Terraform model to the API struct. The
@@ -658,13 +713,10 @@ func (r *powerSupervisorResource) List(
 			}
 
 			// Set identity.
-			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(supervisor.ID),
-				)...,
-			)
+			result.Diagnostics.Append(result.Identity.Set(ctx, powerSupervisorIdentityModel{
+				ID:   types.StringValue(supervisor.ID),
+				Site: types.StringValue(site),
+			})...)
 
 			// Convert to model.
 			var model powerSupervisorResourceModel

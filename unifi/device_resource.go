@@ -251,6 +251,10 @@ func (r *deviceResource) Metadata(
 }
 
 // IdentitySchema implements [resource.ResourceWithIdentity].
+//
+// The natural import key of a device is its MAC address (users import devices
+// by MAC); it uses the same custom hwtypes.MACAddressType as the resource
+// schema's mac attribute so values compare with semantic equality.
 func (r *deviceResource) IdentitySchema(
 	_ context.Context,
 	_ resource.IdentitySchemaRequest,
@@ -258,7 +262,8 @@ func (r *deviceResource) IdentitySchema(
 ) {
 	resp.IdentitySchema = identityschema.Schema{
 		Attributes: map[string]identityschema.Attribute{
-			"id": identityschema.StringAttribute{
+			"mac": identityschema.StringAttribute{
+				CustomType:        hwtypes.MACAddressType{},
 				RequiredForImport: true,
 			},
 		},
@@ -1222,7 +1227,7 @@ func (r *deviceResource) Create(
 	plan.ForgetOnDestroy = forgetOnDestroy
 
 	// Set state
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("mac"), plan.MAC)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -1254,6 +1259,23 @@ func (r *deviceResource) Read(
 	allowAdoption := state.AllowAdoption
 	forgetOnDestroy := state.ForgetOnDestroy
 	priorPortOverride := state.PortOverride
+
+	// The identity (device MAC) may be the only key available — e.g. the state
+	// written by an identity-based import carries just the MAC. Fall back to it
+	// when the state has no MAC so the refresh can still find the device.
+	if state.MAC.IsNull() || state.MAC.IsUnknown() {
+		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+			var identityMAC hwtypes.MACAddress
+			resp.Diagnostics.Append(
+				req.Identity.GetAttribute(ctx, path.Root("mac"), &identityMAC)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			if !identityMAC.IsNull() && !identityMAC.IsUnknown() {
+				state.MAC = identityMAC
+			}
+		}
+	}
 
 	id := state.ID.ValueString()
 	mac := state.MAC.ValueString()
@@ -1324,7 +1346,7 @@ func (r *deviceResource) Read(
 		}
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("mac"), state.MAC)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -1465,7 +1487,7 @@ func (r *deviceResource) Update(
 		plan.ForgetOnDestroy = types.BoolValue(true)
 	}
 
-	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("mac"), plan.MAC)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -1530,6 +1552,24 @@ func (r *deviceResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	// The mac attribute uses the custom hwtypes.MACAddressType in both the
+	// resource and identity schemas, so the passthrough is hand-rolled:
+	// resource.ImportStatePassthroughWithIdentity only supports plain string
+	// attributes and would fail with a Value Conversion Error. Read then looks
+	// the device up by MAC when the state carries no controller ID.
+	if req.ID == "" {
+		var identityMAC hwtypes.MACAddress
+		resp.Diagnostics.Append(
+			req.Identity.GetAttribute(ctx, path.Root("mac"), &identityMAC)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("mac"), identityMAC)...)
+		return
+	}
+
 	importID := req.ID
 	mac := cleanMAC(importID)
 	site := r.client.Site
@@ -1615,6 +1655,9 @@ func (r *deviceResource) ImportState(
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), device.ID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("mac"), device.MAC)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+	// Mirror the import key into the resource identity.
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(
+		ctx, path.Root("mac"), hwtypes.NewMACAddressValue(device.MAC))...)
 }
 
 // Helper methods
@@ -3377,12 +3420,12 @@ func (r *deviceResource) List(
 				result.DisplayName = device.MAC
 			}
 
-			// Set identity.
+			// Set identity (the device MAC, matching IdentitySchema).
 			result.Diagnostics.Append(
 				result.Identity.SetAttribute(
 					ctx,
-					path.Root("id"),
-					types.StringValue(device.ID),
+					path.Root("mac"),
+					hwtypes.NewMACAddressValue(device.MAC),
 				)...,
 			)
 

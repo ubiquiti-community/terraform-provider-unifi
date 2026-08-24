@@ -2,14 +2,20 @@ package unifi
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
@@ -352,6 +358,258 @@ func Test_powerSupervisorResource_powerSupervisorToModel(t *testing.T) {
 				len(model.PowerSources.Elements()),
 			)
 		}
+	})
+}
+
+// powerSupervisorImportHarness builds the empty state and identity containers
+// an ImportState call receives from the framework, so the import entry paths
+// can be unit-tested without a live controller.
+func powerSupervisorImportHarness(
+	t *testing.T,
+) (*powerSupervisorResource, tfsdk.State, tfsdk.ResourceIdentity) {
+	t.Helper()
+	ctx := context.Background()
+	r := &powerSupervisorResource{client: &Client{Site: "default"}}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("Schema() errors: %v", schemaResp.Diagnostics)
+	}
+
+	var idResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &idResp)
+	if idResp.Diagnostics.HasError() {
+		t.Fatalf("IdentitySchema() errors: %v", idResp.Diagnostics)
+	}
+
+	state := tfsdk.State{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+	}
+	identity := tfsdk.ResourceIdentity{
+		Schema: idResp.IdentitySchema,
+		Raw:    tftypes.NewValue(idResp.IdentitySchema.Type().TerraformType(ctx), nil),
+	}
+	return r, state, identity
+}
+
+// powerSupervisorIdentityValue builds a request identity carrying the given id
+// and (optionally null) site, mirroring what Terraform sends for an import
+// block with an identity attribute.
+func powerSupervisorIdentityValue(
+	t *testing.T,
+	identity tfsdk.ResourceIdentity,
+	id string,
+	site any,
+) tfsdk.ResourceIdentity {
+	t.Helper()
+	idType := identity.Schema.Type().TerraformType(context.Background())
+	identity.Raw = tftypes.NewValue(idType, map[string]tftypes.Value{
+		"id":   tftypes.NewValue(tftypes.String, id),
+		"site": tftypes.NewValue(tftypes.String, site),
+	})
+	return identity
+}
+
+// Test_powerSupervisorResource_ImportState_byIdentity covers the identity
+// entry path (import block with identity = {...}, Terraform 1.12+): the id
+// (and site when given) must land in state so Read can look the object up.
+// The demo-mode controller has no power-supervisors endpoint (Network 10.2+),
+// so this path is proven at the unit level; TestAccPowerSupervisor_import
+// covers it end-to-end against a capable controller.
+func Test_powerSupervisorResource_ImportState_byIdentity(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("id only", func(t *testing.T) {
+		r, state, respIdentity := powerSupervisorImportHarness(t)
+		reqIdentity := powerSupervisorIdentityValue(
+			t, respIdentity, "6899fdbb50f0a10ea1dbf5aa", nil,
+		)
+
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+		r.ImportState(ctx, fwresource.ImportStateRequest{Identity: &reqIdentity}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("ImportState errors: %v", resp.Diagnostics)
+		}
+
+		var gotID, gotSite types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("id"), &gotID)...)
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("site"), &gotSite)...)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("reading imported state: %v", resp.Diagnostics)
+		}
+		if gotID.ValueString() != "6899fdbb50f0a10ea1dbf5aa" {
+			t.Errorf("id = %q, want 6899fdbb50f0a10ea1dbf5aa", gotID.ValueString())
+		}
+		// site stays null so Read falls back to the provider default site.
+		if !gotSite.IsNull() {
+			t.Errorf("site = %v, want null", gotSite)
+		}
+	})
+
+	t.Run("id and site", func(t *testing.T) {
+		r, state, respIdentity := powerSupervisorImportHarness(t)
+		reqIdentity := powerSupervisorIdentityValue(
+			t, respIdentity, "6899fdbb50f0a10ea1dbf5aa", "site2",
+		)
+
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+		r.ImportState(ctx, fwresource.ImportStateRequest{Identity: &reqIdentity}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("ImportState errors: %v", resp.Diagnostics)
+		}
+
+		var gotSite types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("site"), &gotSite)...)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("reading imported state: %v", resp.Diagnostics)
+		}
+		if gotSite.ValueString() != "site2" {
+			t.Errorf("site = %q, want site2", gotSite.ValueString())
+		}
+	})
+}
+
+// Test_powerSupervisorResource_ImportState_byIDString covers the classic
+// string entry path ("id" and "site:id") and asserts the import key is
+// mirrored into the resource identity.
+func Test_powerSupervisorResource_ImportState_byIDString(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("bare id", func(t *testing.T) {
+		r, state, respIdentity := powerSupervisorImportHarness(t)
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+		r.ImportState(ctx, fwresource.ImportStateRequest{ID: "6899fdbb50f0a10ea1dbf5aa"}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("ImportState errors: %v", resp.Diagnostics)
+		}
+
+		var gotID, gotSite, identityID types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("id"), &gotID)...)
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("site"), &gotSite)...)
+		resp.Diagnostics.Append(
+			resp.Identity.GetAttribute(ctx, path.Root("id"), &identityID)...)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("reading imported state/identity: %v", resp.Diagnostics)
+		}
+		if gotID.ValueString() != "6899fdbb50f0a10ea1dbf5aa" {
+			t.Errorf("id = %q, want 6899fdbb50f0a10ea1dbf5aa", gotID.ValueString())
+		}
+		if gotSite.ValueString() != "default" {
+			t.Errorf("site = %q, want default (provider site)", gotSite.ValueString())
+		}
+		if identityID.ValueString() != "6899fdbb50f0a10ea1dbf5aa" {
+			t.Errorf("identity id = %q, want the import ID", identityID.ValueString())
+		}
+	})
+
+	t.Run("site:id", func(t *testing.T) {
+		r, state, respIdentity := powerSupervisorImportHarness(t)
+		resp := &fwresource.ImportStateResponse{State: state, Identity: &respIdentity}
+		r.ImportState(
+			ctx,
+			fwresource.ImportStateRequest{ID: "site2:6899fdbb50f0a10ea1dbf5aa"},
+			resp,
+		)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("ImportState errors: %v", resp.Diagnostics)
+		}
+
+		var gotID, gotSite types.String
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("id"), &gotID)...)
+		resp.Diagnostics.Append(resp.State.GetAttribute(ctx, path.Root("site"), &gotSite)...)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("reading imported state: %v", resp.Diagnostics)
+		}
+		if gotID.ValueString() != "6899fdbb50f0a10ea1dbf5aa" {
+			t.Errorf("id = %q, want 6899fdbb50f0a10ea1dbf5aa", gotID.ValueString())
+		}
+		if gotSite.ValueString() != "site2" {
+			t.Errorf("site = %q, want site2", gotSite.ValueString())
+		}
+	})
+}
+
+// TestAccPowerSupervisor_import exercises the full create + string-import +
+// identity-import lifecycle. The Device Supervisor collection is a UniFi
+// Network 10.2+ feature that the demo-mode controller (Network 10.0) does not
+// expose (its v2 power-supervisors endpoint 404s), and creating one requires a
+// PoE-powered device, so the test is gated on UNIFI_ACC_POE_DEVICE_MAC naming
+// such a device plus a probe of the endpoint.
+func TestAccPowerSupervisor_import(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set; skipping acceptance test")
+	}
+	mac := os.Getenv("UNIFI_ACC_POE_DEVICE_MAC")
+	if mac == "" {
+		t.Skip(
+			"UNIFI_ACC_POE_DEVICE_MAC not set; power supervisors need a PoE-powered " +
+				"device on a UniFi Network 10.2+ controller",
+		)
+	}
+
+	// Probe the endpoint so the test skips (rather than fails) on controllers
+	// without the Device Supervisor feature.
+	ctx := context.Background()
+	apiClient, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:       os.Getenv("UNIFI_API"),
+		Username:      os.Getenv("UNIFI_USERNAME"),
+		Password:      os.Getenv("UNIFI_PASSWORD"),
+		AllowInsecure: true,
+	})
+	if err != nil {
+		t.Skipf("could not build probe client: %s", err)
+	}
+	probe := &Client{ApiClient: apiClient, Site: "default"}
+	if _, err := probe.ListPowerSupervisors(ctx, probe.Site); err != nil {
+		t.Skipf("controller does not support power supervisors: %s", err)
+	}
+
+	config := fmt.Sprintf(`
+resource "unifi_power_supervisor" "test" {
+	device_mac = %q
+}
+`, mac)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_power_supervisor.test", "id"),
+					resource.TestCheckResourceAttr(
+						"unifi_power_supervisor.test",
+						"enabled",
+						"true",
+					),
+				),
+			},
+			// Classic string import by controller ID (what ImportStateVerify
+			// replays); consecutive_failures can tick between reads.
+			{
+				ResourceName:            "unifi_power_supervisor.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"consecutive_failures"},
+			},
+			// Classic string import by the supervised device's MAC.
+			{
+				ResourceName:            "unifi_power_supervisor.test",
+				ImportState:             true,
+				ImportStateId:           mac,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"consecutive_failures"},
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_power_supervisor.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+		},
 	})
 }
 

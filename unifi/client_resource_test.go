@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -170,6 +172,24 @@ func TestAccClientFramework_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_client.test", "blocked", "false"),
 				),
 			},
+			// Classic string import: clients import by MAC address, not by the
+			// controller ID, so the replayed import ID must be the mac attribute.
+			{
+				ResourceName:      "unifi_client.test",
+				ImportState:       true,
+				ImportStateIdFunc: testAccClientImportStateMAC("unifi_client.test"),
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			// This step must directly follow a config whose post-import plan is
+			// empty: the basic config keeps allow_existing/skip_forget_on_destroy
+			// at their defaults, which is what the import refresh writes to state.
+			// (After the control-flags config below the plan would show one change.)
+			{
+				ResourceName:    "unifi_client.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
 			{
 				Config: testAccClientFrameworkConfig_controlFlags(),
 				Check: resource.ComposeTestCheckFunc(
@@ -181,13 +201,24 @@ func TestAccClientFramework_basic(t *testing.T) {
 					),
 				),
 			},
-			{
-				ResourceName:    "unifi_client.test",
-				ImportState:     true,
-				ImportStateKind: resource.ImportBlockWithResourceIdentity,
-			},
 		},
 	})
+}
+
+// testAccClientImportStateMAC returns an ImportStateIdFunc that yields the
+// client's MAC address, the only string import ID unifi_client accepts.
+func testAccClientImportStateMAC(resourceName string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return "", fmt.Errorf("resource not found in state: %s", resourceName)
+		}
+		mac := rs.Primary.Attributes["mac"]
+		if mac == "" {
+			return "", fmt.Errorf("resource %s has no mac attribute", resourceName)
+		}
+		return mac, nil
+	}
 }
 
 func testAccClientFrameworkConfig_basic() string {
