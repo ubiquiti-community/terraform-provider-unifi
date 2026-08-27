@@ -138,6 +138,9 @@ type deviceResourceModel struct {
 	// Management
 	MgmtNetworkID types.String `tfsdk:"mgmt_network_id"`
 
+	// Etherlighting
+	Etherlighting types.Object `tfsdk:"etherlighting"`
+
 	// Computed attributes
 	Adopted types.Bool   `tfsdk:"adopted"`
 	Model   types.String `tfsdk:"model"`
@@ -198,6 +201,14 @@ type portOverrideModel struct {
 
 func (m portOverrideModel) AttributeTypes() map[string]attr.Type {
 	return portOverrideAttrTypes()
+}
+
+// etherlightingModel describes the etherlighting configuration.
+type etherlightingModel struct {
+	Mode       types.String `tfsdk:"mode"`
+	Brightness types.Int64  `tfsdk:"brightness"`
+	Behavior   types.String `tfsdk:"behavior"`
+	LedMode    types.String `tfsdk:"led_mode"`
 }
 
 // configNetworkModel describes the config network data model.
@@ -569,6 +580,43 @@ func (r *deviceResource) Schema(
 				Description: "Management network ID. The network this device uses for its own management traffic (the UI's Network Override). When set, the device tags its management onto this network's VLAN, so that VLAN must already be tagged on the device's upstream switch port(s) before this attribute is applied. Otherwise the device loses its management path, drops off, and the apply fails with an inconsistent-result error. Apply in two steps: tag the VLAN on the uplink (a port_override tagged_networkconf_ids entry) first, then set mgmt_network_id. Leave unset to manage on the uplink's native (untagged) network.",
 				Optional:    true,
 				Computed:    true,
+			},
+
+			// Etherlighting
+			"etherlighting": schema.SingleNestedAttribute{
+				Description: "Etherlighting configuration.",
+				Optional:    true,
+				Attributes: map[string]schema.Attribute{
+					"mode": schema.StringAttribute{
+						Description: "Etherlighting mode; valid values are `speed` and `network`.",
+						Optional:    true,
+						Computed:    true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("speed", "network"),
+						},
+					},
+					"brightness": schema.Int64Attribute{
+						Description: "Etherlighting brightness (1-100).",
+						Optional:    true,
+						Computed:    true,
+					},
+					"behavior": schema.StringAttribute{
+						Description: "Etherlighting behavior; valid values are `steady` and `breathing`.",
+						Optional:    true,
+						Computed:    true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("steady", "breathing"),
+						},
+					},
+					"led_mode": schema.StringAttribute{
+						Description: "LED mode; valid values are `etherlighting` and `off`.",
+						Optional:    true,
+						Computed:    true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("etherlighting", "off"),
+						},
+					},
+				},
 			},
 
 			// Computed attributes
@@ -2047,6 +2095,13 @@ func (r *deviceResource) setResourceData(
 		model.MgmtNetworkID = types.StringValue(device.MgmtNetworkID)
 	}
 
+	// Convert etherlighting
+	etherlighting, convDiags := r.etherlightingToFramework(ctx, device.EtherLighting)
+	diags.Append(convDiags...)
+	if !diags.HasError() {
+		model.Etherlighting = etherlighting
+	}
+
 	// Convert config network
 	configNetwork, convDiags := r.configNetworkToFramework(ctx, device.ConfigNetwork)
 	diags.Append(convDiags...)
@@ -2168,6 +2223,15 @@ func (r *deviceResource) modelToAPIDevice(
 	// Management
 	if !model.MgmtNetworkID.IsNull() {
 		device.MgmtNetworkID = model.MgmtNetworkID.ValueString()
+	}
+
+	// Convert etherlighting
+	if !model.Etherlighting.IsNull() && !model.Etherlighting.IsUnknown() {
+		etherlighting, convDiags := r.frameworkToEtherlighting(ctx, model.Etherlighting)
+		diags.Append(convDiags...)
+		if !diags.HasError() {
+			device.EtherLighting = etherlighting
+		}
 	}
 
 	// Convert config network
@@ -2992,6 +3056,16 @@ func portOverrideAttrTypes() map[string]attr.Type {
 	}
 }
 
+// etherlightingAttrTypes returns the attribute types for etherlighting objects.
+func etherlightingAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"mode":       types.StringType,
+		"brightness": types.Int64Type,
+		"behavior":   types.StringType,
+		"led_mode":   types.StringType,
+	}
+}
+
 // configNetworkAttrTypes returns the attribute types for config network objects.
 func configNetworkAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
@@ -3055,6 +3129,33 @@ func int64OrNull(i int64) types.Int64 { //nolint:unused
 		return types.Int64Null()
 	}
 	return types.Int64Value(i)
+}
+
+// etherlightingToFramework converts API EtherLighting to Framework types.
+func (r *deviceResource) etherlightingToFramework(
+	ctx context.Context,
+	el *unifi.DeviceEtherLighting,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if el == nil {
+		return types.ObjectNull(etherlightingAttrTypes()), diags
+	}
+
+	model := etherlightingModel{
+		Mode:       stringOrNull(el.Mode),
+		Behavior:   stringOrNull(el.Behavior),
+		LedMode:    stringOrNull(el.LedMode),
+	}
+	if el.Brightness != nil {
+		model.Brightness = types.Int64Value(*el.Brightness)
+	} else {
+		model.Brightness = types.Int64Null()
+	}
+
+	objVal, objDiags := types.ObjectValueFrom(ctx, etherlightingAttrTypes(), model)
+	diags.Append(objDiags...)
+	return objVal, diags
 }
 
 // configNetworkToFramework converts API ConfigNetwork to Framework types.
@@ -3175,6 +3276,36 @@ func (r *deviceResource) outletOverridesToFramework(
 	listVal, listDiags := types.ListValue(attrType, elements)
 	diags.Append(listDiags...)
 	return listVal, diags
+}
+
+// frameworkToEtherlighting converts Framework types to API EtherLighting.
+func (r *deviceResource) frameworkToEtherlighting(
+	ctx context.Context,
+	etherlightingObj types.Object,
+) (*unifi.DeviceEtherLighting, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	if etherlightingObj.IsNull() || etherlightingObj.IsUnknown() {
+		return nil, diags
+	}
+
+	var model etherlightingModel
+	diags.Append(etherlightingObj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	el := &unifi.DeviceEtherLighting{
+		Mode:     model.Mode.ValueString(),
+		Behavior: model.Behavior.ValueString(),
+		LedMode:  model.LedMode.ValueString(),
+	}
+	if !model.Brightness.IsNull() && !model.Brightness.IsUnknown() {
+		b := model.Brightness.ValueInt64()
+		el.Brightness = &b
+	}
+
+	return el, diags
 }
 
 // frameworkToConfigNetwork converts Framework types to API ConfigNetwork.
