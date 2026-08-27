@@ -1803,6 +1803,17 @@ func buildMinimalUpdateDevice(
 		SwitchVLANEnabled:          deviceReq.SwitchVLANEnabled,
 		MeshStaVapEnabled:          deviceReq.MeshStaVapEnabled,
 		RadioTable:                 deviceReq.RadioTable,
+		ConfigNetwork:              deviceReq.ConfigNetwork,
+		EtherLighting:              deviceReq.EtherLighting,
+		LcmBrightness:              deviceReq.LcmBrightness,
+		LcmBrightnessOverride:      deviceReq.LcmBrightnessOverride,
+		LcmIDleTimeout:             deviceReq.LcmIDleTimeout,
+		LcmIDleTimeoutOverride:     deviceReq.LcmIDleTimeoutOverride,
+		LcmNightModeBegins:         deviceReq.LcmNightModeBegins,
+		LcmNightModeEnds:           deviceReq.LcmNightModeEnds,
+		OutletEnabled:              deviceReq.OutletEnabled,
+		OutletOverrides:            deviceReq.OutletOverrides,
+		BaresipPassword:            deviceReq.BaresipPassword,
 	}
 	if currentDevice != nil {
 		minimalDevice.State = currentDevice.State
