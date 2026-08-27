@@ -67,7 +67,7 @@ resource "unifi_device" "usw_pro_max_24_poe" {
   etherlighting = {
     mode       = "speed"         # speed, network
     brightness = 100             # 1-100
-    behavior   = "steady"        # steady, breathing
+    behavior   = "breath"        # steady, breath
     led_mode   = "etherlighting" # etherlighting, standard
   }
 }
@@ -142,7 +142,7 @@ Optional:
 
 Optional:
 
-- `behavior` (String) Etherlighting behavior; valid values are `steady` and `breathing`.
+- `behavior` (String) Etherlighting behavior; valid values are `steady` and `breath`.
 - `brightness` (Number) Etherlighting brightness (1-100).
 - `led_mode` (String) LED mode; valid values are `etherlighting` and `standard`.
 - `mode` (String) Etherlighting mode; valid values are `speed` and `network`.

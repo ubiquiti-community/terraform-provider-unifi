@@ -50,7 +50,7 @@ resource "unifi_device" "usw_pro_max_24_poe" {
   etherlighting = {
     mode       = "speed"         # speed, network
     brightness = 100             # 1-100
-    behavior   = "steady"        # steady, breathing
+    behavior   = "breath"        # steady, breath
     led_mode   = "etherlighting" # etherlighting, standard
   }
 }

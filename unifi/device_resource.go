@@ -601,11 +601,11 @@ func (r *deviceResource) Schema(
 						Computed:    true,
 					},
 					"behavior": schema.StringAttribute{
-						Description: "Etherlighting behavior; valid values are `steady` and `breathing`.",
+						Description: "Etherlighting behavior; valid values are `steady` and `breath`.",
 						Optional:    true,
 						Computed:    true,
 						Validators: []validator.String{
-							stringvalidator.OneOf("steady", "breathing"),
+							stringvalidator.OneOf("steady", "breath"),
 						},
 					},
 					"led_mode": schema.StringAttribute{
