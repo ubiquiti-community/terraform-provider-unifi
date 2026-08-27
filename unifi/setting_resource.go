@@ -538,7 +538,7 @@ func (r *settingResource) Schema(
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
 								"color": schema.StringAttribute{
-									MarkdownDescription: "Hex color code.",
+									MarkdownDescription: "Hex color code without the `#` prefix.",
 									Required:            true,
 								},
 								"network": schema.StringAttribute{
@@ -555,11 +555,11 @@ func (r *settingResource) Schema(
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
 								"color": schema.StringAttribute{
-									MarkdownDescription: "Hex color code.",
+									MarkdownDescription: "Hex color code without the `#` prefix.",
 									Required:            true,
 								},
 								"speed": schema.StringAttribute{
-									MarkdownDescription: "Speed name (e.g. FE, GbE, 2.5GbE, 5GbE, 10GbE).",
+									MarkdownDescription: "Speed name (e.g., `FE`, `GbE`, `2.5GbE`, `5GbE`, `10GbE`, `25GbE`, `40GbE`, `100GbE`).",
 									Required:            true,
 								},
 							},

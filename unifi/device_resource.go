@@ -609,11 +609,11 @@ func (r *deviceResource) Schema(
 						},
 					},
 					"led_mode": schema.StringAttribute{
-						Description: "LED mode; valid values are `etherlighting` and `off`.",
+						Description: "LED mode; valid values are `etherlighting` and `standard`.",
 						Optional:    true,
 						Computed:    true,
 						Validators: []validator.String{
-							stringvalidator.OneOf("etherlighting", "off"),
+							stringvalidator.OneOf("etherlighting", "standard"),
 						},
 					},
 				},

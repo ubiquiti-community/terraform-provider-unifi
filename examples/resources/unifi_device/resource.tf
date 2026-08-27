@@ -42,3 +42,15 @@ resource "unifi_device" "us_24_poe" {
     aggregate_members = [12]
   }
 }
+
+resource "unifi_device" "usw_pro_max_24_poe" {
+  mac = "01:23:45:67:89:AC"
+  name = "Switch with Etherlighting"
+
+  etherlighting = {
+    mode       = "speed"         # speed, network
+    brightness = 100             # 1-100
+    behavior   = "steady"        # steady, breathing
+    led_mode   = "etherlighting" # etherlighting, standard
+  }
+}
