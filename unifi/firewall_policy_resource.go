@@ -922,6 +922,11 @@ type firewallPolicyEndpointModelV0 struct {
 	IPGroupID          types.String `tfsdk:"ip_group_id"`
 	PortMatchingType   types.String `tfsdk:"port_matching_type"`
 	MatchingTargetType types.String `tfsdk:"matching_target_type"`
+	// Present in the derived prior schema (it is built from the live schema),
+	// so the decode target must carry them even though v0 state has no values.
+	MatchOppositeIPs      types.Bool `tfsdk:"match_opposite_ips"`
+	MatchOppositeNetworks types.Bool `tfsdk:"match_opposite_networks"`
+	MatchOppositePorts    types.Bool `tfsdk:"match_opposite_ports"`
 }
 
 func (r *firewallPolicyResource) UpgradeState(
