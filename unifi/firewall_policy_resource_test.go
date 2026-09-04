@@ -660,6 +660,34 @@ func TestFirewallPolicyConnectionStatesSettable(t *testing.T) {
 	}
 }
 
+// TestFirewallPolicyIndexDoesNotUseStateForUnknown guards the case where UniFi
+// renumbers sibling firewall policies during the same apply. The index is
+// controller-assigned, so an update plan must not preserve the prior index and
+// then reject the controller's refreshed value after apply.
+func TestFirewallPolicyIndexDoesNotUseStateForUnknown(t *testing.T) {
+	r := &firewallPolicyResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	attr, ok := resp.Schema.Attributes["index"]
+	if !ok {
+		t.Fatal("Schema missing index attribute")
+	}
+	indexAttr, ok := attr.(schema.Int64Attribute)
+	if !ok {
+		t.Fatalf("index attribute type = %T, want schema.Int64Attribute", attr)
+	}
+	if !indexAttr.IsComputed() {
+		t.Error("index must stay Computed")
+	}
+	if indexAttr.IsOptional() {
+		t.Error("index must stay read-only")
+	}
+	if len(indexAttr.PlanModifiers) != 0 {
+		t.Fatalf("index PlanModifiers = %d, want 0", len(indexAttr.PlanModifiers))
+	}
+}
+
 func Test_firewallPolicyResource_Configure(t *testing.T) {
 	type args struct {
 		ctx  context.Context
