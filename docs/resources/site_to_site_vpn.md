@@ -85,6 +85,7 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
 - `dynamic_routing` (Boolean) Whether IPsec dynamic routing is enabled.
+- `dynamic_subnets` (Boolean) Accept remote subnets learned dynamically (over BGP) rather than from `remote_subnets`.
 - `enabled` (Boolean) Whether the tunnel is enabled.
 - `esp` (Attributes) ESP (phase 2) proposal. Only used when `profile = customized`. (see [below for nested schema](#nestedatt--esp))
 - `ike` (Attributes) IKE (phase 1) proposal. Only used when `profile = customized`. (see [below for nested schema](#nestedatt--ike))
@@ -102,6 +103,7 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
 - `route_distance` (Number) The route distance (administrative metric) for tunnel routes (1-255).
 - `site` (String) The name of the site to associate the VPN with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
+- `tunnel_ip` (String) Inner address of the tunnel interface, as a CIDR (e.g. `169.254.21.2/30`). This is the address a dynamic-routing tunnel peers over; setting it also sets `ipsec_tunnel_ip_enabled`.
 
 ### Read-Only
 
