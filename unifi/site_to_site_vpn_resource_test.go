@@ -449,6 +449,138 @@ func TestSiteToSiteVPNDynamicRoutingRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSiteToSiteVPNTunnelIPRoundTrip covers tunnel_ip and dynamic_subnets. Both
+// back fields the controller stores on every site-vpn network but that the
+// update PUT used to drop: ipsec_tunnel_ip is `omitempty`, so a nil never
+// reaches the wire, while ipsec_tunnel_ip_enabled and
+// remote_vpn_dynamic_subnets_enabled are plain bools and so marshal as false.
+// The last subtest is the regression itself — Update has no read-modify-write
+// and rest/networkconf is a full replace, so whatever networkToModel reads must
+// survive modelToNetwork unchanged.
+func TestSiteToSiteVPNTunnelIPRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &siteToSiteVPNResource{}
+
+	t.Run("configured values round-trip", func(t *testing.T) {
+		model := &siteToSiteVPNResourceModel{
+			Name:           types.StringValue("bgp-vpn"),
+			DynamicRouting: types.BoolValue(true),
+			RemoteSubnets:  types.ListValueMust(types.StringType, nil),
+			TunnelIP:       types.StringValue("169.254.21.2/30"),
+			DynamicSubnets: types.BoolValue(true),
+		}
+
+		network, diags := r.modelToNetwork(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if network.IPSecTunnelIP == nil || *network.IPSecTunnelIP != "169.254.21.2/30" {
+			t.Errorf("IPSecTunnelIP = %v, want 169.254.21.2/30", network.IPSecTunnelIP)
+		}
+		// Derived rather than configured: the controller ignores the address
+		// unless the flag goes out alongside it.
+		if !network.IPSecTunnelIPEnabled {
+			t.Error("IPSecTunnelIPEnabled = false, want true alongside a tunnel IP")
+		}
+		if !network.RemoteVPNDynamicSubnetsEnabled {
+			t.Error("RemoteVPNDynamicSubnetsEnabled = false, want true")
+		}
+
+		out := &siteToSiteVPNResourceModel{}
+		if diags := r.networkToModel(ctx, network, out, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+		if out.TunnelIP.ValueString() != "169.254.21.2/30" {
+			t.Errorf("TunnelIP = %q, want 169.254.21.2/30", out.TunnelIP.ValueString())
+		}
+		if !out.DynamicSubnets.ValueBool() {
+			t.Error("DynamicSubnets = false, want true")
+		}
+	})
+
+	t.Run("unset stays off the wire", func(t *testing.T) {
+		model := &siteToSiteVPNResourceModel{
+			Name:           types.StringValue("static-vpn"),
+			RemoteSubnets:  types.ListValueMust(types.StringType, nil),
+			TunnelIP:       types.StringNull(),
+			DynamicSubnets: types.BoolNull(),
+		}
+
+		network, diags := r.modelToNetwork(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if network.IPSecTunnelIP != nil {
+			t.Errorf("IPSecTunnelIP = %q, want nil", *network.IPSecTunnelIP)
+		}
+		// The flag must not be asserted with no address behind it.
+		if network.IPSecTunnelIPEnabled {
+			t.Error("IPSecTunnelIPEnabled = true, want false without a tunnel IP")
+		}
+		if network.RemoteVPNDynamicSubnetsEnabled {
+			t.Error("RemoteVPNDynamicSubnetsEnabled = true, want false")
+		}
+
+		out := &siteToSiteVPNResourceModel{}
+		if diags := r.networkToModel(ctx, network, out, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+		if !out.TunnelIP.IsNull() {
+			t.Errorf("TunnelIP = %q, want null", out.TunnelIP.ValueString())
+		}
+		if out.DynamicSubnets.ValueBool() {
+			t.Error("DynamicSubnets = true, want false")
+		}
+	})
+
+	t.Run("an unrelated update preserves both", func(t *testing.T) {
+		// A live dynamic-routing tunnel as the controller reports it.
+		existing := &unifi.Network{
+			ID:                             "net-bgp",
+			Name:                           unifi.Ptr("bgp-vpn"),
+			Purpose:                        unifi.PurposeSiteVPN,
+			Enabled:                        true,
+			VPNType:                        unifi.Ptr("ipsec-vpn"),
+			IPSecPeerIP:                    unifi.Ptr("203.0.113.9"),
+			IPSecDynamicRouting:            true,
+			IPSecTunnelIP:                  unifi.Ptr("169.254.21.2/30"),
+			IPSecTunnelIPEnabled:           true,
+			RemoteVPNDynamicSubnetsEnabled: true,
+			RemoteVPNSubnets:               []string{},
+		}
+
+		state := &siteToSiteVPNResourceModel{}
+		if diags := r.networkToModel(ctx, existing, state, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+
+		// Rename the tunnel and touch nothing else — the edit that used to take
+		// the BGP session down as a side effect.
+		state.Name = types.StringValue("bgp-vpn-renamed")
+
+		updated, diags := r.modelToNetwork(ctx, state)
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if updated.IPSecTunnelIP == nil {
+			t.Fatal("IPSecTunnelIP dropped by the update PUT; the BGP session peers over it")
+		}
+		if *updated.IPSecTunnelIP != *existing.IPSecTunnelIP {
+			t.Errorf(
+				"IPSecTunnelIP = %q, want %q",
+				*updated.IPSecTunnelIP,
+				*existing.IPSecTunnelIP,
+			)
+		}
+		if !updated.IPSecTunnelIPEnabled {
+			t.Error("IPSecTunnelIPEnabled cleared by the update PUT")
+		}
+		if !updated.RemoteVPNDynamicSubnetsEnabled {
+			t.Error("RemoteVPNDynamicSubnetsEnabled cleared by the update PUT")
+		}
+	})
+}
+
 func TestSiteToSiteVPNRemoteSubnetsValid(t *testing.T) {
 	empty := types.ListValueMust(types.StringType, nil)
 	nonEmpty := types.ListValueMust(
