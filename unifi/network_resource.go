@@ -1913,6 +1913,7 @@ func (r *networkResource) networkToModel(
 		if network.DHCPDNtp2 != nil && *network.DHCPDNtp2 != "" {
 			ntpServers = append(ntpServers, *network.DHCPDNtp2)
 		}
+		ntpServers = uniqueStrings(ntpServers)
 
 		var ntpServersList types.List
 		if len(ntpServers) > 0 {
