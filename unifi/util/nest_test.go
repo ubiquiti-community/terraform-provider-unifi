@@ -53,6 +53,18 @@ func TestNestFields(t *testing.T) {
 	if _, ok := other["grp"]; ok {
 		t.Error("target must not be created when no source key exists")
 	}
+
+	// A flat key named like the target (bool -> { enabled }) nests once, and a
+	// second run over the already-nested state is a no-op instead of nesting
+	// the map into itself.
+	mgmt := map[string]any{"auto_upgrade": true, "auto_upgrade_hour": json.Number("3")}
+	fields := map[string]string{"auto_upgrade": "enabled", "auto_upgrade_hour": "hour"}
+	NestFields(mgmt, "auto_upgrade", fields)
+	NestFields(mgmt, "auto_upgrade", fields)
+	au, ok := mgmt["auto_upgrade"].(map[string]any)
+	if !ok || au["enabled"] != true || au["hour"] != json.Number("3") || len(au) != 2 {
+		t.Errorf("target-named key nesting = %#v", mgmt["auto_upgrade"])
+	}
 }
 
 func TestEachObjectAndWithObject(t *testing.T) {
