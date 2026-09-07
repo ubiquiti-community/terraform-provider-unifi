@@ -42,3 +42,41 @@ resource "unifi_device" "us_24_poe" {
     aggregate_members = [12]
   }
 }
+
+# Grouped settings: LED, spanning tree and the per-port feature groups are
+# nested objects rather than prefixed attributes.
+resource "unifi_device" "us_8_60w" {
+  mac  = "01:23:45:67:89:AC"
+  name = "Rack switch"
+
+  led = {
+    override   = "on"
+    color      = "#00ff00"
+    brightness = 50
+  }
+
+  stp = {
+    version  = "rstp"
+    priority = 4096
+  }
+
+  port_override {
+    index = 1
+    name  = "camera"
+
+    dot1x = {
+      ctrl = "force_authorized"
+    }
+    port_security = {
+      enabled     = true
+      mac_address = ["aa:bb:cc:dd:ee:01"]
+    }
+    stormctrl = {
+      type = "level"
+      bcast = {
+        enabled = true
+        level   = 50
+      }
+    }
+  }
+}

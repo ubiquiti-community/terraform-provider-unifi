@@ -22,19 +22,25 @@ resource "unifi_network" "dual_stack" {
     stop    = "10.0.1.254"
   }
 
-  ipv6_interface_type        = "static"
-  ipv6_static_subnet         = "fd00:1::1/64"
-  ipv6_ra                    = true
-  ipv6_ra_priority           = "high"
-  ipv6_ra_valid_lifetime     = "24h"
-  ipv6_ra_preferred_lifetime = "4h"
+  ipv6 = {
+    interface_type = "static"
+    static_subnet  = "fd00:1::1/64"
+    ra = {
+      enabled            = true
+      priority           = "high"
+      valid_lifetime     = "24h"
+      preferred_lifetime = "4h"
+    }
+  }
 
   dhcp_v6_server = {
-    enabled  = true
-    dns_auto = true
-    start    = "::2"
-    stop     = "::7d1"
-    lease    = 86400
+    enabled = true
+    dns = {
+      auto = true
+    }
+    start = "::2"
+    stop  = "::7d1"
+    lease = 86400
   }
 }
 
@@ -44,15 +50,21 @@ resource "unifi_network" "ipv6_pd" {
   subnet = "10.0.2.1/24"
   vlan   = 12
 
-  ipv6_interface_type           = "pd"
-  ipv6_pd_interface             = "wan"
-  ipv6_pd_prefixid              = "1"
-  ipv6_pd_auto_prefixid_enabled = false
-  # ipv6_pd_start/stop are required for a prefix-delegation network — the
-  # controller rejects it with api.err.InvalidIpv6Addr otherwise.
-  ipv6_pd_start = "::2"
-  ipv6_pd_stop  = "::7d1"
-  ipv6_ra       = true
+  ipv6 = {
+    interface_type = "pd"
+    pd = {
+      interface             = "wan"
+      prefixid              = "1"
+      auto_prefixid_enabled = false
+      # start/stop are required for a prefix-delegation network — the
+      # controller rejects it with api.err.InvalidIpv6Addr otherwise.
+      start = "::2"
+      stop  = "::7d1"
+    }
+    ra = {
+      enabled = true
+    }
+  }
 }
 
 # Third-party gateway (VLAN-only) network

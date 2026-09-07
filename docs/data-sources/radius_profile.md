@@ -30,11 +30,11 @@ output "radius_profile_accounting_enabled" {
 
 # Whether dynamic VLAN assignment is enabled and its WLAN mode (computed).
 output "radius_profile_vlan_enabled" {
-  value = data.unifi_radius_profile.default.vlan_enabled
+  value = data.unifi_radius_profile.default.vlan.enabled
 }
 
 output "radius_profile_vlan_wlan_mode" {
-  value = data.unifi_radius_profile.default.vlan_wlan_mode
+  value = data.unifi_radius_profile.default.vlan.wlan_mode
 }
 
 # Look up a profile on a specific site.
@@ -60,12 +60,10 @@ data "unifi_radius_profile" "site_specific" {
 
 - `accounting_enabled` (Boolean) Whether RADIUS accounting is enabled.
 - `id` (String) The ID of this RADIUS profile.
-- `interim_update_enabled` (Boolean) Whether interim updates are enabled.
-- `interim_update_interval` (String) The interim update interval, as a Go duration string.
+- `interim_update` (Attributes) RADIUS interim accounting update settings. (see [below for nested schema](#nestedatt--interim_update))
 - `use_usg_acct_server` (Boolean) Whether to use USG as accounting server.
 - `use_usg_auth_server` (Boolean) Whether to use USG as authentication server.
-- `vlan_enabled` (Boolean) Whether VLAN is enabled.
-- `vlan_wlan_mode` (String) The VLAN WLAN mode.
+- `vlan` (Attributes) Dynamic VLAN assignment settings. (see [below for nested schema](#nestedatt--vlan))
 
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`
@@ -73,3 +71,21 @@ data "unifi_radius_profile" "site_specific" {
 Optional:
 
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--interim_update"></a>
+### Nested Schema for `interim_update`
+
+Read-Only:
+
+- `enabled` (Boolean) Whether interim updates are enabled.
+- `interval` (String) The interim update interval, as a Go duration string.
+
+
+<a id="nestedatt--vlan"></a>
+### Nested Schema for `vlan`
+
+Read-Only:
+
+- `enabled` (Boolean) Whether VLAN is enabled.
+- `wlan_mode` (String) The VLAN WLAN mode.

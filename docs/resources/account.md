@@ -35,9 +35,7 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 - `network_id` (String) ID of the network for this account. When set and `vlan` is omitted, the account inherits that network's VLAN (so RADIUS/MAB VLAN assignment is applied).
 - `site` (String) The name of the site to associate the account with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
-- `tunnel_config_type` (String) The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.
-- `tunnel_medium_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2
-- `tunnel_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. Valid values are 1-13; `13` (VLAN) is the most common.
+- `tunnel` (Attributes) RFC 2868 tunnel attributes used for dynamic VLAN assignment. (see [below for nested schema](#nestedatt--tunnel))
 - `vlan` (Number) VLAN assigned to the account. If omitted but `network_id` is set, it is derived from that network's VLAN. If neither is set, the client falls back to the untagged VLAN.
 
 ### Read-Only
@@ -53,3 +51,13 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--tunnel"></a>
+### Nested Schema for `tunnel`
+
+Optional:
+
+- `config_type` (String) The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.
+- `medium_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2
+- `type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. Valid values are 1-13; `13` (VLAN) is the most common.

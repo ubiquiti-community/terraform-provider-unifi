@@ -143,7 +143,10 @@ func (d *clientInfoListDataSource) Read(
 
 	clientObjects := make([]basetypes.ObjectValue, len(clientInfoList))
 	for i, ci := range clientInfoList {
-		v := models.ClientInfoAttrValues(ctx, &ci)
+		v, d := models.ClientInfoAttrValues(ctx, &ci)
+		if resp.Diagnostics.Append(d...); resp.Diagnostics.HasError() {
+			return
+		}
 		o, d := types.ObjectValue(models.AttributeTypes(), v)
 		if resp.Diagnostics.Append(d...); resp.Diagnostics.HasError() {
 			return

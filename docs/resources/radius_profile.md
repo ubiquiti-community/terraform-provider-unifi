@@ -17,12 +17,17 @@ Manages RADIUS profiles.
 resource "unifi_radius_profile" "external" {
   name = "external-radius"
 
-  accounting_enabled      = true
-  interim_update_enabled  = true
-  interim_update_interval = "1h"
+  accounting_enabled = true
 
-  vlan_enabled   = true
-  vlan_wlan_mode = "required"
+  interim_update = {
+    enabled  = true
+    interval = "1h"
+  }
+
+  vlan = {
+    enabled   = true
+    wlan_mode = "required"
+  }
 
   auth_server {
     ip     = "10.0.0.10"
@@ -45,17 +50,21 @@ resource "unifi_radius_profile" "usg" {
   use_usg_acct_server = true
   accounting_enabled  = true
 
-  vlan_enabled   = true
-  vlan_wlan_mode = "optional"
+  vlan = {
+    enabled   = true
+    wlan_mode = "optional"
+  }
 }
 
-# A WPA-Enterprise WLAN can reference the profile via radius_profile_id.
+# A WPA-Enterprise WLAN can reference the profile via radius.profile_id.
 resource "unifi_wlan" "corp" {
   name       = "corp-wpaeap"
   security   = "wpaeap"
   network_id = unifi_network.corp.id
 
-  radius_profile_id = unifi_radius_profile.external.id
+  radius = {
+    profile_id = unifi_radius_profile.external.id
+  }
 }
 ```
 
@@ -71,14 +80,12 @@ resource "unifi_wlan" "corp" {
 - `accounting_enabled` (Boolean) Specifies whether to use RADIUS accounting.
 - `acct_server` (Block List) RADIUS accounting servers. (see [below for nested schema](#nestedblock--acct_server))
 - `auth_server` (Block List) RADIUS authentication servers. (see [below for nested schema](#nestedblock--auth_server))
-- `interim_update_enabled` (Boolean) Specifies whether to use interim_update.
-- `interim_update_interval` (String) Specifies the RADIUS interim update interval, as a Go duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s`.
+- `interim_update` (Attributes) RADIUS interim accounting update settings. (see [below for nested schema](#nestedatt--interim_update))
 - `site` (String) The name of the site to associate the settings with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `use_usg_acct_server` (Boolean) Specifies whether to use usg as a RADIUS accounting server.
 - `use_usg_auth_server` (Boolean) Specifies whether to use usg as a RADIUS authentication server.
-- `vlan_enabled` (Boolean) Specifies whether to use vlan on wired connections.
-- `vlan_wlan_mode` (String) Specifies whether to use vlan on wireless connections. Must be one of `disabled`, `optional`, or `required`.
+- `vlan` (Attributes) Dynamic VLAN assignment settings. (see [below for nested schema](#nestedatt--vlan))
 
 ### Read-Only
 
@@ -110,6 +117,15 @@ Optional:
 - `port` (Number) Port of authentication service.
 
 
+<a id="nestedatt--interim_update"></a>
+### Nested Schema for `interim_update`
+
+Optional:
+
+- `enabled` (Boolean) Specifies whether to use interim_update.
+- `interval` (String) Specifies the RADIUS interim update interval, as a Go duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s`.
+
+
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`
 
@@ -119,6 +135,15 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--vlan"></a>
+### Nested Schema for `vlan`
+
+Optional:
+
+- `enabled` (Boolean) Specifies whether to use vlan on wired connections.
+- `wlan_mode` (String) Specifies whether to use vlan on wireless connections. Must be one of `disabled`, `optional`, or `required`.
 
 ## Import
 

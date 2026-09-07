@@ -42,23 +42,39 @@ func TestFirewallPolicySchemaExposesSettableSchedule(t *testing.T) {
 	if len(schedule.Validators) == 0 {
 		t.Fatal("schedule has no cross-field validator")
 	}
-	for name, attribute := range schedule.Attributes {
-		switch field := attribute.(type) {
-		case schema.StringAttribute:
-			if !field.Optional || !field.Computed {
-				t.Errorf("%s is not optional and computed", name)
+	var check func(prefix string, attrs map[string]schema.Attribute)
+	check = func(prefix string, attrs map[string]schema.Attribute) {
+		for name, attribute := range attrs {
+			name = prefix + name
+			switch field := attribute.(type) {
+			case schema.StringAttribute:
+				if !field.Optional || !field.Computed {
+					t.Errorf("%s is not optional and computed", name)
+				}
+			case schema.BoolAttribute:
+				if !field.Optional || !field.Computed {
+					t.Errorf("%s is not optional and computed", name)
+				}
+			case schema.SetAttribute:
+				if !field.Optional || !field.Computed {
+					t.Errorf("%s is not optional and computed", name)
+				}
+			case schema.SingleNestedAttribute:
+				if !field.Optional || !field.Computed {
+					t.Errorf("%s is not optional and computed", name)
+				}
+				check(name+".", field.Attributes)
+			default:
+				t.Errorf("unexpected schedule attribute type for %s: %T", name, attribute)
 			}
-		case schema.BoolAttribute:
-			if !field.Optional || !field.Computed {
-				t.Errorf("%s is not optional and computed", name)
-			}
-		case schema.SetAttribute:
-			if !field.Optional || !field.Computed {
-				t.Errorf("%s is not optional and computed", name)
-			}
-		default:
-			t.Errorf("unexpected schedule attribute type for %s: %T", name, attribute)
 		}
+	}
+	check("", schedule.Attributes)
+	if _, ok := schedule.Attributes["time"].(schema.SingleNestedAttribute); !ok {
+		t.Errorf(
+			"schedule.time = %T, want schema.SingleNestedAttribute",
+			schedule.Attributes["time"],
+		)
 	}
 }
 
@@ -183,11 +199,13 @@ func TestFirewallPolicyScheduleNormalization(t *testing.T) {
 				"2026-08-31",
 			)
 			model.Normalize = types.BoolValue(true)
-			if !normalizeFirewallPolicyScheduleModel(&model) ||
+			normalized := normalizeFirewallPolicyScheduleModel(&model)
+			allDay, start, end := firewallPolicyScheduleTimeFields(model.Time)
+			if !normalized ||
 				(!model.Date.IsNull()) != keep.date ||
 				(!model.DateStart.IsNull() || !model.DateEnd.IsNull()) != keep.rangeDates ||
 				(len(model.RepeatOnDays.Elements()) > 0) != keep.days ||
-				(!model.TimeAllDay.IsNull() || !model.TimeRangeStart.IsNull() || !model.TimeRangeEnd.IsNull()) != keep.time {
+				(!allDay.IsNull() || !start.IsNull() || !end.IsNull()) != keep.time {
 				t.Fatalf("unexpected normalized Terraform schedule: %#v", model)
 			}
 		})
@@ -195,7 +213,8 @@ func TestFirewallPolicyScheduleNormalization(t *testing.T) {
 	model := withScheduleTime(scheduleForTest("EVERY_DAY"), true, "09:00", "17:00")
 	model.Normalize = types.BoolValue(true)
 	normalizeFirewallPolicyScheduleModel(&model)
-	if !model.TimeRangeStart.IsNull() || !model.TimeRangeEnd.IsNull() {
+	if allDay, start, end := firewallPolicyScheduleTimeFields(model.Time); !allDay.ValueBool() ||
+		!start.IsNull() || !end.IsNull() {
 		t.Fatalf("all-day model retained a time range: %#v", model)
 	}
 }
@@ -255,8 +274,10 @@ func scheduleForTest(mode string) firewallPolicyScheduleModel {
 	return firewallPolicyScheduleModel{
 		Date: types.StringNull(), DateStart: types.StringNull(), DateEnd: types.StringNull(),
 		Mode: types.StringValue(mode), Normalize: types.BoolValue(false),
-		RepeatOnDays: types.SetNull(types.StringType), TimeAllDay: types.BoolNull(),
-		TimeRangeStart: types.StringNull(), TimeRangeEnd: types.StringNull(),
+		RepeatOnDays: types.SetNull(types.StringType),
+		Time: firewallPolicyScheduleTimeValue(
+			types.BoolNull(), types.StringNull(), types.StringNull(),
+		),
 	}
 }
 
@@ -265,13 +286,14 @@ func withScheduleTime(
 	allDay bool,
 	start, end string,
 ) firewallPolicyScheduleModel {
-	s.TimeAllDay = types.BoolValue(allDay)
+	rangeStart, rangeEnd := types.StringNull(), types.StringNull()
 	if start != "" {
-		s.TimeRangeStart = types.StringValue(start)
+		rangeStart = types.StringValue(start)
 	}
 	if end != "" {
-		s.TimeRangeEnd = types.StringValue(end)
+		rangeEnd = types.StringValue(end)
 	}
+	s.Time = firewallPolicyScheduleTimeValue(types.BoolValue(allDay), rangeStart, rangeEnd)
 	return s
 }
 

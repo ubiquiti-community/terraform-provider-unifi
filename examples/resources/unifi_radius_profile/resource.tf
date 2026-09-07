@@ -3,12 +3,17 @@
 resource "unifi_radius_profile" "external" {
   name = "external-radius"
 
-  accounting_enabled      = true
-  interim_update_enabled  = true
-  interim_update_interval = "1h"
+  accounting_enabled = true
 
-  vlan_enabled   = true
-  vlan_wlan_mode = "required"
+  interim_update = {
+    enabled  = true
+    interval = "1h"
+  }
+
+  vlan = {
+    enabled   = true
+    wlan_mode = "required"
+  }
 
   auth_server {
     ip     = "10.0.0.10"
@@ -31,15 +36,19 @@ resource "unifi_radius_profile" "usg" {
   use_usg_acct_server = true
   accounting_enabled  = true
 
-  vlan_enabled   = true
-  vlan_wlan_mode = "optional"
+  vlan = {
+    enabled   = true
+    wlan_mode = "optional"
+  }
 }
 
-# A WPA-Enterprise WLAN can reference the profile via radius_profile_id.
+# A WPA-Enterprise WLAN can reference the profile via radius.profile_id.
 resource "unifi_wlan" "corp" {
   name       = "corp-wpaeap"
   security   = "wpaeap"
   network_id = unifi_network.corp.id
 
-  radius_profile_id = unifi_radius_profile.external.id
+  radius = {
+    profile_id = unifi_radius_profile.external.id
+  }
 }
