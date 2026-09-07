@@ -157,7 +157,3 @@ func StringValueOrNull(val string) types.String {
 	}
 	return types.StringValue(val)
 }
-
-func Ptr[T any](in T) *T {
-	return &in
-}

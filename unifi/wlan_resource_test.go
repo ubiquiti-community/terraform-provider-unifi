@@ -1270,51 +1270,68 @@ func Test_reassertWLANBands(t *testing.T) {
 // #388: per-SSID band steering (bandsteering_mode)
 // ---------------------------------------------------------------------------
 
-// Test_bandsteeringMode_deprecated covers the removal of per-SSID band
-// steering: UniFi dropped bandsteering_mode from the WLAN object (absent from
-// WlanConf.json on 10.6.106, still present on Device.json), so go-unifi no
-// longer carries it. A declared value must not reach the controller, and the
-// attribute must read back null rather than echoing whatever the plan held -
-// otherwise a configuration keeping the attribute would show a value the
-// controller never stored. The setting now lives on unifi_device.
-func Test_bandsteeringMode_deprecated(t *testing.T) {
+// Test_planToWLAN_bandsteeringMode verifies the write path for #388: a
+// declared value travels to the controller, and an unset (null or unknown)
+// value stays off the wire entirely: UniFi Network 10.x moved band steering to
+// the access point, so the deprecated WLAN attribute is a no-op.
+func Test_planToWLAN_bandsteeringMode(t *testing.T) {
 	ctx := context.Background()
 	r := &wlanFrameworkResource{}
 
-	t.Run("declared value never reaches the wire", func(t *testing.T) {
-		plan := wlanFrameworkResourceModel{
-			Name:             types.StringValue("w"),
-			BandsteeringMode: types.StringValue("prefer_5g"),
-		}
-		wlan, diags := r.planToWLAN(ctx, plan)
-		if diags.HasError() {
-			t.Fatalf("planToWLAN: %v", diags)
-		}
-		raw, err := json.Marshal(wlan)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		if strings.Contains(string(raw), "bandsteering_mode") {
-			t.Errorf("deprecated bandsteering_mode leaked into payload: %s", raw)
-		}
-	})
-
-	for name, declared := range map[string]types.String{
-		"declared reads back null": types.StringValue("prefer_5g"),
-		"null stays null":          types.StringNull(),
-		"unknown resolves to null": types.StringUnknown(),
+	for name, value := range map[string]types.String{
+		"declared stays off the wire": types.StringValue("prefer_5g"),
+		"null stays off the wire":     types.StringNull(),
+		"unknown stays off the wire":  types.StringUnknown(),
 	} {
 		t.Run(name, func(t *testing.T) {
-			model := wlanFrameworkResourceModel{BandsteeringMode: declared}
-			wlan := &unifi.WLAN{ID: "id", Name: "w"}
-			if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
-				t.Fatalf("wlanToModel: %v", diags)
+			plan := wlanFrameworkResourceModel{
+				Name:             types.StringValue("w"),
+				BandsteeringMode: value,
 			}
-			if !model.BandsteeringMode.IsNull() {
-				t.Errorf("BandsteeringMode = %v, want null", model.BandsteeringMode)
+			wlan, diags := r.planToWLAN(ctx, plan)
+			if diags.HasError() {
+				t.Fatalf("planToWLAN: %v", diags)
+			}
+			raw, err := json.Marshal(wlan)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if strings.Contains(string(raw), "bandsteering_mode") {
+				t.Errorf("unset bandsteering_mode leaked into payload: %s", raw)
 			}
 		})
 	}
+}
+
+// Test_wlanToModel_bandsteeringMode verifies the read path for the deprecated
+// attribute: the WLAN never reports band steering, so the model's existing
+// value is kept (declared on create/update, prior state on read) rather than
+// producing perpetual drift, and Unknown resolves to null.
+func Test_wlanToModel_bandsteeringMode(t *testing.T) {
+	ctx := context.Background()
+	r := &wlanFrameworkResource{}
+
+	t.Run("missing key keeps the declared value", func(t *testing.T) {
+		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringValue("prefer_5g")}
+		wlan := &unifi.WLAN{ID: "id", Name: "w"}
+		if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
+			t.Fatalf("wlanToModel: %v", diags)
+		}
+		if model.BandsteeringMode.ValueString() != "prefer_5g" {
+			t.Errorf("BandsteeringMode = %v, want declared prefer_5g kept", model.BandsteeringMode)
+		}
+	})
+
+	t.Run("missing key resolves unknown to null", func(t *testing.T) {
+		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringUnknown()}
+		wlan := &unifi.WLAN{ID: "id", Name: "w"}
+		if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
+			t.Fatalf("wlanToModel: %v", diags)
+		}
+		if !model.BandsteeringMode.IsNull() {
+			t.Errorf("BandsteeringMode = %v, want null", model.BandsteeringMode)
+		}
+	})
 }
 
 // TestAccWLANFramework_bandsteeringMode exercises #388 end to end against the
