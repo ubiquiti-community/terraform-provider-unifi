@@ -319,16 +319,18 @@ func networkIPv6PDAttrTypes() map[string]attr.Type {
 	}
 }
 
-// Object-level defaults for the ipv6 group reproduce, leaf by leaf, what the
-// flat ipv6_* attributes planned when the practitioner left them out:
-// interface_type carried its static default, the plain Optional leaves were
-// null, and the Computed + UseStateForUnknown leaves were unknown, so they
-// still resolve from the controller on create and are pinned to the prior
-// state on update by their own plan modifiers. Keeping the objects known (with
-// unknown leaves) rather than wholly unknown is what lets those leaf plan
-// modifiers run at all, and keeps the request body identical.
+// The ipv6 group deliberately has no schema Default. The framework applies
+// attribute Defaults before its "did the plan change?" gate, and an object
+// Default carrying computed leaves can never equal the prior state, so it
+// would trip that gate on every plan and re-plan the resource's other
+// Computed attributes (firewall_zone_id) as unknown forever. Instead the
+// object and its ra/pd children use UseStateForUnknown, and ModifyPlan
+// reproduces what the flat ipv6_* attributes planned when the practitioner
+// left them out (see planIPv6Defaults): interface_type defaults to "none",
+// and on create the remaining leaves take the shapes below, exactly as their
+// flat predecessors did (Optional-only leaves null, Computed leaves unknown).
 
-func networkIPv6RADefault() types.Object {
+func networkIPv6RAPlanShape() types.Object {
 	return types.ObjectValueMust(networkIPv6RAAttrTypes(), map[string]attr.Value{
 		"enabled":            types.BoolUnknown(),
 		"priority":           types.StringUnknown(),
@@ -337,7 +339,7 @@ func networkIPv6RADefault() types.Object {
 	})
 }
 
-func networkIPv6PDDefault() types.Object {
+func networkIPv6PDPlanShape() types.Object {
 	return types.ObjectValueMust(networkIPv6PDAttrTypes(), map[string]attr.Value{
 		"interface":             types.StringNull(),
 		"prefixid":              types.StringNull(),
@@ -347,14 +349,14 @@ func networkIPv6PDDefault() types.Object {
 	})
 }
 
-func networkIPv6Default() types.Object {
+func networkIPv6PlanShape() types.Object {
 	return types.ObjectValueMust(networkIPv6AttrTypes(), map[string]attr.Value{
 		"interface_type":            types.StringValue("none"),
 		"client_address_assignment": types.StringUnknown(),
 		"static_subnet":             types.StringNull(),
 		"aliases":                   types.ListNull(types.StringType),
-		"ra":                        networkIPv6RADefault(),
-		"pd":                        networkIPv6PDDefault(),
+		"ra":                        networkIPv6RAPlanShape(),
+		"pd":                        networkIPv6PDPlanShape(),
 	})
 }
 
@@ -597,13 +599,14 @@ func (r *networkResource) Schema(
 					"read from the controller.",
 				Optional: true,
 				Computed: true,
-				Default:  objectdefault.StaticValue(networkIPv6Default()),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"interface_type": schema.StringAttribute{
-						MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.",
+						MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`. Defaults to `none` when not set.",
 						Optional:            true,
 						Computed:            true,
-						Default:             stringdefault.StaticString("none"),
 						Validators: []validator.String{
 							stringvalidator.OneOf("none", "pd", "static"),
 						},
@@ -634,7 +637,9 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "IPv6 Router Advertisement (RA) settings.",
 						Optional:            true,
 						Computed:            true,
-						Default:             objectdefault.StaticValue(networkIPv6RADefault()),
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseStateForUnknown(),
+						},
 						Attributes: map[string]schema.Attribute{
 							"enabled": schema.BoolAttribute{
 								MarkdownDescription: "Specifies whether IPv6 Router Advertisement (RA) is enabled.",
@@ -691,7 +696,9 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "IPv6 Prefix Delegation (PD) settings, used when `interface_type` is `pd`.",
 						Optional:            true,
 						Computed:            true,
-						Default:             objectdefault.StaticValue(networkIPv6PDDefault()),
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseStateForUnknown(),
+						},
 						Attributes: map[string]schema.Attribute{
 							"interface": schema.StringAttribute{
 								MarkdownDescription: "The IPv6 Prefix Delegation WAN interface (e.g., `wan`, `wan2`).",
@@ -1212,6 +1219,59 @@ func (r *networkResource) Configure(
 // the explicit relay/guarding configuration. We only override the default;
 // an explicit user-provided value is left untouched (with a warning for the
 // unsatisfiable auto+guarding combination).
+// planIPv6Defaults reproduces the flat ipv6_* defaults for the nested ipv6
+// object without a schema Default (see the comment above
+// networkIPv6RAPlanShape for why a Default cannot be used):
+//
+//   - interface_type defaults to "none" whenever the configuration does not
+//     set it, whether the ipv6 block is present or omitted entirely;
+//   - when the block is omitted and there is no prior object to carry
+//     (create, or a state that never held one), the group takes its
+//     create-time shape: Optional-only leaves null, Computed leaves unknown.
+//
+// On update with the block omitted, UseStateForUnknown has already restored
+// the prior object, so only interface_type is (re)asserted here, exactly as
+// the flat attribute's Default did.
+func planIPv6Defaults(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	var configType types.String
+	var planIPv6 types.Object
+	diags.Append(req.Config.GetAttribute(
+		ctx, path.Root("ipv6").AtName("interface_type"), &configType)...)
+	diags.Append(req.Plan.GetAttribute(ctx, path.Root("ipv6"), &planIPv6)...)
+	if diags.HasError() || !configType.IsNull() {
+		// Configured (or unknown until apply): nothing to default.
+		return diags
+	}
+
+	var configIPv6 types.Object
+	diags.Append(req.Config.GetAttribute(ctx, path.Root("ipv6"), &configIPv6)...)
+	if diags.HasError() || configIPv6.IsUnknown() {
+		return diags
+	}
+
+	if planIPv6.IsNull() || planIPv6.IsUnknown() {
+		planIPv6 = networkIPv6PlanShape()
+	} else {
+		attrs := planIPv6.Attributes()
+		attrs["interface_type"] = types.StringValue("none")
+		obj, d := types.ObjectValue(networkIPv6AttrTypes(), attrs)
+		diags.Append(d...)
+		if diags.HasError() {
+			return diags
+		}
+		planIPv6 = obj
+	}
+
+	diags.Append(resp.Plan.SetAttribute(ctx, path.Root("ipv6"), planIPv6)...)
+	return diags
+}
+
 func (r *networkResource) ModifyPlan(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
@@ -1219,6 +1279,11 @@ func (r *networkResource) ModifyPlan(
 ) {
 	if req.Plan.Raw.IsNull() {
 		return // resource is being destroyed
+	}
+
+	resp.Diagnostics.Append(planIPv6Defaults(ctx, req, resp)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// firewall_zone_id: Optional+Computed with no plan modifier, so on any

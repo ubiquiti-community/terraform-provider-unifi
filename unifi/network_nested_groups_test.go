@@ -511,8 +511,8 @@ func TestNetworkIPv6_vlanOnlyPreservesPrevious(t *testing.T) {
 		return model.IPv6.Attributes()
 	}
 
-	t.Run("plan default: unknown leaves resolve, known ones are kept", func(t *testing.T) {
-		v6 := read(t, networkIPv6Default())
+	t.Run("plan shape: unknown leaves resolve, known ones are kept", func(t *testing.T) {
+		v6 := read(t, networkIPv6PlanShape())
 		if attrAs[types.String](t, v6["interface_type"]).ValueString() != "none" {
 			t.Errorf("interface_type = %v, want none", v6["interface_type"])
 		}
@@ -555,7 +555,7 @@ func TestNetworkIPv6_vlanOnlyPreservesPrevious(t *testing.T) {
 				"preferred_lifetime": timetypes.NewGoDurationValueFromStringMust("4h"),
 				"valid_lifetime":     timetypes.NewGoDurationNull(),
 			}),
-			"pd": networkIPv6PDDefault(),
+			"pd": networkIPv6PDPlanShape(),
 		})
 		v6 := read(t, prev)
 		if attrAs[types.String](t, v6["interface_type"]).ValueString() != "static" ||

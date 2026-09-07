@@ -175,9 +175,16 @@ func wlanWPA3Default() types.Object {
 	})
 }
 
-func wlanRadiusDefault() types.Object {
+// wlanRadiusPlanShape is what the radius group plans on create when the
+// configuration omits it: profile_id resolves from the controller (it may
+// assign a default profile) and mac_auth_enabled defaults to false. The group
+// has no schema Default on purpose: a Default carrying the computed profile_id
+// can never equal the prior state, so it would trip the framework's plan-change
+// gate on every plan and re-plan bandsteering_mode as unknown forever. See
+// planRadiusDefaults.
+func wlanRadiusPlanShape() types.Object {
 	return types.ObjectValueMust(wlanRadiusAttrTypes(), map[string]attr.Value{
-		"profile_id":       types.StringNull(),
+		"profile_id":       types.StringUnknown(),
 		"mac_auth_enabled": types.BoolValue(false),
 	})
 }
@@ -579,7 +586,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "RADIUS settings.",
 				Optional:            true,
 				Computed:            true,
-				Default:             objectdefault.StaticValue(wlanRadiusDefault()),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"profile_id": schema.StringAttribute{
 						MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`. " +
@@ -591,10 +600,9 @@ func (r *wlanFrameworkResource) Schema(
 						},
 					},
 					"mac_auth_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Enable RADIUS MAC authentication.",
+						MarkdownDescription: "Enable RADIUS MAC authentication. Defaults to `false` when not set.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -1010,9 +1018,57 @@ func (r *wlanFrameworkResource) ModifyPlan(
 		return
 	}
 
-	if applyEnhancedIotOverrides(&plan) {
+	changed := applyEnhancedIotOverrides(&plan)
+
+	radiusChanged, d := planRadiusDefaults(ctx, req, &plan)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if changed || radiusChanged {
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 	}
+}
+
+// planRadiusDefaults reproduces the flat radius_mac_auth_enabled default for
+// the nested radius object without a schema Default (see wlanRadiusPlanShape):
+// mac_auth_enabled defaults to false whenever the configuration does not set
+// it, and when the block is omitted with no prior object to carry (create),
+// the group takes its create-time shape. Returns true when plan was changed.
+func planRadiusDefaults(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	plan *wlanFrameworkResourceModel,
+) (bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	var configMacAuth types.Bool
+	var configRadius types.Object
+	diags.Append(req.Config.GetAttribute(
+		ctx, path.Root("radius").AtName("mac_auth_enabled"), &configMacAuth)...)
+	diags.Append(req.Config.GetAttribute(ctx, path.Root("radius"), &configRadius)...)
+	if diags.HasError() || !configMacAuth.IsNull() || configRadius.IsUnknown() {
+		return false, diags
+	}
+
+	if plan.Radius.IsNull() || plan.Radius.IsUnknown() {
+		plan.Radius = wlanRadiusPlanShape()
+		return true, diags
+	}
+	attrs := plan.Radius.Attributes()
+	if v, ok := attrs["mac_auth_enabled"].(types.Bool); ok && !v.IsNull() && !v.IsUnknown() &&
+		!v.ValueBool() {
+		return false, diags
+	}
+	attrs["mac_auth_enabled"] = types.BoolValue(false)
+	obj, d := types.ObjectValue(wlanRadiusAttrTypes(), attrs)
+	diags.Append(d...)
+	if diags.HasError() {
+		return false, diags
+	}
+	plan.Radius = obj
+	return true, diags
 }
 
 // applyEnhancedIotOverrides pins the fields the controller forces when

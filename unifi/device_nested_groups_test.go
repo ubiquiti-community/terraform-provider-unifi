@@ -484,3 +484,70 @@ resource "unifi_device" "groups" {
 		},
 	})
 }
+
+// TestDeviceUpgradeState_olderVersionsAlsoNest guards the ordering inside the
+// shared upgrader: v0 state converts integer-second durations to strings on
+// the flat keys and THEN nests, and v1 (already strings) nests too.
+func TestDeviceUpgradeState_olderVersionsAlsoNest(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	cases := map[string]struct {
+		version int64
+		prior   string
+	}{
+		"v0 integer seconds": {0, `{"id":"d","mac":"00:11:22:33:44:55","lcm_idle_timeout":600,
+			"port_override":[{"index":1,"dot1x_idle_timeout":300,"tagged_networkconf_ids":["n1"]}]}`},
+		"v1 duration strings": {1, `{"id":"d","mac":"00:11:22:33:44:55","lcm_idle_timeout":"10m0s",
+			"port_override":[{"index":1,"dot1x_idle_timeout":"5m0s","tagged_networkconf_ids":["n1"]}]}`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			up, ok := r.UpgradeState(ctx)[tc.version]
+			if !ok {
+				t.Fatalf("no upgrader for version %d", tc.version)
+			}
+			resp := &fwresource.UpgradeStateResponse{}
+			up.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+				RawState: &tfprotov6.RawState{JSON: []byte(tc.prior)},
+			}, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+			}
+			val, err := resp.DynamicValue.Unmarshal(schemaType)
+			if err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			var root, lcm, po, dot1x map[string]tftypes.Value
+			var overrides []tftypes.Value
+			if err := val.As(&root); err != nil {
+				t.Fatalf("as root: %v", err)
+			}
+			if err := root["lcm"].As(&lcm); err != nil {
+				t.Fatalf("as lcm: %v (%v)", err, root["lcm"])
+			}
+			var idle string
+			if err := lcm["idle_timeout"].As(&idle); err != nil || idle != "10m0s" {
+				t.Errorf("lcm.idle_timeout = %v (%v), want 10m0s", lcm["idle_timeout"], err)
+			}
+			if err := root["port_override"].As(&overrides); err != nil || len(overrides) != 1 {
+				t.Fatalf("port_override = %v (%v)", root["port_override"], err)
+			}
+			if err := overrides[0].As(&po); err != nil {
+				t.Fatalf("as override: %v", err)
+			}
+			if err := po["dot1x"].As(&dot1x); err != nil {
+				t.Fatalf("as dot1x: %v (%v)", err, po["dot1x"])
+			}
+			if err := dot1x["idle_timeout"].As(&idle); err != nil || idle != "5m0s" {
+				t.Errorf("dot1x.idle_timeout = %v (%v), want 5m0s", dot1x["idle_timeout"], err)
+			}
+			if po["tagged_networkconf_ids"].Type().Is(tftypes.List{}) {
+				t.Error("tagged_networkconf_ids must reconcile to the Set schema type")
+			}
+		})
+	}
+}

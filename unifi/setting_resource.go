@@ -37,6 +37,7 @@ var (
 	_ resource.Resource                 = &settingResource{}
 	_ resource.ResourceWithImportState  = &settingResource{}
 	_ resource.ResourceWithUpgradeState = &settingResource{}
+	_ resource.ResourceWithModifyPlan   = &settingResource{}
 	_ resource.ResourceWithIdentity     = &settingResource{}
 )
 
@@ -816,10 +817,9 @@ func (r *settingResource) Schema(
 						},
 						Attributes: map[string]schema.Attribute{
 							"enabled": schema.BoolAttribute{
-								MarkdownDescription: "Whether netconsole logging is enabled.",
+								MarkdownDescription: "Whether netconsole logging is enabled. Defaults to `false` when `syslog` is configured and this is not set.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
 							},
 							"host": schema.StringAttribute{
 								MarkdownDescription: "Netconsole host.",
@@ -1672,6 +1672,64 @@ func nestSettingState(state map[string]any) {
 			"suppression_alerts":    "alerts",
 		})
 	})
+}
+
+// ModifyPlan reproduces the flat syslog.netconsole_enabled default for the
+// nested netconsole object without a schema Default: the framework applies a
+// leaf Default even when its parent object is null in configuration and then
+// re-plans the default-less Computed parent as unknown, so a Default there
+// would both trip the framework's plan-change gate whenever the controller
+// has netconsole enabled and be discarded by UseStateForUnknown anyway. As
+// with the flat attribute, the default only applies when the syslog block is
+// configured; an omitted syslog block keeps the controller's values.
+func (r *settingResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var configSyslog types.Object
+	var configEnabled types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("syslog"), &configSyslog)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(
+		ctx, path.Root("syslog").AtName("netconsole").AtName("enabled"), &configEnabled)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if configSyslog.IsNull() || configSyslog.IsUnknown() || !configEnabled.IsNull() {
+		return
+	}
+
+	ncPath := path.Root("syslog").AtName("netconsole")
+	var planNC types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, ncPath, &planNC)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var attrs map[string]attr.Value
+	if planNC.IsNull() || planNC.IsUnknown() {
+		attrs = map[string]attr.Value{
+			"enabled": types.BoolValue(false),
+			"host":    types.StringUnknown(),
+			"port":    types.Int64Unknown(),
+		}
+	} else {
+		attrs = planNC.Attributes()
+		if v, ok := attrs["enabled"].(types.Bool); ok && !v.IsNull() && !v.IsUnknown() &&
+			!v.ValueBool() {
+			return
+		}
+		attrs["enabled"] = types.BoolValue(false)
+	}
+	obj, d := types.ObjectValue(syslogNetconsoleAttrTypes, attrs)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, ncPath, obj)...)
 }
 
 func (r *settingResource) Configure(

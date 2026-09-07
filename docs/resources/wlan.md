@@ -163,7 +163,7 @@ Optional:
 
 Optional:
 
-- `mac_auth_enabled` (Boolean) Enable RADIUS MAC authentication.
+- `mac_auth_enabled` (Boolean) Enable RADIUS MAC authentication. Defaults to `false` when not set.
 - `profile_id` (String) ID of the RADIUS profile to use when security `wpaeap`. The controller may assign a default profile, so this is computed when unset.
 
 

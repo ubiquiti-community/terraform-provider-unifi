@@ -370,3 +370,41 @@ resource "unifi_port_profile" "groups" {
 func check(key, value string) resource.TestCheckFunc {
 	return resource.TestCheckResourceAttr("unifi_port_profile.groups", key, value)
 }
+
+// TestPortProfileUpgradeState_v0ConvertsThenNests guards the ordering inside
+// the shared upgrader: the v0 integer-second dot1x_idle_timeout becomes a
+// duration string on the flat key before the key moves under dot1x.
+func TestPortProfileUpgradeState_v0ConvertsThenNests(t *testing.T) {
+	ctx := context.Background()
+	r := &portProfileResource{}
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	prior := []byte(`{"id":"pp","name":"p","dot1x_ctrl":"mac_based","dot1x_idle_timeout":300}`)
+	resp := &fwresource.UpgradeStateResponse{}
+	r.UpgradeState(ctx)[0].StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+		RawState: &tfprotov6.RawState{JSON: prior},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+	}
+	val, err := resp.DynamicValue.Unmarshal(schemaType)
+	if err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	var root, dot1x map[string]tftypes.Value
+	if err := val.As(&root); err != nil {
+		t.Fatalf("as root: %v", err)
+	}
+	if err := root["dot1x"].As(&dot1x); err != nil {
+		t.Fatalf("as dot1x: %v (%v)", err, root["dot1x"])
+	}
+	var s string
+	if err := dot1x["idle_timeout"].As(&s); err != nil || s != "5m0s" {
+		t.Errorf("dot1x.idle_timeout = %v (%v), want 5m0s", dot1x["idle_timeout"], err)
+	}
+	if err := dot1x["ctrl"].As(&s); err != nil || s != "mac_based" {
+		t.Errorf("dot1x.ctrl = %v (%v), want mac_based", dot1x["ctrl"], err)
+	}
+}

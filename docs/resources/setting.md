@@ -344,7 +344,7 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean) Whether netconsole logging is enabled.
+- `enabled` (Boolean) Whether netconsole logging is enabled. Defaults to `false` when `syslog` is configured and this is not set.
 - `host` (String) Netconsole host.
 - `port` (Number) Netconsole port (1-65535).
 
