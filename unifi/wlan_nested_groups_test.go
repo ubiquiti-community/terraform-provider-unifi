@@ -353,8 +353,12 @@ func TestWLANNestedGroups_roundTrip(t *testing.T) {
 	if !fresh.WPA3.Equal(wlanWPA3Default()) {
 		t.Errorf("fresh wpa3 = %v, want %v", fresh.WPA3, wlanWPA3Default())
 	}
-	if !fresh.Radius.Equal(wlanRadiusDefault()) {
-		t.Errorf("fresh radius = %v, want %v", fresh.Radius, wlanRadiusDefault())
+	freshRadius := types.ObjectValueMust(wlanRadiusAttrTypes(), map[string]attr.Value{
+		"profile_id":       types.StringNull(),
+		"mac_auth_enabled": types.BoolValue(false),
+	})
+	if !fresh.Radius.Equal(freshRadius) {
+		t.Errorf("fresh radius = %v, want %v", fresh.Radius, freshRadius)
 	}
 	if !fresh.ApGroup.Equal(wlanApGroupDefault()) {
 		t.Errorf("fresh ap_group = %v, want %v", fresh.ApGroup, wlanApGroupDefault())
