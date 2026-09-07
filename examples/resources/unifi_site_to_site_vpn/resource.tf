@@ -16,14 +16,18 @@ resource "unifi_site_to_site_vpn" "branch" {
   pre_shared_key_wo = ephemeral.vault_kv_secret_v2.s2s.data["psk"]
   remote_subnets    = ["10.10.0.0/16"]
 
-  profile        = "customized"
-  ike_encryption = "aes256"
-  ike_hash       = "sha256"
-  ike_dh_group   = 14
-  esp_encryption = "aes256"
-  esp_hash       = "sha256"
-  esp_dh_group   = 14
-  pfs            = true
+  profile = "customized"
+  ike = {
+    encryption = "aes256"
+    hash       = "sha256"
+    dh_group   = 14
+  }
+  esp = {
+    encryption = "aes256"
+    hash       = "sha256"
+    dh_group   = 14
+  }
+  pfs = true
 }
 
 # Dynamic routing learns remote routes over the tunnel, so no static remote

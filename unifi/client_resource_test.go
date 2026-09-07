@@ -1025,6 +1025,8 @@ func nullPortOverrideAttrValues() map[string]attr.Value {
 			vals[name] = types.SetNull(tt.ElemType)
 		case timetypes.GoDurationType:
 			vals[name] = timetypes.NewGoDurationNull()
+		case basetypes.ObjectType:
+			vals[name] = types.ObjectNull(tt.AttrTypes)
 		}
 		// Any unhandled attr type is intentionally left out so ObjectValue fails
 		// loudly (signalling the helper needs updating) rather than silently.

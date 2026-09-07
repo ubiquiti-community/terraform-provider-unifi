@@ -3,10 +3,15 @@ package unifi
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
@@ -34,12 +39,12 @@ func TestAccRadiusProfile_basic(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"interim_update_enabled",
+						"interim_update.enabled",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"interim_update_interval",
+						"interim_update.interval",
 						"1h0m0s",
 					),
 					resource.TestCheckResourceAttr(
@@ -54,7 +59,7 @@ func TestAccRadiusProfile_basic(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"vlan_enabled",
+						"vlan.enabled",
 						"false",
 					),
 				),
@@ -251,12 +256,12 @@ func TestAccRadiusProfile_withInterimUpdate(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"interim_update_enabled",
+						"interim_update.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"interim_update_interval",
+						"interim_update.interval",
 						"30m0s",
 					),
 				),
@@ -280,12 +285,12 @@ func TestAccRadiusProfile_withVlan(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"vlan_enabled",
+						"vlan.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"vlan_wlan_mode",
+						"vlan.wlan_mode",
 						"required",
 					),
 				),
@@ -319,7 +324,7 @@ func TestAccRadiusProfile_update(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"interim_update_interval",
+						"interim_update.interval",
 						"1h0m0s",
 					),
 				),
@@ -339,12 +344,12 @@ func TestAccRadiusProfile_update(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"interim_update_enabled",
+						"interim_update.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_profile.test",
-						"interim_update_interval",
+						"interim_update.interval",
 						"30m0s",
 					),
 				),
@@ -446,10 +451,13 @@ resource "unifi_radius_profile" "test" {
 func testAccRadiusProfileConfig_withInterimUpdate() string {
 	return `
 resource "unifi_radius_profile" "test" {
-  name                    = "tfacc-radius-profile-interim"
-  accounting_enabled      = true
-  interim_update_enabled  = true
-  interim_update_interval = "30m0s"
+  name               = "tfacc-radius-profile-interim"
+  accounting_enabled = true
+
+  interim_update = {
+    enabled  = true
+    interval = "30m0s"
+  }
 }
 `
 }
@@ -457,9 +465,12 @@ resource "unifi_radius_profile" "test" {
 func testAccRadiusProfileConfig_withVlan() string {
 	return `
 resource "unifi_radius_profile" "test" {
-  name           = "tfacc-radius-profile-vlan"
-  vlan_enabled   = true
-  vlan_wlan_mode = "required"
+  name = "tfacc-radius-profile-vlan"
+
+  vlan = {
+    enabled   = true
+    wlan_mode = "required"
+  }
 }
 `
 }
@@ -467,10 +478,13 @@ resource "unifi_radius_profile" "test" {
 func testAccRadiusProfileConfig_updated() string {
 	return `
 resource "unifi_radius_profile" "test" {
-  name                    = "tfacc-radius-profile-updated"
-  accounting_enabled      = true
-  interim_update_enabled  = true
-  interim_update_interval = "30m0s"
+  name               = "tfacc-radius-profile-updated"
+  accounting_enabled = true
+
+  interim_update = {
+    enabled  = true
+    interval = "30m0s"
+  }
 }
 `
 }
@@ -537,13 +551,19 @@ func Test_radiusProfileResource_Schema(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	for _, attr := range []string{
-		"id", "site", "name", "accounting_enabled", "interim_update_enabled",
-		"interim_update_interval", "use_usg_acct_server", "use_usg_auth_server",
-		"vlan_enabled", "vlan_wlan_mode", "timeouts",
+	for _, name := range []string{
+		"id", "site", "name", "accounting_enabled", "interim_update",
+		"use_usg_acct_server", "use_usg_auth_server", "vlan", "timeouts",
 	} {
-		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("missing attribute %q", attr)
+		if _, ok := resp.Schema.Attributes[name]; !ok {
+			t.Errorf("missing attribute %q", name)
+		}
+	}
+	for _, flat := range []string{
+		"interim_update_enabled", "interim_update_interval", "vlan_enabled", "vlan_wlan_mode",
+	} {
+		if _, ok := resp.Schema.Attributes[flat]; ok {
+			t.Errorf("flat attribute %q should have been nested", flat)
 		}
 	}
 }
@@ -551,8 +571,10 @@ func Test_radiusProfileResource_Schema(t *testing.T) {
 func Test_radiusProfileResource_UpgradeState(t *testing.T) {
 	r := &radiusProfileResource{}
 	upgraders := r.UpgradeState(context.Background())
-	if _, ok := upgraders[0]; !ok {
-		t.Error("expected state upgrader for version 0")
+	for _, v := range []int64{0, 1} {
+		if _, ok := upgraders[v]; !ok {
+			t.Errorf("expected state upgrader for version %d", v)
+		}
 	}
 }
 
@@ -588,15 +610,27 @@ func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
 	ctx := context.Background()
 	r := &radiusProfileResource{}
 
+	vlanObj := func(enabled bool, mode string) types.Object {
+		return types.ObjectValueMust(radiusProfileVlanAttrTypes(), map[string]attr.Value{
+			"enabled":   types.BoolValue(enabled),
+			"wlan_mode": types.StringValue(mode),
+		})
+	}
+
 	t.Run("plan values override state", func(t *testing.T) {
 		plan := &radiusProfileResourceModel{
-			Name:                 types.StringValue("new-profile"),
-			AccountingEnabled:    types.BoolValue(true),
-			InterimUpdateEnabled: types.BoolValue(true),
-			UseUSGAcctServer:     types.BoolValue(true),
-			UseUSGAuthServer:     types.BoolValue(false),
-			VlanEnabled:          types.BoolValue(true),
-			VlanWlanMode:         types.StringValue("required"),
+			Name:              types.StringValue("new-profile"),
+			AccountingEnabled: types.BoolValue(true),
+			InterimUpdate: types.ObjectValueMust(
+				radiusProfileInterimUpdateAttrTypes(),
+				map[string]attr.Value{
+					"enabled":  types.BoolValue(true),
+					"interval": timetypes.NewGoDurationValue(30 * time.Minute),
+				},
+			),
+			UseUSGAcctServer: types.BoolValue(true),
+			UseUSGAuthServer: types.BoolValue(false),
+			Vlan:             vlanObj(true, "required"),
 			AuthServer: []radiusServerModel{
 				{
 					IP:     types.StringValue("1.2.3.4"),
@@ -607,14 +641,13 @@ func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
 			AcctServer: []radiusServerModel{},
 		}
 		state := &radiusProfileResourceModel{
-			ID:                   types.StringValue("prof-1"),
-			Name:                 types.StringValue("old-profile"),
-			AccountingEnabled:    types.BoolValue(false),
-			InterimUpdateEnabled: types.BoolValue(false),
-			UseUSGAcctServer:     types.BoolValue(false),
-			UseUSGAuthServer:     types.BoolValue(false),
-			VlanEnabled:          types.BoolValue(false),
-			VlanWlanMode:         types.StringValue("disabled"),
+			ID:                types.StringValue("prof-1"),
+			Name:              types.StringValue("old-profile"),
+			AccountingEnabled: types.BoolValue(false),
+			InterimUpdate:     radiusProfileInterimUpdateDefault(),
+			UseUSGAcctServer:  types.BoolValue(false),
+			UseUSGAuthServer:  types.BoolValue(false),
+			Vlan:              vlanObj(false, "disabled"),
 		}
 		r.applyPlanToState(ctx, plan, state)
 		if state.Name.ValueString() != "new-profile" {
@@ -623,8 +656,11 @@ func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
 		if !state.AccountingEnabled.ValueBool() {
 			t.Error("AccountingEnabled should be true")
 		}
-		if state.VlanWlanMode.ValueString() != "required" {
-			t.Errorf("VlanWlanMode = %q, want required", state.VlanWlanMode.ValueString())
+		if !state.Vlan.Equal(plan.Vlan) {
+			t.Errorf("vlan = %v, want %v", state.Vlan, plan.Vlan)
+		}
+		if !state.InterimUpdate.Equal(plan.InterimUpdate) {
+			t.Errorf("interim_update = %v, want %v", state.InterimUpdate, plan.InterimUpdate)
 		}
 		if len(state.AuthServer) != 1 {
 			t.Errorf("AuthServer length = %d, want 1", len(state.AuthServer))
@@ -637,20 +673,19 @@ func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
 
 	t.Run("null plan values leave state unchanged", func(t *testing.T) {
 		plan := &radiusProfileResourceModel{
-			Name:                 types.StringNull(),
-			AccountingEnabled:    types.BoolNull(),
-			InterimUpdateEnabled: types.BoolNull(),
-			UseUSGAcctServer:     types.BoolNull(),
-			UseUSGAuthServer:     types.BoolNull(),
-			VlanEnabled:          types.BoolNull(),
-			VlanWlanMode:         types.StringNull(),
-			AuthServer:           nil,
-			AcctServer:           nil,
+			Name:              types.StringNull(),
+			AccountingEnabled: types.BoolNull(),
+			InterimUpdate:     types.ObjectNull(radiusProfileInterimUpdateAttrTypes()),
+			UseUSGAcctServer:  types.BoolNull(),
+			UseUSGAuthServer:  types.BoolNull(),
+			Vlan:              types.ObjectNull(radiusProfileVlanAttrTypes()),
+			AuthServer:        nil,
+			AcctServer:        nil,
 		}
 		state := &radiusProfileResourceModel{
 			Name:              types.StringValue("keep-profile"),
 			AccountingEnabled: types.BoolValue(true),
-			VlanWlanMode:      types.StringValue("optional"),
+			Vlan:              vlanObj(false, "optional"),
 		}
 		r.applyPlanToState(ctx, plan, state)
 		if state.Name.ValueString() != "keep-profile" {
@@ -658,6 +693,23 @@ func Test_radiusProfileResource_applyPlanToState(t *testing.T) {
 		}
 		if !state.AccountingEnabled.ValueBool() {
 			t.Error("AccountingEnabled should be preserved as true")
+		}
+		if !state.Vlan.Equal(vlanObj(false, "optional")) {
+			t.Errorf("vlan should be preserved, got %v", state.Vlan)
+		}
+	})
+
+	t.Run("unset nested leaves keep their state value", func(t *testing.T) {
+		plan := &radiusProfileResourceModel{
+			Vlan: types.ObjectValueMust(radiusProfileVlanAttrTypes(), map[string]attr.Value{
+				"enabled":   types.BoolValue(true),
+				"wlan_mode": types.StringNull(),
+			}),
+		}
+		state := &radiusProfileResourceModel{Vlan: vlanObj(false, "optional")}
+		r.applyPlanToState(ctx, plan, state)
+		if !state.Vlan.Equal(vlanObj(true, "optional")) {
+			t.Errorf("vlan = %v, want enabled=true wlan_mode=optional", state.Vlan)
 		}
 	})
 }
@@ -668,17 +720,22 @@ func Test_radiusProfileResource_modelToRadiusProfile(t *testing.T) {
 
 	t.Run("basic fields are converted", func(t *testing.T) {
 		model := &radiusProfileResourceModel{
-			Name:                 types.StringValue("my-profile"),
-			AccountingEnabled:    types.BoolValue(true),
-			InterimUpdateEnabled: types.BoolValue(false),
-			UseUSGAcctServer:     types.BoolValue(false),
-			UseUSGAuthServer:     types.BoolValue(false),
-			VlanEnabled:          types.BoolValue(false),
-			VlanWlanMode:         types.StringValue("disabled"),
-			AuthServer:           []radiusServerModel{},
-			AcctServer:           []radiusServerModel{},
+			Name:              types.StringValue("my-profile"),
+			AccountingEnabled: types.BoolValue(true),
+			InterimUpdate:     radiusProfileInterimUpdateDefault(),
+			UseUSGAcctServer:  types.BoolValue(false),
+			UseUSGAuthServer:  types.BoolValue(false),
+			Vlan: types.ObjectValueMust(radiusProfileVlanAttrTypes(), map[string]attr.Value{
+				"enabled":   types.BoolValue(false),
+				"wlan_mode": types.StringValue("disabled"),
+			}),
+			AuthServer: []radiusServerModel{},
+			AcctServer: []radiusServerModel{},
 		}
-		got := r.modelToRadiusProfile(ctx, model)
+		got, diags := r.modelToRadiusProfile(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToRadiusProfile() diagnostics: %v", diags)
+		}
 		if got == nil {
 			t.Fatal("modelToRadiusProfile() returned nil")
 		}
@@ -698,7 +755,7 @@ func Test_radiusProfileResource_modelToRadiusProfile(t *testing.T) {
 		model := &radiusProfileResourceModel{
 			Name:              types.StringValue("prof-with-servers"),
 			AccountingEnabled: types.BoolValue(false),
-			VlanWlanMode:      types.StringValue(""),
+			Vlan:              radiusProfileVlanDefault(),
 			AuthServer: []radiusServerModel{
 				{
 					IP:     types.StringValue("10.0.0.1"),
@@ -714,7 +771,10 @@ func Test_radiusProfileResource_modelToRadiusProfile(t *testing.T) {
 				},
 			},
 		}
-		got := r.modelToRadiusProfile(ctx, model)
+		got, diags := r.modelToRadiusProfile(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToRadiusProfile() diagnostics: %v", diags)
+		}
 		if len(got.AuthServers) != 1 {
 			t.Fatalf("AuthServers length = %d, want 1", len(got.AuthServers))
 		}
@@ -756,7 +816,9 @@ func Test_radiusProfileResource_radiusProfileToModel(t *testing.T) {
 			},
 		}
 		model := &radiusProfileResourceModel{}
-		r.radiusProfileToModel(ctx, profile, model, "default")
+		if d := r.radiusProfileToModel(ctx, profile, model, "default"); d.HasError() {
+			t.Fatalf("radiusProfileToModel() diagnostics: %v", d)
+		}
 
 		if model.ID.ValueString() != "prof-1" {
 			t.Errorf("ID = %q, want prof-1", model.ID.ValueString())
@@ -773,11 +835,19 @@ func Test_radiusProfileResource_radiusProfileToModel(t *testing.T) {
 		if !model.UseUSGAuthServer.ValueBool() {
 			t.Error("UseUSGAuthServer should be true")
 		}
-		if !model.VlanEnabled.ValueBool() {
-			t.Error("VlanEnabled should be true")
+		vlan := model.Vlan.Attributes()
+		if !attrAs[types.Bool](t, vlan["enabled"]).ValueBool() {
+			t.Error("vlan.enabled should be true")
 		}
-		if model.VlanWlanMode.ValueString() != "required" {
-			t.Errorf("VlanWlanMode = %q, want required", model.VlanWlanMode.ValueString())
+		if got := attrAs[types.String](t, vlan["wlan_mode"]).ValueString(); got != "required" {
+			t.Errorf("vlan.wlan_mode = %q, want required", got)
+		}
+		iu := model.InterimUpdate.Attributes()
+		if attrAs[types.Bool](t, iu["enabled"]).ValueBool() {
+			t.Error("interim_update.enabled should be false")
+		}
+		if got := attrAs[timetypes.GoDuration](t, iu["interval"]).ValueString(); got != "1h0m0s" {
+			t.Errorf("interim_update.interval = %q, want 1h0m0s", got)
 		}
 		if len(model.AuthServer) != 1 {
 			t.Fatalf("AuthServer length = %d, want 1", len(model.AuthServer))
@@ -804,7 +874,9 @@ func Test_radiusProfileResource_radiusProfileToModel(t *testing.T) {
 			},
 		}
 		model := &radiusProfileResourceModel{}
-		r.radiusProfileToModel(ctx, profile, model, "default")
+		if d := r.radiusProfileToModel(ctx, profile, model, "default"); d.HasError() {
+			t.Fatalf("radiusProfileToModel() diagnostics: %v", d)
+		}
 		if len(model.AuthServer) != 1 {
 			t.Fatalf("AuthServer length = %d, want 1", len(model.AuthServer))
 		}
@@ -821,7 +893,9 @@ func Test_radiusProfileResource_radiusProfileToModel(t *testing.T) {
 			AcctServers: nil,
 		}
 		model := &radiusProfileResourceModel{}
-		r.radiusProfileToModel(ctx, profile, model, "site1")
+		if d := r.radiusProfileToModel(ctx, profile, model, "site1"); d.HasError() {
+			t.Fatalf("radiusProfileToModel() diagnostics: %v", d)
+		}
 		if model.AuthServer == nil {
 			t.Error("AuthServer should be empty slice, not nil")
 		}
@@ -874,4 +948,211 @@ func TestAccRadiusProfileList_basic(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestRadiusProfileUpgradeState_nestsPrefixedGroups guards the v1 -> v2 schema
+// upgrade: the flat interim_update_* and vlan_* attributes move into nested
+// objects. The v0 upgrader must apply the same nesting after its integer ->
+// duration rewrite, since every upgrader targets the current schema.
+func TestRadiusProfileUpgradeState_nestsPrefixedGroups(t *testing.T) {
+	ctx := context.Background()
+	r := &radiusProfileResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Schema.Version != 2 {
+		t.Fatalf("radius profile schema Version = %d, want 2", schemaResp.Schema.Version)
+	}
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	ups := r.UpgradeState(ctx)
+	for _, v := range []int64{0, 1} {
+		if _, ok := ups[v]; !ok {
+			t.Fatalf("no upgrader registered for schema version %d", v)
+		}
+	}
+
+	upgrade := func(t *testing.T, version int64, prior string) map[string]tftypes.Value {
+		t.Helper()
+		resp := &fwresource.UpgradeStateResponse{}
+		ups[version].StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+			RawState: &tfprotov6.RawState{JSON: []byte(prior)},
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("upgrade from v%d failed: %v", version, resp.Diagnostics)
+		}
+		val, err := resp.DynamicValue.Unmarshal(schemaType)
+		if err != nil {
+			t.Fatalf("unmarshal upgraded value: %v", err)
+		}
+		var root map[string]tftypes.Value
+		if err := val.As(&root); err != nil {
+			t.Fatalf("as object: %v", err)
+		}
+		return root
+	}
+	obj := func(t *testing.T, v tftypes.Value, name string) map[string]tftypes.Value {
+		t.Helper()
+		var m map[string]tftypes.Value
+		if err := v.As(&m); err != nil {
+			t.Fatalf("%s: as object: %v (value %v)", name, err, v)
+		}
+		return m
+	}
+	str := func(t *testing.T, v tftypes.Value, name, want string) {
+		t.Helper()
+		var s string
+		if err := v.As(&s); err != nil || s != want {
+			t.Errorf("%s = %v (%v), want %q", name, v, err, want)
+		}
+	}
+	boolean := func(t *testing.T, v tftypes.Value, name string, want bool) {
+		t.Helper()
+		var b bool
+		if err := v.As(&b); err != nil || b != want {
+			t.Errorf("%s = %v (%v), want %v", name, v, err, want)
+		}
+	}
+
+	t.Run("v1 nests interim_update and vlan", func(t *testing.T) {
+		root := upgrade(t, 1, `{
+			"id": "rp-1", "site": "default", "name": "corp", "accounting_enabled": true,
+			"interim_update_enabled": true, "interim_update_interval": "30m0s",
+			"use_usg_acct_server": false, "use_usg_auth_server": true,
+			"vlan_enabled": true, "vlan_wlan_mode": "required",
+			"auth_server": [{"ip": "10.0.0.1", "port": 1812, "secret": "s"}],
+			"acct_server": []
+		}`)
+		for _, flat := range []string{
+			"interim_update_enabled", "interim_update_interval", "vlan_enabled", "vlan_wlan_mode",
+		} {
+			if _, exists := root[flat]; exists {
+				t.Errorf("flat attribute %q survived the upgrade", flat)
+			}
+		}
+		iu := obj(t, root["interim_update"], "interim_update")
+		boolean(t, iu["enabled"], "interim_update.enabled", true)
+		str(t, iu["interval"], "interim_update.interval", "30m0s")
+		vlan := obj(t, root["vlan"], "vlan")
+		boolean(t, vlan["enabled"], "vlan.enabled", true)
+		str(t, vlan["wlan_mode"], "vlan.wlan_mode", "required")
+		// Attributes that were not nested survive untouched.
+		boolean(t, root["use_usg_auth_server"], "use_usg_auth_server", true)
+		var servers []tftypes.Value
+		if err := root["auth_server"].As(&servers); err != nil || len(servers) != 1 {
+			t.Errorf("auth_server = %v (%v), want one entry", root["auth_server"], err)
+		}
+	})
+
+	t.Run("v0 converts the interval then nests", func(t *testing.T) {
+		root := upgrade(t, 0, `{
+			"id": "rp-0", "site": "default", "name": "legacy",
+			"interim_update_enabled": false, "interim_update_interval": 3600,
+			"vlan_enabled": false, "vlan_wlan_mode": ""
+		}`)
+		if _, exists := root["interim_update_interval"]; exists {
+			t.Error("flat interim_update_interval survived the v0 upgrade")
+		}
+		iu := obj(t, root["interim_update"], "interim_update")
+		boolean(t, iu["enabled"], "interim_update.enabled", false)
+		str(t, iu["interval"], "interim_update.interval", "1h0m0s")
+		vlan := obj(t, root["vlan"], "vlan")
+		boolean(t, vlan["enabled"], "vlan.enabled", false)
+		str(t, vlan["wlan_mode"], "vlan.wlan_mode", "")
+	})
+
+	t.Run("state without a group leaves its object null", func(t *testing.T) {
+		root := upgrade(t, 1, `{"id": "rp-2", "site": "default", "name": "bare"}`)
+		if !root["interim_update"].IsNull() {
+			t.Errorf("interim_update = %v, want null", root["interim_update"])
+		}
+		if !root["vlan"].IsNull() {
+			t.Errorf("vlan = %v, want null", root["vlan"])
+		}
+	})
+}
+
+// TestRadiusProfileNestedGroups_wireAndReadBack checks that the nested
+// interim_update and vlan groups are written to and read back from the API
+// struct, that the object defaults reproduce what the flat attributes sent
+// when omitted, and that a null/unknown group contributes nothing.
+func TestRadiusProfileNestedGroups_wireAndReadBack(t *testing.T) {
+	ctx := context.Background()
+	r := &radiusProfileResource{}
+
+	model := &radiusProfileResourceModel{
+		Name:              types.StringValue("corp"),
+		AccountingEnabled: types.BoolValue(true),
+		InterimUpdate: types.ObjectValueMust(
+			radiusProfileInterimUpdateAttrTypes(),
+			map[string]attr.Value{
+				"enabled":  types.BoolValue(true),
+				"interval": timetypes.NewGoDurationValue(30 * time.Minute),
+			},
+		),
+		Vlan: types.ObjectValueMust(radiusProfileVlanAttrTypes(), map[string]attr.Value{
+			"enabled":   types.BoolValue(true),
+			"wlan_mode": types.StringValue("required"),
+		}),
+	}
+	api, diags := r.modelToRadiusProfile(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToRadiusProfile: %v", diags)
+	}
+	if !api.InterimUpdateEnabled || api.InterimUpdateInterval == nil ||
+		*api.InterimUpdateInterval != 1800 {
+		t.Errorf("interim_update: %v %v", api.InterimUpdateEnabled, api.InterimUpdateInterval)
+	}
+	if !api.VLANEnabled || api.VLANWLANMode != "required" {
+		t.Errorf("vlan: %v %q", api.VLANEnabled, api.VLANWLANMode)
+	}
+
+	// Read back: both groups are rebuilt from the API response.
+	var back radiusProfileResourceModel
+	if d := r.radiusProfileToModel(ctx, api, &back, "default"); d.HasError() {
+		t.Fatalf("radiusProfileToModel: %v", d)
+	}
+	if !back.InterimUpdate.Equal(model.InterimUpdate) {
+		t.Errorf("interim_update read back = %v, want %v", back.InterimUpdate, model.InterimUpdate)
+	}
+	if !back.Vlan.Equal(model.Vlan) {
+		t.Errorf("vlan read back = %v, want %v", back.Vlan, model.Vlan)
+	}
+
+	// The object defaults reproduce what the flat defaults used to send.
+	defaults := &radiusProfileResourceModel{
+		Name:          types.StringValue("plain"),
+		InterimUpdate: radiusProfileInterimUpdateDefault(),
+		Vlan:          radiusProfileVlanDefault(),
+	}
+	api, diags = r.modelToRadiusProfile(ctx, defaults)
+	if diags.HasError() {
+		t.Fatalf("modelToRadiusProfile (defaults): %v", diags)
+	}
+	if api.InterimUpdateEnabled || api.InterimUpdateInterval == nil ||
+		*api.InterimUpdateInterval != 3600 {
+		t.Errorf(
+			"default interim_update: %v %v",
+			api.InterimUpdateEnabled,
+			api.InterimUpdateInterval,
+		)
+	}
+	if api.VLANEnabled || api.VLANWLANMode != "" {
+		t.Errorf("default vlan: %v %q", api.VLANEnabled, api.VLANWLANMode)
+	}
+
+	// A null or unknown group contributes nothing, as unset flat attributes did.
+	bare := &radiusProfileResourceModel{
+		Name:          types.StringValue("bare"),
+		InterimUpdate: types.ObjectNull(radiusProfileInterimUpdateAttrTypes()),
+		Vlan:          types.ObjectUnknown(radiusProfileVlanAttrTypes()),
+	}
+	api, diags = r.modelToRadiusProfile(ctx, bare)
+	if diags.HasError() {
+		t.Fatalf("modelToRadiusProfile (bare): %v", diags)
+	}
+	if api.InterimUpdateEnabled || api.InterimUpdateInterval != nil ||
+		api.VLANEnabled || api.VLANWLANMode != "" {
+		t.Errorf("null/unknown groups leaked into the request: %+v", api)
+	}
 }

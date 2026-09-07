@@ -49,6 +49,10 @@ resource "unifi_firewall_group" "ipv6_servers" {
 #   rule_index = 2010
 #   protocol   = "tcp"
 #
-#   src_firewall_group_ids = [unifi_firewall_group.admin_hosts.id]
-#   dst_firewall_group_ids = [unifi_firewall_group.web_ports.id]
+#   source = {
+#     firewall_group_ids = [unifi_firewall_group.admin_hosts.id]
+#   }
+#   destination = {
+#     firewall_group_ids = [unifi_firewall_group.web_ports.id]
+#   }
 # }

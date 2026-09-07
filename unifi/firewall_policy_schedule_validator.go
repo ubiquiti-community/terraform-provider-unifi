@@ -96,29 +96,30 @@ func (firewallPolicyScheduleValidator) ValidateObject(
 		}
 	}
 	requireTime := func(oneTime bool) {
-		if s.TimeAllDay.IsUnknown() {
+		allDay, rangeStart, rangeEnd := firewallPolicyScheduleTimeFields(s.Time)
+		if allDay.IsUnknown() {
 			return
 		}
-		if s.TimeAllDay.IsNull() {
+		if allDay.IsNull() {
 			resp.Diagnostics.AddAttributeError(
 				req.Path,
 				"Incomplete Schedule",
-				fmt.Sprintf("Schedule mode %s requires time_all_day.", mode),
+				fmt.Sprintf("Schedule mode %s requires time.all_day.", mode),
 			)
 			return
 		}
-		if s.TimeAllDay.ValueBool() {
+		if allDay.ValueBool() {
 			if oneTime {
 				resp.Diagnostics.AddAttributeError(
 					req.Path,
 					"Invalid One-Time Schedule",
-					"ONE_TIME_ONLY requires time_all_day = false and an explicit time range.",
+					"ONE_TIME_ONLY requires time.all_day = false and an explicit time.range.",
 				)
 			}
 			return
 		}
-		requireString("time_range_start", s.TimeRangeStart)
-		requireString("time_range_end", s.TimeRangeEnd)
+		requireString("time.range.start", rangeStart)
+		requireString("time.range.end", rangeEnd)
 	}
 
 	switch mode {

@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -22,6 +23,24 @@ import (
 //
 // The read path already normalizes an omitted field to "none" / "default"
 // (#414), so the schema Default served only to override live values.
+// lookupSchemaAttribute resolves a dotted path (e.g. "ipv6.interface_type")
+// through nested attributes.
+func lookupSchemaAttribute(
+	attrs map[string]schema.Attribute,
+	path string,
+) (schema.Attribute, bool) {
+	head, rest, nested := strings.Cut(path, ".")
+	attr, ok := attrs[head]
+	if !ok || !nested {
+		return attr, ok
+	}
+	sn, ok := attr.(schema.SingleNestedAttribute)
+	if !ok {
+		return nil, false
+	}
+	return lookupSchemaAttribute(sn.Attributes, rest)
+}
+
 func TestNetworkNoStaticDefaultsOnAdoptedAttributes(t *testing.T) {
 	var resp resource.SchemaResponse
 	(&networkResource{}).Schema(
@@ -33,8 +52,8 @@ func TestNetworkNoStaticDefaultsOnAdoptedAttributes(t *testing.T) {
 		t.Fatalf("schema: %v", resp.Diagnostics)
 	}
 
-	for _, name := range []string{"setting_preference", "ipv6_interface_type"} {
-		attr, ok := resp.Schema.Attributes[name]
+	for _, name := range []string{"setting_preference", "ipv6.interface_type"} {
+		attr, ok := lookupSchemaAttribute(resp.Schema.Attributes, name)
 		if !ok {
 			t.Errorf("attribute %q is missing from the schema", name)
 			continue

@@ -21,12 +21,12 @@ data "unifi_client_qos_rate" "wifi" {
 
 output "qos_rate_max_down" {
   description = "The maximum download rate (kbps) for the QoS group."
-  value       = data.unifi_client_qos_rate.wifi.qos_rate_max_down
+  value       = data.unifi_client_qos_rate.wifi.qos_rate.max_down
 }
 
 output "qos_rate_max_up" {
   description = "The maximum upload rate (kbps) for the QoS group."
-  value       = data.unifi_client_qos_rate.wifi.qos_rate_max_up
+  value       = data.unifi_client_qos_rate.wifi.qos_rate.max_up
 }
 ```
 
@@ -45,8 +45,7 @@ output "qos_rate_max_up" {
 ### Read-Only
 
 - `id` (String) The ID of this client QOS rate.
-- `qos_rate_max_down` (Number) The maximum download rate.
-- `qos_rate_max_up` (Number) The maximum upload rate.
+- `qos_rate` (Attributes) QoS rate limits applied to clients in this group, in kbps. (see [below for nested schema](#nestedatt--qos_rate))
 
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`
@@ -54,3 +53,12 @@ output "qos_rate_max_up" {
 Optional:
 
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--qos_rate"></a>
+### Nested Schema for `qos_rate`
+
+Read-Only:
+
+- `max_down` (Number) The maximum download rate.
+- `max_up` (Number) The maximum upload rate.

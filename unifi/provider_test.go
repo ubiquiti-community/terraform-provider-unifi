@@ -203,7 +203,7 @@ func requireRadios(t *testing.T, mac string, radios ...string) {
 		Password:       os.Getenv("UNIFI_PASSWORD"),
 		APIKey:         os.Getenv("UNIFI_API_KEY"),
 		AllowInsecure:  true,
-		TimeoutSeconds: util.Ptr(30),
+		TimeoutSeconds: new(30),
 	})
 	if err != nil {
 		t.Fatalf("connecting to the controller: %v", err)
