@@ -1653,7 +1653,7 @@ func (r *wanResource) modelToNetwork(
 	network := &unifi.Network{
 		Name:            model.Name.ValueStringPointer(),
 		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
-		WANNetworkGroup: util.Ptr(networkGroup),
+		WANNetworkGroup: new(networkGroup),
 		HiddenID:        networkGroup,
 		Enabled:         model.Enabled.ValueBool(),
 	}
