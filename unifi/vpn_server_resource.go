@@ -184,7 +184,7 @@ func vpnServerCertPairPointers(
 	obj types.Object,
 ) (*string, *string, diag.Diagnostics) {
 	if obj.IsUnknown() {
-		return util.Ptr(""), util.Ptr(""), nil
+		return new(""), new(""), nil
 	}
 	pair, ok, diags := util.ObjectAs[vpnServerCertPairModel](ctx, obj)
 	if !ok {
@@ -922,7 +922,7 @@ func (r *vpnServerResource) modelToNetwork(
 		Purpose:           unifi.PurposeUserVPN,
 		Enabled:           model.Enabled.ValueBool(),
 		IPSubnet:          model.Subnet.ValueStringPointer(),
-		SettingPreference: util.Ptr("manual"),
+		SettingPreference: new("manual"),
 	}
 
 	// Determine VPN type from which nested block is configured
@@ -932,11 +932,11 @@ func (r *vpnServerResource) modelToNetwork(
 
 	switch {
 	case hasWireguard:
-		network.VPNType = util.Ptr("wireguard-server")
+		network.VPNType = new("wireguard-server")
 	case hasL2TP:
-		network.VPNType = util.Ptr("l2tp-server")
+		network.VPNType = new("l2tp-server")
 	case hasOpenVPN:
-		network.VPNType = util.Ptr("openvpn-server")
+		network.VPNType = new("openvpn-server")
 	default:
 		diags.AddError(
 			"Missing VPN Type Configuration",
@@ -961,14 +961,14 @@ func (r *vpnServerResource) modelToNetwork(
 				diags.Append(d...)
 				if !diags.HasError() {
 					if len(dnsServers) > 0 {
-						network.DHCPDDNS1 = dnsServers[0]
+						network.DHCPDDNS1 = new(dnsServers[0])
 						// Default enabled to true when servers are specified
 						if dns.Enabled.IsNull() || dns.Enabled.IsUnknown() {
 							network.DHCPDDNSEnabled = true
 						}
 					}
 					if len(dnsServers) > 1 {
-						network.DHCPDDNS2 = dnsServers[1]
+						network.DHCPDDNS2 = new(dnsServers[1])
 					}
 				}
 			}
@@ -1091,13 +1091,7 @@ func (r *vpnServerResource) networkToModel(
 	// Build DNS nested object
 	{
 		var dnsServersList types.List
-		var dnsServers []string
-		if network.DHCPDDNS1 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS1)
-		}
-		if network.DHCPDDNS2 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS2)
-		}
+		dnsServers := collectNonEmptyStringPointers(network.DHCPDDNS1, network.DHCPDDNS2)
 		if len(dnsServers) > 0 {
 			var d diag.Diagnostics
 			dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)

@@ -1327,7 +1327,7 @@ func Test_settingResource_usgSettingToModel(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("null plan fields produce null model fields", func(t *testing.T) {
-		setting := &settings.Usg{FtpModule: true, SipModule: true}
+		setting := &usgWithGeo{Usg: &settings.Usg{FtpModule: true, SipModule: true}}
 		plan := &settingUSGModel{
 			FtpModule: types.BoolNull(),
 			SipModule: types.BoolNull(),
@@ -1342,7 +1342,7 @@ func Test_settingResource_usgSettingToModel(t *testing.T) {
 	})
 
 	t.Run("non-null plan fields reflect remote value", func(t *testing.T) {
-		setting := &settings.Usg{FtpModule: true, GreModule: false}
+		setting := &usgWithGeo{Usg: &settings.Usg{FtpModule: true, GreModule: false}}
 		plan := &settingUSGModel{
 			FtpModule: types.BoolValue(false),
 			GreModule: types.BoolValue(true),
@@ -1574,7 +1574,7 @@ func Test_settingResource_ipsSettingToModel(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("null plan ips_mode produces null model ips_mode", func(t *testing.T) {
-		setting := &settings.Ips{IPsMode: "ips"}
+		setting := &ipsWithSuppression{Ips: &settings.Ips{IPsMode: "ips"}}
 		plan := &settingIpsModel{
 			IPSMode: types.StringNull(),
 		}
@@ -1592,7 +1592,9 @@ func Test_settingResource_ipsSettingToModel(t *testing.T) {
 	})
 
 	t.Run("non-null plan reflects remote value", func(t *testing.T) {
-		setting := &settings.Ips{IPsMode: "disabled", RestrictTorrents: true}
+		setting := &ipsWithSuppression{
+			Ips: &settings.Ips{IPsMode: "disabled", RestrictTorrents: true},
+		}
 		plan := &settingIpsModel{
 			IPSMode:          types.StringValue("ips"),
 			RestrictTorrents: types.BoolValue(false),
@@ -2007,8 +2009,8 @@ func TestIpsSuppressionFromRaw(t *testing.T) {
 func TestIpsSuppressionRawSetting(t *testing.T) {
 	gid := int64(1)
 	id := int64(2003068)
-	raw := ipsSuppressionRawSetting(&settings.SettingIpsSuppression{
-		Alerts: []settings.SettingIpsAlerts{{
+	raw := ipsSuppressionRawSetting(&settings.IpsSuppression{
+		Alerts: []settings.SettingIpsSuppressionAlerts{{
 			Category:  "emerging-scan",
 			Gid:       &gid,
 			ID:        &id,
@@ -2025,9 +2027,9 @@ func TestIpsSuppressionRawSetting(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	var decoded struct {
-		Key       string                         `json:"key"`
-		Alerts    []settings.SettingIpsAlerts    `json:"alerts"`
-		Whitelist []settings.SettingIpsWhitelist `json:"whitelist"`
+		Key       string                                    `json:"key"`
+		Alerts    []settings.SettingIpsSuppressionAlerts    `json:"alerts"`
+		Whitelist []settings.SettingIpsSuppressionWhitelist `json:"whitelist"`
 	}
 	if err := json.Unmarshal(buf, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -2040,7 +2042,7 @@ func TestIpsSuppressionRawSetting(t *testing.T) {
 	}
 
 	// Fully empty suppression: both lists still serialize as [].
-	raw = ipsSuppressionRawSetting(&settings.SettingIpsSuppression{})
+	raw = ipsSuppressionRawSetting(&settings.IpsSuppression{})
 	buf, err = raw.MarshalJSON()
 	if err != nil {
 		t.Fatalf("marshal empty: %v", err)
@@ -2131,7 +2133,8 @@ func TestUsgGeoRawSetting(t *testing.T) {
 // setting is authoritative and overrides the geo fields of the usg struct,
 // including mapping action back to the legacy block field.
 func TestApplyUsgGeoIPFiltering(t *testing.T) {
-	setting := &settings.Usg{
+	setting := &usgWithGeo{
+		Usg:                   &settings.Usg{},
 		GeoIPFilteringEnabled: false,
 		GeoIPFilteringBlock:   "allow",
 	}
@@ -2514,22 +2517,24 @@ func TestSettingNestedGroups_roundTrip(t *testing.T) {
 	dur := func(d time.Duration) timetypes.GoDuration { return timetypes.NewGoDurationValue(d) }
 
 	t.Run("usg", func(t *testing.T) {
-		api := &settings.Usg{
-			FtpModule:                      true,
+		api := &usgWithGeo{
 			GeoIPFilteringEnabled:          true,
 			GeoIPFilteringBlock:            "block",
 			GeoIPFilteringCountries:        "KP,RU",
 			GeoIPFilteringTrafficDirection: "both",
-			OffloadAccounting:              true,
-			OffloadSch:                     true,
-			TCPCloseTimeout:                10,
-			TCPEstablishedTimeout:          7440,
-			TCPTimeWaitTimeout:             120,
-			UDPOtherTimeout:                30,
-			UDPStreamTimeout:               180,
-			UPnPEnabled:                    true,
-			UPnPSecureMode:                 true,
-			UPnPWANInterface:               "WAN2",
+		}
+		api.Usg = &settings.Usg{
+			FtpModule:             true,
+			OffloadAccounting:     true,
+			OffloadSch:            true,
+			TCPCloseTimeout:       10,
+			TCPEstablishedTimeout: 7440,
+			TCPTimeWaitTimeout:    120,
+			UDPOtherTimeout:       30,
+			UDPStreamTimeout:      180,
+			UPnPEnabled:           true,
+			UPnPSecureMode:        true,
+			UPnPWANInterface:      "WAN2",
 		}
 		// A plan that manages every leaf of every group.
 		plan := &settingUSGModel{
@@ -2598,8 +2603,14 @@ func TestSettingNestedGroups_roundTrip(t *testing.T) {
 		}
 
 		back := r.usgModelToSetting(ctx, model)
-		if *back != *api {
-			t.Errorf("usg round-trip mismatch:\n got %+v\nwant %+v", back, api)
+		if *back.Usg != *api.Usg {
+			t.Errorf("usg round-trip mismatch:\n got %+v\nwant %+v", back.Usg, api.Usg)
+		}
+		if back.GeoIPFilteringEnabled != api.GeoIPFilteringEnabled ||
+			back.GeoIPFilteringBlock != api.GeoIPFilteringBlock ||
+			back.GeoIPFilteringCountries != api.GeoIPFilteringCountries ||
+			back.GeoIPFilteringTrafficDirection != api.GeoIPFilteringTrafficDirection {
+			t.Errorf("usg geo round-trip mismatch:\n got %+v\nwant %+v", back, api)
 		}
 
 		// Unconfigured groups: null on read, nothing on write.
@@ -2627,7 +2638,9 @@ func TestSettingNestedGroups_roundTrip(t *testing.T) {
 			UDP:             types.ObjectNull(usgUDPAttrTypes),
 			UPnP:            types.ObjectUnknown(usgUPnPAttrTypes),
 		})
-		if *empty != (settings.Usg{}) {
+		if *empty.Usg != (settings.Usg{}) || empty.GeoIPFilteringEnabled ||
+			empty.GeoIPFilteringBlock != "" || empty.GeoIPFilteringCountries != "" ||
+			empty.GeoIPFilteringTrafficDirection != "" {
 			t.Errorf("unset usg groups must serialize zero values, got %+v", empty)
 		}
 	})
@@ -2743,13 +2756,13 @@ func TestSettingNestedGroups_roundTrip(t *testing.T) {
 	t.Run("ips suppression", func(t *testing.T) {
 		var diags diag.Diagnostics
 		gid, id := int64(1), int64(2003068)
-		api := &settings.Ips{
-			IPsMode: "disabled",
-			Suppression: &settings.SettingIpsSuppression{
-				Whitelist: []settings.SettingIpsWhitelist{
+		api := &ipsWithSuppression{
+			Ips: &settings.Ips{IPsMode: "disabled"},
+			Suppression: &settings.IpsSuppression{
+				Whitelist: []settings.SettingIpsSuppressionWhitelist{
 					{Direction: "both", Mode: "ip", Value: "10.0.0.5"},
 				},
-				Alerts: []settings.SettingIpsAlerts{
+				Alerts: []settings.SettingIpsSuppressionAlerts{
 					{
 						Category:  "emerging-scan",
 						Gid:       &gid,

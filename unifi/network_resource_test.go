@@ -2665,14 +2665,18 @@ func Test_preserveUnmanagedDhcpServer(t *testing.T) {
 		DHCPDStop:       strPtr("10.0.0.200"),
 		DHCPDLeaseTime:  func() *int64 { v := int64(3600); return &v }(),
 		DHCPDDNSEnabled: true,
-		DHCPDDNS1:       "10.0.0.53",
+		DHCPDDNS1:       new("10.0.0.53"),
 		DHCPDNtpEnabled: true,
 		DHCPDNtp1:       strPtr("10.0.0.123"),
 		DHCPDWins1:      strPtr("10.0.0.44"),
 	}
 
 	t.Run("unmanaged block: current values carried", func(t *testing.T) {
-		network := &unifi.Network{DHCPDEnabled: true, DHCPDDNS1: "", DHCPDNtp1: strPtr("")}
+		network := &unifi.Network{
+			DHCPDEnabled: true,
+			DHCPDDNS1:    new(""),
+			DHCPDNtp1:    strPtr(""),
+		}
 		got := preserveUnmanagedDhcpServer(
 			types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
 			false,
@@ -2682,8 +2686,8 @@ func Test_preserveUnmanagedDhcpServer(t *testing.T) {
 		if !got {
 			t.Fatal("preserveUnmanagedDhcpServer = false, want true")
 		}
-		if network.DHCPDDNS1 != "10.0.0.53" {
-			t.Errorf("DHCPDDNS1 = %q, want carried 10.0.0.53", network.DHCPDDNS1)
+		if derefString(network.DHCPDDNS1) != "10.0.0.53" {
+			t.Errorf("DHCPDDNS1 = %q, want carried 10.0.0.53", derefString(network.DHCPDDNS1))
 		}
 		if network.DHCPDNtp1 == nil || *network.DHCPDNtp1 != "10.0.0.123" {
 			t.Errorf("DHCPDNtp1 = %v, want carried 10.0.0.123", network.DHCPDNtp1)
@@ -2697,7 +2701,7 @@ func Test_preserveUnmanagedDhcpServer(t *testing.T) {
 	})
 
 	t.Run("managed block: untouched", func(t *testing.T) {
-		network := &unifi.Network{DHCPDDNS1: ""}
+		network := &unifi.Network{DHCPDDNS1: new("")}
 		got := preserveUnmanagedDhcpServer(
 			types.ObjectValueMust(dhcpServerModel{}.AttributeTypes(), map[string]attr.Value{
 				"boot":                types.ObjectNull(dhcpBootModel{}.AttributeTypes()),
@@ -2722,8 +2726,8 @@ func Test_preserveUnmanagedDhcpServer(t *testing.T) {
 		if got {
 			t.Fatal("preserveUnmanagedDhcpServer = true, want false for managed block")
 		}
-		if network.DHCPDDNS1 != "" {
-			t.Errorf("DHCPDDNS1 = %q, want untouched empty", network.DHCPDDNS1)
+		if derefString(network.DHCPDDNS1) != "" {
+			t.Errorf("DHCPDDNS1 = %q, want untouched empty", derefString(network.DHCPDDNS1))
 		}
 	})
 
@@ -2742,4 +2746,13 @@ func Test_preserveUnmanagedDhcpServer(t *testing.T) {
 			t.Error("DHCPDEnabled = true, want untouched false (relay requires it off)")
 		}
 	})
+}
+
+// derefString reads a tri-state *string field, which the v10 models use for
+// the dhcpd_dns_1..4 slots.
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
-	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 func TestAccWANFramework_basic(t *testing.T) {
@@ -1088,17 +1087,17 @@ func TestWAN_nestedGroupsRoundTrip(t *testing.T) {
 
 	api := &unifi.Network{
 		ID:                      "wan-1",
-		Name:                    util.Ptr("Internet"),
+		Name:                    new("Internet"),
 		Purpose:                 unifi.PurposeWAN,
-		WANNetworkGroup:         util.Ptr("WAN"),
-		WANType:                 util.Ptr("dhcp"),
+		WANNetworkGroup:         new("WAN"),
+		WANType:                 new("dhcp"),
 		Enabled:                 true,
-		WANIPV6DNS1:             util.Ptr("2606:4700:4700::1111"),
-		WANIPV6DNS2:             util.Ptr(""),
-		WANIPV6DNSPreference:    util.Ptr("manual"),
+		WANIPV6DNS1:             new("2606:4700:4700::1111"),
+		WANIPV6DNS2:             new(""),
+		WANIPV6DNSPreference:    new("manual"),
 		WANDHCPv6PDSize:         ptrInt64(56),
 		WANDHCPv6PDSizeAuto:     true,
-		WANDsliteRemoteHost:     util.Ptr("aftr.isp.net"),
+		WANDsliteRemoteHost:     new("aftr.isp.net"),
 		WANDsliteRemoteHostAuto: true,
 	}
 

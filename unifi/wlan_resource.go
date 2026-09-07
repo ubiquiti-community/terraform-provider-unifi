@@ -142,6 +142,19 @@ func wlanRadiusAttrTypes() map[string]attr.Type {
 	}
 }
 
+// wlanRoamingAssistantModel is a `roaming_assistant_*` nested object.
+type wlanRoamingAssistantModel struct {
+	Enabled types.Bool  `tfsdk:"enabled"`
+	Rssi    types.Int64 `tfsdk:"rssi"`
+}
+
+func wlanRoamingAssistantAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled": types.BoolType,
+		"rssi":    types.Int64Type,
+	}
+}
+
 // wlanApGroupModel is the `ap_group` nested object.
 type wlanApGroupModel struct {
 	IDs  types.Set    `tfsdk:"ids"`
@@ -243,6 +256,8 @@ type wlanFrameworkResourceModel struct {
 	PrivatePresharedKeysEnabled types.Bool   `tfsdk:"private_preshared_keys_enabled"`
 	PrivatePresharedKeys        types.List   `tfsdk:"private_preshared_keys"`
 	Radius                      types.Object `tfsdk:"radius"`
+	RoamingAssistantNa          types.Object `tfsdk:"roaming_assistant_na"`
+	RoamingAssistant6E          types.Object `tfsdk:"roaming_assistant_6e"`
 	NasIDentifierType           types.String `tfsdk:"nas_identifier_type"`
 	Schedule                    types.List   `tfsdk:"schedule"`
 	No2GhzOui                   types.Bool   `tfsdk:"no2ghz_oui"`
@@ -501,15 +516,75 @@ func (r *wlanFrameworkResource) Schema(
 					setvalidator.ValueStringsAre(stringvalidator.OneOf("2g", "5g", "6g")),
 				},
 			},
-			"bandsteering_mode": schema.StringAttribute{
-				MarkdownDescription: "Per-SSID band steering mode. Steers dual-band capable " +
-					"clients toward the less congested / higher-throughput band. Valid values " +
-					"are `off`, `equal` and `prefer_5g`. Requires a controller that exposes " +
-					"per-SSID band steering on the WLAN (Network 9/10.x; on WiFi 6/7 access " +
-					"points this replaces the legacy device-level control). Left unset, the " +
-					"controller default applies.",
+			"roaming_assistant_na": schema.SingleNestedAttribute{
+				MarkdownDescription: "5 GHz roaming assistant. Disconnects clients whose " +
+					"signal drops below `rssi` so they re-associate with a closer AP. " +
+					"Replaces the device-level `radio_table.assisted_roaming_*` attributes, " +
+					"which UniFi Network 10.x moved to the WLAN.",
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable the 5 GHz roaming assistant.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"rssi": schema.Int64Attribute{
+						MarkdownDescription: "Signal strength threshold in dBm, `-80` to `-60`. " +
+							"The controller supplies a value when unset.",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.Int64{
+							int64validator.Between(-80, -60),
+						},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"roaming_assistant_6e": schema.SingleNestedAttribute{
+				MarkdownDescription: "6 GHz roaming assistant. Disconnects clients whose " +
+					"signal drops below `rssi` so they re-associate with a closer AP.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable the 6 GHz roaming assistant.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"rssi": schema.Int64Attribute{
+						MarkdownDescription: "Signal strength threshold in dBm, `-90` to `-70`. " +
+							"The controller supplies a value when unset.",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.Int64{
+							int64validator.Between(-90, -70),
+						},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"bandsteering_mode": schema.StringAttribute{
+				MarkdownDescription: "**Moved to `unifi_device.bandsteering_mode`.** Per-SSID " +
+					"band steering mode (`off`, `equal`, `prefer_5g`), which steers dual-band " +
+					"capable clients toward the less congested / higher-throughput band. " +
+					"UniFi Network 10.x moved band steering off the WLAN back to the access " +
+					"point, so this attribute no longer reaches the controller: set " +
+					"`bandsteering_mode` on the `unifi_device` resource for the AP instead. " +
+					"Still accepted and preserved in state for one release.",
+				DeprecationMessage: "Deprecated: UniFi Network 10.x moved band steering off the WLAN to the access point, where the provider already exposes it as `unifi_device.bandsteering_mode`. This attribute no longer reaches the controller and will be removed in a future release.",
+				Optional:           true,
+				Computed:           true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("off", "equal", "prefer_5g"),
 				},
@@ -1777,29 +1852,26 @@ func (r *wlanFrameworkResource) planToWLAN(
 	var diags diag.Diagnostics
 
 	wlan := &unifi.WLAN{
-		ID:                      plan.ID.ValueString(),
-		Name:                    plan.Name.ValueString(),
-		NetworkID:               plan.NetworkID.ValueString(),
-		UserGroupID:             plan.UserGroupID.ValueString(),
-		Security:                plan.Security.ValueString(),
-		PMFMode:                 plan.PMFMode.ValueString(),
-		Passphrase:              plan.Passphrase.ValueString(),
-		HideSSID:                plan.HideSSID.ValueBool(),
-		IsGuest:                 plan.IsGuest.ValueBool(),
-		Enabled:                 plan.Enabled.ValueBool(),
-		VLANEnabled:             plan.VLANEnabled.ValueBool(),
-		VLAN:                    plan.VLAN.ValueInt64Pointer(),
-		MulticastEnhanceEnabled: plan.MulticastEnhance.ValueBool(),
-		NasIDentifierType:       plan.NasIDentifierType.ValueString(),
-		No2GhzOui:               plan.No2GhzOui.ValueBool(),
-		L2Isolation:             plan.L2Isolation.ValueBool(),
-		ProxyArp:                plan.ProxyArp.ValueBool(),
-		BssTransition:           plan.BssTransition.ValueBool(),
-		UapsdEnabled:            plan.Uapsd.ValueBool(),
-		FastRoamingEnabled:      plan.FastRoamingEnabled.ValueBool(),
-		// Unknown/null → "" → omitempty keeps it off the wire, so controllers
-		// without per-SSID band steering are never sent the key (#388).
-		BandsteeringMode:         plan.BandsteeringMode.ValueString(),
+		ID:                       plan.ID.ValueString(),
+		Name:                     plan.Name.ValueString(),
+		NetworkID:                plan.NetworkID.ValueString(),
+		UserGroupID:              plan.UserGroupID.ValueString(),
+		Security:                 plan.Security.ValueString(),
+		PMFMode:                  plan.PMFMode.ValueString(),
+		Passphrase:               plan.Passphrase.ValueString(),
+		HideSSID:                 plan.HideSSID.ValueBool(),
+		IsGuest:                  plan.IsGuest.ValueBool(),
+		Enabled:                  plan.Enabled.ValueBool(),
+		VLANEnabled:              plan.VLANEnabled.ValueBool(),
+		VLAN:                     plan.VLAN.ValueInt64Pointer(),
+		MulticastEnhanceEnabled:  plan.MulticastEnhance.ValueBool(),
+		NasIDentifierType:        plan.NasIDentifierType.ValueString(),
+		No2GhzOui:                plan.No2GhzOui.ValueBool(),
+		L2Isolation:              plan.L2Isolation.ValueBool(),
+		ProxyArp:                 plan.ProxyArp.ValueBool(),
+		BssTransition:            plan.BssTransition.ValueBool(),
+		UapsdEnabled:             plan.Uapsd.ValueBool(),
+		FastRoamingEnabled:       plan.FastRoamingEnabled.ValueBool(),
 		MinrateSettingPreference: plan.MinrateSettingPreference.ValueString(),
 		MinrateNgEnabled:         plan.MinimumDataRate2GKbps.ValueInt64() > 0,
 		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64Pointer(),
@@ -1849,6 +1921,30 @@ func (r *wlanFrameworkResource) planToWLAN(
 	if ok {
 		wlan.RADIUSProfileID = radius.ProfileID.ValueString()
 		wlan.RADIUSMACAuthEnabled = radius.MacAuthEnabled.ValueBool()
+	}
+
+	na, naOK, d := util.ObjectAs[wlanRoamingAssistantModel](ctx, plan.RoamingAssistantNa)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if naOK {
+		wlan.RoamingAssistantNaEnabled = na.Enabled.ValueBool()
+		if !na.Rssi.IsNull() && !na.Rssi.IsUnknown() {
+			wlan.RoamingAssistantNaRssi = na.Rssi.ValueInt64Pointer()
+		}
+	}
+
+	sixE, sixEOK, d := util.ObjectAs[wlanRoamingAssistantModel](ctx, plan.RoamingAssistant6E)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if sixEOK {
+		wlan.RoamingAssistant6EEnabled = sixE.Enabled.ValueBool()
+		if !sixE.Rssi.IsNull() && !sixE.Rssi.IsUnknown() {
+			wlan.RoamingAssistant6ERssi = sixE.Rssi.ValueInt64Pointer()
+		}
 	}
 
 	// DTIM per-band values (only sent when explicitly configured)
@@ -2150,15 +2246,11 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.WLANBand = types.StringValue("both")
 	}
 
-	// Per-SSID band steering (#388). Controllers without the feature never
-	// echo the key: keep the model's existing value in that case — the
-	// declared value on create/update, the prior state on read — so a config
-	// on an unsupporting controller doesn't fail the apply with an
-	// inconsistent-result error or produce perpetual drift. An Unknown value
-	// (never configured, nothing stored) resolves to null.
-	if wlan.BandsteeringMode != "" {
-		model.BandsteeringMode = types.StringValue(wlan.BandsteeringMode)
-	} else if model.BandsteeringMode.IsUnknown() {
+	// Deprecated no-op: v10 moved band steering to the access point, so the
+	// WLAN never reports it. Keep whatever the model already carries — the
+	// declared value on create/update, the prior state on read — and resolve a
+	// never-configured Unknown to null (#388).
+	if model.BandsteeringMode.IsUnknown() {
 		model.BandsteeringMode = types.StringNull()
 	}
 
@@ -2213,6 +2305,22 @@ func (r *wlanFrameworkResource) wlanToModel(
 	})
 	diags.Append(d...)
 	model.Radius = radius
+
+	roamingNa, d := types.ObjectValueFrom(
+		ctx, wlanRoamingAssistantAttrTypes(), wlanRoamingAssistantModel{
+			Enabled: types.BoolValue(wlan.RoamingAssistantNaEnabled),
+			Rssi:    types.Int64PointerValue(wlan.RoamingAssistantNaRssi),
+		})
+	diags.Append(d...)
+	model.RoamingAssistantNa = roamingNa
+
+	roaming6E, d := types.ObjectValueFrom(
+		ctx, wlanRoamingAssistantAttrTypes(), wlanRoamingAssistantModel{
+			Enabled: types.BoolValue(wlan.RoamingAssistant6EEnabled),
+			Rssi:    types.Int64PointerValue(wlan.RoamingAssistant6ERssi),
+		})
+	diags.Append(d...)
+	model.RoamingAssistant6E = roaming6E
 
 	if wlan.NasIDentifierType != "" {
 		model.NasIDentifierType = types.StringValue(wlan.NasIDentifierType)

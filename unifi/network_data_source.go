@@ -802,7 +802,7 @@ func (d *networkDataSource) setDataSourceData(
 		dhcpBootObj, d := types.ObjectValueFrom(ctx, dhcpBootValue.AttributeTypes(), dhcpBootValue)
 		diags.Append(d...)
 
-		dnsServers := collectNonEmptyStrings(
+		dnsServers := collectNonEmptyStringPointers(
 			network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4,
 		)
 		var dnsServersList types.List

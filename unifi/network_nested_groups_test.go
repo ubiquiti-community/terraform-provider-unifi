@@ -378,10 +378,14 @@ func TestNetworkNestedGroups_roundTrip(t *testing.T) {
 		t.Errorf("ipv6.pd: %q %q %q %q %v", deref(api.IPV6PDInterface), api.IPV6PDPrefixid,
 			deref(api.IPV6PDStart), deref(api.IPV6PDStop), api.IPV6PDAutoPrefixidEnabled)
 	}
-	if !api.DHCPDDNSEnabled || api.DHCPDDNS1 != "10.0.1.53" || api.DHCPDDNS2 != "10.0.1.54" ||
-		api.DHCPDDNS3 != "" || api.DHCPDDNS4 != "" {
+	if !api.DHCPDDNSEnabled ||
+		derefString(api.DHCPDDNS1) != "10.0.1.53" ||
+		derefString(api.DHCPDDNS2) != "10.0.1.54" ||
+		derefString(api.DHCPDDNS3) != "" ||
+		derefString(api.DHCPDDNS4) != "" {
 		t.Errorf("dhcp_server.dns: %v %q %q %q %q", api.DHCPDDNSEnabled,
-			api.DHCPDDNS1, api.DHCPDDNS2, api.DHCPDDNS3, api.DHCPDDNS4)
+			derefString(api.DHCPDDNS1), derefString(api.DHCPDDNS2),
+			derefString(api.DHCPDDNS3), derefString(api.DHCPDDNS4))
 	}
 	if !api.DHCPDNtpEnabled || deref(api.DHCPDNtp1) != "10.0.1.123" || deref(api.DHCPDNtp2) != "" {
 		t.Errorf("dhcp_server.ntp: %v %q %q", api.DHCPDNtpEnabled,
@@ -452,7 +456,7 @@ func TestNetworkNestedGroups_roundTrip(t *testing.T) {
 		api.IPV6PDPrefixid != "" || api.IPV6PDStart != nil {
 		t.Errorf("null ipv6 must contribute nothing: %+v", api)
 	}
-	if api.DHCPDDNSEnabled || api.DHCPDDNS1 != "" || api.DHCPDNtpEnabled ||
+	if api.DHCPDDNSEnabled || derefString(api.DHCPDDNS1) != "" || api.DHCPDNtpEnabled ||
 		deref(api.DHCPDNtp1) != "" || deref(api.DHCPDNtp2) != "" {
 		t.Errorf("null dhcp_server.dns/ntp must clear the slots: %+v", api)
 	}
@@ -615,7 +619,7 @@ func TestNetworkDataSource_nestedGroups(t *testing.T) {
 		IPV6PDPrefixid:          "",
 		IPV6PDStart:             stringPtr("::2"),
 		DHCPDDNSEnabled:         true,
-		DHCPDDNS1:               "10.0.0.53",
+		DHCPDDNS1:               new("10.0.0.53"),
 		DHCPDNtp1:               stringPtr("10.0.0.123"),
 		DHCPDV6DNSAuto:          true,
 		WANDNS1:                 stringPtr("1.1.1.1"),

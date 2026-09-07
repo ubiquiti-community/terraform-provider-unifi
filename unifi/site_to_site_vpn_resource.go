@@ -828,7 +828,7 @@ func (r *siteToSiteVPNResource) applyPreSharedKeyWO(
 	if diags.HasError() || wo.IsNull() || wo.IsUnknown() {
 		return false
 	}
-	network.IPSecPreSharedKey = util.Ptr(wo.ValueString())
+	network.IPSecPreSharedKey = new(wo.ValueString())
 	return true
 }
 
@@ -843,9 +843,9 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 
 	network := &unifi.Network{
 		Purpose:             unifi.PurposeSiteVPN,
-		Name:                util.Ptr(model.Name.ValueString()),
+		Name:                new(model.Name.ValueString()),
 		Enabled:             model.Enabled.ValueBool(),
-		VPNType:             util.Ptr("ipsec-vpn"),
+		VPNType:             new("ipsec-vpn"),
 		IPSecInterface:      optStr(model.Interface),
 		IPSecPeerIP:         optStr(model.PeerIP),
 		IPSecLocalIP:        optStr(model.LocalIP),

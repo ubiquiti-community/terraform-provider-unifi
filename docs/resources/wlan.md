@@ -80,7 +80,7 @@ resource "unifi_wlan" "wifi" {
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
 - `ap_group` (Attributes) Access point group assignment. (see [below for nested schema](#nestedatt--ap_group))
-- `bandsteering_mode` (String) Per-SSID band steering mode. Steers dual-band capable clients toward the less congested / higher-throughput band. Valid values are `off`, `equal` and `prefer_5g`. Requires a controller that exposes per-SSID band steering on the WLAN (Network 9/10.x; on WiFi 6/7 access points this replaces the legacy device-level control). Left unset, the controller default applies.
+- `bandsteering_mode` (String, Deprecated) **Moved to `unifi_device.bandsteering_mode`.** Per-SSID band steering mode (`off`, `equal`, `prefer_5g`), which steers dual-band capable clients toward the less congested / higher-throughput band. UniFi Network 10.x moved band steering off the WLAN back to the access point, so this attribute no longer reaches the controller: set `bandsteering_mode` on the `unifi_device` resource for the AP instead. Still accepted and preserved in state for one release.
 - `bc_filter_list` (Set of String) List of MAC addresses for the broadcast filter. The controller may populate this on its own, so it is computed when unset.
 - `bss_transition` (Boolean) Improves client roaming by providing connection details of nearby APs.
 - `dtim_6e` (Number) DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
@@ -112,6 +112,8 @@ resource "unifi_wlan" "wifi" {
 - `private_preshared_keys_enabled` (Boolean) Whether per-key (PPSK) passphrases are enabled for this WLAN. Requires `security = wpapsk`.
 - `proxy_arp` (Boolean) Reduces airtime usage by allowing APs to "proxy" common broadcast frames as unicast.
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
+- `roaming_assistant_6e` (Attributes) 6 GHz roaming assistant. Disconnects clients whose signal drops below `rssi` so they re-associate with a closer AP. (see [below for nested schema](#nestedatt--roaming_assistant_6e))
+- `roaming_assistant_na` (Attributes) 5 GHz roaming assistant. Disconnects clients whose signal drops below `rssi` so they re-associate with a closer AP. Replaces the device-level `radio_table.assisted_roaming_*` attributes, which UniFi Network 10.x moved to the WLAN. (see [below for nested schema](#nestedatt--roaming_assistant_na))
 - `schedule` (Block List) Start and stop schedules for the WLAN (see [below for nested schema](#nestedblock--schedule))
 - `site` (String) The name of the site to associate the WLAN with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
@@ -165,6 +167,24 @@ Optional:
 
 - `mac_auth_enabled` (Boolean) Enable RADIUS MAC authentication. Defaults to `false` when not set.
 - `profile_id` (String) ID of the RADIUS profile to use when security `wpaeap`. The controller may assign a default profile, so this is computed when unset.
+
+
+<a id="nestedatt--roaming_assistant_6e"></a>
+### Nested Schema for `roaming_assistant_6e`
+
+Optional:
+
+- `enabled` (Boolean) Enable the 6 GHz roaming assistant.
+- `rssi` (Number) Signal strength threshold in dBm, `-90` to `-70`. The controller supplies a value when unset.
+
+
+<a id="nestedatt--roaming_assistant_na"></a>
+### Nested Schema for `roaming_assistant_na`
+
+Optional:
+
+- `enabled` (Boolean) Enable the 5 GHz roaming assistant.
+- `rssi` (Number) Signal strength threshold in dBm, `-80` to `-60`. The controller supplies a value when unset.
 
 
 <a id="nestedblock--schedule"></a>

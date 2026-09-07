@@ -2039,7 +2039,7 @@ func (r *networkResource) modelToNetwork(
 	network := &unifi.Network{
 		Name:                    model.Name.ValueStringPointer(),
 		Purpose:                 unifi.PurposeCorporate,
-		NetworkGroup:            util.Ptr("LAN"),
+		NetworkGroup:            new("LAN"),
 		AutoScaleEnabled:        model.AutoScale.ValueBool(),
 		IPSubnet:                model.Subnet.ValueStringPointer(),
 		NetworkIsolationEnabled: model.NetworkIsolation.ValueBool(),
@@ -2192,7 +2192,7 @@ func (r *networkResource) modelToNetwork(
 						network.DHCPDBootServer = dhcpBoot.Server.ValueString()
 					}
 					if dhcpBoot.Filename.IsNull() || dhcpBoot.Filename.IsUnknown() {
-						network.DHCPDBootFilename = util.Ptr("")
+						network.DHCPDBootFilename = new("")
 					} else {
 						network.DHCPDBootFilename = dhcpBoot.Filename.ValueStringPointer()
 					}
@@ -2200,7 +2200,7 @@ func (r *networkResource) modelToNetwork(
 			} else {
 				network.DHCPDBootEnabled = false
 				network.DHCPDBootServer = ""
-				network.DHCPDBootFilename = util.Ptr("")
+				network.DHCPDBootFilename = new("")
 			}
 			network.DHCPDEnabled = dhcpServer.Enabled.ValueBool()
 			network.DHCPDStart = dhcpServer.Start.ValueStringPointer()
@@ -2227,25 +2227,25 @@ func (r *networkResource) modelToNetwork(
 						}
 						switch i {
 						case 0:
-							network.DHCPDNtp1 = util.Ptr(ntp)
+							network.DHCPDNtp1 = new(ntp)
 						case 1:
-							network.DHCPDNtp2 = util.Ptr(ntp)
+							network.DHCPDNtp2 = new(ntp)
 						}
 					}
 					// Set remaining NTP servers to empty
 					for i := len(ntpServers); i < 2; i++ {
 						switch i {
 						case 0:
-							network.DHCPDNtp1 = util.Ptr("")
+							network.DHCPDNtp1 = new("")
 						case 1:
-							network.DHCPDNtp2 = util.Ptr("")
+							network.DHCPDNtp2 = new("")
 						}
 					}
 				}
 			} else {
 				// Set all NTP servers to empty string when not configured
-				network.DHCPDNtp1 = util.Ptr("")
-				network.DHCPDNtp2 = util.Ptr("")
+				network.DHCPDNtp1 = new("")
+				network.DHCPDNtp2 = new("")
 			}
 
 			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
@@ -2269,46 +2269,46 @@ func (r *networkResource) modelToNetwork(
 								}
 								switch i {
 								case 0:
-									network.DHCPDWins1 = util.Ptr(addr)
+									network.DHCPDWins1 = new(addr)
 								case 1:
-									network.DHCPDWins2 = util.Ptr(addr)
+									network.DHCPDWins2 = new(addr)
 								}
 							}
 							// Set remaining WINS servers to empty string
 							for i := len(addresses); i < 2; i++ {
 								switch i {
 								case 0:
-									network.DHCPDWins1 = util.Ptr("")
+									network.DHCPDWins1 = new("")
 								case 1:
-									network.DHCPDWins2 = util.Ptr("")
+									network.DHCPDWins2 = new("")
 								}
 							}
 						}
 					} else {
-						network.DHCPDWins1 = util.Ptr("")
-						network.DHCPDWins2 = util.Ptr("")
+						network.DHCPDWins1 = new("")
+						network.DHCPDWins2 = new("")
 					}
 				}
 			} else {
 				network.DHCPDWinsEnabled = false
-				network.DHCPDWins1 = util.Ptr("")
-				network.DHCPDWins2 = util.Ptr("")
+				network.DHCPDWins1 = new("")
+				network.DHCPDWins2 = new("")
 			}
 
 			if dhcpServer.WpadUrl.IsNull() || dhcpServer.WpadUrl.IsUnknown() {
-				network.DHCPDWPAdUrl = util.Ptr("")
+				network.DHCPDWPAdUrl = new("")
 			} else {
 				network.DHCPDWPAdUrl = dhcpServer.WpadUrl.ValueStringPointer()
 			}
 
 			if dhcpServer.TftpServer.IsNull() || dhcpServer.TftpServer.IsUnknown() {
-				network.DHCPDTFTPServer = util.Ptr("")
+				network.DHCPDTFTPServer = new("")
 			} else {
 				network.DHCPDTFTPServer = dhcpServer.TftpServer.ValueStringPointer()
 			}
 
 			if dhcpServer.UnifiController.IsNull() || dhcpServer.UnifiController.IsUnknown() {
-				network.DHCPDUnifiController = util.Ptr("")
+				network.DHCPDUnifiController = new("")
 			} else {
 				network.DHCPDUnifiController = dhcpServer.UnifiController.ValueStringPointer()
 			}
@@ -2333,61 +2333,61 @@ func (r *networkResource) modelToNetwork(
 						}
 						switch i {
 						case 0:
-							network.DHCPDDNS1 = dns
+							network.DHCPDDNS1 = new(dns)
 						case 1:
-							network.DHCPDDNS2 = dns
+							network.DHCPDDNS2 = new(dns)
 						case 2:
-							network.DHCPDDNS3 = dns
+							network.DHCPDDNS3 = new(dns)
 						case 3:
-							network.DHCPDDNS4 = dns
+							network.DHCPDDNS4 = new(dns)
 						}
 					}
 					// Set remaining DNS servers to empty string
 					for i := len(dnsServers); i < 4; i++ {
 						switch i {
 						case 0:
-							network.DHCPDDNS1 = ""
+							network.DHCPDDNS1 = new("")
 						case 1:
-							network.DHCPDDNS2 = ""
+							network.DHCPDDNS2 = new("")
 						case 2:
-							network.DHCPDDNS3 = ""
+							network.DHCPDDNS3 = new("")
 						case 3:
-							network.DHCPDDNS4 = ""
+							network.DHCPDDNS4 = new("")
 						}
 					}
 				}
 			} else {
 				// Set all DNS servers to empty string when not configured
-				network.DHCPDDNS1 = ""
-				network.DHCPDDNS2 = ""
-				network.DHCPDDNS3 = ""
-				network.DHCPDDNS4 = ""
+				network.DHCPDDNS1 = new("")
+				network.DHCPDDNS2 = new("")
+				network.DHCPDDNS3 = new("")
+				network.DHCPDDNS4 = new("")
 			}
 		}
 	} else if !relayEnabled {
 		// Set defaults when DHCP server is not configured (and relay is off).
 		network.DHCPDBootEnabled = false
 		network.DHCPDBootServer = ""
-		network.DHCPDBootFilename = util.Ptr("")
+		network.DHCPDBootFilename = new("")
 		network.DHCPDEnabled = true
 		network.DHCPDGatewayEnabled = false
 		network.DHCPDConflictChecking = true
 		network.DHCPDNtpEnabled = false
-		network.DHCPDNtp1 = util.Ptr("")
-		network.DHCPDNtp2 = util.Ptr("")
+		network.DHCPDNtp1 = new("")
+		network.DHCPDNtp2 = new("")
 		network.DHCPDTimeOffsetEnabled = false
 		network.DHCPDDNSEnabled = false
-		network.DHCPDLeaseTime = util.Ptr(int64(86400))
+		network.DHCPDLeaseTime = new(int64(86400))
 		network.DHCPDWinsEnabled = false
-		network.DHCPDWins1 = util.Ptr("")
-		network.DHCPDWins2 = util.Ptr("")
-		network.DHCPDWPAdUrl = util.Ptr("")
-		network.DHCPDTFTPServer = util.Ptr("")
-		network.DHCPDUnifiController = util.Ptr("")
-		network.DHCPDDNS1 = ""
-		network.DHCPDDNS2 = ""
-		network.DHCPDDNS3 = ""
-		network.DHCPDDNS4 = ""
+		network.DHCPDWins1 = new("")
+		network.DHCPDWins2 = new("")
+		network.DHCPDWPAdUrl = new("")
+		network.DHCPDTFTPServer = new("")
+		network.DHCPDUnifiController = new("")
+		network.DHCPDDNS1 = new("")
+		network.DHCPDDNS2 = new("")
+		network.DHCPDDNS3 = new("")
+		network.DHCPDDNS4 = new("")
 	}
 
 	// Handle DHCPv6 server configuration
@@ -2421,33 +2421,33 @@ func (r *networkResource) modelToNetwork(
 						}
 						switch i {
 						case 0:
-							network.DHCPDV6DNS1 = util.Ptr(dns)
+							network.DHCPDV6DNS1 = new(dns)
 						case 1:
-							network.DHCPDV6DNS2 = util.Ptr(dns)
+							network.DHCPDV6DNS2 = new(dns)
 						case 2:
-							network.DHCPDV6DNS3 = util.Ptr(dns)
+							network.DHCPDV6DNS3 = new(dns)
 						case 3:
-							network.DHCPDV6DNS4 = util.Ptr(dns)
+							network.DHCPDV6DNS4 = new(dns)
 						}
 					}
 					for i := len(dnsServers); i < 4; i++ {
 						switch i {
 						case 0:
-							network.DHCPDV6DNS1 = util.Ptr("")
+							network.DHCPDV6DNS1 = new("")
 						case 1:
-							network.DHCPDV6DNS2 = util.Ptr("")
+							network.DHCPDV6DNS2 = new("")
 						case 2:
-							network.DHCPDV6DNS3 = util.Ptr("")
+							network.DHCPDV6DNS3 = new("")
 						case 3:
-							network.DHCPDV6DNS4 = util.Ptr("")
+							network.DHCPDV6DNS4 = new("")
 						}
 					}
 				}
 			} else {
-				network.DHCPDV6DNS1 = util.Ptr("")
-				network.DHCPDV6DNS2 = util.Ptr("")
-				network.DHCPDV6DNS3 = util.Ptr("")
-				network.DHCPDV6DNS4 = util.Ptr("")
+				network.DHCPDV6DNS1 = new("")
+				network.DHCPDV6DNS2 = new("")
+				network.DHCPDV6DNS3 = new("")
+				network.DHCPDV6DNS4 = new("")
 			}
 		}
 	}
@@ -2759,19 +2759,9 @@ func (r *networkResource) networkToModel(
 		diags.Append(d...)
 
 		// Build DNS servers list from DHCPDDNS1-4
-		var dnsServers []string
-		if network.DHCPDDNS1 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS1)
-		}
-		if network.DHCPDDNS2 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS2)
-		}
-		if network.DHCPDDNS3 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS3)
-		}
-		if network.DHCPDDNS4 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS4)
-		}
+		dnsServers := collectNonEmptyStringPointers(
+			network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4,
+		)
 
 		dnsServersList, d := stringListOrNull(ctx, dnsServers, previousDNS.Servers)
 		diags.Append(d...)

@@ -823,14 +823,22 @@ func (r *deviceResource) Schema(
 							Computed:    true,
 						},
 						"assisted_roaming_enabled": schema.BoolAttribute{
-							Description: "Enable assisted roaming.",
-							Optional:    true,
-							Computed:    true,
+							Description: "**Moved to `unifi_wlan.roaming_assistant_na.enabled`** " +
+								"(and `roaming_assistant_6e.enabled` for 6 GHz). UniFi Network 10.x " +
+								"moved assisted roaming from the device's radio table onto the WLAN, " +
+								"so this attribute no longer reaches the controller. Still accepted " +
+								"and preserved in state for one release.",
+							DeprecationMessage: "Deprecated: moved to `unifi_wlan.roaming_assistant_na` (5 GHz) and `unifi_wlan.roaming_assistant_6e` (6 GHz). UniFi Network 10.x moved assisted roaming from the device's radio table onto the WLAN, so this attribute no longer reaches the controller and will be removed in a future release.",
+							Optional:           true,
 						},
 						"assisted_roaming_rssi": schema.Int64Attribute{
-							Description: "Assisted roaming RSSI threshold.",
-							Optional:    true,
-							Computed:    true,
+							Description: "**Moved to `unifi_wlan.roaming_assistant_na.rssi`** " +
+								"(and `roaming_assistant_6e.rssi` for 6 GHz). UniFi Network 10.x " +
+								"moved assisted roaming from the device's radio table onto the WLAN, " +
+								"so this attribute no longer reaches the controller. Still accepted " +
+								"and preserved in state for one release.",
+							DeprecationMessage: "Deprecated: moved to `unifi_wlan.roaming_assistant_na` (5 GHz) and `unifi_wlan.roaming_assistant_6e` (6 GHz). UniFi Network 10.x moved assisted roaming from the device's radio table onto the WLAN, so this attribute no longer reaches the controller and will be removed in a future release.",
+							Optional:           true,
 						},
 						"dfs": schema.BoolAttribute{
 							Description: "Enable DFS (Dynamic Frequency Selection).",
@@ -1496,6 +1504,7 @@ func (r *deviceResource) Read(
 	allowAdoption := state.AllowAdoption
 	forgetOnDestroy := state.ForgetOnDestroy
 	priorPortOverride := state.PortOverride
+	priorRadioTable := state.RadioTable
 
 	// The identity (device MAC) may be the only key available — e.g. the state
 	// written by an identity-based import carries just the MAC. Fall back to it
@@ -1581,6 +1590,15 @@ func (r *deviceResource) Read(
 		if !resp.Diagnostics.HasError() {
 			state.PortOverride = reconciled
 		}
+	}
+
+	// The deprecated radio-level assisted roaming leaves have no controller
+	// backing, so refresh would otherwise null out whatever the practitioner
+	// configured and report it as drift forever.
+	carried, carryDiags := carryDeprecatedAssistedRoaming(ctx, priorRadioTable, state.RadioTable)
+	resp.Diagnostics.Append(carryDiags...)
+	if !resp.Diagnostics.HasError() {
+		state.RadioTable = carried
 	}
 
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("mac"), state.MAC)...)
@@ -3320,17 +3338,20 @@ func (r *deviceResource) radioTableToFramework(
 	elements := make([]attr.Value, 0, len(radios))
 	for _, radio := range radios {
 		model := radioTableModel{
-			Radio:                  stringOrNull(radio.Radio),
-			Channel:                stringOrNull(radio.Channel),
-			Ht:                     types.Int64PointerValue(radio.Ht),
-			TxPower:                stringOrNull(radio.TxPower),
-			TxPowerMode:            stringOrNull(radio.TxPowerMode),
-			MinRssiEnabled:         types.BoolValue(radio.MinRssiEnabled),
-			MinRssi:                types.Int64PointerValue(radio.MinRssi),
-			AntennaGain:            types.Int64PointerValue(radio.AntennaGain),
-			AntennaID:              types.Int64PointerValue(radio.AntennaID),
-			AssistedRoamingEnabled: types.BoolValue(radio.AssistedRoamingEnabled),
-			AssistedRoamingRssi:    types.Int64PointerValue(radio.AssistedRoamingRssi),
+			Radio:          stringOrNull(radio.Radio),
+			Channel:        stringOrNull(radio.Channel),
+			Ht:             types.Int64PointerValue(radio.Ht),
+			TxPower:        stringOrNull(radio.TxPower),
+			TxPowerMode:    stringOrNull(radio.TxPowerMode),
+			MinRssiEnabled: types.BoolValue(radio.MinRssiEnabled),
+			MinRssi:        types.Int64PointerValue(radio.MinRssi),
+			AntennaGain:    types.Int64PointerValue(radio.AntennaGain),
+			AntennaID:      types.Int64PointerValue(radio.AntennaID),
+			// Deprecated no-ops: v10 has no radio-level assisted roaming, so
+			// there is nothing to report. Read restores the configured value
+			// from prior state.
+			AssistedRoamingEnabled: types.BoolNull(),
+			AssistedRoamingRssi:    types.Int64Null(),
 			Dfs:                    types.BoolValue(radio.Dfs),
 			HardNoiseFloorEnabled:  types.BoolValue(radio.HardNoiseFloorEnabled),
 			LoadbalanceEnabled:     types.BoolValue(radio.LoadbalanceEnabled),
@@ -3510,6 +3531,47 @@ func resolveUnknown[T attr.Value](planned, applied T) T {
 		return applied
 	}
 	return planned
+}
+
+// carryDeprecatedAssistedRoaming copies the deprecated assisted_roaming_*
+// leaves from prior state onto a freshly read radio_table, matching entries by
+// radio band. Controller v10 moved assisted roaming to the WLAN, so these are
+// config-only echoes until they are removed.
+func carryDeprecatedAssistedRoaming(
+	ctx context.Context,
+	prior, next types.List,
+) (types.List, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if prior.IsNull() || prior.IsUnknown() || next.IsNull() || next.IsUnknown() {
+		return next, diags
+	}
+
+	var priorModels, nextModels []radioTableModel
+	diags.Append(prior.ElementsAs(ctx, &priorModels, false)...)
+	diags.Append(next.ElementsAs(ctx, &nextModels, false)...)
+	if diags.HasError() {
+		return next, diags
+	}
+
+	priorByRadio := make(map[string]radioTableModel, len(priorModels))
+	for _, p := range priorModels {
+		priorByRadio[p.Radio.ValueString()] = p
+	}
+	for i := range nextModels {
+		p, ok := priorByRadio[nextModels[i].Radio.ValueString()]
+		if !ok {
+			continue
+		}
+		nextModels[i].AssistedRoamingEnabled = p.AssistedRoamingEnabled
+		nextModels[i].AssistedRoamingRssi = p.AssistedRoamingRssi
+	}
+
+	out, d := types.ListValueFrom(ctx, next.ElementType(ctx), nextModels)
+	diags.Append(d...)
+	if diags.HasError() {
+		return next, diags
+	}
+	return out, diags
 }
 
 // reconcileRadioTableWithPlan resolves the post-apply radio_table state
@@ -3762,13 +3824,6 @@ func sanitizeRadioForUpdate(radioName string, radio *unifi.DeviceRadioTable) dia
 	if !radio.SensLevelEnabled || !inRange(radio.SensLevel, -90, -50) {
 		radio.SensLevel = nil
 	}
-	if radio.AssistedRoamingEnabled && radio.AssistedRoamingRssi != nil &&
-		!inRange(radio.AssistedRoamingRssi, -80, -60) {
-		warnDropped("assisted_roaming_rssi", *radio.AssistedRoamingRssi, -80, -60)
-	}
-	if !radio.AssistedRoamingEnabled || !inRange(radio.AssistedRoamingRssi, -80, -60) {
-		radio.AssistedRoamingRssi = nil
-	}
 
 	return diags
 }
@@ -3799,25 +3854,23 @@ func (r *deviceResource) frameworkToRadioTable(
 		}
 
 		radio := unifi.DeviceRadioTable{
-			Radio:                  model.Radio.ValueString(),
-			Channel:                model.Channel.ValueString(),
-			Ht:                     int64PointerIfKnown(model.Ht),
-			TxPower:                model.TxPower.ValueString(),
-			TxPowerMode:            model.TxPowerMode.ValueString(),
-			MinRssiEnabled:         model.MinRssiEnabled.ValueBool(),
-			MinRssi:                int64PointerIfKnown(model.MinRssi),
-			AntennaGain:            int64PointerIfKnown(model.AntennaGain),
-			AntennaID:              int64PointerIfKnown(model.AntennaID),
-			AssistedRoamingEnabled: model.AssistedRoamingEnabled.ValueBool(),
-			AssistedRoamingRssi:    int64PointerIfKnown(model.AssistedRoamingRssi),
-			Dfs:                    model.Dfs.ValueBool(),
-			HardNoiseFloorEnabled:  model.HardNoiseFloorEnabled.ValueBool(),
-			LoadbalanceEnabled:     model.LoadbalanceEnabled.ValueBool(),
-			Maxsta:                 int64PointerIfKnown(model.Maxsta),
-			Name:                   model.Name.ValueString(),
-			SensLevel:              int64PointerIfKnown(model.SensLevel),
-			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
-			VwireEnabled:           model.VwireEnabled.ValueBool(),
+			Radio:                 model.Radio.ValueString(),
+			Channel:               model.Channel.ValueString(),
+			Ht:                    int64PointerIfKnown(model.Ht),
+			TxPower:               model.TxPower.ValueString(),
+			TxPowerMode:           model.TxPowerMode.ValueString(),
+			MinRssiEnabled:        model.MinRssiEnabled.ValueBool(),
+			MinRssi:               int64PointerIfKnown(model.MinRssi),
+			AntennaGain:           int64PointerIfKnown(model.AntennaGain),
+			AntennaID:             int64PointerIfKnown(model.AntennaID),
+			Dfs:                   model.Dfs.ValueBool(),
+			HardNoiseFloorEnabled: model.HardNoiseFloorEnabled.ValueBool(),
+			LoadbalanceEnabled:    model.LoadbalanceEnabled.ValueBool(),
+			Maxsta:                int64PointerIfKnown(model.Maxsta),
+			Name:                  model.Name.ValueString(),
+			SensLevel:             int64PointerIfKnown(model.SensLevel),
+			SensLevelEnabled:      model.SensLevelEnabled.ValueBool(),
+			VwireEnabled:          model.VwireEnabled.ValueBool(),
 		}
 
 		diags.Append(sanitizeRadioForUpdate(radio.Radio, &radio)...)

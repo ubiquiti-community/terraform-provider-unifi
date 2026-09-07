@@ -325,8 +325,8 @@ Optional:
 
 - `antenna_gain` (Number) Antenna gain.
 - `antenna_id` (Number) Antenna ID.
-- `assisted_roaming_enabled` (Boolean) Enable assisted roaming.
-- `assisted_roaming_rssi` (Number) Assisted roaming RSSI threshold.
+- `assisted_roaming_enabled` (Boolean, Deprecated) **Moved to `unifi_wlan.roaming_assistant_na.enabled`** (and `roaming_assistant_6e.enabled` for 6 GHz). UniFi Network 10.x moved assisted roaming from the device's radio table onto the WLAN, so this attribute no longer reaches the controller. Still accepted and preserved in state for one release.
+- `assisted_roaming_rssi` (Number, Deprecated) **Moved to `unifi_wlan.roaming_assistant_na.rssi`** (and `roaming_assistant_6e.rssi` for 6 GHz). UniFi Network 10.x moved assisted roaming from the device's radio table onto the WLAN, so this attribute no longer reaches the controller. Still accepted and preserved in state for one release.
 - `channel` (String) Channel number or 'auto'.
 - `dfs` (Boolean) Enable DFS (Dynamic Frequency Selection).
 - `hard_noise_floor_enabled` (Boolean) Enable hard noise floor.

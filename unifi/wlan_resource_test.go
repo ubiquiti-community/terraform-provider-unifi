@@ -1272,36 +1272,16 @@ func Test_reassertWLANBands(t *testing.T) {
 
 // Test_planToWLAN_bandsteeringMode verifies the write path for #388: a
 // declared value travels to the controller, and an unset (null or unknown)
-// value stays off the wire entirely — controllers without per-SSID band
-// steering must never be sent the key.
+// value stays off the wire entirely: UniFi Network 10.x moved band steering to
+// the access point, so the deprecated WLAN attribute is a no-op.
 func Test_planToWLAN_bandsteeringMode(t *testing.T) {
 	ctx := context.Background()
 	r := &wlanFrameworkResource{}
 
-	t.Run("declared value is sent", func(t *testing.T) {
-		plan := wlanFrameworkResourceModel{
-			Name:             types.StringValue("w"),
-			BandsteeringMode: types.StringValue("prefer_5g"),
-		}
-		wlan, diags := r.planToWLAN(ctx, plan)
-		if diags.HasError() {
-			t.Fatalf("planToWLAN: %v", diags)
-		}
-		if wlan.BandsteeringMode != "prefer_5g" {
-			t.Errorf("BandsteeringMode = %q, want prefer_5g", wlan.BandsteeringMode)
-		}
-		raw, err := json.Marshal(wlan)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		if !strings.Contains(string(raw), `"bandsteering_mode":"prefer_5g"`) {
-			t.Errorf("payload missing bandsteering_mode: %s", raw)
-		}
-	})
-
 	for name, value := range map[string]types.String{
-		"null stays off the wire":    types.StringNull(),
-		"unknown stays off the wire": types.StringUnknown(),
+		"declared stays off the wire": types.StringValue("prefer_5g"),
+		"null stays off the wire":     types.StringNull(),
+		"unknown stays off the wire":  types.StringUnknown(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			plan := wlanFrameworkResourceModel{
@@ -1323,26 +1303,13 @@ func Test_planToWLAN_bandsteeringMode(t *testing.T) {
 	}
 }
 
-// Test_wlanToModel_bandsteeringMode verifies the read path for #388:
-// controller echo wins; a missing key keeps the model's existing value (the
-// declared value on create/update, prior state on read) so controllers
-// without per-SSID band steering neither fail the apply with an
-// inconsistent-result error nor produce perpetual drift; and Unknown resolves
-// to null when the controller has nothing stored.
+// Test_wlanToModel_bandsteeringMode verifies the read path for the deprecated
+// attribute: the WLAN never reports band steering, so the model's existing
+// value is kept (declared on create/update, prior state on read) rather than
+// producing perpetual drift, and Unknown resolves to null.
 func Test_wlanToModel_bandsteeringMode(t *testing.T) {
 	ctx := context.Background()
 	r := &wlanFrameworkResource{}
-
-	t.Run("controller echo wins", func(t *testing.T) {
-		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringValue("off")}
-		wlan := &unifi.WLAN{ID: "id", Name: "w", BandsteeringMode: "equal"}
-		if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
-			t.Fatalf("wlanToModel: %v", diags)
-		}
-		if model.BandsteeringMode.ValueString() != "equal" {
-			t.Errorf("BandsteeringMode = %v, want controller echo equal", model.BandsteeringMode)
-		}
-	})
 
 	t.Run("missing key keeps the declared value", func(t *testing.T) {
 		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringValue("prefer_5g")}
