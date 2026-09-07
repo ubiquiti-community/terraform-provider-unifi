@@ -361,17 +361,7 @@ func TestAccNetworkFramework_thirdPartyGateway(t *testing.T) {
 					"gateway_type",
 					"setting_preference",
 					"multicast_dns",
-					"ipv6_interface_type",
-					"ipv6_static_subnet",
-					"ipv6_ra",
-					"ipv6_ra_priority",
-					"ipv6_ra_preferred_lifetime",
-					"ipv6_ra_valid_lifetime",
-					"ipv6_pd_interface",
-					"ipv6_pd_prefixid",
-					"ipv6_pd_start",
-					"ipv6_pd_stop",
-					"ipv6_pd_auto_prefixid_enabled",
+					"ipv6",
 					"lte_lan",
 					"internet_access",
 				},
@@ -487,17 +477,7 @@ func TestAccNetworkFramework_dhcpRelay(t *testing.T) {
 					"gateway_type",
 					"setting_preference",
 					"multicast_dns",
-					"ipv6_interface_type",
-					"ipv6_static_subnet",
-					"ipv6_ra",
-					"ipv6_ra_priority",
-					"ipv6_ra_preferred_lifetime",
-					"ipv6_ra_valid_lifetime",
-					"ipv6_pd_interface",
-					"ipv6_pd_prefixid",
-					"ipv6_pd_start",
-					"ipv6_pd_stop",
-					"ipv6_pd_auto_prefixid_enabled",
+					"ipv6",
 					"lte_lan",
 					"internet_access",
 				},
@@ -536,32 +516,32 @@ func TestAccNetworkFramework_ipv6Static(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
-						"ipv6_interface_type",
+						"ipv6.interface_type",
 						"static",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
-						"ipv6_static_subnet",
+						"ipv6.static_subnet",
 						"fd00::1/64",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
-						"ipv6_ra",
+						"ipv6.ra.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
-						"ipv6_ra_priority",
+						"ipv6.ra.priority",
 						"high",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
-						"ipv6_ra_valid_lifetime",
+						"ipv6.ra.valid_lifetime",
 						"24h0m0s",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_ipv6_static",
-						"ipv6_ra_preferred_lifetime",
+						"ipv6.ra.preferred_lifetime",
 						"4h0m0s",
 					),
 				),
@@ -596,7 +576,7 @@ func TestAccNetworkFramework_dhcpV6(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_dhcpv6",
-						"ipv6_interface_type",
+						"ipv6.interface_type",
 						"static",
 					),
 					resource.TestCheckResourceAttr(
@@ -606,22 +586,22 @@ func TestAccNetworkFramework_dhcpV6(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_dhcpv6",
-						"dhcp_v6_server.dns_auto",
+						"dhcp_v6_server.dns.auto",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_dhcpv6",
-						"dhcp_v6_server.dns_servers.#",
+						"dhcp_v6_server.dns.servers.#",
 						"2",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_dhcpv6",
-						"dhcp_v6_server.dns_servers.0",
+						"dhcp_v6_server.dns.servers.0",
 						"2001:4860:4860::8888",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_dhcpv6",
-						"dhcp_v6_server.dns_servers.1",
+						"dhcp_v6_server.dns.servers.1",
 						"2001:4860:4860::8844",
 					),
 					resource.TestCheckResourceAttr(
@@ -658,15 +638,20 @@ func TestAccNetworkFramework_dhcpV6(t *testing.T) {
 func testAccNetworkFrameworkConfig_ipv6Static() string {
 	return `
 resource "unifi_network" "test_ipv6_static" {
-	name                    = "Test IPv6 Static"
-	subnet                  = "192.168.40.1/24"
-	vlan                    = 40
-	ipv6_interface_type     = "static"
-	ipv6_static_subnet      = "fd00::1/64"
-	ipv6_ra                 = true
-	ipv6_ra_priority        = "high"
-	ipv6_ra_valid_lifetime  = "24h0m0s"
-	ipv6_ra_preferred_lifetime = "4h0m0s"
+	name   = "Test IPv6 Static"
+	subnet = "192.168.40.1/24"
+	vlan   = 40
+
+	ipv6 = {
+		interface_type = "static"
+		static_subnet  = "fd00::1/64"
+		ra = {
+			enabled            = true
+			priority           = "high"
+			valid_lifetime     = "24h0m0s"
+			preferred_lifetime = "4h0m0s"
+		}
+	}
 }
 `
 }
@@ -674,20 +659,27 @@ resource "unifi_network" "test_ipv6_static" {
 func testAccNetworkFrameworkConfig_dhcpV6() string {
 	return `
 resource "unifi_network" "test_dhcpv6" {
-	name                = "Test DHCPv6"
-	subnet              = "192.168.60.1/24"
-	vlan                = 60
-	ipv6_interface_type = "static"
-	ipv6_static_subnet  = "fd01::1/64"
-	ipv6_ra             = true
+	name   = "Test DHCPv6"
+	subnet = "192.168.60.1/24"
+	vlan   = 60
+
+	ipv6 = {
+		interface_type = "static"
+		static_subnet  = "fd01::1/64"
+		ra = {
+			enabled = true
+		}
+	}
 
 	dhcp_v6_server = {
-		enabled     = true
-		dns_auto    = false
-		dns_servers = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
-		start       = "::2"
-		stop        = "::7d1"
-		lease       = 86400
+		enabled = true
+		dns = {
+			auto    = false
+			servers = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+		}
+		start = "::2"
+		stop  = "::7d1"
+		lease = 86400
 	}
 }
 `
@@ -769,21 +761,23 @@ func Test_dhcpServerModel_AttributeTypes(t *testing.T) {
 				"boot": types.ObjectType{
 					AttrTypes: dhcpBootModel{}.AttributeTypes(),
 				},
-				"enabled":             types.BoolType,
-				"start":               types.StringType,
-				"stop":                types.StringType,
-				"gateway_enabled":     types.BoolType,
-				"conflict_checking":   types.BoolType,
-				"ntp_enabled":         types.BoolType,
-				"ntp_servers":         types.ListType{ElemType: types.StringType},
+				"enabled":           types.BoolType,
+				"start":             types.StringType,
+				"stop":              types.StringType,
+				"gateway_enabled":   types.BoolType,
+				"conflict_checking": types.BoolType,
+				"ntp": types.ObjectType{
+					AttrTypes: dhcpServerOptionModel{}.AttributeTypes(),
+				},
 				"time_offset_enabled": types.BoolType,
-				"dns_enabled":         types.BoolType,
-				"leasetime":           timetypes.GoDurationType{},
-				"wins":                types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
-				"wpad_url":            types.StringType,
-				"tftp_server":         types.StringType,
-				"unifi_controller":    types.StringType,
-				"dns_servers":         types.ListType{ElemType: types.StringType},
+				"dns": types.ObjectType{
+					AttrTypes: dhcpServerOptionModel{}.AttributeTypes(),
+				},
+				"leasetime":        timetypes.GoDurationType{},
+				"wins":             types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
+				"wpad_url":         types.StringType,
+				"tftp_server":      types.StringType,
+				"unifi_controller": types.StringType,
 			},
 		},
 	}
@@ -904,12 +898,11 @@ func Test_dhcpV6ServerModel_AttributeTypes(t *testing.T) {
 			name: "returns correct attribute types",
 			m:    dhcpV6ServerModel{},
 			want: map[string]attr.Type{
-				"enabled":     types.BoolType,
-				"dns_auto":    types.BoolType,
-				"dns_servers": types.ListType{ElemType: types.StringType},
-				"lease":       types.Int64Type,
-				"start":       types.StringType,
-				"stop":        types.StringType,
+				"enabled": types.BoolType,
+				"dns":     types.ObjectType{AttrTypes: dhcpV6DNSModel{}.AttributeTypes()},
+				"lease":   types.Int64Type,
+				"start":   types.StringType,
+				"stop":    types.StringType,
 			},
 		},
 	}
@@ -1126,36 +1119,24 @@ func Test_networkResource_modelToNetwork(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				model: &networkResourceModel{
-					Name:                        types.StringValue("test-net"),
-					Enabled:                     types.BoolValue(true),
-					Subnet:                      cidrtypes.NewIPv4PrefixValue("10.0.0.0/24"),
-					AutoScale:                   types.BoolValue(false),
-					NetworkIsolation:            types.BoolValue(false),
-					SettingPreference:           types.StringNull(),
-					InternetAccess:              types.BoolValue(false),
-					MulticastDNS:                types.BoolValue(false),
-					GatewayType:                 types.StringNull(),
-					IPv6InterfaceType:           types.StringNull(),
-					IPv6ClientAddressAssignment: types.StringNull(),
-					IPv6StaticSubnet:            types.StringNull(),
-					IPv6RA:                      types.BoolValue(false),
-					IPv6RAPriority:              types.StringNull(),
-					IPv6RAPreferredLifetime:     timetypes.NewGoDurationNull(),
-					IPv6RAValidLifetime:         timetypes.NewGoDurationNull(),
-					IPv6PDInterface:             types.StringNull(),
-					IPv6PDPrefixID:              types.StringNull(),
-					IPv6PDStart:                 types.StringNull(),
-					IPv6PDStop:                  types.StringNull(),
-					IPv6PDAutoPrefixidEnabled:   types.BoolValue(false),
-					LteLan:                      types.BoolValue(false),
-					ThirdPartyGateway:           types.BoolValue(false),
-					IgmpSnooping:                types.BoolValue(false),
-					Vlan:                        types.Int64Null(),
+					Name:              types.StringValue("test-net"),
+					Enabled:           types.BoolValue(true),
+					Subnet:            cidrtypes.NewIPv4PrefixValue("10.0.0.0/24"),
+					AutoScale:         types.BoolValue(false),
+					NetworkIsolation:  types.BoolValue(false),
+					SettingPreference: types.StringNull(),
+					InternetAccess:    types.BoolValue(false),
+					MulticastDNS:      types.BoolValue(false),
+					GatewayType:       types.StringNull(),
+					IPv6:              testNetworkIPv6Object(types.StringNull()),
+					LteLan:            types.BoolValue(false),
+					ThirdPartyGateway: types.BoolValue(false),
+					IgmpSnooping:      types.BoolValue(false),
+					Vlan:              types.Int64Null(),
 					NatOutboundIPAddresses: types.ListNull(
 						types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 					),
-					IPAliases:   types.ListNull(types.StringType),
-					IPv6Aliases: types.ListNull(types.StringType),
+					IPAliases: types.ListNull(types.StringType),
 					DhcpServer: types.ObjectNull(
 						dhcpServerModel{}.AttributeTypes(),
 					),
@@ -1231,8 +1212,7 @@ func Test_networkResource_networkToModel(t *testing.T) {
 					NatOutboundIPAddresses: types.ListNull(
 						types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 					),
-					IPAliases:   types.ListNull(types.StringType),
-					IPv6Aliases: types.ListNull(types.StringType),
+					IPAliases: types.ListNull(types.StringType),
 				},
 			},
 			want: nil,
@@ -1349,8 +1329,7 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 			NatOutboundIPAddresses: types.ListNull(
 				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 			),
-			IPAliases:   types.ListNull(types.StringType),
-			IPv6Aliases: types.ListNull(types.StringType),
+			IPAliases: types.ListNull(types.StringType),
 		}
 	}
 	// Corporate network (not vlan-only); controller forces mdns false.
@@ -1408,8 +1387,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 			[]attr.Value{},
 		),
-		IPAliases:   types.ListNull(types.StringType),
-		IPv6Aliases: types.ListNull(types.StringType),
+		IPAliases: types.ListNull(types.StringType),
 	}
 
 	// prevUnmanaged has NatOutboundIPAddresses null: the user did not configure it.
@@ -1421,8 +1399,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 		NatOutboundIPAddresses: types.ListNull(
 			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 		),
-		IPAliases:   types.ListNull(types.StringType),
-		IPv6Aliases: types.ListNull(types.StringType),
+		IPAliases: types.ListNull(types.StringType),
 	}
 
 	t.Run("non-empty values round-trip (managed)", func(t *testing.T) {
@@ -1530,8 +1507,8 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 		if !model.NatOutboundIPAddresses.IsNull() {
 			t.Errorf("NatOutboundIPAddresses = %v, want null", model.NatOutboundIPAddresses)
 		}
-		if !model.IPv6Aliases.IsNull() {
-			t.Errorf("IPv6Aliases = %v, want null", model.IPv6Aliases)
+		if aliases := model.IPv6.Attributes()["aliases"]; aliases == nil || !aliases.IsNull() {
+			t.Errorf("ipv6.aliases = %v, want null", aliases)
 		}
 	})
 
@@ -1547,8 +1524,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			NatOutboundIPAddresses: types.ListNull(
 				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 			),
-			IPAliases:   types.ListValueMust(types.StringType, []attr.Value{}),
-			IPv6Aliases: types.ListNull(types.StringType),
+			IPAliases: types.ListValueMust(types.StringType, []attr.Value{}),
 		}
 		network := &unifi.Network{
 			ID:       "net-4",
@@ -1572,7 +1548,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 }
 
 // Test_networkResource_networkToModel_dnsServersEmptyList guards #429:
-// dhcp_server.dns_servers and dhcp_server.wins.addresses are Optional but not
+// dhcp_server.dns.servers and dhcp_server.wins.addresses are Optional but not
 // Computed, so a config of `[]` plans an empty (non-null) list. Read must
 // mirror an empty API response as an empty list when the previous plan/state
 // held an empty list, rather than always collapsing to null - otherwise
@@ -1599,11 +1575,19 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 			NatOutboundIPAddresses: types.ListNull(
 				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 			),
-			IPAliases:   types.ListNull(types.StringType),
-			IPv6Aliases: types.ListNull(types.StringType),
+			IPAliases: types.ListNull(types.StringType),
 		}
 	}
 
+	option := func(servers types.List) types.Object {
+		return types.ObjectValueMust(
+			dhcpServerOptionModel{}.AttributeTypes(),
+			map[string]attr.Value{
+				"enabled": types.BoolValue(false),
+				"servers": servers,
+			},
+		)
+	}
 	dhcpServerObj := func(dnsServers, winsAddresses, ntpServers types.List) types.Object {
 		wins := types.ObjectValueMust(winsModel{}.AttributeTypes(), map[string]attr.Value{
 			"enabled":   types.BoolValue(false),
@@ -1616,17 +1600,23 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 			"stop":                types.StringNull(),
 			"gateway_enabled":     types.BoolValue(false),
 			"conflict_checking":   types.BoolValue(true),
-			"ntp_enabled":         types.BoolValue(false),
-			"ntp_servers":         ntpServers,
+			"ntp":                 option(ntpServers),
 			"time_offset_enabled": types.BoolValue(false),
-			"dns_enabled":         types.BoolValue(false),
+			"dns":                 option(dnsServers),
 			"leasetime":           timetypes.NewGoDurationNull(),
 			"wins":                wins,
 			"wpad_url":            types.StringNull(),
 			"tftp_server":         types.StringNull(),
 			"unifi_controller":    types.StringNull(),
-			"dns_servers":         dnsServers,
 		})
+	}
+	servers := func(t *testing.T, obj types.Object) types.List {
+		t.Helper()
+		var opt dhcpServerOptionModel
+		if d := obj.As(ctx, &opt, basetypes.ObjectAsOptions{}); d.HasError() {
+			t.Fatalf("extracting option object: %v", d)
+		}
+		return opt.Servers
 	}
 
 	emptyList := types.ListValueMust(types.StringType, []attr.Value{})
@@ -1647,17 +1637,15 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 		if d.HasError() {
 			t.Fatalf("extracting dhcp_server: %v", d)
 		}
-		if got.DnsServers.IsNull() {
-			t.Errorf("dns_servers = null, want empty list")
+		if dns := servers(t, got.Dns); dns.IsNull() {
+			t.Errorf("dns.servers = null, want empty list")
+		} else if len(dns.Elements()) != 0 {
+			t.Errorf("dns.servers = %v, want 0 elements", dns.Elements())
 		}
-		if len(got.DnsServers.Elements()) != 0 {
-			t.Errorf("dns_servers = %v, want 0 elements", got.DnsServers.Elements())
-		}
-		if got.NtpServers.IsNull() {
-			t.Errorf("ntp_servers = null, want empty list")
-		}
-		if len(got.NtpServers.Elements()) != 0 {
-			t.Errorf("ntp_servers = %v, want 0 elements", got.NtpServers.Elements())
+		if ntp := servers(t, got.Ntp); ntp.IsNull() {
+			t.Errorf("ntp.servers = null, want empty list")
+		} else if len(ntp.Elements()) != 0 {
+			t.Errorf("ntp.servers = %v, want 0 elements", ntp.Elements())
 		}
 
 		var gotWins winsModel
@@ -1685,11 +1673,11 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 		if d.HasError() {
 			t.Fatalf("extracting dhcp_server: %v", d)
 		}
-		if !got.DnsServers.IsNull() {
-			t.Errorf("dns_servers = %v, want null", got.DnsServers)
+		if dns := servers(t, got.Dns); !dns.IsNull() {
+			t.Errorf("dns.servers = %v, want null", dns)
 		}
-		if !got.NtpServers.IsNull() {
-			t.Errorf("ntp_servers = %v, want null", got.NtpServers)
+		if ntp := servers(t, got.Ntp); !ntp.IsNull() {
+			t.Errorf("ntp.servers = %v, want null", ntp)
 		}
 
 		var gotWins winsModel
@@ -1704,7 +1692,7 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 }
 
 // Test_networkResource_networkToModel_normalizesControllerDefaults guards #414:
-// UniFi may omit gateway_type and ipv6_interface_type when they have their
+// UniFi may omit gateway_type and ipv6.interface_type when they have their
 // implicit defaults. Import must write the provider defaults into state instead
 // of null, otherwise every subsequent plan proposes null -> default/none.
 func Test_networkResource_networkToModel_normalizesControllerDefaults(t *testing.T) {
@@ -1720,8 +1708,7 @@ func Test_networkResource_networkToModel_normalizesControllerDefaults(t *testing
 			NatOutboundIPAddresses: types.ListNull(
 				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 			),
-			IPAliases:   types.ListNull(types.StringType),
-			IPv6Aliases: types.ListNull(types.StringType),
+			IPAliases: types.ListNull(types.StringType),
 		}
 	}
 
@@ -1775,12 +1762,13 @@ func Test_networkResource_networkToModel_normalizesControllerDefaults(t *testing
 			if got := model.GatewayType.ValueString(); got != tt.wantGatewayType {
 				t.Errorf("gateway_type = %q, want %q", got, tt.wantGatewayType)
 			}
-			if model.IPv6InterfaceType.IsNull() || model.IPv6InterfaceType.IsUnknown() {
-				t.Fatalf("ipv6_interface_type should be known, got %v", model.IPv6InterfaceType)
+			interfaceType := attrAs[types.String](t, model.IPv6.Attributes()["interface_type"])
+			if interfaceType.IsNull() || interfaceType.IsUnknown() {
+				t.Fatalf("ipv6.interface_type should be known, got %v", interfaceType)
 			}
-			if got := model.IPv6InterfaceType.ValueString(); got != tt.wantIPv6InterfaceType {
+			if got := interfaceType.ValueString(); got != tt.wantIPv6InterfaceType {
 				t.Errorf(
-					"ipv6_interface_type = %q, want %q",
+					"ipv6.interface_type = %q, want %q",
 					got,
 					tt.wantIPv6InterfaceType,
 				)
@@ -1802,8 +1790,7 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyDefaults(t *testing.T
 			NatOutboundIPAddresses: types.ListNull(
 				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 			),
-			IPAliases:   types.ListNull(types.StringType),
-			IPv6Aliases: types.ListNull(types.StringType),
+			IPAliases: types.ListNull(types.StringType),
 		}
 	}
 
@@ -1848,7 +1835,7 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyDefaults(t *testing.T
 		t.Run(tt.name, func(t *testing.T) {
 			previous := base()
 			previous.GatewayType = tt.previousGatewayType
-			previous.IPv6InterfaceType = tt.previousIPv6Type
+			previous.IPv6 = testNetworkIPv6Object(tt.previousIPv6Type)
 			network := &unifi.Network{
 				ID:      "net-vlan-only-imported",
 				Name:    strPtr("Imported VLAN Only"),
@@ -1866,12 +1853,13 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyDefaults(t *testing.T
 			if got := model.GatewayType.ValueString(); got != tt.wantGatewayType {
 				t.Errorf("gateway_type = %q, want %q", got, tt.wantGatewayType)
 			}
-			if model.IPv6InterfaceType.IsNull() || model.IPv6InterfaceType.IsUnknown() {
-				t.Fatalf("ipv6_interface_type should be known, got %v", model.IPv6InterfaceType)
+			interfaceType := attrAs[types.String](t, model.IPv6.Attributes()["interface_type"])
+			if interfaceType.IsNull() || interfaceType.IsUnknown() {
+				t.Fatalf("ipv6.interface_type should be known, got %v", interfaceType)
 			}
-			if got := model.IPv6InterfaceType.ValueString(); got != tt.wantIPv6InterfaceType {
+			if got := interfaceType.ValueString(); got != tt.wantIPv6InterfaceType {
 				t.Errorf(
-					"ipv6_interface_type = %q, want %q",
+					"ipv6.interface_type = %q, want %q",
 					got,
 					tt.wantIPv6InterfaceType,
 				)
@@ -1895,7 +1883,6 @@ func Test_networkResource_purpose(t *testing.T) {
 				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 			),
 			IPAliases:    types.ListNull(types.StringType),
-			IPv6Aliases:  types.ListNull(types.StringType),
 			DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
 			DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
 			DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
@@ -2106,9 +2093,10 @@ func minimalNetworkPlan(ctx context.Context, t *testing.T) (tfsdk.Plan, tfsdk.Co
 }
 
 // Test_networkResource_ModifyPlan_ipv6Aliases guards that ModifyPlan rejects
-// any non-null ipv6_aliases value (known, unknown, or empty list) with a clear
+// any non-null ipv6.aliases value (known, unknown, or empty list) with a clear
 // error instead of letting Create/Update silently drop it and produce a
 // confusing "provider produced inconsistent result after apply" failure (#413).
+// A wholly unknown ipv6 object hides the aliases value and is rejected too.
 func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 	r := &networkResource{}
 	ctx := context.Background()
@@ -2116,6 +2104,7 @@ func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 	tests := []struct {
 		name        string
 		ipv6Aliases types.List
+		ipv6Unknown bool
 		wantError   bool
 	}{
 		{
@@ -2141,14 +2130,28 @@ func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 			ipv6Aliases: types.ListValueMust(types.StringType, []attr.Value{}),
 			wantError:   true,
 		},
+		{
+			name:        "unknown ipv6 object: error",
+			ipv6Unknown: true,
+			wantError:   true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			plan, config := minimalNetworkPlan(ctx, t)
-			diags := plan.SetAttribute(ctx, path.Root("ipv6_aliases"), tt.ipv6Aliases)
+			var diags diag.Diagnostics
+			if tt.ipv6Unknown {
+				diags = plan.SetAttribute(
+					ctx,
+					path.Root("ipv6"),
+					types.ObjectUnknown(networkIPv6AttrTypes()),
+				)
+			} else {
+				diags = plan.SetAttribute(ctx, path.Root("ipv6").AtName("aliases"), tt.ipv6Aliases)
+			}
 			if diags.HasError() {
-				t.Fatalf("SetAttribute(ipv6_aliases): %v", diags)
+				t.Fatalf("SetAttribute(ipv6): %v", diags)
 			}
 
 			req := fwresource.ModifyPlanRequest{
@@ -2209,15 +2212,15 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			plan, config := minimalNetworkPlan(ctx, t)
 
-			// Ensure ipv6_aliases is null so it doesn't trigger its own error
+			// Ensure ipv6.aliases is null so it doesn't trigger its own error
 			// before we reach the ip_address_pool check.
 			diags := plan.SetAttribute(
 				ctx,
-				path.Root("ipv6_aliases"),
+				path.Root("ipv6").AtName("aliases"),
 				types.ListNull(types.StringType),
 			)
 			if diags.HasError() {
-				t.Fatalf("SetAttribute(ipv6_aliases): %v", diags)
+				t.Fatalf("SetAttribute(ipv6.aliases): %v", diags)
 			}
 
 			// Build a nat_outbound_ip_addresses list with one entry whose
@@ -2386,7 +2389,7 @@ func Test_networkResource_ModifyPlan_dhcpGuardingForcesManual(t *testing.T) {
 				p path.Path
 				v attr.Value
 			}{
-				{path.Root("ipv6_aliases"), types.ListNull(types.StringType)},
+				{path.Root("ipv6").AtName("aliases"), types.ListNull(types.StringType)},
 				{path.Root("nat_outbound_ip_addresses"), types.ListNull(
 					types.ObjectType{AttrTypes: natOutboundIPAddresses()},
 				)},
@@ -2519,8 +2522,8 @@ resource "unifi_network" "guard_corp" {
 	})
 }
 
-// TestAccNetworkFramework_dhcpEmptyLists guards #429 end-to-end: dns_servers,
-// ntp_servers, and wins.addresses configured with values must be updatable to
+// TestAccNetworkFramework_dhcpEmptyLists guards #429 end-to-end: dns.servers,
+// ntp.servers, and wins.addresses configured with values must be updatable to
 // an explicit empty list. Historically the readback collapsed an empty
 // controller response to null while the plan held [], so the update failed
 // with "Provider produced inconsistent result after apply".
@@ -2541,13 +2544,17 @@ resource "unifi_network" "test_empty_lists" {
 	setting_preference = "manual"
 
 	dhcp_server = {
-		enabled     = true
-		start       = "192.168.54.10"
-		stop        = "192.168.54.254"
-		dns_enabled = true
-		dns_servers = ["192.168.54.2", "192.168.54.3"]
-		ntp_enabled = true
-		ntp_servers = ["192.168.54.4"]
+		enabled = true
+		start   = "192.168.54.10"
+		stop    = "192.168.54.254"
+		dns = {
+			enabled = true
+			servers = ["192.168.54.2", "192.168.54.3"]
+		}
+		ntp = {
+			enabled = true
+			servers = ["192.168.54.4"]
+		}
 		wins = {
 			enabled   = true
 			addresses = ["192.168.54.5"]
@@ -2558,12 +2565,12 @@ resource "unifi_network" "test_empty_lists" {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_empty_lists",
-						"dhcp_server.dns_servers.#",
+						"dhcp_server.dns.servers.#",
 						"2",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_empty_lists",
-						"dhcp_server.ntp_servers.#",
+						"dhcp_server.ntp.servers.#",
 						"1",
 					),
 					resource.TestCheckResourceAttr(
@@ -2585,13 +2592,17 @@ resource "unifi_network" "test_empty_lists" {
 	setting_preference = "manual"
 
 	dhcp_server = {
-		enabled     = true
-		start       = "192.168.54.10"
-		stop        = "192.168.54.254"
-		dns_enabled = false
-		dns_servers = []
-		ntp_enabled = false
-		ntp_servers = []
+		enabled = true
+		start   = "192.168.54.10"
+		stop    = "192.168.54.254"
+		dns = {
+			enabled = false
+			servers = []
+		}
+		ntp = {
+			enabled = false
+			servers = []
+		}
 		wins = {
 			enabled   = false
 			addresses = []
@@ -2602,12 +2613,12 @@ resource "unifi_network" "test_empty_lists" {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_empty_lists",
-						"dhcp_server.dns_servers.#",
+						"dhcp_server.dns.servers.#",
 						"0",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_network.test_empty_lists",
-						"dhcp_server.ntp_servers.#",
+						"dhcp_server.ntp.servers.#",
 						"0",
 					),
 					resource.TestCheckResourceAttr(
@@ -2675,16 +2686,14 @@ func Test_preserveUnmanagedDhcpServer(t *testing.T) {
 				"stop":                types.StringNull(),
 				"gateway_enabled":     types.BoolValue(false),
 				"conflict_checking":   types.BoolValue(true),
-				"ntp_enabled":         types.BoolValue(false),
-				"ntp_servers":         types.ListNull(types.StringType),
+				"ntp":                 dhcpServerOptionDefault(),
 				"time_offset_enabled": types.BoolValue(false),
-				"dns_enabled":         types.BoolValue(false),
+				"dns":                 dhcpServerOptionDefault(),
 				"leasetime":           timetypes.NewGoDurationNull(),
 				"wins":                types.ObjectNull(winsModel{}.AttributeTypes()),
 				"wpad_url":            types.StringNull(),
 				"tftp_server":         types.StringNull(),
 				"unifi_controller":    types.StringNull(),
-				"dns_servers":         types.ListNull(types.StringType),
 			}),
 			false,
 			network,

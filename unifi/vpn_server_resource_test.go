@@ -12,6 +12,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
@@ -282,14 +283,14 @@ func TestAccVPNServer_openvpn_basic(t *testing.T) {
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"radiusprofile_id",
-					"openvpn.server_crt",
-					"openvpn.server_key",
+					"openvpn.server.crt",
+					"openvpn.server.key",
 					"openvpn.dh_key",
-					"openvpn.shared_client_key",
-					"openvpn.shared_client_crt",
+					"openvpn.shared_client.crt",
+					"openvpn.shared_client.key",
 					"openvpn.auth_key",
-					"openvpn.ca_crt",
-					"openvpn.ca_key",
+					"openvpn.ca.crt",
+					"openvpn.ca.key",
 				},
 			},
 		},
@@ -697,7 +698,22 @@ func Test_vpnServerL2TPModel_AttributeTypes(t *testing.T) {
 func Test_vpnServerOpenVPNModel_AttributeTypes(t *testing.T) {
 	m := vpnServerOpenVPNModel{}
 	got := m.AttributeTypes()
-	for _, key := range []string{"port", "mode", "encryption_cipher", "server_crt", "server_key", "dh_key", "ca_crt", "ca_key"} {
+	for _, key := range []string{"port", "mode", "encryption_cipher", "server", "dh_key", "shared_client", "auth_key", "ca"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("AttributeTypes() missing key %q", key)
+		}
+	}
+	for _, flat := range []string{"server_crt", "server_key", "shared_client_crt", "shared_client_key", "ca_crt", "ca_key"} {
+		if _, ok := got[flat]; ok {
+			t.Errorf("AttributeTypes() still has flat key %q", flat)
+		}
+	}
+}
+
+func Test_vpnServerCertPairModel_AttributeTypes(t *testing.T) {
+	m := vpnServerCertPairModel{}
+	got := m.AttributeTypes()
+	for _, key := range []string{"crt", "key"} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("AttributeTypes() missing key %q", key)
 		}
@@ -1224,4 +1240,224 @@ func TestAccVPNServerList_basic(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestVPNServerUpgradeState_v0NestsOpenVPNCertPairs guards the v0 -> v1 schema
+// upgrade: the flat openvpn.{ca,server,shared_client}_{crt,key} attributes move
+// into nested crt/key objects, while every other attribute (including the
+// deliberately un-nested dh_key and auth_key) passes through.
+func TestVPNServerUpgradeState_v0NestsOpenVPNCertPairs(t *testing.T) {
+	ctx := context.Background()
+	r := &vpnServerResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	prior := []byte(`{
+		"id": "vpn-1", "site": "default", "name": "ovpn", "enabled": true,
+		"subnet": "10.120.0.1/24",
+		"dns": {"enabled": false, "servers": null},
+		"wan": {"ip": "any", "interface": "wan"},
+		"radiusprofile_id": null, "wireguard": null, "l2tp": null,
+		"openvpn": {
+			"port": 1194, "mode": "server", "encryption_cipher": "AES_256_GCM",
+			"server_crt": "SERVER-CRT", "server_key": "SERVER-KEY",
+			"dh_key": "DH-PARAMS",
+			"shared_client_key": "CLIENT-KEY", "shared_client_crt": "CLIENT-CRT",
+			"auth_key": "TA-KEY",
+			"ca_crt": "CA-CRT", "ca_key": null
+		},
+		"timeouts": null
+	}`)
+
+	up, ok := r.UpgradeState(ctx)[0]
+	if !ok {
+		t.Fatal("no upgrader registered for schema version 0")
+	}
+	resp := &fwresource.UpgradeStateResponse{}
+	up.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+		RawState: &tfprotov6.RawState{JSON: prior},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+	}
+	val, err := resp.DynamicValue.Unmarshal(schemaType)
+	if err != nil {
+		t.Fatalf("unmarshal upgraded value: %v", err)
+	}
+
+	var root map[string]tftypes.Value
+	if err := val.As(&root); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	obj := func(v tftypes.Value, name string) map[string]tftypes.Value {
+		t.Helper()
+		var m map[string]tftypes.Value
+		if err := v.As(&m); err != nil {
+			t.Fatalf("%s: as object: %v (value %v)", name, err, v)
+		}
+		return m
+	}
+	str := func(v tftypes.Value, name, want string) {
+		t.Helper()
+		var s string
+		if err := v.As(&s); err != nil || s != want {
+			t.Errorf("%s = %v (%v), want %q", name, v, err, want)
+		}
+	}
+
+	str(root["name"], "name", "ovpn")
+	str(root["subnet"], "subnet", "10.120.0.1/24")
+	if !root["wireguard"].IsNull() || !root["l2tp"].IsNull() {
+		t.Errorf("wireguard/l2tp should stay null: %v %v", root["wireguard"], root["l2tp"])
+	}
+
+	openvpn := obj(root["openvpn"], "openvpn")
+	for _, flat := range []string{
+		"server_crt", "server_key", "shared_client_crt", "shared_client_key", "ca_crt", "ca_key",
+	} {
+		if _, exists := openvpn[flat]; exists {
+			t.Errorf("flat attribute openvpn.%s survived the upgrade", flat)
+		}
+	}
+	str(openvpn["mode"], "openvpn.mode", "server")
+	str(openvpn["dh_key"], "openvpn.dh_key", "DH-PARAMS")
+	str(openvpn["auth_key"], "openvpn.auth_key", "TA-KEY")
+
+	server := obj(openvpn["server"], "openvpn.server")
+	str(server["crt"], "openvpn.server.crt", "SERVER-CRT")
+	str(server["key"], "openvpn.server.key", "SERVER-KEY")
+	shared := obj(openvpn["shared_client"], "openvpn.shared_client")
+	str(shared["crt"], "openvpn.shared_client.crt", "CLIENT-CRT")
+	str(shared["key"], "openvpn.shared_client.key", "CLIENT-KEY")
+	ca := obj(openvpn["ca"], "openvpn.ca")
+	str(ca["crt"], "openvpn.ca.crt", "CA-CRT")
+	if !ca["key"].IsNull() {
+		t.Errorf("openvpn.ca.key = %v, want null (a null leaf is preserved)", ca["key"])
+	}
+}
+
+// TestVPNServer_openvpnCertPairsRoundTrip checks the nested certificate/key
+// pairs convert API -> model -> API without loss, and that null and unknown
+// pairs reach the wire exactly as the flat leaves they replaced did.
+func TestVPNServer_openvpnCertPairsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &vpnServerResource{}
+	str := func(v string) *string { return &v }
+	port := int64(1194)
+
+	api := &unifi.Network{
+		ID:                      "vpn-1",
+		Name:                    str("ovpn"),
+		Purpose:                 unifi.PurposeUserVPN,
+		Enabled:                 true,
+		IPSubnet:                str("10.120.0.1/24"),
+		VPNType:                 str("openvpn-server"),
+		LocalPort:               &port,
+		OpenVPNMode:             str("server"),
+		OpenVPNEncryptionCipher: str("AES_256_GCM"),
+		ServerCrt:               str("SERVER-CRT"),
+		ServerKey:               str("SERVER-KEY"),
+		DhKey:                   str("DH-PARAMS"),
+		SharedClientCrt:         str("CLIENT-CRT"),
+		SharedClientKey:         str("CLIENT-KEY"),
+		AuthKey:                 str("TA-KEY"),
+		CaCrt:                   str("CA-CRT"),
+	}
+
+	var model vpnServerResourceModel
+	if d := r.networkToModel(ctx, api, &model, "default", &vpnServerResourceModel{}); d.HasError() {
+		t.Fatalf("networkToModel: %v", d)
+	}
+	ovpn := model.OpenVPN.Attributes()
+	server := attrAs[types.Object](t, ovpn["server"]).Attributes()
+	if attrAs[types.String](t, server["crt"]).ValueString() != "SERVER-CRT" ||
+		attrAs[types.String](t, server["key"]).ValueString() != "SERVER-KEY" {
+		t.Errorf("openvpn.server = %v", server)
+	}
+	shared := attrAs[types.Object](t, ovpn["shared_client"]).Attributes()
+	if attrAs[types.String](t, shared["crt"]).ValueString() != "CLIENT-CRT" ||
+		attrAs[types.String](t, shared["key"]).ValueString() != "CLIENT-KEY" {
+		t.Errorf("openvpn.shared_client = %v", shared)
+	}
+	ca := attrAs[types.Object](t, ovpn["ca"]).Attributes()
+	if attrAs[types.String](t, ca["crt"]).ValueString() != "CA-CRT" || !ca["key"].IsNull() {
+		t.Errorf("openvpn.ca = %v (a nil API key must be a null leaf)", ca)
+	}
+	if attrAs[types.String](t, ovpn["dh_key"]).ValueString() != "DH-PARAMS" ||
+		attrAs[types.String](t, ovpn["auth_key"]).ValueString() != "TA-KEY" {
+		t.Errorf("un-nested openvpn leaves not read: %v", ovpn)
+	}
+
+	back, d := r.modelToNetwork(ctx, &model)
+	if d.HasError() {
+		t.Fatalf("modelToNetwork: %v", d)
+	}
+	if back.VPNType == nil || *back.VPNType != "openvpn-server" {
+		t.Fatalf("VPNType = %v, want openvpn-server", back.VPNType)
+	}
+	want := map[string]string{
+		"ServerCrt": "SERVER-CRT", "ServerKey": "SERVER-KEY",
+		"SharedClientCrt": "CLIENT-CRT", "SharedClientKey": "CLIENT-KEY",
+		"CaCrt": "CA-CRT", "DhKey": "DH-PARAMS", "AuthKey": "TA-KEY",
+	}
+	for name, got := range map[string]*string{
+		"ServerCrt": back.ServerCrt, "ServerKey": back.ServerKey,
+		"SharedClientCrt": back.SharedClientCrt, "SharedClientKey": back.SharedClientKey,
+		"CaCrt": back.CaCrt, "DhKey": back.DhKey, "AuthKey": back.AuthKey,
+	} {
+		if got == nil || *got != want[name] {
+			t.Errorf("%s round trip = %v, want %q", name, got, want[name])
+		}
+	}
+	if back.CaKey != nil {
+		t.Errorf("CaKey = %q, want nil (a null leaf stays off the wire)", *back.CaKey)
+	}
+
+	// On the wire a pair behaves exactly like the flat leaves it replaced: a
+	// null pair is omitted, and an unknown pair (create, before the controller
+	// has generated it) sends "" for both leaves as the unknown flat leaves
+	// did. The un-nested leaves are unaffected.
+	planned := vpnServerOpenVPNModel{
+		Port:             types.Int64Value(1194),
+		Mode:             types.StringValue("server"),
+		EncryptionCipher: types.StringValue("AES_256_GCM"),
+		Server:           types.ObjectUnknown(vpnServerCertPairModel{}.AttributeTypes()),
+		DhKey:            types.StringUnknown(),
+		SharedClient:     types.ObjectNull(vpnServerCertPairModel{}.AttributeTypes()),
+		AuthKey:          types.StringValue("TA-KEY"),
+		Ca:               types.ObjectUnknown(vpnServerCertPairModel{}.AttributeTypes()),
+	}
+	model.OpenVPN, d = types.ObjectValueFrom(ctx, vpnServerOpenVPNModel{}.AttributeTypes(), planned)
+	if d.HasError() {
+		t.Fatalf("planned ObjectValueFrom: %v", d)
+	}
+	back, d = r.modelToNetwork(ctx, &model)
+	if d.HasError() {
+		t.Fatalf("modelToNetwork (unknown pairs): %v", d)
+	}
+	empty := func(p *string) bool { return p != nil && *p == "" }
+	if !empty(back.ServerCrt) || !empty(back.ServerKey) || !empty(back.CaCrt) ||
+		!empty(back.CaKey) || !empty(back.DhKey) {
+		t.Errorf(
+			"unknown pairs must send \"\" like the unknown flat leaves: server=%v/%v ca=%v/%v dh=%v",
+			back.ServerCrt,
+			back.ServerKey,
+			back.CaCrt,
+			back.CaKey,
+			back.DhKey,
+		)
+	}
+	if back.SharedClientCrt != nil || back.SharedClientKey != nil {
+		t.Errorf(
+			"null pair leaked into the request: %v %v",
+			back.SharedClientCrt,
+			back.SharedClientKey,
+		)
+	}
+	if back.AuthKey == nil || *back.AuthKey != "TA-KEY" ||
+		back.LocalPort == nil || *back.LocalPort != 1194 {
+		t.Errorf("known openvpn leaves dropped: auth=%v port=%v", back.AuthKey, back.LocalPort)
+	}
 }

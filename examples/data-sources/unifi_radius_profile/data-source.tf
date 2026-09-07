@@ -16,11 +16,11 @@ output "radius_profile_accounting_enabled" {
 
 # Whether dynamic VLAN assignment is enabled and its WLAN mode (computed).
 output "radius_profile_vlan_enabled" {
-  value = data.unifi_radius_profile.default.vlan_enabled
+  value = data.unifi_radius_profile.default.vlan.enabled
 }
 
 output "radius_profile_vlan_wlan_mode" {
-  value = data.unifi_radius_profile.default.vlan_wlan_mode
+  value = data.unifi_radius_profile.default.vlan.wlan_mode
 }
 
 # Look up a profile on a specific site.

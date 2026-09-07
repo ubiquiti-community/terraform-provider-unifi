@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -16,18 +17,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &clientQosRateResource{}
-	_ resource.ResourceWithImportState = &clientQosRateResource{}
-	_ resource.ResourceWithIdentity    = &clientQosRateResource{}
+	_ resource.Resource                 = &clientQosRateResource{}
+	_ resource.ResourceWithImportState  = &clientQosRateResource{}
+	_ resource.ResourceWithIdentity     = &clientQosRateResource{}
+	_ resource.ResourceWithUpgradeState = &clientQosRateResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -51,12 +55,37 @@ type clientQosRateResource struct {
 
 // clientQosRateResourceModel describes the resource data model.
 type clientQosRateResourceModel struct {
-	ID             types.String   `tfsdk:"id"`
-	Site           types.String   `tfsdk:"site"`
-	Name           types.String   `tfsdk:"name"`
-	QOSRateMaxDown types.Int64    `tfsdk:"qos_rate_max_down"`
-	QOSRateMaxUp   types.Int64    `tfsdk:"qos_rate_max_up"`
-	Timeouts       timeouts.Value `tfsdk:"timeouts"`
+	ID       types.String   `tfsdk:"id"`
+	Site     types.String   `tfsdk:"site"`
+	Name     types.String   `tfsdk:"name"`
+	QOSRate  types.Object   `tfsdk:"qos_rate"`
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
+}
+
+// clientQosRateRateModel is the `qos_rate` nested object, shared by the
+// resource and the data source. It mirrors the max_up/max_down leaves of the
+// unifi_client `qos_rate` object.
+type clientQosRateRateModel struct {
+	MaxDown types.Int64 `tfsdk:"max_down"`
+	MaxUp   types.Int64 `tfsdk:"max_up"`
+}
+
+func clientQosRateRateAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"max_down": types.Int64Type,
+		"max_up":   types.Int64Type,
+	}
+}
+
+// clientQosRateRateDefault reproduces the values the flat qos_rate_max_down
+// and qos_rate_max_up attributes defaulted to when the practitioner left them
+// out of configuration, so the request body on create is unchanged when the
+// whole `qos_rate` block is omitted.
+func clientQosRateRateDefault() types.Object {
+	return types.ObjectValueMust(clientQosRateRateAttrTypes(), map[string]attr.Value{
+		"max_down": types.Int64Value(-1),
+		"max_up":   types.Int64Value(-1),
+	})
 }
 
 // clientQosRateIdentityModel describes the resource identity data model.
@@ -110,6 +139,7 @@ func (r *clientQosRateResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: `Manages a client QOS rate, which can be used to limit bandwidth for groups of clients.`,
+		Version:             1,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -132,22 +162,30 @@ func (r *clientQosRateResource) Schema(
 				MarkdownDescription: "The name of the client QOS rate.",
 				Required:            true,
 			},
-			"qos_rate_max_down": schema.Int64Attribute{
-				MarkdownDescription: "The QOS maximum download rate.",
+			"qos_rate": schema.SingleNestedAttribute{
+				MarkdownDescription: "QoS rate limits applied to clients in this group, in kbps.",
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(-1),
-				Validators: []validator.Int64{
-					int64validator.Between(2, 100000),
-				},
-			},
-			"qos_rate_max_up": schema.Int64Attribute{
-				MarkdownDescription: "The QOS maximum upload rate.",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(-1),
-				Validators: []validator.Int64{
-					int64validator.Between(2, 100000),
+				Default:             objectdefault.StaticValue(clientQosRateRateDefault()),
+				Attributes: map[string]schema.Attribute{
+					"max_down": schema.Int64Attribute{
+						MarkdownDescription: "The QOS maximum download rate.",
+						Optional:            true,
+						Computed:            true,
+						Default:             int64default.StaticInt64(-1),
+						Validators: []validator.Int64{
+							int64validator.Between(2, 100000),
+						},
+					},
+					"max_up": schema.Int64Attribute{
+						MarkdownDescription: "The QOS maximum upload rate.",
+						Optional:            true,
+						Computed:            true,
+						Default:             int64default.StaticInt64(-1),
+						Validators: []validator.Int64{
+							int64validator.Between(2, 100000),
+						},
+					},
 				},
 			},
 			"timeouts": timeouts.Attributes(
@@ -156,6 +194,56 @@ func (r *clientQosRateResource) Schema(
 			),
 		},
 	}
+}
+
+// UpgradeState migrates prior client QOS rate state to the current schema
+// version.
+//
+//	v0 -> current: the flat qos_rate_max_down and qos_rate_max_up attributes
+//	    moved into the nested `qos_rate` object. See nestClientQosRateState.
+func (r *clientQosRateResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeRawState(
+					schemaType,
+					req.RawState.JSON,
+					nestClientQosRateState,
+				)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Failed to upgrade client QOS rate state",
+						err.Error(),
+					)
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		},
+	}
+}
+
+// nestClientQosRateState rewrites flat v0 client QOS rate state into the
+// nested-object layout introduced in schema v1. Keys that are absent are
+// skipped.
+func nestClientQosRateState(state map[string]any) {
+	util.NestFields(state, "qos_rate", map[string]string{
+		"qos_rate_max_down": "max_down",
+		"qos_rate_max_up":   "max_up",
+	})
 }
 
 func (r *clientQosRateResource) Configure(
@@ -399,7 +487,7 @@ func (r *clientQosRateResource) Update(
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *clientQosRateResource) applyPlanToState(
-	_ context.Context,
+	ctx context.Context,
 	plan *clientQosRateResourceModel,
 	state *clientQosRateResourceModel,
 ) {
@@ -407,12 +495,9 @@ func (r *clientQosRateResource) applyPlanToState(
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		state.Name = plan.Name
 	}
-	if !plan.QOSRateMaxDown.IsNull() && !plan.QOSRateMaxDown.IsUnknown() {
-		state.QOSRateMaxDown = plan.QOSRateMaxDown
-	}
-	if !plan.QOSRateMaxUp.IsNull() && !plan.QOSRateMaxUp.IsUnknown() {
-		state.QOSRateMaxUp = plan.QOSRateMaxUp
-	}
+	// Each known qos_rate leaf in the plan replaces its state counterpart; a
+	// null/unknown leaf (or the whole object) keeps the state value.
+	state.QOSRate = util.OverlayKnownObject(ctx, plan.QOSRate, state.QOSRate)
 }
 
 func (r *clientQosRateResource) Delete(
@@ -493,7 +578,7 @@ func (r *clientQosRateResource) ImportState(
 // Helper functions for conversion and merging
 
 func (r *clientQosRateResource) planToClientQosRate(
-	_ context.Context,
+	ctx context.Context,
 	plan clientQosRateResourceModel,
 ) (*unifi.ClientGroup, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -507,17 +592,24 @@ func (r *clientQosRateResource) planToClientQosRate(
 	}
 
 	clientGroup := &unifi.ClientGroup{
-		ID:             plan.ID.ValueString(),
-		Name:           plan.Name.ValueString(),
-		QOSRateMaxDown: plan.QOSRateMaxDown.ValueInt64Pointer(),
-		QOSRateMaxUp:   plan.QOSRateMaxUp.ValueInt64Pointer(),
+		ID:   plan.ID.ValueString(),
+		Name: plan.Name.ValueString(),
+	}
+
+	// A null/unknown qos_rate object contributes nothing, exactly as unset
+	// flat leaves did; an unknown leaf yields a nil pointer the same way.
+	rate, ok, d := util.ObjectAs[clientQosRateRateModel](ctx, plan.QOSRate)
+	diags.Append(d...)
+	if ok {
+		clientGroup.QOSRateMaxDown = rate.MaxDown.ValueInt64Pointer()
+		clientGroup.QOSRateMaxUp = rate.MaxUp.ValueInt64Pointer()
 	}
 
 	return clientGroup, diags
 }
 
 func (r *clientQosRateResource) clientQosRateToModel(
-	_ context.Context,
+	ctx context.Context,
 	clientGroup *unifi.ClientGroup,
 	model *clientQosRateResourceModel,
 	site string,
@@ -535,8 +627,13 @@ func (r *clientQosRateResource) clientQosRateToModel(
 	model.ID = types.StringValue(clientGroup.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(clientGroup.Name)
-	model.QOSRateMaxDown = types.Int64PointerValue(clientGroup.QOSRateMaxDown)
-	model.QOSRateMaxUp = types.Int64PointerValue(clientGroup.QOSRateMaxUp)
+
+	rate, d := types.ObjectValueFrom(ctx, clientQosRateRateAttrTypes(), clientQosRateRateModel{
+		MaxDown: types.Int64PointerValue(clientGroup.QOSRateMaxDown),
+		MaxUp:   types.Int64PointerValue(clientGroup.QOSRateMaxUp),
+	})
+	diags.Append(d...)
+	model.QOSRate = rate
 
 	return diags
 }

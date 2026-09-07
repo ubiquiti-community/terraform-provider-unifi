@@ -13,9 +13,11 @@ resource "unifi_radius_user" "mac_auth" {
   password = "A1B2C3D4E5F6"
 
   # RFC 2868 tunnel attributes for dynamic VLAN assignment.
-  tunnel_type        = 13 # VLAN
-  tunnel_medium_type = 6  # IEEE-802
-  vlan               = 100
+  tunnel = {
+    type        = 13 # VLAN
+    medium_type = 6  # IEEE-802
+  }
+  vlan = 100
 }
 
 # User whose VLAN is inherited from an existing network. When vlan is omitted
@@ -24,6 +26,9 @@ resource "unifi_radius_user" "from_network" {
   name     = "bob"
   password = var.radius_user_password
 
-  network_id         = unifi_network.vlan_users.id
-  tunnel_config_type = "802.1x"
+  network_id = unifi_network.vlan_users.id
+
+  tunnel = {
+    config_type = "802.1x"
+  }
 }

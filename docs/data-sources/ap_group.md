@@ -14,7 +14,7 @@ Data source for access point groups.
 ```terraform
 # Look up an existing access point group by name. The group ID and the list of
 # member device MAC addresses are computed, making this useful for referencing a
-# group from other resources (e.g. WLAN ap_group_ids) or auditing membership.
+# group from other resources (e.g. WLAN ap_group.ids) or auditing membership.
 data "unifi_ap_group" "default" {
   name = "Default"
 }

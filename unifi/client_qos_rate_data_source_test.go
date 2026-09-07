@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
+	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 )
 
 func TestNewClientQosRateDataSource(t *testing.T) {
@@ -48,9 +49,24 @@ func Test_clientQosRateDataSource_Schema(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	for _, attr := range []string{"id", "site", "name", "qos_rate_max_down", "qos_rate_max_up"} {
+	for _, attr := range []string{"id", "site", "name", "qos_rate"} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
 			t.Errorf("missing attribute %q", attr)
+		}
+	}
+	rate, ok := resp.Schema.Attributes["qos_rate"].(dsschema.SingleNestedAttribute)
+	if !ok {
+		t.Fatalf(
+			"qos_rate is %T, want SingleNestedAttribute",
+			resp.Schema.Attributes["qos_rate"],
+		)
+	}
+	if !rate.Computed || rate.Optional || rate.Required {
+		t.Errorf("qos_rate should be Computed only: %+v", rate)
+	}
+	for _, leaf := range []string{"max_down", "max_up"} {
+		if _, ok := rate.Attributes[leaf]; !ok {
+			t.Errorf("missing nested attribute qos_rate.%s", leaf)
 		}
 	}
 }

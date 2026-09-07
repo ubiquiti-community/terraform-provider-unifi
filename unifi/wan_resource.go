@@ -36,9 +36,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &wanResource{}
-	_ resource.ResourceWithImportState = &wanResource{}
-	_ resource.ResourceWithIdentity    = &wanResource{}
+	_ resource.Resource                 = &wanResource{}
+	_ resource.ResourceWithImportState  = &wanResource{}
+	_ resource.ResourceWithIdentity     = &wanResource{}
+	_ resource.ResourceWithUpgradeState = &wanResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -110,8 +111,7 @@ type wanResourceModel struct {
 	IPv6SettingPreference types.String `tfsdk:"ipv6_setting_preference"`
 	SingleNetworkLAN      types.String `tfsdk:"single_network_lan"`
 	MACOverrideEnabled    types.Bool   `tfsdk:"mac_override_enabled"`
-	DsliteRemoteHost      types.String `tfsdk:"wan_dslite_remote_host"`
-	DsliteRemoteHostAuto  types.Bool   `tfsdk:"wan_dslite_remote_host_auto"`
+	Dslite                types.Object `tfsdk:"dslite"`
 
 	// Provider Capabilities
 	ProviderCapabilities types.Object `tfsdk:"provider_capabilities"`
@@ -129,6 +129,19 @@ type wanListConfigModel struct {
 type wanListFilterModel struct {
 	Name  types.String `tfsdk:"name"`
 	Value types.String `tfsdk:"value"`
+}
+
+// wanDsliteModel describes the DS-Lite (AFTR) configuration nested object.
+type wanDsliteModel struct {
+	RemoteHost     types.String `tfsdk:"remote_host"`
+	RemoteHostAuto types.Bool   `tfsdk:"remote_host_auto"`
+}
+
+func (m wanDsliteModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"remote_host":      types.StringType,
+		"remote_host_auto": types.BoolType,
+	}
 }
 
 // vlanModel describes the VLAN configuration.
@@ -198,24 +211,35 @@ func (m dhcpOptionModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// dnsIPv6Model describes the IPv6 half of the DNS configuration (dns.ipv6).
+type dnsIPv6Model struct {
+	Primary    types.String `tfsdk:"primary"`
+	Secondary  types.String `tfsdk:"secondary"`
+	Preference types.String `tfsdk:"preference"`
+}
+
+func (m dnsIPv6Model) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"primary":    types.StringType,
+		"secondary":  types.StringType,
+		"preference": types.StringType,
+	}
+}
+
 // dnsModel describes the DNS configuration nested object.
 type dnsModel struct {
-	Primary        types.String `tfsdk:"primary"`
-	Secondary      types.String `tfsdk:"secondary"`
-	IPv6Primary    types.String `tfsdk:"ipv6_primary"`
-	IPv6Secondary  types.String `tfsdk:"ipv6_secondary"`
-	Preference     types.String `tfsdk:"preference"`
-	IPv6Preference types.String `tfsdk:"ipv6_preference"`
+	Primary    types.String `tfsdk:"primary"`
+	Secondary  types.String `tfsdk:"secondary"`
+	Preference types.String `tfsdk:"preference"`
+	IPv6       types.Object `tfsdk:"ipv6"`
 }
 
 func (m dnsModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"primary":         types.StringType,
-		"secondary":       types.StringType,
-		"ipv6_primary":    types.StringType,
-		"ipv6_secondary":  types.StringType,
-		"preference":      types.StringType,
-		"ipv6_preference": types.StringType,
+		"primary":    types.StringType,
+		"secondary":  types.StringType,
+		"preference": types.StringType,
+		"ipv6":       types.ObjectType{AttrTypes: dnsIPv6Model{}.AttributeTypes()},
 	}
 }
 
@@ -264,20 +288,31 @@ func (m igmpProxyModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// dhcpv6PDModel describes the DHCPv6 prefix delegation settings (dhcpv6.pd).
+type dhcpv6PDModel struct {
+	Size     types.Int64 `tfsdk:"size"`
+	SizeAuto types.Bool  `tfsdk:"size_auto"`
+}
+
+func (m dhcpv6PDModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"size":      types.Int64Type,
+		"size_auto": types.BoolType,
+	}
+}
+
 // dhcpv6WanModel describes the DHCPv6 WAN configuration nested object.
 type dhcpv6WanModel struct {
 	CoS            types.Int64  `tfsdk:"cos"`
-	PDSize         types.Int64  `tfsdk:"pd_size"`
-	PDSizeAuto     types.Bool   `tfsdk:"pd_size_auto"`
+	PD             types.Object `tfsdk:"pd"`
 	Options        types.List   `tfsdk:"options"`
 	DelegationType types.String `tfsdk:"wan_delegation_type"`
 }
 
 func (m dhcpv6WanModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"cos":          types.Int64Type,
-		"pd_size":      types.Int64Type,
-		"pd_size_auto": types.BoolType,
+		"cos": types.Int64Type,
+		"pd":  types.ObjectType{AttrTypes: dhcpv6PDModel{}.AttributeTypes()},
 		"options": types.ListType{
 			ElemType: types.ObjectType{AttrTypes: dhcpOptionModel{}.AttributeTypes()},
 		},
@@ -333,6 +368,11 @@ func (r *wanResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "WAN network resource",
+		// Version history:
+		//   0: initial schema (flat wan_dslite_*, dns.ipv6_*, dhcpv6.pd_size*).
+		//   1: those prefixed attributes are nested objects (dslite, dns.ipv6,
+		//      dhcpv6.pd). See UpgradeState.
+		Version: 1,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -470,14 +510,6 @@ func (r *wanResource) Schema(
 							validators.IPv4Validator(),
 						},
 					},
-					"ipv6_primary": schema.StringAttribute{
-						Optional:            true,
-						MarkdownDescription: "Primary IPv6 DNS server",
-					},
-					"ipv6_secondary": schema.StringAttribute{
-						Optional:            true,
-						MarkdownDescription: "Secondary IPv6 DNS server",
-					},
 					"preference": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
@@ -489,15 +521,30 @@ func (r *wanResource) Schema(
 							stringvalidator.OneOf("auto", "manual"),
 						},
 					},
-					"ipv6_preference": schema.StringAttribute{
+					"ipv6": schema.SingleNestedAttribute{
 						Optional:            true,
 						Computed:            true,
-						MarkdownDescription: "IPv6 DNS preference (auto, manual)",
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
-						Validators: []validator.String{
-							stringvalidator.OneOf("auto", "manual"),
+						MarkdownDescription: "IPv6 DNS configuration",
+						Attributes: map[string]schema.Attribute{
+							"primary": schema.StringAttribute{
+								Optional:            true,
+								MarkdownDescription: "Primary IPv6 DNS server",
+							},
+							"secondary": schema.StringAttribute{
+								Optional:            true,
+								MarkdownDescription: "Secondary IPv6 DNS server",
+							},
+							"preference": schema.StringAttribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "IPv6 DNS preference (auto, manual)",
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+								Validators: []validator.String{
+									stringvalidator.OneOf("auto", "manual"),
+								},
+							},
 						},
 					},
 				},
@@ -558,23 +605,33 @@ func (r *wanResource) Schema(
 							int64validator.Between(0, 7),
 						},
 					},
-					"pd_size": schema.Int64Attribute{
+					"pd": schema.SingleNestedAttribute{
 						Optional:            true,
 						Computed:            true,
-						MarkdownDescription: "DHCPv6 prefix delegation size",
-						PlanModifiers: []planmodifier.Int64{
-							int64planmodifier.UseStateForUnknown(),
+						MarkdownDescription: "DHCPv6 prefix delegation configuration",
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseStateForUnknown(),
 						},
-						Validators: []validator.Int64{
-							int64validator.Between(48, 64),
-						},
-					},
-					"pd_size_auto": schema.BoolAttribute{
-						Optional:            true,
-						Computed:            true,
-						MarkdownDescription: "Whether DHCPv6 PD size is automatic",
-						PlanModifiers: []planmodifier.Bool{
-							boolplanmodifier.UseStateForUnknown(),
+						Attributes: map[string]schema.Attribute{
+							"size": schema.Int64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "DHCPv6 prefix delegation size",
+								PlanModifiers: []planmodifier.Int64{
+									int64planmodifier.UseStateForUnknown(),
+								},
+								Validators: []validator.Int64{
+									int64validator.Between(48, 64),
+								},
+							},
+							"size_auto": schema.BoolAttribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Whether DHCPv6 PD size is automatic",
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseStateForUnknown(),
+								},
+							},
 						},
 					},
 					"options": schema.ListNestedAttribute{
@@ -800,20 +857,30 @@ func (r *wanResource) Schema(
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"wan_dslite_remote_host": schema.StringAttribute{
+			"dslite": schema.SingleNestedAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The DS-Lite AFTR remote host. Only used when `wan_dslite_remote_host_auto` is disabled.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				MarkdownDescription: "DS-Lite (AFTR) configuration.",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-			},
-			"wan_dslite_remote_host_auto": schema.BoolAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Whether the DS-Lite AFTR remote host is detected automatically.",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+				Attributes: map[string]schema.Attribute{
+					"remote_host": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "The DS-Lite AFTR remote host. Only used when `remote_host_auto` is disabled.",
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"remote_host_auto": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Whether the DS-Lite AFTR remote host is detected automatically.",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
 				},
 			},
 			"provider_capabilities": schema.SingleNestedAttribute{
@@ -851,6 +918,72 @@ func (r *wanResource) Schema(
 			}),
 		},
 	}
+}
+
+// UpgradeState migrates prior WAN state to the current schema version.
+//
+//	v0 -> v1: the flat wan_dslite_remote_host{,_auto}, dns.ipv6_* and
+//	    dhcpv6.pd_size{,_auto} attributes move into the nested dslite,
+//	    dns.ipv6 and dhcpv6.pd objects. See nestWANState.
+func (r *wanResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	upgrader := func(rewrite func(state map[string]any)) resource.StateUpgrader {
+		return resource.StateUpgrader{
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						rewrite(state)
+						nestWANState(state)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade WAN state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		}
+	}
+
+	return map[int64]resource.StateUpgrader{
+		0: upgrader(func(map[string]any) {}),
+	}
+}
+
+// nestWANState rewrites flat v0 WAN state into the nested-object shape of the
+// current schema.
+func nestWANState(state map[string]any) {
+	util.NestFields(state, "dslite", map[string]string{
+		"wan_dslite_remote_host":      "remote_host",
+		"wan_dslite_remote_host_auto": "remote_host_auto",
+	})
+	util.WithObject(state, "dns", func(dns map[string]any) {
+		util.NestFields(dns, "ipv6", map[string]string{
+			"ipv6_primary":    "primary",
+			"ipv6_secondary":  "secondary",
+			"ipv6_preference": "preference",
+		})
+	})
+	util.WithObject(state, "dhcpv6", func(dhcpv6 map[string]any) {
+		util.NestFields(dhcpv6, "pd", map[string]string{
+			"pd_size":      "size",
+			"pd_size_auto": "size_auto",
+		})
+	})
 }
 
 func (r *wanResource) Configure(
@@ -947,7 +1080,7 @@ func (r *wanResource) Create(
 			}
 
 			// Overlay explicit config values onto the API state
-			r.overlayConfig(&state, &config, &plan)
+			r.overlayConfig(ctx, &state, &config, &plan)
 			state.Timeouts = plan.Timeouts
 
 			resp.Diagnostics.Append(resp.Identity.Set(ctx, wanIdentityModel{
@@ -981,7 +1114,7 @@ func (r *wanResource) Create(
 	}
 
 	// Overlay explicit config values onto the API state
-	r.overlayConfig(&state, &config, &plan)
+	r.overlayConfig(ctx, &state, &config, &plan)
 	state.Timeouts = plan.Timeouts
 
 	// Save data into Terraform state
@@ -1034,6 +1167,7 @@ func (r *wanResource) adoptExistingWAN(
 // For non-null config fields, we use the plan value (which includes any validation/transform).
 // For null config fields, we keep the state value (from the API).
 func (r *wanResource) overlayConfig(
+	ctx context.Context,
 	state *wanResourceModel,
 	config *wanResourceModel,
 	plan *wanResourceModel,
@@ -1074,15 +1208,11 @@ func (r *wanResource) overlayConfig(
 	if !config.IPv6SettingPreference.IsNull() {
 		state.IPv6SettingPreference = plan.IPv6SettingPreference
 	}
-	// The controller can force wan_dslite_remote_host_auto back to `true`
-	// server-side; keep the user's value so the create result matches the plan
-	// (#281).
-	if !config.DsliteRemoteHostAuto.IsNull() {
-		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
-	}
-	if !config.DsliteRemoteHost.IsNull() {
-		state.DsliteRemoteHost = plan.DsliteRemoteHost
-	}
+	// The controller can force dslite.remote_host_auto back to `true`
+	// server-side; re-assert each DS-Lite leaf the plan knows so the create
+	// result matches the plan (#281). A leaf not set in config is unknown in
+	// the create plan and so keeps the controller's value.
+	state.Dslite = util.OverlayKnownObject(ctx, plan.Dslite, state.Dslite)
 }
 
 func (r *wanResource) Read(
@@ -1244,18 +1374,13 @@ func (r *wanResource) Update(
 	}
 
 	// Step 6: Re-assert the planned DS-Lite values. The controller overrides
-	// wan_dslite_remote_host_auto server-side (it forces `true` when the AFTR is
+	// dslite.remote_host_auto server-side (it forces `true` when the AFTR is
 	// auto-detected for the interface), so the post-apply read returns `true`
-	// where the plan set `false` and the consistency check fails (#281). Keep the
-	// planned value when the user set it; the next Read reconciles state with the
-	// controller. (networkToModel runs after applyPlanToState, so its value would
-	// otherwise win.)
-	if !plan.DsliteRemoteHostAuto.IsNull() && !plan.DsliteRemoteHostAuto.IsUnknown() {
-		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
-	}
-	if !plan.DsliteRemoteHost.IsNull() && !plan.DsliteRemoteHost.IsUnknown() {
-		state.DsliteRemoteHost = plan.DsliteRemoteHost
-	}
+	// where the plan set `false` and the consistency check fails (#281). Keep
+	// the planned leaves the user set; the next Read reconciles state with the
+	// controller. (networkToModel runs after applyPlanToState, so its value
+	// would otherwise win.)
+	state.Dslite = util.OverlayKnownObject(ctx, plan.Dslite, state.Dslite)
 
 	// Save updated data into Terraform state. Identity is immutable once set:
 	// carry the incoming identity through unchanged, deriving a fresh one from
@@ -1273,7 +1398,7 @@ func (r *wanResource) Update(
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *wanResource) applyPlanToState(
-	_ context.Context,
+	ctx context.Context,
 	plan *wanResourceModel,
 	state *wanResourceModel,
 ) {
@@ -1338,12 +1463,9 @@ func (r *wanResource) applyPlanToState(
 	if !plan.MACOverrideEnabled.IsNull() && !plan.MACOverrideEnabled.IsUnknown() {
 		state.MACOverrideEnabled = plan.MACOverrideEnabled
 	}
-	if !plan.DsliteRemoteHost.IsNull() && !plan.DsliteRemoteHost.IsUnknown() {
-		state.DsliteRemoteHost = plan.DsliteRemoteHost
-	}
-	if !plan.DsliteRemoteHostAuto.IsNull() && !plan.DsliteRemoteHostAuto.IsUnknown() {
-		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
-	}
+	// DS-Lite: re-assert every leaf the plan knows and keep the state's value
+	// for the rest, as the flat attributes were merged leaf by leaf.
+	state.Dslite = util.OverlayKnownObject(ctx, plan.Dslite, state.Dslite)
 }
 
 func (r *wanResource) Delete(
@@ -1484,17 +1606,23 @@ func (r *wanResource) modelToNetwork(
 			if !dns.Secondary.IsNull() && !dns.Secondary.IsUnknown() {
 				network.WANDNS2 = dns.Secondary.ValueStringPointer()
 			}
-			if !dns.IPv6Primary.IsNull() && !dns.IPv6Primary.IsUnknown() {
-				network.WANIPV6DNS1 = dns.IPv6Primary.ValueStringPointer()
-			}
-			if !dns.IPv6Secondary.IsNull() && !dns.IPv6Secondary.IsUnknown() {
-				network.WANIPV6DNS2 = dns.IPv6Secondary.ValueStringPointer()
-			}
 			if !dns.Preference.IsNull() && !dns.Preference.IsUnknown() {
 				network.WANDNSPreference = dns.Preference.ValueStringPointer()
 			}
-			if !dns.IPv6Preference.IsNull() && !dns.IPv6Preference.IsUnknown() {
-				network.WANIPV6DNSPreference = dns.IPv6Preference.ValueStringPointer()
+			// A null/unknown ipv6 object contributes nothing, as its unset
+			// flat leaves did.
+			ipv6, ok, d := util.ObjectAs[dnsIPv6Model](ctx, dns.IPv6)
+			diags.Append(d...)
+			if ok {
+				if !ipv6.Primary.IsNull() && !ipv6.Primary.IsUnknown() {
+					network.WANIPV6DNS1 = ipv6.Primary.ValueStringPointer()
+				}
+				if !ipv6.Secondary.IsNull() && !ipv6.Secondary.IsUnknown() {
+					network.WANIPV6DNS2 = ipv6.Secondary.ValueStringPointer()
+				}
+				if !ipv6.Preference.IsNull() && !ipv6.Preference.IsUnknown() {
+					network.WANIPV6DNSPreference = ipv6.Preference.ValueStringPointer()
+				}
 			}
 		}
 	}
@@ -1556,11 +1684,15 @@ func (r *wanResource) modelToNetwork(
 			if !dhcpv6.CoS.IsNull() && !dhcpv6.CoS.IsUnknown() {
 				network.WANDHCPv6Cos = dhcpv6.CoS.ValueInt64Pointer()
 			}
-			if !dhcpv6.PDSize.IsNull() && !dhcpv6.PDSize.IsUnknown() {
-				network.WANDHCPv6PDSize = dhcpv6.PDSize.ValueInt64Pointer()
-			}
-			if !dhcpv6.PDSizeAuto.IsNull() && !dhcpv6.PDSizeAuto.IsUnknown() {
-				network.WANDHCPv6PDSizeAuto = dhcpv6.PDSizeAuto.ValueBool()
+			pd, ok, d := util.ObjectAs[dhcpv6PDModel](ctx, dhcpv6.PD)
+			diags.Append(d...)
+			if ok {
+				if !pd.Size.IsNull() && !pd.Size.IsUnknown() {
+					network.WANDHCPv6PDSize = pd.Size.ValueInt64Pointer()
+				}
+				if !pd.SizeAuto.IsNull() && !pd.SizeAuto.IsUnknown() {
+					network.WANDHCPv6PDSizeAuto = pd.SizeAuto.ValueBool()
+				}
 			}
 			if !dhcpv6.DelegationType.IsNull() && !dhcpv6.DelegationType.IsUnknown() {
 				network.IPV6WANDelegationType = dhcpv6.DelegationType.ValueStringPointer()
@@ -1666,11 +1798,15 @@ func (r *wanResource) modelToNetwork(
 	if !model.MACOverrideEnabled.IsNull() && !model.MACOverrideEnabled.IsUnknown() {
 		network.MACOverrideEnabled = model.MACOverrideEnabled.ValueBool()
 	}
-	if !model.DsliteRemoteHost.IsNull() && !model.DsliteRemoteHost.IsUnknown() {
-		network.WANDsliteRemoteHost = model.DsliteRemoteHost.ValueStringPointer()
-	}
-	if !model.DsliteRemoteHostAuto.IsNull() && !model.DsliteRemoteHostAuto.IsUnknown() {
-		network.WANDsliteRemoteHostAuto = model.DsliteRemoteHostAuto.ValueBool()
+	dslite, ok, d := util.ObjectAs[wanDsliteModel](ctx, model.Dslite)
+	diags.Append(d...)
+	if ok {
+		if !dslite.RemoteHost.IsNull() && !dslite.RemoteHost.IsUnknown() {
+			network.WANDsliteRemoteHost = dslite.RemoteHost.ValueStringPointer()
+		}
+		if !dslite.RemoteHostAuto.IsNull() && !dslite.RemoteHostAuto.IsUnknown() {
+			network.WANDsliteRemoteHostAuto = dslite.RemoteHostAuto.ValueBool()
+		}
 	}
 
 	// Convert IP aliases list
@@ -1791,18 +1927,25 @@ func (r *wanResource) networkToModel(
 		if network.WANDNS2 != nil {
 			currentDNS.Secondary = dnsAddrValue(network.WANDNS2)
 		}
-		if network.WANIPV6DNS1 != nil {
-			currentDNS.IPv6Primary = dnsAddrValue(network.WANIPV6DNS1)
-		}
-		if network.WANIPV6DNS2 != nil {
-			currentDNS.IPv6Secondary = dnsAddrValue(network.WANIPV6DNS2)
-		}
 		if network.WANDNSPreference != nil {
 			currentDNS.Preference = types.StringValue(*network.WANDNSPreference)
 		}
-		if network.WANIPV6DNSPreference != nil {
-			currentDNS.IPv6Preference = types.StringValue(*network.WANIPV6DNSPreference)
+		// dns.ipv6 is rebuilt the same way: prior leaves first (none when the
+		// object was null or unknown), then what the controller returned. It
+		// is always a known object, as its flat leaves always existed.
+		currentIPv6, _, d := util.ObjectAs[dnsIPv6Model](ctx, currentDNS.IPv6)
+		diags.Append(d...)
+		if network.WANIPV6DNS1 != nil {
+			currentIPv6.Primary = dnsAddrValue(network.WANIPV6DNS1)
 		}
+		if network.WANIPV6DNS2 != nil {
+			currentIPv6.Secondary = dnsAddrValue(network.WANIPV6DNS2)
+		}
+		if network.WANIPV6DNSPreference != nil {
+			currentIPv6.Preference = types.StringValue(*network.WANIPV6DNSPreference)
+		}
+		currentDNS.IPv6, d = types.ObjectValueFrom(ctx, currentIPv6.AttributeTypes(), currentIPv6)
+		diags.Append(d...)
 		dnsObj, d := types.ObjectValueFrom(ctx, currentDNS.AttributeTypes(), currentDNS)
 		diags.Append(d...)
 		model.DNS = dnsObj
@@ -1852,10 +1995,16 @@ func (r *wanResource) networkToModel(
 		if network.WANDHCPv6Cos != nil {
 			currentDHCPv6.CoS = types.Int64Value(*network.WANDHCPv6Cos)
 		}
+		// dhcpv6.pd: prior leaves first, then the controller's values (size
+		// only when returned, size_auto always, as before).
+		currentPD, _, d := util.ObjectAs[dhcpv6PDModel](ctx, currentDHCPv6.PD)
+		diags.Append(d...)
 		if network.WANDHCPv6PDSize != nil {
-			currentDHCPv6.PDSize = types.Int64Value(*network.WANDHCPv6PDSize)
+			currentPD.Size = types.Int64Value(*network.WANDHCPv6PDSize)
 		}
-		currentDHCPv6.PDSizeAuto = types.BoolValue(network.WANDHCPv6PDSizeAuto)
+		currentPD.SizeAuto = types.BoolValue(network.WANDHCPv6PDSizeAuto)
+		currentDHCPv6.PD, d = types.ObjectValueFrom(ctx, currentPD.AttributeTypes(), currentPD)
+		diags.Append(d...)
 		if network.IPV6WANDelegationType != nil {
 			currentDHCPv6.DelegationType = types.StringValue(*network.IPV6WANDelegationType)
 		}
@@ -1976,8 +2125,12 @@ func (r *wanResource) networkToModel(
 	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
 	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)
 	model.MACOverrideEnabled = types.BoolValue(network.MACOverrideEnabled)
-	model.DsliteRemoteHost = types.StringPointerValue(network.WANDsliteRemoteHost)
-	model.DsliteRemoteHostAuto = types.BoolValue(network.WANDsliteRemoteHostAuto)
+	dsliteObj, d := types.ObjectValueFrom(ctx, wanDsliteModel{}.AttributeTypes(), wanDsliteModel{
+		RemoteHost:     types.StringPointerValue(network.WANDsliteRemoteHost),
+		RemoteHostAuto: types.BoolValue(network.WANDsliteRemoteHostAuto),
+	})
+	diags.Append(d...)
+	model.Dslite = dsliteObj
 
 	// Convert IP aliases to list
 	if len(network.WANIPAliases) > 0 {
@@ -2071,6 +2224,9 @@ func applyWANDefaults(model *wanResourceModel) {
 	}
 	if model.IGMPProxy.IsNull() || model.IGMPProxy.IsUnknown() {
 		model.IGMPProxy = types.ObjectNull(igmpProxyModel{}.AttributeTypes())
+	}
+	if model.Dslite.IsNull() || model.Dslite.IsUnknown() {
+		model.Dslite = types.ObjectNull(wanDsliteModel{}.AttributeTypes())
 	}
 	// List types need properly-typed null values
 	if model.IPAliases.IsNull() || model.IPAliases.IsUnknown() {

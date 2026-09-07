@@ -92,51 +92,167 @@ func NewClientInfoObjectType() ClientInfoObjectType {
 func NewClientInfoObjectTypeFromData(data unifi.ClientInfo) {
 }
 
+// ClientNetworkModel is the `network` / `last_connection_network` nested object.
+type ClientNetworkModel struct {
+	ID   types.String `tfsdk:"id"`
+	Name types.String `tfsdk:"name"`
+}
+
+// ClientNetworkAttrTypes returns the attribute types of ClientNetworkModel.
+func ClientNetworkAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"id":   types.StringType,
+		"name": types.StringType,
+	}
+}
+
+// ClientLastUplinkModel is the `last_uplink` nested object.
+type ClientLastUplinkModel struct {
+	MAC        types.String `tfsdk:"mac"`
+	Name       types.String `tfsdk:"name"`
+	RemotePort types.Int64  `tfsdk:"remote_port"`
+}
+
+// ClientLastUplinkAttrTypes returns the attribute types of ClientLastUplinkModel.
+func ClientLastUplinkAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"mac":         types.StringType,
+		"name":        types.StringType,
+		"remote_port": types.Int64Type,
+	}
+}
+
+// ClientTrafficModel is the `tx` / `rx` nested object.
+type ClientTrafficModel struct {
+	Rate  types.Int64 `tfsdk:"rate"`
+	Bytes types.Int64 `tfsdk:"bytes"`
+}
+
+// ClientTrafficAttrTypes returns the attribute types of ClientTrafficModel.
+func ClientTrafficAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"rate":  types.Int64Type,
+		"bytes": types.Int64Type,
+	}
+}
+
+// ClientNetworkAttribute returns a Computed `network`-shaped nested attribute.
+// idDescription and nameDescription document the `id` and `name` leaves.
+func ClientNetworkAttribute(
+	description, idDescription, nameDescription string,
+) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		MarkdownDescription: description,
+		Computed:            true,
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				MarkdownDescription: idDescription,
+				Computed:            true,
+			},
+			"name": schema.StringAttribute{
+				MarkdownDescription: nameDescription,
+				Computed:            true,
+			},
+		},
+	}
+}
+
+// ClientTrafficAttribute returns a Computed `tx`/`rx`-shaped nested attribute.
+// rateDescription and bytesDescription document the `rate` and `bytes` leaves.
+func ClientTrafficAttribute(
+	description, rateDescription, bytesDescription string,
+) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		MarkdownDescription: description,
+		Computed:            true,
+		Attributes: map[string]schema.Attribute{
+			"rate": schema.Int64Attribute{
+				MarkdownDescription: rateDescription,
+				Computed:            true,
+			},
+			"bytes": schema.Int64Attribute{
+				MarkdownDescription: bytesDescription,
+				Computed:            true,
+			},
+		},
+	}
+}
+
+// ClientNetworkValue builds a `network`-shaped object; empty strings become null.
+func ClientNetworkValue(
+	ctx context.Context,
+	id, name string,
+) (types.Object, diag.Diagnostics) {
+	return types.ObjectValueFrom(ctx, ClientNetworkAttrTypes(), ClientNetworkModel{
+		ID:   util.StringValueOrNull(id),
+		Name: util.StringValueOrNull(name),
+	})
+}
+
+// ClientLastUplinkValue builds the `last_uplink` object; empty strings and a
+// nil remote port become null.
+func ClientLastUplinkValue(
+	ctx context.Context,
+	mac, name string,
+	remotePort *int64,
+) (types.Object, diag.Diagnostics) {
+	return types.ObjectValueFrom(ctx, ClientLastUplinkAttrTypes(), ClientLastUplinkModel{
+		MAC:        util.StringValueOrNull(mac),
+		Name:       util.StringValueOrNull(name),
+		RemotePort: types.Int64PointerValue(remotePort),
+	})
+}
+
+// ClientTrafficValue builds a `tx`/`rx`-shaped object; nil counters become null.
+func ClientTrafficValue(
+	ctx context.Context,
+	rate, bytes *int64,
+) (types.Object, diag.Diagnostics) {
+	return types.ObjectValueFrom(ctx, ClientTrafficAttrTypes(), ClientTrafficModel{
+		Rate:  types.Int64PointerValue(rate),
+		Bytes: types.Int64PointerValue(bytes),
+	})
+}
+
 // ClientInfoAttrTypes returns the attribute types for the client info object.
 func AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"id":                           types.StringType,
-		"mac":                          types.StringType,
-		"name":                         types.StringType,
-		"display_name":                 types.StringType,
-		"hostname":                     types.StringType,
-		"ip":                           types.StringType,
-		"fixed_ip":                     types.StringType,
-		"network_id":                   types.StringType,
-		"network_name":                 types.StringType,
-		"usergroup_id":                 types.StringType,
-		"blocked":                      types.BoolType,
-		"is_guest":                     types.BoolType,
-		"is_wired":                     types.BoolType,
-		"authorized":                   types.BoolType,
-		"status":                       types.StringType,
-		"uptime":                       timetypes.GoDurationType{},
-		"first_seen":                   types.Int64Type,
-		"last_seen":                    types.Int64Type,
-		"oui":                          types.StringType,
-		"local_dns_record":             types.StringType,
-		"local_dns_record_enabled":     types.BoolType,
-		"use_fixedip":                  types.BoolType,
-		"ap_mac":                       types.StringType,
-		"channel":                      types.Int64Type,
-		"radio":                        types.StringType,
-		"radio_name":                   types.StringType,
-		"essid":                        types.StringType,
-		"bssid":                        types.StringType,
-		"signal":                       types.Int64Type,
-		"rssi":                         types.Int64Type,
-		"noise":                        types.Int64Type,
-		"tx_rate":                      types.Int64Type,
-		"rx_rate":                      types.Int64Type,
-		"tx_bytes":                     types.Int64Type,
-		"rx_bytes":                     types.Int64Type,
-		"wired_rate_mbps":              types.Int64Type,
-		"sw_port":                      types.Int64Type,
-		"last_uplink_mac":              types.StringType,
-		"last_uplink_name":             types.StringType,
-		"last_uplink_remote_port":      types.Int64Type,
-		"last_connection_network_id":   types.StringType,
-		"last_connection_network_name": types.StringType,
+		"id":                       types.StringType,
+		"mac":                      types.StringType,
+		"name":                     types.StringType,
+		"display_name":             types.StringType,
+		"hostname":                 types.StringType,
+		"ip":                       types.StringType,
+		"fixed_ip":                 types.StringType,
+		"network":                  types.ObjectType{AttrTypes: ClientNetworkAttrTypes()},
+		"usergroup_id":             types.StringType,
+		"blocked":                  types.BoolType,
+		"is_guest":                 types.BoolType,
+		"is_wired":                 types.BoolType,
+		"authorized":               types.BoolType,
+		"status":                   types.StringType,
+		"uptime":                   timetypes.GoDurationType{},
+		"first_seen":               types.Int64Type,
+		"last_seen":                types.Int64Type,
+		"oui":                      types.StringType,
+		"local_dns_record":         types.StringType,
+		"local_dns_record_enabled": types.BoolType,
+		"use_fixedip":              types.BoolType,
+		"ap_mac":                   types.StringType,
+		"channel":                  types.Int64Type,
+		"radio":                    types.StringType,
+		"radio_name":               types.StringType,
+		"essid":                    types.StringType,
+		"bssid":                    types.StringType,
+		"signal":                   types.Int64Type,
+		"rssi":                     types.Int64Type,
+		"noise":                    types.Int64Type,
+		"tx":                       types.ObjectType{AttrTypes: ClientTrafficAttrTypes()},
+		"rx":                       types.ObjectType{AttrTypes: ClientTrafficAttrTypes()},
+		"wired_rate_mbps":          types.Int64Type,
+		"sw_port":                  types.Int64Type,
+		"last_uplink":              types.ObjectType{AttrTypes: ClientLastUplinkAttrTypes()},
+		"last_connection_network":  types.ObjectType{AttrTypes: ClientNetworkAttrTypes()},
 	}
 }
 
@@ -170,14 +286,11 @@ func Attributes() map[string]schema.Attribute {
 			MarkdownDescription: "Fixed IPv4 address set for this client.",
 			Computed:            true,
 		},
-		"network_id": schema.StringAttribute{
-			MarkdownDescription: "The network ID for this client.",
-			Computed:            true,
-		},
-		"network_name": schema.StringAttribute{
-			MarkdownDescription: "The network name for this client.",
-			Computed:            true,
-		},
+		"network": ClientNetworkAttribute(
+			"The network this client is on.",
+			"The network ID for this client.",
+			"The network name for this client.",
+		),
 		"usergroup_id": schema.StringAttribute{
 			MarkdownDescription: "The user group ID for the client.",
 			Computed:            true,
@@ -267,22 +380,16 @@ func Attributes() map[string]schema.Attribute {
 			MarkdownDescription: "The noise level in dBm.",
 			Computed:            true,
 		},
-		"tx_rate": schema.Int64Attribute{
-			MarkdownDescription: "The transmit rate in kbps.",
-			Computed:            true,
-		},
-		"rx_rate": schema.Int64Attribute{
-			MarkdownDescription: "The receive rate in kbps.",
-			Computed:            true,
-		},
-		"tx_bytes": schema.Int64Attribute{
-			MarkdownDescription: "Total bytes transmitted.",
-			Computed:            true,
-		},
-		"rx_bytes": schema.Int64Attribute{
-			MarkdownDescription: "Total bytes received.",
-			Computed:            true,
-		},
+		"tx": ClientTrafficAttribute(
+			"Transmit statistics for the client.",
+			"The transmit rate in kbps.",
+			"Total bytes transmitted.",
+		),
+		"rx": ClientTrafficAttribute(
+			"Receive statistics for the client.",
+			"The receive rate in kbps.",
+			"Total bytes received.",
+		),
 		"wired_rate_mbps": schema.Int64Attribute{
 			MarkdownDescription: "The wired connection rate in Mbps.",
 			Computed:            true,
@@ -291,26 +398,29 @@ func Attributes() map[string]schema.Attribute {
 			MarkdownDescription: "The switch port number the client is connected to.",
 			Computed:            true,
 		},
-		"last_uplink_mac": schema.StringAttribute{
-			MarkdownDescription: "The MAC address of the last uplink device.",
+		"last_uplink": schema.SingleNestedAttribute{
+			MarkdownDescription: "The last uplink device the client was seen on.",
 			Computed:            true,
+			Attributes: map[string]schema.Attribute{
+				"mac": schema.StringAttribute{
+					MarkdownDescription: "The MAC address of the last uplink device.",
+					Computed:            true,
+				},
+				"name": schema.StringAttribute{
+					MarkdownDescription: "The name of the last uplink device.",
+					Computed:            true,
+				},
+				"remote_port": schema.Int64Attribute{
+					MarkdownDescription: "The remote port of the last uplink device.",
+					Computed:            true,
+				},
+			},
 		},
-		"last_uplink_name": schema.StringAttribute{
-			MarkdownDescription: "The name of the last uplink device.",
-			Computed:            true,
-		},
-		"last_uplink_remote_port": schema.Int64Attribute{
-			MarkdownDescription: "The remote port of the last uplink device.",
-			Computed:            true,
-		},
-		"last_connection_network_id": schema.StringAttribute{
-			MarkdownDescription: "The network ID of the last connection.",
-			Computed:            true,
-		},
-		"last_connection_network_name": schema.StringAttribute{
-			MarkdownDescription: "The network name of the last connection.",
-			Computed:            true,
-		},
+		"last_connection_network": ClientNetworkAttribute(
+			"The network of the client's last connection.",
+			"The network ID of the last connection.",
+			"The network name of the last connection.",
+		),
 	}
 }
 
@@ -381,56 +491,73 @@ func ClientListValue(
 	return diagnostics
 }
 
+// ClientInfoAttrValues builds the attribute value map for a client info
+// object, including its nested network, last_uplink, last_connection_network,
+// tx and rx objects.
 func ClientInfoAttrValues(
 	ctx context.Context,
 	clientInfo *unifi.ClientInfo,
-) map[string]attr.Value {
+) (map[string]attr.Value, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	network, d := ClientNetworkValue(ctx, clientInfo.NetworkId, clientInfo.NetworkName)
+	diags.Append(d...)
+	lastUplink, d := ClientLastUplinkValue(
+		ctx,
+		clientInfo.LastUplinkMac,
+		clientInfo.LastUplinkName,
+		clientInfo.LastUplinkRemotePort,
+	)
+	diags.Append(d...)
+	lastConnectionNetwork, d := ClientNetworkValue(
+		ctx,
+		clientInfo.LastConnectionNetworkId,
+		clientInfo.LastConnectionNetworkName,
+	)
+	diags.Append(d...)
+	tx, d := ClientTrafficValue(ctx, clientInfo.TxRate, clientInfo.TxBytes)
+	diags.Append(d...)
+	rx, d := ClientTrafficValue(ctx, clientInfo.RxRate, clientInfo.RxBytes)
+	diags.Append(d...)
+
 	return map[string]attr.Value{
-		"id":                         util.StringValueOrNull(clientInfo.Id),
-		"mac":                        util.StringValueOrNull(clientInfo.Mac),
-		"name":                       util.StringValueOrNull(clientInfo.Name),
-		"display_name":               util.StringValueOrNull(clientInfo.DisplayName),
-		"hostname":                   util.StringValueOrNull(clientInfo.Hostname),
-		"ip":                         util.StringValueOrNull(clientInfo.IP),
-		"fixed_ip":                   util.StringValueOrNull(clientInfo.FixedIP),
-		"network_id":                 util.StringValueOrNull(clientInfo.NetworkId),
-		"network_name":               util.StringValueOrNull(clientInfo.NetworkName),
-		"usergroup_id":               util.StringValueOrNull(clientInfo.UsergroupId),
-		"blocked":                    types.BoolValue(clientInfo.Blocked),
-		"is_guest":                   types.BoolValue(clientInfo.IsGuest),
-		"is_wired":                   types.BoolValue(clientInfo.IsWired),
-		"authorized":                 types.BoolValue(clientInfo.Authorized),
-		"status":                     util.StringValueOrNull(clientInfo.Status),
-		"uptime":                     util.DurationPtrValue(clientInfo.Uptime, time.Second),
-		"first_seen":                 types.Int64PointerValue(clientInfo.FirstSeen),
-		"last_seen":                  types.Int64PointerValue(clientInfo.LastSeen),
-		"oui":                        util.StringValueOrNull(clientInfo.Oui),
-		"local_dns_record":           util.StringValueOrNull(clientInfo.LocalDNSRecord),
-		"local_dns_record_enabled":   types.BoolValue(clientInfo.LocalDNSRecordEnabled),
-		"use_fixedip":                types.BoolValue(clientInfo.UseFixedip),
-		"ap_mac":                     util.StringValueOrNull(clientInfo.ApMac),
-		"channel":                    types.Int64PointerValue(clientInfo.Channel),
-		"radio":                      util.StringValueOrNull(clientInfo.Radio),
-		"radio_name":                 util.StringValueOrNull(clientInfo.RadioName),
-		"essid":                      util.StringValueOrNull(clientInfo.Essid),
-		"bssid":                      util.StringValueOrNull(clientInfo.Bssid),
-		"signal":                     types.Int64PointerValue(clientInfo.Signal),
-		"rssi":                       types.Int64PointerValue(clientInfo.Rssi),
-		"noise":                      types.Int64PointerValue(clientInfo.Noise),
-		"tx_rate":                    types.Int64PointerValue(clientInfo.TxRate),
-		"rx_rate":                    types.Int64PointerValue(clientInfo.RxRate),
-		"tx_bytes":                   types.Int64PointerValue(clientInfo.TxBytes),
-		"rx_bytes":                   types.Int64PointerValue(clientInfo.RxBytes),
-		"wired_rate_mbps":            types.Int64PointerValue(clientInfo.WiredRateMbps),
-		"sw_port":                    types.Int64PointerValue(clientInfo.SwPort),
-		"last_uplink_mac":            util.StringValueOrNull(clientInfo.LastUplinkMac),
-		"last_uplink_name":           util.StringValueOrNull(clientInfo.LastUplinkName),
-		"last_uplink_remote_port":    types.Int64PointerValue(clientInfo.LastUplinkRemotePort),
-		"last_connection_network_id": util.StringValueOrNull(clientInfo.LastConnectionNetworkId),
-		"last_connection_network_name": util.StringValueOrNull(
-			clientInfo.LastConnectionNetworkName,
-		),
-	}
+		"id":                       util.StringValueOrNull(clientInfo.Id),
+		"mac":                      util.StringValueOrNull(clientInfo.Mac),
+		"name":                     util.StringValueOrNull(clientInfo.Name),
+		"display_name":             util.StringValueOrNull(clientInfo.DisplayName),
+		"hostname":                 util.StringValueOrNull(clientInfo.Hostname),
+		"ip":                       util.StringValueOrNull(clientInfo.IP),
+		"fixed_ip":                 util.StringValueOrNull(clientInfo.FixedIP),
+		"network":                  network,
+		"usergroup_id":             util.StringValueOrNull(clientInfo.UsergroupId),
+		"blocked":                  types.BoolValue(clientInfo.Blocked),
+		"is_guest":                 types.BoolValue(clientInfo.IsGuest),
+		"is_wired":                 types.BoolValue(clientInfo.IsWired),
+		"authorized":               types.BoolValue(clientInfo.Authorized),
+		"status":                   util.StringValueOrNull(clientInfo.Status),
+		"uptime":                   util.DurationPtrValue(clientInfo.Uptime, time.Second),
+		"first_seen":               types.Int64PointerValue(clientInfo.FirstSeen),
+		"last_seen":                types.Int64PointerValue(clientInfo.LastSeen),
+		"oui":                      util.StringValueOrNull(clientInfo.Oui),
+		"local_dns_record":         util.StringValueOrNull(clientInfo.LocalDNSRecord),
+		"local_dns_record_enabled": types.BoolValue(clientInfo.LocalDNSRecordEnabled),
+		"use_fixedip":              types.BoolValue(clientInfo.UseFixedip),
+		"ap_mac":                   util.StringValueOrNull(clientInfo.ApMac),
+		"channel":                  types.Int64PointerValue(clientInfo.Channel),
+		"radio":                    util.StringValueOrNull(clientInfo.Radio),
+		"radio_name":               util.StringValueOrNull(clientInfo.RadioName),
+		"essid":                    util.StringValueOrNull(clientInfo.Essid),
+		"bssid":                    util.StringValueOrNull(clientInfo.Bssid),
+		"signal":                   types.Int64PointerValue(clientInfo.Signal),
+		"rssi":                     types.Int64PointerValue(clientInfo.Rssi),
+		"noise":                    types.Int64PointerValue(clientInfo.Noise),
+		"tx":                       tx,
+		"rx":                       rx,
+		"wired_rate_mbps":          types.Int64PointerValue(clientInfo.WiredRateMbps),
+		"sw_port":                  types.Int64PointerValue(clientInfo.SwPort),
+		"last_uplink":              lastUplink,
+		"last_connection_network":  lastConnectionNetwork,
+	}, diags
 }
 
 func ClientInfoValue(
@@ -440,7 +567,11 @@ func ClientInfoValue(
 ) diag.Diagnostics {
 	diagnostics := diag.Diagnostics{}
 
-	clientObj := ClientInfoAttrValues(ctx, clientInfo)
+	clientObj, d := ClientInfoAttrValues(ctx, clientInfo)
+	diagnostics.Append(d...)
+	if diagnostics.HasError() {
+		return diagnostics
+	}
 
 	if objValue, diags := types.ObjectValue(AttributeTypes(), clientObj); diags.HasError() {
 		diagnostics.Append(diags...)

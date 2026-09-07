@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -19,12 +20,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
@@ -34,6 +37,7 @@ var (
 	_ resource.ResourceWithImportState      = &staticRouteFrameworkResource{}
 	_ resource.ResourceWithConfigValidators = &staticRouteFrameworkResource{}
 	_ resource.ResourceWithIdentity         = &staticRouteFrameworkResource{}
+	_ resource.ResourceWithUpgradeState     = &staticRouteFrameworkResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -75,18 +79,41 @@ type staticRouteIdentityModel struct {
 
 // staticRouteFrameworkResourceModel describes the resource data model.
 type staticRouteFrameworkResourceModel struct {
-	ID            types.String      `tfsdk:"id"`
-	Site          types.String      `tfsdk:"site"`
-	Name          types.String      `tfsdk:"name"`
-	Network       types.String      `tfsdk:"network"`
-	Type          types.String      `tfsdk:"type"`
-	Distance      types.Int64       `tfsdk:"distance"`
-	NextHop       iptypes.IPAddress `tfsdk:"next_hop"`
-	Interface     types.String      `tfsdk:"interface"`
-	Enabled       types.Bool        `tfsdk:"enabled"`
-	GatewayDevice types.String      `tfsdk:"gateway_device"`
-	GatewayType   types.String      `tfsdk:"gateway_type"`
-	Timeouts      timeouts.Value    `tfsdk:"timeouts"`
+	ID        types.String      `tfsdk:"id"`
+	Site      types.String      `tfsdk:"site"`
+	Name      types.String      `tfsdk:"name"`
+	Network   types.String      `tfsdk:"network"`
+	Type      types.String      `tfsdk:"type"`
+	Distance  types.Int64       `tfsdk:"distance"`
+	NextHop   iptypes.IPAddress `tfsdk:"next_hop"`
+	Interface types.String      `tfsdk:"interface"`
+	Enabled   types.Bool        `tfsdk:"enabled"`
+	Gateway   types.Object      `tfsdk:"gateway"`
+	Timeouts  timeouts.Value    `tfsdk:"timeouts"`
+}
+
+// staticRouteGatewayModel is the `gateway` nested object.
+type staticRouteGatewayModel struct {
+	Device types.String `tfsdk:"device"`
+	Type   types.String `tfsdk:"type"`
+}
+
+func staticRouteGatewayAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"device": types.StringType,
+		"type":   types.StringType,
+	}
+}
+
+// staticRouteGatewayDefault reproduces the values the flat gateway_type and
+// gateway_device attributes sent when the practitioner left them out of
+// configuration (`default` and unset), so the request body on create is
+// unchanged when the whole `gateway` block is omitted.
+func staticRouteGatewayDefault() types.Object {
+	return types.ObjectValueMust(staticRouteGatewayAttrTypes(), map[string]attr.Value{
+		"device": types.StringNull(),
+		"type":   types.StringValue("default"),
+	})
 }
 
 func (r *staticRouteFrameworkResource) Metadata(
@@ -122,6 +149,7 @@ func (r *staticRouteFrameworkResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a static route for the USG.",
+		Version:             1,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -183,20 +211,28 @@ func (r *staticRouteFrameworkResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 			},
-			"gateway_device": schema.StringAttribute{
-				MarkdownDescription: "The MAC address of the gateway device, used when `gateway_type` is `switch`.",
-				Optional:            true,
-				Validators: []validator.String{
-					validators.MACAddressValidator(),
-				},
-			},
-			"gateway_type": schema.StringAttribute{
-				MarkdownDescription: "The type of gateway for the static route. Can be `default` or `switch`.",
+			"gateway": schema.SingleNestedAttribute{
+				MarkdownDescription: "The gateway that applies the static route.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("default"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("default", "switch"),
+				Default:             objectdefault.StaticValue(staticRouteGatewayDefault()),
+				Attributes: map[string]schema.Attribute{
+					"device": schema.StringAttribute{
+						MarkdownDescription: "The MAC address of the gateway device, used when `type` is `switch`.",
+						Optional:            true,
+						Validators: []validator.String{
+							validators.MACAddressValidator(),
+						},
+					},
+					"type": schema.StringAttribute{
+						MarkdownDescription: "The type of gateway for the static route. Can be `default` or `switch`.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("default"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("default", "switch"),
+						},
+					},
 				},
 			},
 			"timeouts": timeouts.Attributes(
@@ -205,6 +241,52 @@ func (r *staticRouteFrameworkResource) Schema(
 			),
 		},
 	}
+}
+
+// UpgradeState migrates prior static route state to the current schema version.
+//
+//	v0 -> current: the flat gateway_device and gateway_type attributes moved
+//	    into the nested `gateway` object. See nestStaticRouteState.
+func (r *staticRouteFrameworkResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeRawState(
+					schemaType,
+					req.RawState.JSON,
+					nestStaticRouteState,
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade static route state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		},
+	}
+}
+
+// nestStaticRouteState rewrites flat v0 static route state into the
+// nested-object layout introduced in schema v1. Keys that are absent are
+// skipped.
+func nestStaticRouteState(state map[string]any) {
+	util.NestFields(state, "gateway", map[string]string{
+		"gateway_device": "device",
+		"gateway_type":   "type",
+	})
 }
 
 func (r *staticRouteFrameworkResource) Configure(
@@ -253,7 +335,11 @@ func (r *staticRouteFrameworkResource) Create(
 	defer cancel()
 
 	// Convert to unifi.Routing
-	routing := r.modelToRouting(ctx, &data)
+	routing, diags := r.modelToRouting(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -271,7 +357,10 @@ func (r *staticRouteFrameworkResource) Create(
 	}
 
 	// Convert back to model
-	r.routingToModel(ctx, createdRouting, &data, site)
+	resp.Diagnostics.Append(r.routingToModel(ctx, createdRouting, &data, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Save data into Terraform state
 	identity := staticRouteIdentityModel{ID: data.ID, Site: data.Site}
@@ -354,7 +443,10 @@ func (r *staticRouteFrameworkResource) Read(
 	}
 
 	// Convert to model
-	r.routingToModel(ctx, routing, &data, site)
+	resp.Diagnostics.Append(r.routingToModel(ctx, routing, &data, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Save updated data into Terraform state. A pre-existing identity is
 	// re-set unchanged; a fresh one is derived from the refreshed state.
@@ -404,7 +496,11 @@ func (r *staticRouteFrameworkResource) Update(
 	}
 
 	// Step 3: Convert the updated state to API format
-	routing := r.modelToRouting(ctx, &state)
+	routing, diags := r.modelToRouting(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	routing.ID = state.ID.ValueString()
 
 	// Step 4: Send to API
@@ -418,7 +514,10 @@ func (r *staticRouteFrameworkResource) Update(
 	}
 
 	// Step 5: Update state with API response
-	r.routingToModel(ctx, updatedRouting, &state, site)
+	resp.Diagnostics.Append(r.routingToModel(ctx, updatedRouting, &state, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Save updated data into Terraform state
 	identity := staticRouteIdentityModel{ID: state.ID, Site: state.Site}
@@ -619,7 +718,7 @@ var _ resource.ConfigValidator = &staticRouteIPVersionValidator{}
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *staticRouteFrameworkResource) applyPlanToState(
-	_ context.Context,
+	ctx context.Context,
 	plan *staticRouteFrameworkResourceModel,
 	state *staticRouteFrameworkResourceModel,
 ) {
@@ -645,19 +744,17 @@ func (r *staticRouteFrameworkResource) applyPlanToState(
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
 		state.Enabled = plan.Enabled
 	}
-	if !plan.GatewayDevice.IsNull() && !plan.GatewayDevice.IsUnknown() {
-		state.GatewayDevice = plan.GatewayDevice
-	}
-	if !plan.GatewayType.IsNull() && !plan.GatewayType.IsUnknown() {
-		state.GatewayType = plan.GatewayType
-	}
+	// Each known gateway leaf in the plan replaces its state counterpart; a
+	// null/unknown leaf (or the whole object) keeps the state value.
+	state.Gateway = util.OverlayKnownObject(ctx, plan.Gateway, state.Gateway)
 }
 
 // modelToRouting converts the Terraform model to the API struct.
 func (r *staticRouteFrameworkResource) modelToRouting(
-	_ context.Context,
+	ctx context.Context,
 	model *staticRouteFrameworkResourceModel,
-) *unifi.Routing {
+) (*unifi.Routing, diag.Diagnostics) {
+	var diags diag.Diagnostics
 	routeType := model.Type.ValueString()
 
 	routing := &unifi.Routing{
@@ -667,11 +764,17 @@ func (r *staticRouteFrameworkResource) modelToRouting(
 		StaticRouteNetwork:  model.Network.ValueString(), // TODO: Apply cidrZeroBased if needed
 		StaticRouteDistance: model.Distance.ValueInt64Pointer(),
 		StaticRouteType:     routeType,
-		GatewayType:         model.GatewayType.ValueString(),
 	}
 
-	if !model.GatewayDevice.IsNull() {
-		routing.GatewayDevice = model.GatewayDevice.ValueString()
+	// A null/unknown gateway object contributes nothing, exactly as unset
+	// flat leaves did.
+	gateway, ok, d := util.ObjectAs[staticRouteGatewayModel](ctx, model.Gateway)
+	diags.Append(d...)
+	if ok {
+		routing.GatewayType = gateway.Type.ValueString()
+		if !gateway.Device.IsNull() {
+			routing.GatewayDevice = gateway.Device.ValueString()
+		}
 	}
 
 	switch routeType {
@@ -687,16 +790,18 @@ func (r *staticRouteFrameworkResource) modelToRouting(
 		// No additional fields needed
 	}
 
-	return routing
+	return routing, diags
 }
 
 // routingToModel converts the API struct to the Terraform model.
 func (r *staticRouteFrameworkResource) routingToModel(
-	_ context.Context,
+	ctx context.Context,
 	routing *unifi.Routing,
 	model *staticRouteFrameworkResourceModel,
 	site string,
-) {
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
 	model.ID = types.StringValue(routing.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(routing.Name)
@@ -717,17 +822,20 @@ func (r *staticRouteFrameworkResource) routingToModel(
 
 	model.Enabled = types.BoolValue(routing.Enabled)
 
-	if routing.GatewayDevice != "" {
-		model.GatewayDevice = types.StringValue(routing.GatewayDevice)
-	} else {
-		model.GatewayDevice = types.StringNull()
+	// The controller omits gateway_type for the default gateway; surface it as
+	// `default` so it matches the schema default.
+	gatewayType := routing.GatewayType
+	if gatewayType == "" {
+		gatewayType = "default"
 	}
+	gateway, d := types.ObjectValueFrom(ctx, staticRouteGatewayAttrTypes(), staticRouteGatewayModel{
+		Device: stringOrNull(routing.GatewayDevice),
+		Type:   types.StringValue(gatewayType),
+	})
+	diags.Append(d...)
+	model.Gateway = gateway
 
-	if routing.GatewayType != "" {
-		model.GatewayType = types.StringValue(routing.GatewayType)
-	} else {
-		model.GatewayType = types.StringValue("default")
-	}
+	return diags
 }
 
 // ListResourceConfigSchema implements [list.ListResource].
@@ -842,9 +950,11 @@ func (r *staticRouteFrameworkResource) List(
 			// Convert to model.
 			var model staticRouteFrameworkResourceModel
 			routingCopy := routing
-			r.routingToModel(ctx, &routingCopy, &model, site)
-			model.Timeouts = timeoutsNullValue()
-			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			result.Diagnostics.Append(r.routingToModel(ctx, &routingCopy, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
 
 			if !push(result) {
 				return

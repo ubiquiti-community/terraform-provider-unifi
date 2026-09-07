@@ -3,20 +3,25 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/go-unifi/unifi/settings"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // testAccSettingProbeClient builds a raw API client for capability probes,
@@ -88,12 +93,12 @@ func TestAccSettingResource_mgmt(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.auto_upgrade",
+						"mgmt.auto_upgrade.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_enabled",
+						"mgmt.ssh.enabled",
 						"false",
 					),
 				),
@@ -104,8 +109,10 @@ func TestAccSettingResource_mgmt(t *testing.T) {
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"mgmt.%",
-					"mgmt.auto_upgrade",
-					"mgmt.ssh_enabled",
+					"mgmt.auto_upgrade.%",
+					"mgmt.auto_upgrade.enabled",
+					"mgmt.ssh.%",
+					"mgmt.ssh.enabled",
 				},
 			},
 		},
@@ -184,7 +191,7 @@ func TestAccSettingResource_usg(t *testing.T) {
 
 // TestAccSettingResource_usgGeo guards #374: the Region Blocking fields must
 // round-trip and the follow-up refresh plan must stay empty. On controllers
-// that store the config as usg.geo_ip_filtering_* the legacy path is used;
+// that store the config as the flat usg geo_ip_filtering_* fields the legacy path is used;
 // controllers that store it under usg_geo.ip_filtering take the standalone
 // write/read path.
 func TestAccSettingResource_usgGeo(t *testing.T) {
@@ -196,16 +203,16 @@ func TestAccSettingResource_usgGeo(t *testing.T) {
 				Config: testAccSettingConfig_usgGeo(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "usg.geo_ip_filtering_enabled", "true",
+						"unifi_setting.test", "usg.geo_ip_filtering.enabled", "true",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "usg.geo_ip_filtering_block", "block",
+						"unifi_setting.test", "usg.geo_ip_filtering.block", "block",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "usg.geo_ip_filtering_countries", "KP,RU",
+						"unifi_setting.test", "usg.geo_ip_filtering.countries", "KP,RU",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "usg.geo_ip_filtering_traffic_direction", "both",
+						"unifi_setting.test", "usg.geo_ip_filtering.traffic_direction", "both",
 					),
 				),
 			},
@@ -213,10 +220,10 @@ func TestAccSettingResource_usgGeo(t *testing.T) {
 				Config: testAccSettingConfig_usgGeoUpdated(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "usg.geo_ip_filtering_countries", "CN,KP,RU",
+						"unifi_setting.test", "usg.geo_ip_filtering.countries", "CN,KP,RU",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "usg.geo_ip_filtering_traffic_direction", "ingress",
+						"unifi_setting.test", "usg.geo_ip_filtering.traffic_direction", "ingress",
 					),
 				),
 			},
@@ -224,7 +231,7 @@ func TestAccSettingResource_usgGeo(t *testing.T) {
 				Config: testAccSettingConfig_usgGeoDisabled(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "usg.geo_ip_filtering_enabled", "false",
+						"unifi_setting.test", "usg.geo_ip_filtering.enabled", "false",
 					),
 				),
 			},
@@ -236,10 +243,12 @@ func testAccSettingConfig_usgGeo() string {
 	return `
 resource "unifi_setting" "test" {
   usg = {
-    geo_ip_filtering_enabled           = true
-    geo_ip_filtering_block             = "block"
-    geo_ip_filtering_countries         = "KP,RU"
-    geo_ip_filtering_traffic_direction = "both"
+    geo_ip_filtering = {
+      enabled           = true
+      block             = "block"
+      countries         = "KP,RU"
+      traffic_direction = "both"
+    }
   }
 }
 `
@@ -249,10 +258,12 @@ func testAccSettingConfig_usgGeoUpdated() string {
 	return `
 resource "unifi_setting" "test" {
   usg = {
-    geo_ip_filtering_enabled           = true
-    geo_ip_filtering_block             = "block"
-    geo_ip_filtering_countries         = "CN,KP,RU"
-    geo_ip_filtering_traffic_direction = "ingress"
+    geo_ip_filtering = {
+      enabled           = true
+      block             = "block"
+      countries         = "CN,KP,RU"
+      traffic_direction = "ingress"
+    }
   }
 }
 `
@@ -262,10 +273,12 @@ func testAccSettingConfig_usgGeoDisabled() string {
 	return `
 resource "unifi_setting" "test" {
   usg = {
-    geo_ip_filtering_enabled           = false
-    geo_ip_filtering_block             = "block"
-    geo_ip_filtering_countries         = "CN,KP,RU"
-    geo_ip_filtering_traffic_direction = "ingress"
+    geo_ip_filtering = {
+      enabled           = false
+      block             = "block"
+      countries         = "CN,KP,RU"
+      traffic_direction = "ingress"
+    }
   }
 }
 `
@@ -329,12 +342,12 @@ func TestAccSettingResource_combined(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.auto_upgrade",
+						"mgmt.auto_upgrade.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_enabled",
+						"mgmt.ssh.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
@@ -354,12 +367,12 @@ func TestAccSettingResource_combined(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.auto_upgrade",
+						"mgmt.auto_upgrade.enabled",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_enabled",
+						"mgmt.ssh.enabled",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
@@ -388,23 +401,23 @@ func TestAccSettingResource_sshKeys(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_enabled",
+						"mgmt.ssh.enabled",
 						"true",
 					),
-					resource.TestCheckResourceAttr("unifi_setting.test", "mgmt.ssh_keys.#", "1"),
+					resource.TestCheckResourceAttr("unifi_setting.test", "mgmt.ssh.keys.#", "1"),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_keys.0.name",
+						"mgmt.ssh.keys.0.name",
 						"test-key",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_keys.0.type",
+						"mgmt.ssh.keys.0.type",
 						"ssh-rsa",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_keys.0.comment",
+						"mgmt.ssh.keys.0.comment",
 						"Test SSH Key",
 					),
 				),
@@ -412,15 +425,15 @@ func TestAccSettingResource_sshKeys(t *testing.T) {
 			{
 				Config: testAccSettingConfig_sshKeysUpdate(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_setting.test", "mgmt.ssh_keys.#", "2"),
+					resource.TestCheckResourceAttr("unifi_setting.test", "mgmt.ssh.keys.#", "2"),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_keys.0.name",
+						"mgmt.ssh.keys.0.name",
 						"test-key",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"mgmt.ssh_keys.1.name",
+						"mgmt.ssh.keys.1.name",
 						"test-key-2",
 					),
 				),
@@ -433,8 +446,8 @@ func testAccSettingConfig_mgmt() string {
 	return `
 resource "unifi_setting" "test" {
   mgmt = {
-    auto_upgrade = true
-    ssh_enabled  = false
+    auto_upgrade = { enabled = true }
+    ssh          = { enabled = false }
   }
 }
 `
@@ -467,8 +480,8 @@ func testAccSettingConfig_combined() string {
 	return `
 resource "unifi_setting" "test" {
   mgmt = {
-    auto_upgrade = true
-    ssh_enabled  = true
+    auto_upgrade = { enabled = true }
+    ssh          = { enabled = true }
   }
 
   radius = {
@@ -486,8 +499,8 @@ func testAccSettingConfig_combinedUpdate() string {
 	return `
 resource "unifi_setting" "test" {
   mgmt = {
-    auto_upgrade = false
-    ssh_enabled  = false
+    auto_upgrade = { enabled = false }
+    ssh          = { enabled = false }
   }
 
   radius = {
@@ -505,13 +518,15 @@ func testAccSettingConfig_sshKeys() string {
 	return `
 resource "unifi_setting" "test" {
   mgmt = {
-    ssh_enabled = true
-    ssh_keys = [{
-      name    = "test-key"
-      type    = "ssh-rsa"
-      key     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDTest123"
-      comment = "Test SSH Key"
-    }]
+    ssh = {
+      enabled = true
+      keys = [{
+        name    = "test-key"
+        type    = "ssh-rsa"
+        key     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDTest123"
+        comment = "Test SSH Key"
+      }]
+    }
   }
 }
 `
@@ -715,21 +730,21 @@ func TestAccSettingResource_ipsSuppression(t *testing.T) {
 				Config: testAccSettingConfig_ipsSuppression(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_alerts.#", "1",
+						"unifi_setting.test", "ips.suppression.alerts.#", "1",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_setting.test",
-						"ips.suppression_alerts.0.signature",
+						"ips.suppression.alerts.0.signature",
 						"ET SCAN Potential SSH Scan OUTBOUND",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_alerts.0.id", "2003068",
+						"unifi_setting.test", "ips.suppression.alerts.0.id", "2003068",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_whitelist.#", "1",
+						"unifi_setting.test", "ips.suppression.whitelist.#", "1",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_whitelist.0.value", "10.0.0.5",
+						"unifi_setting.test", "ips.suppression.whitelist.0.value", "10.0.0.5",
 					),
 				),
 			},
@@ -737,10 +752,10 @@ func TestAccSettingResource_ipsSuppression(t *testing.T) {
 				Config: testAccSettingConfig_ipsSuppressionUpdated(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_alerts.#", "2",
+						"unifi_setting.test", "ips.suppression.alerts.#", "2",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_whitelist.#", "0",
+						"unifi_setting.test", "ips.suppression.whitelist.#", "0",
 					),
 				),
 			},
@@ -748,10 +763,10 @@ func TestAccSettingResource_ipsSuppression(t *testing.T) {
 				Config: testAccSettingConfig_ipsSuppressionCleared(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_alerts.#", "0",
+						"unifi_setting.test", "ips.suppression.alerts.#", "0",
 					),
 					resource.TestCheckResourceAttr(
-						"unifi_setting.test", "ips.suppression_whitelist.#", "0",
+						"unifi_setting.test", "ips.suppression.whitelist.#", "0",
 					),
 				),
 			},
@@ -764,19 +779,21 @@ func testAccSettingConfig_ipsSuppression() string {
 resource "unifi_setting" "test" {
   ips = {
     ips_mode = "disabled"
-    suppression_alerts = [{
-      category  = "emerging-scan"
-      gid       = 1
-      id        = 2003068
-      signature = "ET SCAN Potential SSH Scan OUTBOUND"
-      type      = "all"
-      tracking  = []
-    }]
-    suppression_whitelist = [{
-      direction = "both"
-      mode      = "ip"
-      value     = "10.0.0.5"
-    }]
+    suppression = {
+      alerts = [{
+        category  = "emerging-scan"
+        gid       = 1
+        id        = 2003068
+        signature = "ET SCAN Potential SSH Scan OUTBOUND"
+        type      = "all"
+        tracking  = []
+      }]
+      whitelist = [{
+        direction = "both"
+        mode      = "ip"
+        value     = "10.0.0.5"
+      }]
+    }
   }
 }
 `
@@ -787,25 +804,27 @@ func testAccSettingConfig_ipsSuppressionUpdated() string {
 resource "unifi_setting" "test" {
   ips = {
     ips_mode = "disabled"
-    suppression_alerts = [
-      {
-        category  = "emerging-scan"
-        gid       = 1
-        id        = 2003068
-        signature = "ET SCAN Potential SSH Scan OUTBOUND"
-        type      = "all"
-        tracking  = []
-      },
-      {
-        category  = "emerging-dos"
-        gid       = 1
-        id        = 2019010
-        signature = "ET DOS Possible NTP DDoS"
-        type      = "all"
-        tracking  = []
-      },
-    ]
-    suppression_whitelist = []
+    suppression = {
+      alerts = [
+        {
+          category  = "emerging-scan"
+          gid       = 1
+          id        = 2003068
+          signature = "ET SCAN Potential SSH Scan OUTBOUND"
+          type      = "all"
+          tracking  = []
+        },
+        {
+          category  = "emerging-dos"
+          gid       = 1
+          id        = 2019010
+          signature = "ET DOS Possible NTP DDoS"
+          type      = "all"
+          tracking  = []
+        },
+      ]
+      whitelist = []
+    }
   }
 }
 `
@@ -815,9 +834,11 @@ func testAccSettingConfig_ipsSuppressionCleared() string {
 	return `
 resource "unifi_setting" "test" {
   ips = {
-    ips_mode              = "disabled"
-    suppression_alerts    = []
-    suppression_whitelist = []
+    ips_mode = "disabled"
+    suppression = {
+      alerts    = []
+      whitelist = []
+    }
   }
 }
 `
@@ -905,21 +926,23 @@ func testAccSettingConfig_sshKeysUpdate() string {
 	return `
 resource "unifi_setting" "test" {
   mgmt = {
-    ssh_enabled = true
-    ssh_keys = [
-      {
-        name    = "test-key"
-        type    = "ssh-rsa"
-        key     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDTest123"
-        comment = "Test SSH Key"
-      },
-      {
-        name    = "test-key-2"
-        type    = "ssh-ed25519"
-        key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest456"
-        comment = "Second Test Key"
-      }
-    ]
+    ssh = {
+      enabled = true
+      keys = [
+        {
+          name    = "test-key"
+          type    = "ssh-rsa"
+          key     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDTest123"
+          comment = "Test SSH Key"
+        },
+        {
+          name    = "test-key-2"
+          type    = "ssh-ed25519"
+          key     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest456"
+          comment = "Second Test Key"
+        }
+      ]
+    }
   }
 }
 `
@@ -1071,13 +1094,12 @@ func Test_settingResource_mgmtModelToSetting(t *testing.T) {
 	r := &settingResource{}
 	ctx := context.Background()
 
-	t.Run("nil model returns empty setting", func(t *testing.T) {
+	t.Run("null groups produce empty setting", func(t *testing.T) {
 		// mgmtModelToSetting does not accept nil (it dereferences the pointer);
-		// test zero-value model produces a zero-value settings.Mgmt.
+		// null nested groups must leave the zero-value settings.Mgmt untouched.
 		model := &settingMgmtModel{
-			AutoUpgrade: types.BoolNull(),
-			SSHEnabled:  types.BoolNull(),
-			SSHKeys:     types.ListNull(types.StringType),
+			AutoUpgrade: types.ObjectNull(mgmtAutoUpgradeAttrTypes),
+			SSH:         types.ObjectNull(mgmtSSHAttrTypes),
 		}
 		got := r.mgmtModelToSetting(ctx, model, &settings.Mgmt{})
 		if got == nil {
@@ -1093,9 +1115,8 @@ func Test_settingResource_mgmtModelToSetting(t *testing.T) {
 
 	t.Run("basic fields set", func(t *testing.T) {
 		model := &settingMgmtModel{
-			AutoUpgrade: types.BoolValue(true),
-			SSHEnabled:  types.BoolValue(false),
-			SSHKeys:     types.ListNull(types.StringType),
+			AutoUpgrade: testMgmtAutoUpgradeObj(t, types.BoolValue(true), types.Int64Null()),
+			SSH:         testMgmtSSHObj(t, settingMgmtSSHModel{Enabled: types.BoolValue(false)}),
 		}
 		got := r.mgmtModelToSetting(ctx, model, &settings.Mgmt{})
 		if got == nil {
@@ -1120,19 +1141,34 @@ func Test_settingResource_mgmtSettingToModel(t *testing.T) {
 			SSHEnabled:  true,
 		}
 		plan := &settingMgmtModel{
-			AutoUpgrade: types.BoolNull(),
-			SSHEnabled:  types.BoolNull(),
-			SSHKeys:     types.ListNull(types.StringType),
+			AutoUpgrade: types.ObjectNull(mgmtAutoUpgradeAttrTypes),
+			SSH:         types.ObjectNull(mgmtSSHAttrTypes),
 		}
 		got := r.mgmtSettingToModel(ctx, setting, plan)
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
 		if !got.AutoUpgrade.IsNull() {
-			t.Error("AutoUpgrade should be null when plan is null")
+			t.Error("auto_upgrade should be null when plan is null")
 		}
-		if !got.SSHEnabled.IsNull() {
-			t.Error("SSHEnabled should be null when plan is null")
+		if !got.SSH.IsNull() {
+			t.Error("ssh should be null when plan is null")
+		}
+	})
+
+	t.Run("configured group with unconfigured leaves keeps leaves null", func(t *testing.T) {
+		setting := &settings.Mgmt{AutoUpgrade: true}
+		plan := &settingMgmtModel{
+			AutoUpgrade: testMgmtAutoUpgradeObj(t, types.BoolValue(false), types.Int64Null()),
+			SSH:         types.ObjectNull(mgmtSSHAttrTypes),
+		}
+		got := r.mgmtSettingToModel(ctx, setting, plan)
+		au, ok, _ := util.ObjectAs[settingMgmtAutoUpgradeModel](ctx, got.AutoUpgrade)
+		if !ok {
+			t.Fatalf("auto_upgrade should be known: %v", got.AutoUpgrade)
+		}
+		if !au.Enabled.ValueBool() || !au.Hour.IsNull() {
+			t.Errorf("auto_upgrade = %+v, want enabled=true hour=null", au)
 		}
 	})
 
@@ -1142,19 +1178,21 @@ func Test_settingResource_mgmtSettingToModel(t *testing.T) {
 			SSHEnabled:  false,
 		}
 		plan := &settingMgmtModel{
-			AutoUpgrade: types.BoolValue(false), // plan had a value configured
-			SSHEnabled:  types.BoolValue(true),
-			SSHKeys:     types.ListNull(types.StringType),
+			// plan had a value configured
+			AutoUpgrade: testMgmtAutoUpgradeObj(t, types.BoolValue(false), types.Int64Null()),
+			SSH:         testMgmtSSHObj(t, settingMgmtSSHModel{Enabled: types.BoolValue(true)}),
 		}
 		got := r.mgmtSettingToModel(ctx, setting, plan)
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
-		if !got.AutoUpgrade.ValueBool() {
-			t.Error("AutoUpgrade should reflect remote value (true)")
+		au, ok, _ := util.ObjectAs[settingMgmtAutoUpgradeModel](ctx, got.AutoUpgrade)
+		if !ok || !au.Enabled.ValueBool() {
+			t.Errorf("auto_upgrade.enabled should reflect remote value (true): %v", got.AutoUpgrade)
 		}
-		if got.SSHEnabled.ValueBool() {
-			t.Error("SSHEnabled should reflect remote value (false)")
+		ssh, ok, _ := util.ObjectAs[settingMgmtSSHModel](ctx, got.SSH)
+		if !ok || ssh.Enabled.ValueBool() {
+			t.Errorf("ssh.enabled should reflect remote value (false): %v", got.SSH)
 		}
 	})
 }
@@ -1734,9 +1772,11 @@ func TestMgmtNewFields(t *testing.T) {
 	// Base has a field the user does NOT manage; it must survive.
 	base := &settings.Mgmt{WifimanEnabled: true}
 	model := &settingMgmtModel{
-		SSHUsername:            types.StringValue("admin"),
-		SSHPassword:            types.StringValue("s3cret"),
-		SSHAuthPasswordEnabled: types.BoolValue(true),
+		SSH: testMgmtSSHObj(t, settingMgmtSSHModel{
+			Username:            types.StringValue("admin"),
+			Password:            types.StringValue("s3cret"),
+			AuthPasswordEnabled: types.BoolValue(true),
+		}),
 		AdvancedFeatureEnabled: types.BoolValue(true),
 	}
 	setting := r.mgmtModelToSetting(ctx, model, base)
@@ -1750,15 +1790,21 @@ func TestMgmtNewFields(t *testing.T) {
 
 	// On read, ssh_password is preserved from the plan (API returns no plaintext).
 	plan := &settingMgmtModel{
-		SSHUsername: types.StringValue("admin"),
-		SSHPassword: types.StringValue("s3cret"),
+		SSH: testMgmtSSHObj(t, settingMgmtSSHModel{
+			Username: types.StringValue("admin"),
+			Password: types.StringValue("s3cret"),
+		}),
 	}
 	out := r.mgmtSettingToModel(ctx, &settings.Mgmt{SSHUsername: "admin"}, plan)
-	if out.SSHPassword.ValueString() != "s3cret" {
-		t.Errorf("ssh_password not preserved: %q", out.SSHPassword.ValueString())
+	outSSH, ok, _ := util.ObjectAs[settingMgmtSSHModel](ctx, out.SSH)
+	if !ok {
+		t.Fatalf("ssh should be known: %v", out.SSH)
 	}
-	if out.SSHUsername.ValueString() != "admin" {
-		t.Errorf("ssh_username = %q, want admin", out.SSHUsername.ValueString())
+	if outSSH.Password.ValueString() != "s3cret" {
+		t.Errorf("ssh.password not preserved: %q", outSSH.Password.ValueString())
+	}
+	if outSSH.Username.ValueString() != "admin" {
+		t.Errorf("ssh.username = %q, want admin", outSSH.Username.ValueString())
 	}
 	// An unconfigured field stays null (no drift on unmanaged settings).
 	if !out.WifimanEnabled.IsNull() {
@@ -1790,11 +1836,13 @@ func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
 		}})
 
 	model := &settingIpsModel{
-		EnabledCategories:    types.ListNull(types.StringType),
-		EnabledNetworks:      types.ListNull(types.StringType),
-		Honeypot:             types.ListNull(types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}),
-		SuppressionWhitelist: types.ListNull(types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}),
-		SuppressionAlerts:    alerts,
+		EnabledCategories: types.ListNull(types.StringType),
+		EnabledNetworks:   types.ListNull(types.StringType),
+		Honeypot:          types.ListNull(types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}),
+		Suppression: testSettingObj(t, ipsSuppressionAttrTypes, settingIpsSuppressionModel{
+			Whitelist: types.ListNull(types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}),
+			Alerts:    alerts,
+		}),
 	}
 	setting := r.ipsModelToSetting(ctx, model, &diags)
 	if diags.HasError() {
@@ -1813,8 +1861,12 @@ func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("settingToModel: %v", diags)
 	}
+	outSupp, ok, _ := util.ObjectAs[settingIpsSuppressionModel](ctx, out.Suppression)
+	if !ok {
+		t.Fatalf("suppression should be known: %v", out.Suppression)
+	}
 	var outAlerts []settingIpsAlertModel
-	out.SuppressionAlerts.ElementsAs(ctx, &outAlerts, false)
+	outSupp.Alerts.ElementsAs(ctx, &outAlerts, false)
 	if len(outAlerts) != 1 || outAlerts[0].Signature.ValueString() != "ET MALWARE" ||
 		outAlerts[0].Gid.ValueInt64() != 1 {
 		t.Errorf("read-back alerts mismatch: %+v", outAlerts)
@@ -1829,10 +1881,15 @@ func TestSyslogOmitsUnsetPorts(t *testing.T) {
 	r := &settingResource{}
 
 	m := &settingSyslogModel{
-		Enabled:        types.BoolValue(true),
-		IP:             types.StringValue("10.0.10.15"),
-		Port:           types.Int64Value(1514),
-		NetconsolePort: types.Int64Null(), // netconsole disabled / unset
+		Enabled: types.BoolValue(true),
+		IP:      types.StringValue("10.0.10.15"),
+		Port:    types.Int64Value(1514),
+		Netconsole: testSettingObj(t, syslogNetconsoleAttrTypes, settingSyslogNetconsoleModel{
+			Enabled: types.BoolValue(false),
+			Host:    types.StringNull(),
+			Port:    types.Int64Null(), // netconsole disabled / unset
+		}),
+		ThisController: types.ObjectNull(syslogThisControllerAttrTypes),
 		Contents:       types.ListNull(types.StringType),
 	}
 	setting := r.syslogModelToSetting(ctx, m, &diags)
@@ -1840,7 +1897,7 @@ func TestSyslogOmitsUnsetPorts(t *testing.T) {
 		t.Fatalf("modelToSetting: %v", diags)
 	}
 	if setting.NetconsolePort != nil {
-		t.Errorf("netconsole_port must be omitted when unset, got %d", *setting.NetconsolePort)
+		t.Errorf("netconsole.port must be omitted when unset, got %d", *setting.NetconsolePort)
 	}
 	if setting.Port == nil || *setting.Port != 1514 {
 		t.Errorf("port = %v, want 1514", setting.Port)
@@ -1848,9 +1905,31 @@ func TestSyslogOmitsUnsetPorts(t *testing.T) {
 
 	// Unknown (Optional+Computed at create) must also omit, not send 0.
 	m.Port = types.Int64Unknown()
+	m.Netconsole = testSettingObj(t, syslogNetconsoleAttrTypes, settingSyslogNetconsoleModel{
+		Enabled: types.BoolValue(true),
+		Host:    types.StringUnknown(),
+		Port:    types.Int64Unknown(),
+	})
 	setting = r.syslogModelToSetting(ctx, m, &diags)
 	if setting.Port != nil {
 		t.Errorf("unknown port must be omitted, got %d", *setting.Port)
+	}
+	if setting.NetconsolePort != nil {
+		t.Errorf("unknown netconsole.port must be omitted, got %d", *setting.NetconsolePort)
+	}
+	if !setting.NetconsoleEnabled || setting.NetconsoleHost != "" {
+		t.Errorf("netconsole = enabled:%v host:%q, want enabled:true host:\"\"",
+			setting.NetconsoleEnabled, setting.NetconsoleHost)
+	}
+
+	// A wholly unknown group (omitted block at create) contributes nothing.
+	m.Netconsole = types.ObjectUnknown(syslogNetconsoleAttrTypes)
+	setting = r.syslogModelToSetting(ctx, m, &diags)
+	if diags.HasError() {
+		t.Fatalf("modelToSetting with unknown group: %v", diags)
+	}
+	if setting.NetconsoleEnabled || setting.NetconsoleHost != "" || setting.NetconsolePort != nil {
+		t.Errorf("unknown netconsole group must serialize zero values: %+v", setting)
 	}
 }
 
@@ -1985,18 +2064,18 @@ func TestIpsSuppressionConfigured(t *testing.T) {
 	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
 	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
 
-	unmanaged := &settingIpsModel{
-		SuppressionAlerts:    types.ListNull(alertType),
-		SuppressionWhitelist: types.ListNull(whitelistType),
+	unmanaged := &settingIpsSuppressionModel{
+		Alerts:    types.ListNull(alertType),
+		Whitelist: types.ListNull(whitelistType),
 	}
 	if ipsSuppressionConfigured(unmanaged) {
 		t.Error("null lists must not count as configured")
 	}
 
 	empty, _ := types.ListValueFrom(context.Background(), alertType, []settingIpsAlertModel{})
-	managed := &settingIpsModel{
-		SuppressionAlerts:    empty,
-		SuppressionWhitelist: types.ListNull(whitelistType),
+	managed := &settingIpsSuppressionModel{
+		Alerts:    empty,
+		Whitelist: types.ListNull(whitelistType),
 	}
 	if !ipsSuppressionConfigured(managed) {
 		t.Error("an empty configured list must count as configured")
@@ -2008,11 +2087,11 @@ func TestIpsSuppressionConfigured(t *testing.T) {
 // mapped to action, and only configured fields present (enabled always,
 // matching the always-serialized legacy usg field).
 func TestUsgGeoRawSetting(t *testing.T) {
-	raw := usgGeoRawSetting(&settingUSGModel{
-		GeoIPFilteringEnabled:          types.BoolValue(true),
-		GeoIPFilteringBlock:            types.StringValue("block"),
-		GeoIPFilteringCountries:        types.StringValue("KP,RU"),
-		GeoIPFilteringTrafficDirection: types.StringValue("both"),
+	raw := usgGeoRawSetting(&settingUsgGeoIPFilteringModel{
+		Enabled:          types.BoolValue(true),
+		Block:            types.StringValue("block"),
+		Countries:        types.StringValue("KP,RU"),
+		TrafficDirection: types.StringValue("both"),
 	})
 	if raw.Key != "usg_geo" {
 		t.Fatalf("key = %q, want usg_geo", raw.Key)
@@ -2027,11 +2106,11 @@ func TestUsgGeoRawSetting(t *testing.T) {
 	}
 
 	// Unconfigured optional fields are omitted; enabled defaults to false.
-	raw = usgGeoRawSetting(&settingUSGModel{
-		GeoIPFilteringEnabled:          types.BoolNull(),
-		GeoIPFilteringBlock:            types.StringNull(),
-		GeoIPFilteringCountries:        types.StringValue("KP"),
-		GeoIPFilteringTrafficDirection: types.StringNull(),
+	raw = usgGeoRawSetting(&settingUsgGeoIPFilteringModel{
+		Enabled:          types.BoolNull(),
+		Block:            types.StringNull(),
+		Countries:        types.StringValue("KP"),
+		TrafficDirection: types.StringNull(),
 	})
 	ipf, ok = raw.Data["ip_filtering"].(map[string]any)
 	if !ok {
@@ -2092,22 +2171,641 @@ func TestApplyUsgGeoIPFiltering(t *testing.T) {
 
 // TestUsgGeoConfigured covers the plan gate for the #374 paths.
 func TestUsgGeoConfigured(t *testing.T) {
-	unmanaged := &settingUSGModel{
-		GeoIPFilteringEnabled:          types.BoolNull(),
-		GeoIPFilteringBlock:            types.StringNull(),
-		GeoIPFilteringCountries:        types.StringNull(),
-		GeoIPFilteringTrafficDirection: types.StringNull(),
+	unmanaged := &settingUsgGeoIPFilteringModel{
+		Enabled:          types.BoolNull(),
+		Block:            types.StringNull(),
+		Countries:        types.StringNull(),
+		TrafficDirection: types.StringNull(),
 	}
 	if usgGeoConfigured(unmanaged) {
 		t.Error("all-null geo fields must not count as configured")
 	}
-	managed := &settingUSGModel{
-		GeoIPFilteringEnabled:          types.BoolNull(),
-		GeoIPFilteringBlock:            types.StringNull(),
-		GeoIPFilteringCountries:        types.StringValue("KP"),
-		GeoIPFilteringTrafficDirection: types.StringNull(),
+	managed := &settingUsgGeoIPFilteringModel{
+		Enabled:          types.BoolNull(),
+		Block:            types.StringNull(),
+		Countries:        types.StringValue("KP"),
+		TrafficDirection: types.StringNull(),
 	}
 	if !usgGeoConfigured(managed) {
 		t.Error("any configured geo field must count as configured")
 	}
+}
+
+// testSettingObj builds a known nested object from a sub-model for tests.
+func testSettingObj(t *testing.T, attrTypes map[string]attr.Type, model any) types.Object {
+	t.Helper()
+	obj, diags := types.ObjectValueFrom(context.Background(), attrTypes, model)
+	if diags.HasError() {
+		t.Fatalf("building nested object: %v", diags)
+	}
+	return obj
+}
+
+func testMgmtAutoUpgradeObj(t *testing.T, enabled types.Bool, hour types.Int64) types.Object {
+	t.Helper()
+	return testSettingObj(t, mgmtAutoUpgradeAttrTypes, settingMgmtAutoUpgradeModel{
+		Enabled: enabled,
+		Hour:    hour,
+	})
+}
+
+// testMgmtSSHObj builds a mgmt.ssh object, defaulting an untyped zero Keys
+// list to its typed null so partial literals stay readable.
+func testMgmtSSHObj(t *testing.T, m settingMgmtSSHModel) types.Object {
+	t.Helper()
+	if m.Keys.IsNull() && m.Keys.ElementType(context.Background()) == nil {
+		m.Keys = types.ListNull(types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes})
+	}
+	return testSettingObj(t, mgmtSSHAttrTypes, m)
+}
+
+// TestSettingUpgradeState_v1NestsPrefixedGroups guards the v1 -> v2 schema
+// upgrade: the flat usg tcp_*/udp_*/upnp_*/geo_ip_filtering_*/offload_*,
+// mgmt ssh_*/auto_upgrade*, syslog netconsole_*/this_controller* and ips
+// suppression_* attributes move into nested objects while every other
+// attribute passes through.
+func TestSettingUpgradeState_v1NestsPrefixedGroups(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Schema.Version != 2 {
+		t.Fatalf("setting schema Version = %d, want 2", schemaResp.Schema.Version)
+	}
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	prior := []byte(`{
+		"id": "default", "site": "default",
+		"usg": {
+			"ftp_module": true, "icmp_timeout": "30s", "other_timeout": "10m0s",
+			"tcp_close_timeout": "10s", "tcp_close_wait_timeout": "1m0s",
+			"tcp_established_timeout": "2h4m0s", "tcp_fin_wait_timeout": "2m0s",
+			"tcp_last_ack_timeout": "30s", "tcp_syn_recv_timeout": "1m0s",
+			"tcp_syn_sent_timeout": "2m0s", "tcp_time_wait_timeout": "2m0s",
+			"udp_other_timeout": "30s", "udp_stream_timeout": "3m0s",
+			"upnp_enabled": true, "upnp_nat_pmp_enabled": false,
+			"upnp_secure_mode": true, "upnp_wan_interface": "WAN2",
+			"geo_ip_filtering_enabled": true, "geo_ip_filtering_block": "block",
+			"geo_ip_filtering_countries": "KP,RU", "geo_ip_filtering_traffic_direction": "both",
+			"offload_accounting": true, "offload_l2_blocking": false, "offload_sch": true
+		},
+		"mgmt": {
+			"auto_upgrade": true, "auto_upgrade_hour": 3,
+			"ssh_enabled": true, "ssh_username": "admin", "ssh_password": "s3cret",
+			"ssh_auth_password_enabled": false,
+			"ssh_keys": [{"name": "k", "type": "ssh-rsa", "key": "AAAA", "comment": "c"}],
+			"wifiman_enabled": true
+		},
+		"syslog": {
+			"enabled": true, "ip": "10.0.0.9", "port": 514,
+			"netconsole_enabled": true, "netconsole_host": "10.0.0.7", "netconsole_port": 1514,
+			"this_controller": true, "this_controller_encrypted_only": false
+		},
+		"ips": {
+			"ips_mode": "disabled",
+			"suppression_whitelist": [{"direction": "both", "mode": "ip", "value": "10.0.0.5"}],
+			"suppression_alerts": [{
+				"category": "emerging-scan", "gid": 1, "id": 2003068,
+				"signature": "ET SCAN", "type": "all", "tracking": []
+			}]
+		}
+	}`)
+
+	up, ok := r.UpgradeState(ctx)[1]
+	if !ok {
+		t.Fatal("no upgrader registered for schema version 1")
+	}
+	resp := &fwresource.UpgradeStateResponse{}
+	up.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+		RawState: &tfprotov6.RawState{JSON: prior},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+	}
+	val, err := resp.DynamicValue.Unmarshal(schemaType)
+	if err != nil {
+		t.Fatalf("unmarshal upgraded value: %v", err)
+	}
+
+	var root map[string]tftypes.Value
+	if err := val.As(&root); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	obj := func(v tftypes.Value, name string) map[string]tftypes.Value {
+		t.Helper()
+		var m map[string]tftypes.Value
+		if err := v.As(&m); err != nil {
+			t.Fatalf("%s: as object: %v (value %v)", name, err, v)
+		}
+		return m
+	}
+	str := func(v tftypes.Value, name, want string) {
+		t.Helper()
+		var s string
+		if err := v.As(&s); err != nil || s != want {
+			t.Errorf("%s = %v (%v), want %q", name, v, err, want)
+		}
+	}
+	num := func(v tftypes.Value, name string, want int64) {
+		t.Helper()
+		var f big.Float
+		if err := v.As(&f); err != nil {
+			t.Errorf("%s = %v (%v), want %d", name, v, err, want)
+			return
+		}
+		if n, _ := f.Int64(); n != want {
+			t.Errorf("%s = %d, want %d", name, n, want)
+		}
+	}
+	boolean := func(v tftypes.Value, name string, want bool) {
+		t.Helper()
+		var b bool
+		if err := v.As(&b); err != nil || b != want {
+			t.Errorf("%s = %v (%v), want %v", name, v, err, want)
+		}
+	}
+	noFlat := func(m map[string]tftypes.Value, group string, keys ...string) {
+		t.Helper()
+		for _, k := range keys {
+			if _, exists := m[k]; exists {
+				t.Errorf("flat attribute %s.%q survived the upgrade", group, k)
+			}
+		}
+	}
+
+	str(root["site"], "site", "default")
+
+	usg := obj(root["usg"], "usg")
+	noFlat(usg, "usg", "tcp_close_timeout", "udp_other_timeout", "upnp_enabled",
+		"geo_ip_filtering_enabled", "offload_sch")
+	boolean(usg["ftp_module"], "usg.ftp_module", true)
+	str(usg["icmp_timeout"], "usg.icmp_timeout", "30s")
+	str(usg["other_timeout"], "usg.other_timeout", "10m0s")
+	tcp := obj(usg["tcp"], "usg.tcp")
+	str(tcp["close_timeout"], "usg.tcp.close_timeout", "10s")
+	str(tcp["close_wait_timeout"], "usg.tcp.close_wait_timeout", "1m0s")
+	str(tcp["established_timeout"], "usg.tcp.established_timeout", "2h4m0s")
+	str(tcp["fin_wait_timeout"], "usg.tcp.fin_wait_timeout", "2m0s")
+	str(tcp["last_ack_timeout"], "usg.tcp.last_ack_timeout", "30s")
+	str(tcp["syn_recv_timeout"], "usg.tcp.syn_recv_timeout", "1m0s")
+	str(tcp["syn_sent_timeout"], "usg.tcp.syn_sent_timeout", "2m0s")
+	str(tcp["time_wait_timeout"], "usg.tcp.time_wait_timeout", "2m0s")
+	udp := obj(usg["udp"], "usg.udp")
+	str(udp["other_timeout"], "usg.udp.other_timeout", "30s")
+	str(udp["stream_timeout"], "usg.udp.stream_timeout", "3m0s")
+	upnp := obj(usg["upnp"], "usg.upnp")
+	boolean(upnp["enabled"], "usg.upnp.enabled", true)
+	boolean(upnp["nat_pmp_enabled"], "usg.upnp.nat_pmp_enabled", false)
+	boolean(upnp["secure_mode"], "usg.upnp.secure_mode", true)
+	str(upnp["wan_interface"], "usg.upnp.wan_interface", "WAN2")
+	geo := obj(usg["geo_ip_filtering"], "usg.geo_ip_filtering")
+	boolean(geo["enabled"], "usg.geo_ip_filtering.enabled", true)
+	str(geo["block"], "usg.geo_ip_filtering.block", "block")
+	str(geo["countries"], "usg.geo_ip_filtering.countries", "KP,RU")
+	str(geo["traffic_direction"], "usg.geo_ip_filtering.traffic_direction", "both")
+	off := obj(usg["offload"], "usg.offload")
+	boolean(off["accounting"], "usg.offload.accounting", true)
+	boolean(off["l2_blocking"], "usg.offload.l2_blocking", false)
+	boolean(off["sch"], "usg.offload.sch", true)
+	if !usg["dns_verification"].IsNull() {
+		t.Errorf("usg.dns_verification absent from prior state must upgrade to null, got %v",
+			usg["dns_verification"])
+	}
+
+	mgmt := obj(root["mgmt"], "mgmt")
+	noFlat(mgmt, "mgmt", "auto_upgrade_hour", "ssh_enabled", "ssh_keys", "ssh_username",
+		"ssh_password", "ssh_auth_password_enabled")
+	boolean(mgmt["wifiman_enabled"], "mgmt.wifiman_enabled", true)
+	au := obj(mgmt["auto_upgrade"], "mgmt.auto_upgrade")
+	boolean(au["enabled"], "mgmt.auto_upgrade.enabled", true)
+	num(au["hour"], "mgmt.auto_upgrade.hour", 3)
+	ssh := obj(mgmt["ssh"], "mgmt.ssh")
+	boolean(ssh["enabled"], "mgmt.ssh.enabled", true)
+	str(ssh["username"], "mgmt.ssh.username", "admin")
+	str(ssh["password"], "mgmt.ssh.password", "s3cret")
+	boolean(ssh["auth_password_enabled"], "mgmt.ssh.auth_password_enabled", false)
+	var keys []tftypes.Value
+	if err := ssh["keys"].As(&keys); err != nil || len(keys) != 1 {
+		t.Fatalf("mgmt.ssh.keys = %v (%v), want one element", ssh["keys"], err)
+	}
+	str(obj(keys[0], "mgmt.ssh.keys[0]")["name"], "mgmt.ssh.keys[0].name", "k")
+
+	syslog := obj(root["syslog"], "syslog")
+	noFlat(syslog, "syslog", "netconsole_enabled", "netconsole_host", "netconsole_port",
+		"this_controller_encrypted_only")
+	str(syslog["ip"], "syslog.ip", "10.0.0.9")
+	nc := obj(syslog["netconsole"], "syslog.netconsole")
+	boolean(nc["enabled"], "syslog.netconsole.enabled", true)
+	str(nc["host"], "syslog.netconsole.host", "10.0.0.7")
+	num(nc["port"], "syslog.netconsole.port", 1514)
+	tc := obj(syslog["this_controller"], "syslog.this_controller")
+	boolean(tc["enabled"], "syslog.this_controller.enabled", true)
+	boolean(tc["encrypted_only"], "syslog.this_controller.encrypted_only", false)
+
+	ips := obj(root["ips"], "ips")
+	noFlat(ips, "ips", "suppression_whitelist", "suppression_alerts")
+	str(ips["ips_mode"], "ips.ips_mode", "disabled")
+	supp := obj(ips["suppression"], "ips.suppression")
+	var wl, alerts []tftypes.Value
+	if err := supp["whitelist"].As(&wl); err != nil || len(wl) != 1 {
+		t.Fatalf("ips.suppression.whitelist = %v (%v), want one element", supp["whitelist"], err)
+	}
+	str(obj(wl[0], "whitelist[0]")["value"], "ips.suppression.whitelist[0].value", "10.0.0.5")
+	if err := supp["alerts"].As(&alerts); err != nil || len(alerts) != 1 {
+		t.Fatalf("ips.suppression.alerts = %v (%v), want one element", supp["alerts"], err)
+	}
+	num(obj(alerts[0], "alerts[0]")["id"], "ips.suppression.alerts[0].id", 2003068)
+
+	// Sections absent from prior state upgrade to null objects.
+	for _, name := range []string{"radius", "ntp", "doh", "lcm"} {
+		if !root[name].IsNull() {
+			t.Errorf("%s absent from prior state must upgrade to null, got %v", name, root[name])
+		}
+	}
+}
+
+// TestSettingUpgradeState_v0AlsoNests guards that the oldest upgrader still
+// converts integer-second timeouts to durations AND applies the nesting
+// rewrite, since every upgrader targets the current schema.
+func TestSettingUpgradeState_v0AlsoNests(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	prior := []byte(`{
+		"id": "default", "site": "default",
+		"radius": {"interim_update_interval": 600},
+		"usg": {"icmp_timeout": 30, "tcp_established_timeout": 7440, "udp_stream_timeout": 180,
+			"upnp_enabled": true}
+	}`)
+
+	up, ok := r.UpgradeState(ctx)[0]
+	if !ok {
+		t.Fatal("no upgrader registered for schema version 0")
+	}
+	resp := &fwresource.UpgradeStateResponse{}
+	up.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+		RawState: &tfprotov6.RawState{JSON: prior},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+	}
+	val, err := resp.DynamicValue.Unmarshal(schemaType)
+	if err != nil {
+		t.Fatalf("unmarshal upgraded value: %v", err)
+	}
+	var root map[string]tftypes.Value
+	if err := val.As(&root); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	var radius, usg, tcp, udp, upnp map[string]tftypes.Value
+	if err := root["radius"].As(&radius); err != nil {
+		t.Fatalf("radius: %v", err)
+	}
+	if err := root["usg"].As(&usg); err != nil {
+		t.Fatalf("usg: %v", err)
+	}
+	if err := usg["tcp"].As(&tcp); err != nil {
+		t.Fatalf("usg.tcp: %v (value %v)", err, usg["tcp"])
+	}
+	if err := usg["udp"].As(&udp); err != nil {
+		t.Fatalf("usg.udp: %v (value %v)", err, usg["udp"])
+	}
+	if err := usg["upnp"].As(&upnp); err != nil {
+		t.Fatalf("usg.upnp: %v (value %v)", err, usg["upnp"])
+	}
+	got := map[string]tftypes.Value{
+		"radius.interim_update_interval": radius["interim_update_interval"],
+		"usg.icmp_timeout":               usg["icmp_timeout"],
+		"usg.tcp.established_timeout":    tcp["established_timeout"],
+		"usg.udp.stream_timeout":         udp["stream_timeout"],
+	}
+	for name, want := range map[string]string{
+		"radius.interim_update_interval": "10m0s",
+		"usg.icmp_timeout":               "30s",
+		"usg.tcp.established_timeout":    "2h4m0s",
+		"usg.udp.stream_timeout":         "3m0s",
+	} {
+		var s string
+		if err := got[name].As(&s); err != nil || s != want {
+			t.Errorf("%s = %v (%v), want %q", name, got[name], err, want)
+		}
+	}
+	var enabled bool
+	if err := upnp["enabled"].As(&enabled); err != nil || !enabled {
+		t.Errorf("usg.upnp.enabled = %v (%v), want true", upnp["enabled"], err)
+	}
+	if _, exists := usg["tcp_established_timeout"]; exists {
+		t.Error("flat usg.tcp_established_timeout survived the v0 upgrade")
+	}
+}
+
+// TestSettingNestedGroups_roundTrip covers the model<->go-unifi conversions
+// for the nested groups introduced in schema v2: API -> model (with every
+// group configured in the plan) -> API must reproduce the original setting,
+// and an unset group must contribute nothing on the write side.
+func TestSettingNestedGroups_roundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+	dur := func(d time.Duration) timetypes.GoDuration { return timetypes.NewGoDurationValue(d) }
+
+	t.Run("usg", func(t *testing.T) {
+		api := &settings.Usg{
+			FtpModule:                      true,
+			GeoIPFilteringEnabled:          true,
+			GeoIPFilteringBlock:            "block",
+			GeoIPFilteringCountries:        "KP,RU",
+			GeoIPFilteringTrafficDirection: "both",
+			OffloadAccounting:              true,
+			OffloadSch:                     true,
+			TCPCloseTimeout:                10,
+			TCPEstablishedTimeout:          7440,
+			TCPTimeWaitTimeout:             120,
+			UDPOtherTimeout:                30,
+			UDPStreamTimeout:               180,
+			UPnPEnabled:                    true,
+			UPnPSecureMode:                 true,
+			UPnPWANInterface:               "WAN2",
+		}
+		// A plan that manages every leaf of every group.
+		plan := &settingUSGModel{
+			FtpModule:       types.BoolValue(false),
+			DNSVerification: types.ObjectNull(usgDNSVerificationAttrTypes),
+			GeoIPFiltering: testSettingObj(
+				t,
+				usgGeoIPFilteringAttrTypes,
+				settingUsgGeoIPFilteringModel{
+					Enabled: types.BoolValue(false),
+					Block:   types.StringValue("allow"),
+					Countries: types.StringValue(
+						"US",
+					),
+					TrafficDirection: types.StringValue("ingress"),
+				},
+			),
+			Offload: testSettingObj(t, usgOffloadAttrTypes, settingUsgOffloadModel{
+				Accounting: types.BoolValue(
+					false,
+				),
+				L2Blocking: types.BoolValue(false),
+				Sch:        types.BoolValue(false),
+			}),
+			TCP: testSettingObj(t, usgTCPAttrTypes, settingUsgTCPModel{
+				CloseTimeout: dur(time.Second), CloseWaitTimeout: dur(time.Second),
+				EstablishedTimeout: dur(time.Second), FinWaitTimeout: dur(time.Second),
+				LastAckTimeout: dur(time.Second), SynRecvTimeout: dur(time.Second),
+				SynSentTimeout: dur(time.Second), TimeWaitTimeout: dur(time.Second),
+			}),
+			UDP: testSettingObj(t, usgUDPAttrTypes, settingUsgUDPModel{
+				OtherTimeout: dur(time.Second), StreamTimeout: dur(time.Second),
+			}),
+			UPnP: testSettingObj(t, usgUPnPAttrTypes, settingUsgUPnPModel{
+				Enabled: types.BoolValue(false), NATPmpEnabled: types.BoolValue(false),
+				SecureMode: types.BoolValue(false), WANInterface: types.StringValue("WAN"),
+			}),
+		}
+		model := r.usgSettingToModel(ctx, api, plan)
+
+		geo, ok, _ := util.ObjectAs[settingUsgGeoIPFilteringModel](ctx, model.GeoIPFiltering)
+		if !ok || !geo.Enabled.ValueBool() || geo.Block.ValueString() != "block" ||
+			geo.Countries.ValueString() != "KP,RU" || geo.TrafficDirection.ValueString() != "both" {
+			t.Errorf("geo_ip_filtering read-back mismatch: %+v (known=%v)", geo, ok)
+		}
+		tcp, ok, _ := util.ObjectAs[settingUsgTCPModel](ctx, model.TCP)
+		if !ok || tcp.CloseTimeout.ValueString() != "10s" ||
+			tcp.EstablishedTimeout.ValueString() != "2h4m0s" ||
+			tcp.TimeWaitTimeout.ValueString() != "2m0s" {
+			t.Errorf("tcp read-back mismatch: %+v (known=%v)", tcp, ok)
+		}
+		// An API zero for a configured duration reads back as 0s (as the
+		// flat leaves did), never as null.
+		if tcp.FinWaitTimeout.IsNull() || tcp.FinWaitTimeout.ValueString() != "0s" {
+			t.Errorf("tcp.fin_wait_timeout = %v, want 0s", tcp.FinWaitTimeout)
+		}
+		upnp, ok, _ := util.ObjectAs[settingUsgUPnPModel](ctx, model.UPnP)
+		if !ok || !upnp.Enabled.ValueBool() || upnp.NATPmpEnabled.ValueBool() ||
+			!upnp.SecureMode.ValueBool() || upnp.WANInterface.ValueString() != "WAN2" {
+			t.Errorf("upnp read-back mismatch: %+v (known=%v)", upnp, ok)
+		}
+		off, ok, _ := util.ObjectAs[settingUsgOffloadModel](ctx, model.Offload)
+		if !ok || !off.Accounting.ValueBool() || off.L2Blocking.ValueBool() ||
+			!off.Sch.ValueBool() {
+			t.Errorf("offload read-back mismatch: %+v (known=%v)", off, ok)
+		}
+
+		back := r.usgModelToSetting(ctx, model)
+		if *back != *api {
+			t.Errorf("usg round-trip mismatch:\n got %+v\nwant %+v", back, api)
+		}
+
+		// Unconfigured groups: null on read, nothing on write.
+		unmanaged := r.usgSettingToModel(ctx, api, &settingUSGModel{
+			DNSVerification: types.ObjectNull(usgDNSVerificationAttrTypes),
+			GeoIPFiltering:  types.ObjectNull(usgGeoIPFilteringAttrTypes),
+			Offload:         types.ObjectUnknown(usgOffloadAttrTypes),
+			TCP:             types.ObjectNull(usgTCPAttrTypes),
+			UDP:             types.ObjectUnknown(usgUDPAttrTypes),
+			UPnP:            types.ObjectNull(usgUPnPAttrTypes),
+		})
+		for name, obj := range map[string]types.Object{
+			"geo_ip_filtering": unmanaged.GeoIPFiltering, "offload": unmanaged.Offload,
+			"tcp": unmanaged.TCP, "udp": unmanaged.UDP, "upnp": unmanaged.UPnP,
+		} {
+			if !obj.IsNull() {
+				t.Errorf("unconfigured usg.%s must read back null, got %v", name, obj)
+			}
+		}
+		empty := r.usgModelToSetting(ctx, &settingUSGModel{
+			DNSVerification: types.ObjectNull(usgDNSVerificationAttrTypes),
+			GeoIPFiltering:  types.ObjectUnknown(usgGeoIPFilteringAttrTypes),
+			Offload:         types.ObjectNull(usgOffloadAttrTypes),
+			TCP:             types.ObjectUnknown(usgTCPAttrTypes),
+			UDP:             types.ObjectNull(usgUDPAttrTypes),
+			UPnP:            types.ObjectUnknown(usgUPnPAttrTypes),
+		})
+		if *empty != (settings.Usg{}) {
+			t.Errorf("unset usg groups must serialize zero values, got %+v", empty)
+		}
+	})
+
+	t.Run("mgmt", func(t *testing.T) {
+		hour := int64(3)
+		api := &settings.Mgmt{
+			AutoUpgrade:            true,
+			AutoUpgradeHour:        &hour,
+			SSHEnabled:             true,
+			SSHUsername:            "admin",
+			SSHAuthPasswordEnabled: true,
+			SSHKeys: []settings.SettingMgmtSSHKeys{
+				{Name: "k", KeyType: "ssh-rsa", Key: "AAAA", Comment: "c"},
+			},
+		}
+		keysType := types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes}
+		emptyKeys, _ := types.ListValueFrom(ctx, keysType, []sshKeyModel{})
+		plan := &settingMgmtModel{
+			AutoUpgrade: testMgmtAutoUpgradeObj(t, types.BoolValue(false), types.Int64Value(1)),
+			SSH: testMgmtSSHObj(t, settingMgmtSSHModel{
+				Enabled: types.BoolValue(false), Username: types.StringValue("x"),
+				Password: types.StringValue("s3cret"), AuthPasswordEnabled: types.BoolValue(false),
+				Keys: emptyKeys,
+			}),
+		}
+		model := r.mgmtSettingToModel(ctx, api, plan)
+		au, ok, _ := util.ObjectAs[settingMgmtAutoUpgradeModel](ctx, model.AutoUpgrade)
+		if !ok || !au.Enabled.ValueBool() || au.Hour.ValueInt64() != 3 {
+			t.Errorf("auto_upgrade read-back mismatch: %+v (known=%v)", au, ok)
+		}
+		ssh, ok, _ := util.ObjectAs[settingMgmtSSHModel](ctx, model.SSH)
+		if !ok || !ssh.Enabled.ValueBool() || ssh.Username.ValueString() != "admin" ||
+			ssh.Password.ValueString() != "s3cret" || !ssh.AuthPasswordEnabled.ValueBool() ||
+			len(ssh.Keys.Elements()) != 1 {
+			t.Errorf("ssh read-back mismatch: %+v (known=%v)", ssh, ok)
+		}
+
+		back := r.mgmtModelToSetting(ctx, model, &settings.Mgmt{})
+		if !back.AutoUpgrade || back.AutoUpgradeHour == nil || *back.AutoUpgradeHour != 3 ||
+			!back.SSHEnabled || back.SSHUsername != "admin" || back.SSHPassword != "s3cret" ||
+			!back.SSHAuthPasswordEnabled || len(back.SSHKeys) != 1 || back.SSHKeys[0].Name != "k" {
+			t.Errorf("mgmt round-trip mismatch: %+v", back)
+		}
+
+		// Unset groups leave the read-base untouched.
+		base := &settings.Mgmt{AutoUpgrade: true, SSHEnabled: true, SSHUsername: "keep"}
+		got := r.mgmtModelToSetting(ctx, &settingMgmtModel{
+			AutoUpgrade: types.ObjectUnknown(mgmtAutoUpgradeAttrTypes),
+			SSH:         types.ObjectNull(mgmtSSHAttrTypes),
+		}, base)
+		if !got.AutoUpgrade || !got.SSHEnabled || got.SSHUsername != "keep" {
+			t.Errorf("unset mgmt groups must not clobber the base: %+v", got)
+		}
+	})
+
+	t.Run("syslog", func(t *testing.T) {
+		var diags diag.Diagnostics
+		port := int64(1514)
+		api := &settings.Rsyslogd{
+			Enabled:                     true,
+			IP:                          "10.0.0.9",
+			NetconsoleEnabled:           true,
+			NetconsoleHost:              "10.0.0.7",
+			NetconsolePort:              &port,
+			ThisController:              true,
+			ThisControllerEncryptedOnly: true,
+		}
+		model := r.syslogSettingToModel(ctx, api, &diags)
+		if diags.HasError() {
+			t.Fatalf("settingToModel: %v", diags)
+		}
+		nc, ok, _ := util.ObjectAs[settingSyslogNetconsoleModel](ctx, model.Netconsole)
+		if !ok || !nc.Enabled.ValueBool() || nc.Host.ValueString() != "10.0.0.7" ||
+			nc.Port.ValueInt64() != 1514 {
+			t.Errorf("netconsole read-back mismatch: %+v (known=%v)", nc, ok)
+		}
+		tc, ok, _ := util.ObjectAs[settingSyslogThisControllerModel](ctx, model.ThisController)
+		if !ok || !tc.Enabled.ValueBool() || !tc.EncryptedOnly.ValueBool() {
+			t.Errorf("this_controller read-back mismatch: %+v (known=%v)", tc, ok)
+		}
+
+		back := r.syslogModelToSetting(ctx, &model, &diags)
+		if diags.HasError() {
+			t.Fatalf("modelToSetting: %v", diags)
+		}
+		if back.NetconsoleEnabled != api.NetconsoleEnabled ||
+			back.NetconsoleHost != api.NetconsoleHost ||
+			back.NetconsolePort == nil ||
+			*back.NetconsolePort != 1514 ||
+			back.ThisController != api.ThisController ||
+			back.ThisControllerEncryptedOnly != api.ThisControllerEncryptedOnly {
+			t.Errorf("syslog round-trip mismatch: %+v", back)
+		}
+
+		// An empty host reads back null (as the flat leaf did) and the
+		// this_controller object default reproduces the old leaf defaults.
+		api.NetconsoleHost = ""
+		model = r.syslogSettingToModel(ctx, api, &diags)
+		nc, _, _ = util.ObjectAs[settingSyslogNetconsoleModel](ctx, model.Netconsole)
+		if !nc.Host.IsNull() {
+			t.Errorf("empty netconsole host must read back null, got %v", nc.Host)
+		}
+		def, ok, _ := util.ObjectAs[settingSyslogThisControllerModel](
+			ctx,
+			settingSyslogThisControllerDefault(),
+		)
+		if !ok || def.Enabled.ValueBool() || def.EncryptedOnly.ValueBool() {
+			t.Errorf("this_controller default = %+v, want enabled=false encrypted_only=false", def)
+		}
+	})
+
+	t.Run("ips suppression", func(t *testing.T) {
+		var diags diag.Diagnostics
+		gid, id := int64(1), int64(2003068)
+		api := &settings.Ips{
+			IPsMode: "disabled",
+			Suppression: &settings.SettingIpsSuppression{
+				Whitelist: []settings.SettingIpsWhitelist{
+					{Direction: "both", Mode: "ip", Value: "10.0.0.5"},
+				},
+				Alerts: []settings.SettingIpsAlerts{
+					{
+						Category:  "emerging-scan",
+						Gid:       &gid,
+						ID:        &id,
+						Signature: "ET SCAN",
+						Type:      "all",
+					},
+				},
+			},
+		}
+		whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
+		alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
+		emptyWL, _ := types.ListValueFrom(ctx, whitelistType, []settingIpsWhitelistModel{})
+		emptyAlerts, _ := types.ListValueFrom(ctx, alertType, []settingIpsAlertModel{})
+		plan := &settingIpsModel{
+			IPSMode: types.StringValue("ids"),
+			Suppression: testSettingObj(t, ipsSuppressionAttrTypes, settingIpsSuppressionModel{
+				Whitelist: emptyWL, Alerts: emptyAlerts,
+			}),
+		}
+		model := r.ipsSettingToModel(ctx, api, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("settingToModel: %v", diags)
+		}
+		supp, ok, _ := util.ObjectAs[settingIpsSuppressionModel](ctx, model.Suppression)
+		if !ok || len(supp.Whitelist.Elements()) != 1 || len(supp.Alerts.Elements()) != 1 {
+			t.Fatalf("suppression read-back mismatch: %+v (known=%v)", supp, ok)
+		}
+
+		back := r.ipsModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("modelToSetting: %v", diags)
+		}
+		if back.IPsMode != "disabled" || back.Suppression == nil ||
+			len(
+				back.Suppression.Whitelist,
+			) != 1 || back.Suppression.Whitelist[0].Value != "10.0.0.5" ||
+			len(
+				back.Suppression.Alerts,
+			) != 1 || back.Suppression.Alerts[0].Signature != "ET SCAN" ||
+			back.Suppression.Alerts[0].ID == nil || *back.Suppression.Alerts[0].ID != 2003068 {
+			t.Errorf("ips suppression round-trip mismatch: %+v", back.Suppression)
+		}
+
+		// Unconfigured group: null on read, no suppression on write.
+		unmanaged := r.ipsSettingToModel(ctx, api, &settingIpsModel{
+			Suppression: types.ObjectUnknown(ipsSuppressionAttrTypes),
+		}, &diags)
+		if !unmanaged.Suppression.IsNull() {
+			t.Errorf("unconfigured suppression must read back null, got %v", unmanaged.Suppression)
+		}
+		empty := r.ipsModelToSetting(ctx, &settingIpsModel{
+			Suppression: types.ObjectNull(ipsSuppressionAttrTypes),
+		}, &diags)
+		if empty.Suppression != nil {
+			t.Errorf("unset suppression must not be sent, got %+v", empty.Suppression)
+		}
+	})
 }

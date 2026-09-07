@@ -10,12 +10,16 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -251,10 +255,10 @@ func TestAccStaticRouteFramework_enabledAndGateway(t *testing.T) {
 						"enabled",
 						"false",
 					),
-					// gateway_type defaults to the controller value.
+					// gateway.type defaults to the controller value.
 					resource.TestCheckResourceAttr(
 						"unifi_static_route.disabled",
-						"gateway_type",
+						"gateway.type",
 						"default",
 					),
 				),
@@ -310,6 +314,9 @@ func TestNewStaticRouteFrameworkResource(t *testing.T) {
 	if _, ok := r.(fwresource.ResourceWithConfigValidators); !ok {
 		t.Error("expected ResourceWithConfigValidators")
 	}
+	if _, ok := r.(fwresource.ResourceWithUpgradeState); !ok {
+		t.Error("expected ResourceWithUpgradeState")
+	}
 }
 
 func TestNewStaticRouteListResource(t *testing.T) {
@@ -344,9 +351,24 @@ func Test_staticRouteFrameworkResource_Schema(t *testing.T) {
 	r := &staticRouteFrameworkResource{}
 	resp := &fwresource.SchemaResponse{}
 	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
-	for _, attr := range []string{"id", "site", "name", "network", "type", "distance", "next_hop", "interface", "enabled", "gateway_device", "gateway_type"} {
-		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("expected attribute %q in schema", attr)
+	for _, name := range []string{
+		"id", "site", "name", "network", "type", "distance",
+		"next_hop", "interface", "enabled", "gateway",
+	} {
+		if _, ok := resp.Schema.Attributes[name]; !ok {
+			t.Errorf("expected attribute %q in schema", name)
+		}
+	}
+	gateway, ok := resp.Schema.Attributes["gateway"].(rschema.SingleNestedAttribute)
+	if !ok {
+		t.Fatalf(
+			"gateway is %T, want SingleNestedAttribute",
+			resp.Schema.Attributes["gateway"],
+		)
+	}
+	for _, leaf := range []string{"device", "type"} {
+		if _, ok := gateway.Attributes[leaf]; !ok {
+			t.Errorf("missing nested attribute gateway.%s", leaf)
 		}
 	}
 }
@@ -492,17 +514,19 @@ func Test_staticRouteFrameworkResource_modelToRouting(t *testing.T) {
 	r := &staticRouteFrameworkResource{}
 	dist := int64(1)
 	model := &staticRouteFrameworkResourceModel{
-		Name:          types.StringValue("route1"),
-		Network:       types.StringValue("192.168.0.0/24"),
-		Type:          types.StringValue("nexthop-route"),
-		Distance:      types.Int64Value(1),
-		NextHop:       iptypes.NewIPAddressValue("192.168.1.1"),
-		Interface:     types.StringNull(),
-		Enabled:       types.BoolValue(true),
-		GatewayDevice: types.StringNull(),
-		GatewayType:   types.StringValue("default"),
+		Name:      types.StringValue("route1"),
+		Network:   types.StringValue("192.168.0.0/24"),
+		Type:      types.StringValue("nexthop-route"),
+		Distance:  types.Int64Value(1),
+		NextHop:   iptypes.NewIPAddressValue("192.168.1.1"),
+		Interface: types.StringNull(),
+		Enabled:   types.BoolValue(true),
+		Gateway:   staticRouteGatewayDefault(),
 	}
-	got := r.modelToRouting(context.Background(), model)
+	got, diags := r.modelToRouting(context.Background(), model)
+	if diags.HasError() {
+		t.Fatalf("modelToRouting: %v", diags)
+	}
 	want := &unifi.Routing{
 		Type:                "static-route",
 		Name:                "route1",
@@ -532,7 +556,14 @@ func Test_staticRouteFrameworkResource_routingToModel(t *testing.T) {
 		GatewayType:         "default",
 	}
 	model := &staticRouteFrameworkResourceModel{}
-	r.routingToModel(context.Background(), routing, model, "default")
+	if diags := r.routingToModel(
+		context.Background(),
+		routing,
+		model,
+		"default",
+	); diags.HasError() {
+		t.Fatalf("routingToModel: %v", diags)
+	}
 	if model.ID.ValueString() != "abc123" {
 		t.Errorf("ID = %q, want %q", model.ID.ValueString(), "abc123")
 	}
@@ -541,6 +572,191 @@ func Test_staticRouteFrameworkResource_routingToModel(t *testing.T) {
 	}
 	if model.NextHop.ValueString() != "192.168.1.1" {
 		t.Errorf("NextHop = %q, want %q", model.NextHop.ValueString(), "192.168.1.1")
+	}
+	if !model.Gateway.Equal(staticRouteGatewayDefault()) {
+		t.Errorf("Gateway = %v, want %v", model.Gateway, staticRouteGatewayDefault())
+	}
+}
+
+// TestStaticRouteUpgradeState_v0NestsGateway guards the v0 -> v1 schema
+// upgrade: the flat gateway_device/gateway_type attributes move into the
+// nested `gateway` object and every other attribute passes through.
+func TestStaticRouteUpgradeState_v0NestsGateway(t *testing.T) {
+	ctx := context.Background()
+	r := &staticRouteFrameworkResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Schema.Version != 1 {
+		t.Fatalf("static route schema Version = %d, want 1", schemaResp.Schema.Version)
+	}
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	up, ok := r.UpgradeState(ctx)[0]
+	if !ok {
+		t.Fatal("no upgrader registered for schema version 0")
+	}
+	upgrade := func(prior string) map[string]tftypes.Value {
+		t.Helper()
+		resp := &fwresource.UpgradeStateResponse{}
+		up.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+			RawState: &tfprotov6.RawState{JSON: []byte(prior)},
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+		}
+		val, err := resp.DynamicValue.Unmarshal(schemaType)
+		if err != nil {
+			t.Fatalf("unmarshal upgraded value: %v", err)
+		}
+		var root map[string]tftypes.Value
+		if err := val.As(&root); err != nil {
+			t.Fatalf("as object: %v", err)
+		}
+		for _, flat := range []string{"gateway_device", "gateway_type"} {
+			if _, exists := root[flat]; exists {
+				t.Errorf("flat attribute %q survived the upgrade", flat)
+			}
+		}
+		return root
+	}
+	str := func(v tftypes.Value, name, want string) {
+		t.Helper()
+		var s string
+		if err := v.As(&s); err != nil || s != want {
+			t.Errorf("%s = %v (%v), want %q", name, v, err, want)
+		}
+	}
+
+	root := upgrade(`{
+		"id": "rt-1", "site": "default", "name": "to-branch",
+		"network": "10.10.0.0/16", "type": "nexthop-route", "distance": 1,
+		"next_hop": "10.0.0.1", "interface": null, "enabled": true,
+		"gateway_device": "aa:bb:cc:dd:ee:ff", "gateway_type": "switch"
+	}`)
+	str(root["name"], "name", "to-branch")
+	str(root["next_hop"], "next_hop", "10.0.0.1")
+	var enabled bool
+	if err := root["enabled"].As(&enabled); err != nil || !enabled {
+		t.Errorf("enabled = %v (%v), want true", root["enabled"], err)
+	}
+	var gateway map[string]tftypes.Value
+	if err := root["gateway"].As(&gateway); err != nil {
+		t.Fatalf("gateway: as object: %v (value %v)", err, root["gateway"])
+	}
+	str(gateway["device"], "gateway.device", "aa:bb:cc:dd:ee:ff")
+	str(gateway["type"], "gateway.type", "switch")
+
+	// The common case: no gateway device, default gateway type.
+	root = upgrade(`{
+		"id": "rt-2", "site": "default", "name": "blackhole",
+		"network": "10.20.0.0/16", "type": "blackhole", "distance": 1,
+		"enabled": true, "gateway_device": null, "gateway_type": "default"
+	}`)
+	if err := root["gateway"].As(&gateway); err != nil {
+		t.Fatalf("gateway: as object: %v (value %v)", err, root["gateway"])
+	}
+	if !gateway["device"].IsNull() {
+		t.Errorf("gateway.device = %v, want null", gateway["device"])
+	}
+	str(gateway["type"], "gateway.type", "default")
+}
+
+// TestStaticRoute_gatewayRoundTrip checks the nested gateway object converts
+// model -> API -> model without loss, that the object default reproduces the
+// old flat defaults, and that a null/unknown object stays off the wire.
+func TestStaticRoute_gatewayRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &staticRouteFrameworkResource{}
+
+	model := &staticRouteFrameworkResourceModel{
+		Name:     types.StringValue("to-branch"),
+		Network:  types.StringValue("10.10.0.0/16"),
+		Type:     types.StringValue("nexthop-route"),
+		Distance: types.Int64Value(1),
+		NextHop:  iptypes.NewIPAddressValue("10.0.0.1"),
+		Enabled:  types.BoolValue(true),
+		Gateway: types.ObjectValueMust(staticRouteGatewayAttrTypes(), map[string]attr.Value{
+			"device": types.StringValue("aa:bb:cc:dd:ee:ff"),
+			"type":   types.StringValue("switch"),
+		}),
+	}
+	api, d := r.modelToRouting(ctx, model)
+	if d.HasError() {
+		t.Fatalf("modelToRouting: %v", d)
+	}
+	if api.GatewayDevice != "aa:bb:cc:dd:ee:ff" || api.GatewayType != "switch" {
+		t.Errorf("gateway on the wire: device=%q type=%q", api.GatewayDevice, api.GatewayType)
+	}
+
+	var back staticRouteFrameworkResourceModel
+	if d := r.routingToModel(ctx, api, &back, "default"); d.HasError() {
+		t.Fatalf("routingToModel: %v", d)
+	}
+	gateway := back.Gateway.Attributes()
+	if attrAs[types.String](t, gateway["device"]).ValueString() != "aa:bb:cc:dd:ee:ff" ||
+		attrAs[types.String](t, gateway["type"]).ValueString() != "switch" {
+		t.Errorf("gateway read back = %v", back.Gateway)
+	}
+
+	// The object default reproduces the old flat defaults: type "default" and
+	// no device.
+	model.Gateway = staticRouteGatewayDefault()
+	api, d = r.modelToRouting(ctx, model)
+	if d.HasError() {
+		t.Fatalf("modelToRouting (default): %v", d)
+	}
+	if api.GatewayType != "default" || api.GatewayDevice != "" {
+		t.Errorf(
+			"object default on the wire: device=%q type=%q",
+			api.GatewayDevice,
+			api.GatewayType,
+		)
+	}
+
+	// The controller omits gateway_type for the default gateway; it reads back
+	// exactly as the object default so an omitted block plans clean.
+	var fresh staticRouteFrameworkResourceModel
+	if d := r.routingToModel(ctx, &unifi.Routing{ID: "rt-1"}, &fresh, "default"); d.HasError() {
+		t.Fatalf("routingToModel (fresh): %v", d)
+	}
+	if !fresh.Gateway.Equal(staticRouteGatewayDefault()) {
+		t.Errorf(
+			"empty gateway read back = %v, want %v",
+			fresh.Gateway,
+			staticRouteGatewayDefault(),
+		)
+	}
+
+	// A null or unknown object (the plan omitted it) contributes nothing.
+	for _, obj := range []types.Object{
+		types.ObjectNull(staticRouteGatewayAttrTypes()),
+		types.ObjectUnknown(staticRouteGatewayAttrTypes()),
+	} {
+		model.Gateway = obj
+		api, d = r.modelToRouting(ctx, model)
+		if d.HasError() {
+			t.Fatalf("modelToRouting (%v): %v", obj, d)
+		}
+		if api.GatewayType != "" || api.GatewayDevice != "" {
+			t.Errorf("null/unknown gateway leaked into the API struct: %+v", api)
+		}
+	}
+
+	// applyPlanToState: a known planned leaf replaces the state value while an
+	// unknown planned leaf keeps it.
+	state := back
+	plan := &staticRouteFrameworkResourceModel{
+		Gateway: types.ObjectValueMust(staticRouteGatewayAttrTypes(), map[string]attr.Value{
+			"device": types.StringUnknown(),
+			"type":   types.StringValue("default"),
+		}),
+	}
+	r.applyPlanToState(ctx, plan, &state)
+	gateway = state.Gateway.Attributes()
+	if attrAs[types.String](t, gateway["device"]).ValueString() != "aa:bb:cc:dd:ee:ff" ||
+		attrAs[types.String](t, gateway["type"]).ValueString() != "default" {
+		t.Errorf("applyPlanToState gateway = %v, want device kept, type=default", state.Gateway)
 	}
 }
 

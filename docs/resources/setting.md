@@ -19,14 +19,19 @@ resource "unifi_setting" "mgmt_only" {
   site = "default"
 
   mgmt = {
-    auto_upgrade = true
-    ssh_enabled  = true
-    ssh_keys = [{
-      name    = "admin-key"
-      type    = "ssh-rsa"
-      key     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD... admin@example.com"
-      comment = "Administrator SSH Key"
-    }]
+    auto_upgrade = {
+      enabled = true
+      hour    = 3
+    }
+    ssh = {
+      enabled = true
+      keys = [{
+        name    = "admin-key"
+        type    = "ssh-rsa"
+        key     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD... admin@example.com"
+        comment = "Administrator SSH Key"
+      }]
+    }
   }
 }
 
@@ -35,8 +40,8 @@ resource "unifi_setting" "combined" {
   site = "default"
 
   mgmt = {
-    auto_upgrade = true
-    ssh_enabled  = false
+    auto_upgrade = { enabled = true }
+    ssh          = { enabled = false }
   }
 
   radius = {
@@ -49,8 +54,12 @@ resource "unifi_setting" "combined" {
 
   usg = {
     broadcast_ping = false
-    upnp_enabled   = true
     ftp_module     = false
+
+    upnp = {
+      enabled       = true
+      wan_interface = "WAN"
+    }
 
     # DNS verification is a nested object on the USG/gateway settings.
     dns_verification = {
@@ -168,8 +177,7 @@ Optional:
 - `ips_mode` (String) IPS operating mode: ids (detect only), ips (detect and block), ipsInline, or disabled.
 - `memory_optimized` (Boolean) Use memory-optimized IPS ruleset (reduced rule set for low-memory devices).
 - `restrict_torrents` (Boolean) Block BitTorrent traffic.
-- `suppression_alerts` (Attributes List) IPS signature alert suppression entries — silence specific signatures or categories. (see [below for nested schema](#nestedatt--ips--suppression_alerts))
-- `suppression_whitelist` (Attributes List) IPS suppression whitelist entries — sources/destinations to exclude from inspection. (see [below for nested schema](#nestedatt--ips--suppression_whitelist))
+- `suppression` (Attributes) IPS suppression: signature alert suppression entries and whitelisted sources/destinations. (see [below for nested schema](#nestedatt--ips--suppression))
 
 <a id="nestedatt--ips--honeypot"></a>
 ### Nested Schema for `ips.honeypot`
@@ -181,8 +189,16 @@ Required:
 - `version` (String) IP version: v4 or v6.
 
 
-<a id="nestedatt--ips--suppression_alerts"></a>
-### Nested Schema for `ips.suppression_alerts`
+<a id="nestedatt--ips--suppression"></a>
+### Nested Schema for `ips.suppression`
+
+Optional:
+
+- `alerts` (Attributes List) IPS signature alert suppression entries — silence specific signatures or categories. (see [below for nested schema](#nestedatt--ips--suppression--alerts))
+- `whitelist` (Attributes List) IPS suppression whitelist entries — sources/destinations to exclude from inspection. (see [below for nested schema](#nestedatt--ips--suppression--whitelist))
+
+<a id="nestedatt--ips--suppression--alerts"></a>
+### Nested Schema for `ips.suppression.alerts`
 
 Optional:
 
@@ -190,11 +206,11 @@ Optional:
 - `gid` (Number) Signature Generator ID (GID).
 - `id` (Number) Signature ID.
 - `signature` (String) Suppression signature name.
-- `tracking` (Attributes List) Tracking specifications (used when `type` is `track`). (see [below for nested schema](#nestedatt--ips--suppression_alerts--tracking))
+- `tracking` (Attributes List) Tracking specifications (used when `type` is `track`). (see [below for nested schema](#nestedatt--ips--suppression--alerts--tracking))
 - `type` (String) Suppression type: `all` (everywhere) or `track` (only the tracked sources/destinations).
 
-<a id="nestedatt--ips--suppression_alerts--tracking"></a>
-### Nested Schema for `ips.suppression_alerts.tracking`
+<a id="nestedatt--ips--suppression--alerts--tracking"></a>
+### Nested Schema for `ips.suppression.alerts.tracking`
 
 Required:
 
@@ -204,14 +220,15 @@ Required:
 
 
 
-<a id="nestedatt--ips--suppression_whitelist"></a>
-### Nested Schema for `ips.suppression_whitelist`
+<a id="nestedatt--ips--suppression--whitelist"></a>
+### Nested Schema for `ips.suppression.whitelist`
 
 Required:
 
 - `direction` (String) Match direction: both, src, or dest.
 - `mode` (String) Match mode: ip, subnet, or network.
 - `value` (String) IP address, CIDR subnet, or network ID to whitelist.
+
 
 
 
@@ -233,20 +250,35 @@ Optional:
 Optional:
 
 - `advanced_feature_enabled` (Boolean) Enable advanced features.
-- `auto_upgrade` (Boolean) Automatically upgrade device firmware.
-- `auto_upgrade_hour` (Number) Hour of day (0-23) for automatic firmware upgrades.
+- `auto_upgrade` (Attributes) Automatic device firmware upgrade settings. (see [below for nested schema](#nestedatt--mgmt--auto_upgrade))
 - `debug_tools_enabled` (Boolean) Enable debug tools.
 - `direct_connect_enabled` (Boolean) Enable Direct Connect (remote access).
-- `ssh_auth_password_enabled` (Boolean) Allow SSH password authentication (in addition to keys).
-- `ssh_enabled` (Boolean) Enable SSH authentication.
-- `ssh_keys` (Attributes List) SSH keys. (see [below for nested schema](#nestedatt--mgmt--ssh_keys))
-- `ssh_password` (String, Sensitive) SSH password for device access. Sensitive — the controller stores only a hash, so this value is kept from configuration and not read back.
-- `ssh_username` (String) SSH username for device access.
+- `ssh` (Attributes) Device SSH access settings. (see [below for nested schema](#nestedatt--mgmt--ssh))
 - `unifi_idp_enabled` (Boolean) Enable the UniFi Identity Provider.
 - `wifiman_enabled` (Boolean) Enable WiFiman.
 
-<a id="nestedatt--mgmt--ssh_keys"></a>
-### Nested Schema for `mgmt.ssh_keys`
+<a id="nestedatt--mgmt--auto_upgrade"></a>
+### Nested Schema for `mgmt.auto_upgrade`
+
+Optional:
+
+- `enabled` (Boolean) Automatically upgrade device firmware.
+- `hour` (Number) Hour of day (0-23) for automatic firmware upgrades.
+
+
+<a id="nestedatt--mgmt--ssh"></a>
+### Nested Schema for `mgmt.ssh`
+
+Optional:
+
+- `auth_password_enabled` (Boolean) Allow SSH password authentication (in addition to keys).
+- `enabled` (Boolean) Enable SSH authentication.
+- `keys` (Attributes List) SSH keys. (see [below for nested schema](#nestedatt--mgmt--ssh--keys))
+- `password` (String, Sensitive) SSH password for device access. Sensitive — the controller stores only a hash, so this value is kept from configuration and not read back.
+- `username` (String) SSH username for device access.
+
+<a id="nestedatt--mgmt--ssh--keys"></a>
+### Nested Schema for `mgmt.ssh.keys`
 
 Required:
 
@@ -257,6 +289,7 @@ Optional:
 
 - `comment` (String) Comment.
 - `key` (String) Public SSH key.
+
 
 
 
@@ -302,12 +335,28 @@ Optional:
 - `enabled` (Boolean) Whether remote syslog is enabled.
 - `ip` (String) Remote syslog server IP address.
 - `log_all_contents` (Boolean) Log all available facilities.
-- `netconsole_enabled` (Boolean) Whether netconsole logging is enabled.
-- `netconsole_host` (String) Netconsole host.
-- `netconsole_port` (Number) Netconsole port (1-65535).
+- `netconsole` (Attributes) Netconsole logging settings. (see [below for nested schema](#nestedatt--syslog--netconsole))
 - `port` (Number) Remote syslog server port (1-65535).
-- `this_controller` (Boolean) Also log this controller's events.
-- `this_controller_encrypted_only` (Boolean) Only send this controller's logs over an encrypted channel.
+- `this_controller` (Attributes) Forwarding of this controller's own events to the remote syslog server. (see [below for nested schema](#nestedatt--syslog--this_controller))
+
+<a id="nestedatt--syslog--netconsole"></a>
+### Nested Schema for `syslog.netconsole`
+
+Optional:
+
+- `enabled` (Boolean) Whether netconsole logging is enabled.
+- `host` (String) Netconsole host.
+- `port` (Number) Netconsole port (1-65535).
+
+
+<a id="nestedatt--syslog--this_controller"></a>
+### Nested Schema for `syslog.this_controller`
+
+Optional:
+
+- `enabled` (Boolean) Also log this controller's events.
+- `encrypted_only` (Boolean) Only send this controller's logs over an encrypted channel.
+
 
 
 <a id="nestedatt--timeouts"></a>
@@ -329,40 +378,24 @@ Optional:
 - `broadcast_ping` (Boolean) Enable broadcast ping.
 - `dns_verification` (Attributes) DNS verification settings. (see [below for nested schema](#nestedatt--usg--dns_verification))
 - `ftp_module` (Boolean) Enable FTP module.
-- `geo_ip_filtering_block` (String) Geo IP filtering action: block or allow.
-- `geo_ip_filtering_countries` (String) Comma-separated list of country codes for geo IP filtering.
-- `geo_ip_filtering_enabled` (Boolean) Enable geo IP filtering.
-- `geo_ip_filtering_traffic_direction` (String) Geo IP filtering traffic direction: both, ingress, or egress.
+- `geo_ip_filtering` (Attributes) Geo IP filtering (Region Blocking) settings. (see [below for nested schema](#nestedatt--usg--geo_ip_filtering))
 - `gre_module` (Boolean) Enable GRE module.
 - `h323_module` (Boolean) Enable H.323 module.
 - `icmp_timeout` (String) ICMP connection timeout, as a Go duration string (e.g. `30s`, `1m`).
 - `mss_clamp` (String) MSS clamping mode: auto, custom, or disabled.
-- `offload_accounting` (Boolean) Enable hardware offload for accounting.
-- `offload_l2_blocking` (Boolean) Enable hardware offload for L2 blocking.
-- `offload_sch` (Boolean) Enable hardware offload for scheduling.
+- `offload` (Attributes) Hardware offload settings. (see [below for nested schema](#nestedatt--usg--offload))
 - `other_timeout` (String) Other connections timeout, as a Go duration string (e.g. `600s`, `10m`).
 - `pptp_module` (Boolean) Enable PPTP module.
 - `receive_redirects` (Boolean) Accept ICMP redirects.
 - `send_redirects` (Boolean) Send ICMP redirects.
 - `sip_module` (Boolean) Enable SIP module.
 - `syn_cookies` (Boolean) Enable SYN cookies.
-- `tcp_close_timeout` (String) TCP close timeout, as a Go duration string (e.g. `10s`).
-- `tcp_close_wait_timeout` (String) TCP close wait timeout, as a Go duration string (e.g. `60s`, `1m`).
-- `tcp_established_timeout` (String) TCP established connection timeout, as a Go duration string (e.g. `7440s`, `2h4m`).
-- `tcp_fin_wait_timeout` (String) TCP fin wait timeout, as a Go duration string (e.g. `120s`, `2m`).
-- `tcp_last_ack_timeout` (String) TCP last ACK timeout, as a Go duration string (e.g. `30s`).
-- `tcp_syn_recv_timeout` (String) TCP SYN received timeout, as a Go duration string (e.g. `60s`, `1m`).
-- `tcp_syn_sent_timeout` (String) TCP SYN sent timeout, as a Go duration string (e.g. `120s`, `2m`).
-- `tcp_time_wait_timeout` (String) TCP time wait timeout, as a Go duration string (e.g. `120s`, `2m`).
+- `tcp` (Attributes) TCP connection tracking timeouts. (see [below for nested schema](#nestedatt--usg--tcp))
 - `tftp_module` (Boolean) Enable TFTP module.
 - `timeout_setting_preference` (String) Timeout setting preference: auto or manual.
-- `udp_other_timeout` (String) UDP other timeout, as a Go duration string (e.g. `30s`).
-- `udp_stream_timeout` (String) UDP stream timeout, as a Go duration string (e.g. `180s`, `3m`).
+- `udp` (Attributes) UDP connection tracking timeouts. (see [below for nested schema](#nestedatt--usg--udp))
 - `unbind_wan_monitors` (Boolean) Unbind WAN monitors.
-- `upnp_enabled` (Boolean) Enable UPnP.
-- `upnp_nat_pmp_enabled` (Boolean) Enable UPnP NAT-PMP.
-- `upnp_secure_mode` (Boolean) Enable UPnP secure mode.
-- `upnp_wan_interface` (String) UPnP WAN interface (e.g., WAN, WAN2).
+- `upnp` (Attributes) UPnP settings. (see [below for nested schema](#nestedatt--usg--upnp))
 
 <a id="nestedatt--usg--dns_verification"></a>
 ### Nested Schema for `usg.dns_verification`
@@ -373,3 +406,59 @@ Optional:
 - `primary_dns_server` (String) Primary DNS server.
 - `secondary_dns_server` (String) Secondary DNS server.
 - `setting_preference` (String) Setting preference: auto or manual.
+
+
+<a id="nestedatt--usg--geo_ip_filtering"></a>
+### Nested Schema for `usg.geo_ip_filtering`
+
+Optional:
+
+- `block` (String) Geo IP filtering action: block or allow.
+- `countries` (String) Comma-separated list of country codes for geo IP filtering.
+- `enabled` (Boolean) Enable geo IP filtering.
+- `traffic_direction` (String) Geo IP filtering traffic direction: both, ingress, or egress.
+
+
+<a id="nestedatt--usg--offload"></a>
+### Nested Schema for `usg.offload`
+
+Optional:
+
+- `accounting` (Boolean) Enable hardware offload for accounting.
+- `l2_blocking` (Boolean) Enable hardware offload for L2 blocking.
+- `sch` (Boolean) Enable hardware offload for scheduling.
+
+
+<a id="nestedatt--usg--tcp"></a>
+### Nested Schema for `usg.tcp`
+
+Optional:
+
+- `close_timeout` (String) TCP close timeout, as a Go duration string (e.g. `10s`).
+- `close_wait_timeout` (String) TCP close wait timeout, as a Go duration string (e.g. `60s`, `1m`).
+- `established_timeout` (String) TCP established connection timeout, as a Go duration string (e.g. `7440s`, `2h4m`).
+- `fin_wait_timeout` (String) TCP fin wait timeout, as a Go duration string (e.g. `120s`, `2m`).
+- `last_ack_timeout` (String) TCP last ACK timeout, as a Go duration string (e.g. `30s`).
+- `syn_recv_timeout` (String) TCP SYN received timeout, as a Go duration string (e.g. `60s`, `1m`).
+- `syn_sent_timeout` (String) TCP SYN sent timeout, as a Go duration string (e.g. `120s`, `2m`).
+- `time_wait_timeout` (String) TCP time wait timeout, as a Go duration string (e.g. `120s`, `2m`).
+
+
+<a id="nestedatt--usg--udp"></a>
+### Nested Schema for `usg.udp`
+
+Optional:
+
+- `other_timeout` (String) UDP other timeout, as a Go duration string (e.g. `30s`).
+- `stream_timeout` (String) UDP stream timeout, as a Go duration string (e.g. `180s`, `3m`).
+
+
+<a id="nestedatt--usg--upnp"></a>
+### Nested Schema for `usg.upnp`
+
+Optional:
+
+- `enabled` (Boolean) Enable UPnP.
+- `nat_pmp_enabled` (Boolean) Enable UPnP NAT-PMP.
+- `secure_mode` (Boolean) Enable UPnP secure mode.
+- `wan_interface` (String) UPnP WAN interface (e.g., WAN, WAN2).

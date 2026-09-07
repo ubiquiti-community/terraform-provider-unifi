@@ -2,12 +2,12 @@
 page_title: Site To Site Vpn (Resource)
 subcategory: ""
 description: |-
-  Manages a manual site-to-site IPsec VPN (the UniFi Settings → VPN → Site-to-Site network, purpose = site-vpn, vpn_type = ipsec-vpn). The advanced IKE/ESP attributes only apply when profile = customized.
+  Manages a manual site-to-site IPsec VPN (the UniFi Settings → VPN → Site-to-Site network, purpose = site-vpn, vpn_type = ipsec-vpn). The advanced ike/esp proposal objects only apply when profile = customized.
 ---
 
 # Site To Site Vpn (Resource)
 
-Manages a manual site-to-site IPsec VPN (the UniFi `Settings → VPN → Site-to-Site` network, `purpose = site-vpn`, `vpn_type = ipsec-vpn`). The advanced IKE/ESP attributes only apply when `profile = customized`.
+Manages a manual site-to-site IPsec VPN (the UniFi `Settings → VPN → Site-to-Site` network, `purpose = site-vpn`, `vpn_type = ipsec-vpn`). The advanced `ike`/`esp` proposal objects only apply when `profile = customized`.
 
 ## Example Usage
 
@@ -30,14 +30,18 @@ resource "unifi_site_to_site_vpn" "branch" {
   pre_shared_key_wo = ephemeral.vault_kv_secret_v2.s2s.data["psk"]
   remote_subnets    = ["10.10.0.0/16"]
 
-  profile        = "customized"
-  ike_encryption = "aes256"
-  ike_hash       = "sha256"
-  ike_dh_group   = 14
-  esp_encryption = "aes256"
-  esp_hash       = "sha256"
-  esp_dh_group   = 14
-  pfs            = true
+  profile = "customized"
+  ike = {
+    encryption = "aes256"
+    hash       = "sha256"
+    dh_group   = 14
+  }
+  esp = {
+    encryption = "aes256"
+    hash       = "sha256"
+    dh_group   = 14
+  }
+  pfs = true
 }
 
 # Dynamic routing learns remote routes over the tunnel, so no static remote
@@ -66,21 +70,15 @@ resource "unifi_site_to_site_vpn" "dynamic" {
 
 - `dynamic_routing` (Boolean) Whether IPsec dynamic routing is enabled.
 - `enabled` (Boolean) Whether the tunnel is enabled.
-- `esp_dh_group` (Number) ESP (phase 2) Diffie-Hellman group (PFS). Only used when `profile = customized`.
-- `esp_encryption` (String) ESP (phase 2) encryption. Only used when `profile = customized`.
-- `esp_hash` (String) ESP (phase 2) hash. Only used when `profile = customized`.
-- `esp_lifetime` (String) ESP (phase 2) security-association lifetime, as a Go duration string (e.g. `1h`, `3600s`). Must be a whole number of seconds between `30s` and `86400s` (24h).
-- `ike_dh_group` (Number) IKE (phase 1) Diffie-Hellman group. Only used when `profile = customized`.
-- `ike_encryption` (String) IKE (phase 1) encryption. Only used when `profile = customized`.
-- `ike_hash` (String) IKE (phase 1) hash. Only used when `profile = customized`.
-- `ike_lifetime` (String) IKE (phase 1) security-association lifetime, as a Go duration string (e.g. `8h`, `28800s`). Must be a whole number of seconds between `30s` and `86400s` (24h).
+- `esp` (Attributes) ESP (phase 2) proposal. Only used when `profile = customized`. (see [below for nested schema](#nestedatt--esp))
+- `ike` (Attributes) IKE (phase 1) proposal. Only used when `profile = customized`. (see [below for nested schema](#nestedatt--ike))
 - `interface` (String) The local WAN interface the tunnel binds to (e.g. `wan`, `wan2`).
 - `key_exchange` (String) IKE key-exchange version. One of `ikev1` or `ikev2`.
 - `local_ip` (String) The local IP used for the tunnel. Defaults to the WAN address when omitted.
 - `pfs` (Boolean) Whether Perfect Forward Secrecy is enabled.
 - `pre_shared_key` (String, Sensitive) The IPsec pre-shared key. Stored in state — use `pre_shared_key_wo` to avoid persisting the secret.
 - `pre_shared_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `pre_shared_key` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource (e.g. a Vault secret). Mutually exclusive with `pre_shared_key`.
-- `profile` (String) IPsec profile. One of `customized`, `azure_dynamic`, or `azure_static`. Set to `customized` to tune the IKE/ESP attributes below; the controller may derive the ESP values from the IKE ones.
+- `profile` (String) IPsec profile. One of `customized`, `azure_dynamic`, or `azure_static`. Set to `customized` to tune the `ike`/`esp` objects; the controller may derive the ESP values from the IKE ones.
 - `route_distance` (Number) The route distance (administrative metric) for tunnel routes (1-255).
 - `site` (String) The name of the site to associate the VPN with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
@@ -88,6 +86,28 @@ resource "unifi_site_to_site_vpn" "dynamic" {
 ### Read-Only
 
 - `id` (String) The ID of the site-to-site VPN network.
+
+<a id="nestedatt--esp"></a>
+### Nested Schema for `esp`
+
+Optional:
+
+- `dh_group` (Number) ESP (phase 2) Diffie-Hellman group (PFS). Only used when `profile = customized`.
+- `encryption` (String) ESP (phase 2) encryption. Only used when `profile = customized`.
+- `hash` (String) ESP (phase 2) hash. Only used when `profile = customized`.
+- `lifetime` (String) ESP (phase 2) security-association lifetime, as a Go duration string (e.g. `1h`, `3600s`). Must be a whole number of seconds between `30s` and `86400s` (24h).
+
+
+<a id="nestedatt--ike"></a>
+### Nested Schema for `ike`
+
+Optional:
+
+- `dh_group` (Number) IKE (phase 1) Diffie-Hellman group. Only used when `profile = customized`.
+- `encryption` (String) IKE (phase 1) encryption. Only used when `profile = customized`.
+- `hash` (String) IKE (phase 1) hash. Only used when `profile = customized`.
+- `lifetime` (String) IKE (phase 1) security-association lifetime, as a Go duration string (e.g. `8h`, `28800s`). Must be a whole number of seconds between `30s` and `86400s` (24h).
+
 
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`

@@ -125,7 +125,7 @@ func TestFirewallPolicyPortStringHandling(t *testing.T) {
 }
 
 // TestFirewallPolicyPreservesFirmwareFields guards #220: the UCG Max firmware
-// rejects a PUT that omits connection_state_type, icmp_typename, icmp_v6_typename
+// rejects a PUT that omits connection_state_type, icmp.typename, icmp.v6_typename
 // or the source/destination matching_target_type. These fields are not
 // user-settable, so the provider round-trips them through state. This test reads
 // an API object into the model and converts it back, asserting nothing is dropped.
@@ -165,11 +165,12 @@ func TestFirewallPolicyPreservesFirmwareFields(t *testing.T) {
 	if model.ConnectionStateType.ValueString() != "ALL" {
 		t.Errorf("ConnectionStateType = %q, want ALL", model.ConnectionStateType.ValueString())
 	}
-	if model.ICMPTypename.ValueString() != "ANY" {
-		t.Errorf("ICMPTypename = %q, want ANY", model.ICMPTypename.ValueString())
+	icmp := model.ICMP.Attributes()
+	if got := attrAs[types.String](t, icmp["typename"]).ValueString(); got != "ANY" {
+		t.Errorf("icmp.typename = %q, want ANY", got)
 	}
-	if model.ICMPV6Typename.ValueString() != "ANY" {
-		t.Errorf("ICMPV6Typename = %q, want ANY", model.ICMPV6Typename.ValueString())
+	if got := attrAs[types.String](t, icmp["v6_typename"]).ValueString(); got != "ANY" {
+		t.Errorf("icmp.v6_typename = %q, want ANY", got)
 	}
 
 	// Convert model -> API (Update PUT path) and assert the fields survive.
@@ -836,12 +837,13 @@ func Test_modelToFirewallPolicy(t *testing.T) {
 						IPVersion:           types.StringNull(),
 						ConnectionStateType: types.StringNull(),
 						ConnectionStates:    types.ListNull(types.StringType),
-						ICMPTypename:        types.StringNull(),
-						ICMPV6Typename:      types.StringNull(),
-						Source:              srcObj,
-						Destination:         dstObj,
-						ID:                  types.StringNull(),
-						Site:                types.StringNull(),
+						ICMP: types.ObjectNull(
+							firewallPolicyICMPModel{}.AttributeTypes(),
+						),
+						Source:      srcObj,
+						Destination: dstObj,
+						ID:          types.StringNull(),
+						Site:        types.StringNull(),
 					}
 				}(),
 			},
@@ -912,8 +914,7 @@ func TestFirewallPolicyIndexNotSent(t *testing.T) {
 		IPVersion:           types.StringNull(),
 		ConnectionStateType: types.StringNull(),
 		ConnectionStates:    types.ListNull(types.StringType),
-		ICMPTypename:        types.StringNull(),
-		ICMPV6Typename:      types.StringNull(),
+		ICMP:                types.ObjectNull(firewallPolicyICMPModel{}.AttributeTypes()),
 		Source:              endpoint("z1"),
 		Destination:         endpoint("z2"),
 		ID:                  types.StringNull(),

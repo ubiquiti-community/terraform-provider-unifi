@@ -226,32 +226,32 @@ func TestAccNetworkFrameworkDataSource_ipv6(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
-						"ipv6_interface_type",
+						"ipv6.interface_type",
 						"static",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
-						"ipv6_static_subnet",
+						"ipv6.static_subnet",
 						"fd02::1/64",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
-						"ipv6_ra",
+						"ipv6.ra.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
-						"ipv6_ra_priority",
+						"ipv6.ra.priority",
 						"medium",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
-						"ipv6_ra_preferred_lifetime",
+						"ipv6.ra.preferred_lifetime",
 						"4h0m0s",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
-						"ipv6_ra_valid_lifetime",
+						"ipv6.ra.valid_lifetime",
 						"24h0m0s",
 					),
 					resource.TestCheckResourceAttr(
@@ -261,7 +261,7 @@ func TestAccNetworkFrameworkDataSource_ipv6(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_network.test",
-						"dhcp_v6_server.dns_auto",
+						"dhcp_v6_server.dns.auto",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
@@ -288,22 +288,29 @@ func TestAccNetworkFrameworkDataSource_ipv6(t *testing.T) {
 func testAccNetworkFrameworkDataSourceConfig_ipv6() string {
 	return `
 resource "unifi_network" "test_ipv6_ds" {
-	name                    = "Test IPv6 DS"
-	subnet                  = "192.168.70.1/24"
-	vlan                    = 70
-	ipv6_interface_type     = "static"
-	ipv6_static_subnet      = "fd02::1/64"
-	ipv6_ra                 = true
-	ipv6_ra_priority        = "medium"
-	ipv6_ra_preferred_lifetime = "4h0m0s"
-	ipv6_ra_valid_lifetime  = "24h0m0s"
+	name   = "Test IPv6 DS"
+	subnet = "192.168.70.1/24"
+	vlan   = 70
+
+	ipv6 = {
+		interface_type = "static"
+		static_subnet  = "fd02::1/64"
+		ra = {
+			enabled            = true
+			priority           = "medium"
+			preferred_lifetime = "4h0m0s"
+			valid_lifetime     = "24h0m0s"
+		}
+	}
 
 	dhcp_v6_server = {
-		enabled     = true
-		dns_auto    = false
-		start       = "::2"
-		stop        = "::7d1"
-		lease       = 86400
+		enabled = true
+		dns = {
+			auto = false
+		}
+		start = "::2"
+		stop  = "::7d1"
+		lease = 86400
 	}
 }
 

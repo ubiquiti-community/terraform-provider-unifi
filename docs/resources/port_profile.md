@@ -42,25 +42,21 @@ resource "unifi_port_profile" "poe_disabled" {
 ### Optional
 
 - `autoneg` (Boolean) Enable link auto negotiation for the port profile. When set to `true` this overrides `speed`.
-- `dot1x_ctrl` (String) The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`.
-- `dot1x_idle_timeout` (String) The idle timeout to use when using MAC Based 802.1X control, as a Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s`.
-- `egress_rate_limit_kbps` (Number) The egress rate limit, in kpbs, for the port profile. Can be between `64` and `9999999`.
-- `egress_rate_limit_kbps_enabled` (Boolean) Enable egress rate limiting for the port profile.
+- `dot1x` (Attributes) 802.1X port authentication settings for the port profile. (see [below for nested schema](#nestedatt--dot1x))
+- `egress_rate_limit` (Attributes) Egress rate limiting for the port profile. Computed from the controller when not set; disable with `enabled = false` rather than by removing the block. (see [below for nested schema](#nestedatt--egress_rate_limit))
 - `excluded_networkconf_ids` (Set of String) The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`). Computed from the controller when not set.
 - `fec_mode` (String) Forward Error Correction mode. Can be `rs-fec`, `fc-fec`, `default`, or `disabled`.
 - `forward` (String) The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`.
 - `full_duplex` (Boolean) Enable full duplex for the port profile.
 - `isolation` (Boolean) Enable port isolation for the port profile.
-- `lldpmed_enabled` (Boolean) Enable LLDP-MED for the port profile.
-- `lldpmed_notify_enabled` (Boolean) Enable LLDP-MED topology change notifications for the port profile.
+- `lldpmed` (Attributes) LLDP-MED settings for the port profile. (see [below for nested schema](#nestedatt--lldpmed))
 - `multicast_router_networkconf_ids` (Set of String) The IDs of networks designated as multicast routers for the port profile.
 - `name` (String) The name of the port profile.
 - `native_networkconf_id` (String) The ID of network to use as the main (native/untagged) network on the port profile. Assigned by the controller if not set.
 - `op_mode` (String) The operation mode for the port profile. Can only be `switch`
 - `poe_mode` (String) The POE mode for the port profile. Can be one of `auto`, `passv24`, `passthrough` or `off`.
 - `port_keepalive_enabled` (Boolean) Enable port keepalive for the port profile.
-- `port_security_enabled` (Boolean) Enable port security for the port profile.
-- `port_security_mac_address` (Set of String) The MAC addresses associated with the port security for the port profile.
+- `port_security` (Attributes) Port security (MAC allow-list) settings for the port profile. Computed from the controller when not set; disable with `enabled = false` rather than by removing the block. (see [below for nested schema](#nestedatt--port_security))
 - `priority_queue1_level` (Number) The priority queue 1 level for the port profile. Can be between 0 and 100.
 - `priority_queue2_level` (Number) The priority queue 2 level for the port profile. Can be between 0 and 100.
 - `priority_queue3_level` (Number) The priority queue 3 level for the port profile. Can be between 0 and 100.
@@ -68,16 +64,7 @@ resource "unifi_port_profile" "poe_disabled" {
 - `setting_preference` (String) Whether the port profile settings are managed automatically or manually. Can be `auto` or `manual`.
 - `site` (String) The name of the site to associate the port profile with.
 - `speed` (Number) The link speed to set for the port profile. Can be one of `10`, `100`, `1000`, `2500`, `5000`, `10000`, `20000`, `25000`, `40000`, `50000` or `100000`
-- `stormctrl_bcast_enabled` (Boolean) Enable broadcast Storm Control for the port profile.
-- `stormctrl_bcast_level` (Number) The broadcast Storm Control level for the port profile. Can be between 0 and 100.
-- `stormctrl_bcast_rate` (Number) The broadcast Storm Control rate for the port profile. Can be between 0 and 14880000.
-- `stormctrl_mcast_enabled` (Boolean) Enable multicast Storm Control for the port profile.
-- `stormctrl_mcast_level` (Number) The multicast Storm Control level for the port profile. Can be between 0 and 100.
-- `stormctrl_mcast_rate` (Number) The multicast Storm Control rate for the port profile. Can be between 0 and 14880000.
-- `stormctrl_type` (String) The type of Storm Control to use for the port profile. Can be `level` or `rate`.
-- `stormctrl_ucast_enabled` (Boolean) Enable unknown unicast Storm Control for the port profile.
-- `stormctrl_ucast_level` (Number) The unknown unicast Storm Control level for the port profile. Can be between 0 and 100.
-- `stormctrl_ucast_rate` (Number) The unknown unicast Storm Control rate for the port profile. Can be between 0 and 14880000.
+- `stormctrl` (Attributes) Storm Control settings for the port profile. Computed from the controller when not set; disable a class with `enabled = false` rather than by removing the block. (see [below for nested schema](#nestedatt--stormctrl))
 - `stp_port_mode` (Boolean) Enable Spanning Tree Protocol (STP) for the port profile. Computed from the controller when not set.
 - `tagged_networkconf_ids` (Set of String) The IDs of networks to tag traffic with for the port profile.
 - `tagged_vlan_mgmt` (String) How tagged VLANs are managed on the port. Can be `auto`, `block_all`, or `custom`.
@@ -87,6 +74,83 @@ resource "unifi_port_profile" "poe_disabled" {
 ### Read-Only
 
 - `id` (String) The ID of the port profile.
+
+<a id="nestedatt--dot1x"></a>
+### Nested Schema for `dot1x`
+
+Optional:
+
+- `ctrl` (String) The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`.
+- `idle_timeout` (String) The idle timeout to use when using MAC Based 802.1X control, as a Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s`.
+
+
+<a id="nestedatt--egress_rate_limit"></a>
+### Nested Schema for `egress_rate_limit`
+
+Optional:
+
+- `enabled` (Boolean) Enable egress rate limiting for the port profile. Computed from the controller when not set.
+- `kbps` (Number) The egress rate limit, in kbps, for the port profile. Can be between `64` and `9999999`.
+
+
+<a id="nestedatt--lldpmed"></a>
+### Nested Schema for `lldpmed`
+
+Optional:
+
+- `enabled` (Boolean) Enable LLDP-MED for the port profile.
+- `notify_enabled` (Boolean) Enable LLDP-MED topology change notifications for the port profile.
+
+
+<a id="nestedatt--port_security"></a>
+### Nested Schema for `port_security`
+
+Optional:
+
+- `enabled` (Boolean) Enable port security for the port profile. Computed from the controller when not set.
+- `mac_address` (Set of String) The MAC addresses associated with the port security for the port profile.
+
+
+<a id="nestedatt--stormctrl"></a>
+### Nested Schema for `stormctrl`
+
+Optional:
+
+- `bcast` (Attributes) broadcast Storm Control for the port profile. (see [below for nested schema](#nestedatt--stormctrl--bcast))
+- `mcast` (Attributes) multicast Storm Control for the port profile. (see [below for nested schema](#nestedatt--stormctrl--mcast))
+- `type` (String) The type of Storm Control to use for the port profile. Can be `level` or `rate`.
+- `ucast` (Attributes) unknown unicast Storm Control for the port profile. (see [below for nested schema](#nestedatt--stormctrl--ucast))
+
+<a id="nestedatt--stormctrl--bcast"></a>
+### Nested Schema for `stormctrl.bcast`
+
+Optional:
+
+- `enabled` (Boolean) Enable broadcast Storm Control for the port profile. Computed from the controller when not set.
+- `level` (Number) The broadcast Storm Control level for the port profile. Can be between 0 and 100.
+- `rate` (Number) The broadcast Storm Control rate for the port profile. Can be between 0 and 14880000.
+
+
+<a id="nestedatt--stormctrl--mcast"></a>
+### Nested Schema for `stormctrl.mcast`
+
+Optional:
+
+- `enabled` (Boolean) Enable multicast Storm Control for the port profile. Computed from the controller when not set.
+- `level` (Number) The multicast Storm Control level for the port profile. Can be between 0 and 100.
+- `rate` (Number) The multicast Storm Control rate for the port profile. Can be between 0 and 14880000.
+
+
+<a id="nestedatt--stormctrl--ucast"></a>
+### Nested Schema for `stormctrl.ucast`
+
+Optional:
+
+- `enabled` (Boolean) Enable unknown unicast Storm Control for the port profile. Computed from the controller when not set.
+- `level` (Number) The unknown unicast Storm Control level for the port profile. Can be between 0 and 100.
+- `rate` (Number) The unknown unicast Storm Control rate for the port profile. Can be between 0 and 14880000.
+
+
 
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`

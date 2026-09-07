@@ -10,7 +10,7 @@ output "radius_user_network_id" {
 
 # RFC2868 tunnel attributes returned by the controller (computed).
 output "radius_user_tunnel_type" {
-  value = data.unifi_radius_user.example.tunnel_type
+  value = data.unifi_radius_user.example.tunnel.type
 }
 
 # Look up an account on a specific site.

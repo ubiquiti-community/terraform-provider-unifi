@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -23,15 +24,29 @@ type radiusUserDataSource struct {
 }
 
 type radiusUserDataSourceModel struct {
-	ID               types.String `tfsdk:"id"`
-	Site             types.String `tfsdk:"site"`
-	Name             types.String `tfsdk:"name"`
-	Password         types.String `tfsdk:"password"`
-	TunnelType       types.Int64  `tfsdk:"tunnel_type"`
-	TunnelMediumType types.Int64  `tfsdk:"tunnel_medium_type"`
-	NetworkID        types.String `tfsdk:"network_id"`
+	ID        types.String `tfsdk:"id"`
+	Site      types.String `tfsdk:"site"`
+	Name      types.String `tfsdk:"name"`
+	Password  types.String `tfsdk:"password"`
+	Tunnel    types.Object `tfsdk:"tunnel"`
+	NetworkID types.String `tfsdk:"network_id"`
 
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
+}
+
+// radiusUserDataSourceTunnelModel is the data source's `tunnel` nested object
+// (formerly the flat tunnel_type / tunnel_medium_type). Unlike the resource it
+// does not expose config_type.
+type radiusUserDataSourceTunnelModel struct {
+	Type       types.Int64 `tfsdk:"type"`
+	MediumType types.Int64 `tfsdk:"medium_type"`
+}
+
+func radiusUserDataSourceTunnelAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"type":        types.Int64Type,
+		"medium_type": types.Int64Type,
+	}
 }
 
 func (d *radiusUserDataSource) Metadata(
@@ -69,13 +84,19 @@ func (d *radiusUserDataSource) Schema(
 				Computed:            true,
 				Sensitive:           true,
 			},
-			"tunnel_type": schema.Int64Attribute{
-				MarkdownDescription: "See RFC2868 section 3.1.",
+			"tunnel": schema.SingleNestedAttribute{
+				MarkdownDescription: "RFC2868 tunnel attributes.",
 				Computed:            true,
-			},
-			"tunnel_medium_type": schema.Int64Attribute{
-				MarkdownDescription: "See RFC2868 section 3.2.",
-				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"type": schema.Int64Attribute{
+						MarkdownDescription: "See RFC2868 section 3.1.",
+						Computed:            true,
+					},
+					"medium_type": schema.Int64Attribute{
+						MarkdownDescription: "See RFC2868 section 3.2.",
+						Computed:            true,
+					},
+				},
 			},
 			"network_id": schema.StringAttribute{
 				MarkdownDescription: "ID of the network for this account.",
@@ -166,9 +187,21 @@ func (d *radiusUserDataSource) Read(
 	data.Site = types.StringValue(site)
 	data.Name = types.StringValue(account.Name)
 	data.Password = types.StringValue(account.Password)
-	data.TunnelType = types.Int64PointerValue(account.TunnelType)
-	data.TunnelMediumType = types.Int64PointerValue(account.TunnelMediumType)
 	data.NetworkID = types.StringValue(account.NetworkID)
+
+	tunnel, diags := types.ObjectValueFrom(
+		ctx,
+		radiusUserDataSourceTunnelAttrTypes(),
+		radiusUserDataSourceTunnelModel{
+			Type:       types.Int64PointerValue(account.TunnelType),
+			MediumType: types.Int64PointerValue(account.TunnelMediumType),
+		},
+	)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	data.Tunnel = tunnel
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

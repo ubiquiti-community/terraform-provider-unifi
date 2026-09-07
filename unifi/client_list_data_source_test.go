@@ -4,10 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	gounifi "github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/models"
 )
 
 func TestAccClientListDataSource_basic(t *testing.T) {
@@ -114,6 +116,41 @@ func Test_clientListEntryAttrTypes(t *testing.T) {
 	if got["uptime"] != types.Int64Type {
 		t.Errorf("uptime type = %T, want Int64Type", got["uptime"])
 	}
+	for name, want := range map[string]attr.Type{
+		"network":                 types.ObjectType{AttrTypes: models.ClientNetworkAttrTypes()},
+		"last_uplink":             types.ObjectType{AttrTypes: clientListLastUplinkAttrTypes()},
+		"last_connection_network": types.ObjectType{AttrTypes: models.ClientNetworkAttrTypes()},
+		"tx":                      types.ObjectType{AttrTypes: models.ClientTrafficAttrTypes()},
+		"rx":                      types.ObjectType{AttrTypes: models.ClientTrafficAttrTypes()},
+	} {
+		if !got[name].Equal(want) {
+			t.Errorf("%s type = %s, want %s", name, got[name], want)
+		}
+	}
+	for _, old := range []string{
+		"network_id", "network_name", "last_uplink_mac", "last_uplink_name",
+		"last_connection_network_id", "last_connection_network_name",
+		"tx_rate", "tx_bytes", "rx_rate", "rx_bytes",
+	} {
+		if _, ok := got[old]; ok {
+			t.Errorf("flat attribute %q still present", old)
+		}
+	}
+	// Every attr type must have a schema attribute of the same type.
+	attrs := clientListEntrySchemaAttributes()
+	if len(attrs) != len(got) {
+		t.Errorf("schema has %d attributes, attr types %d", len(attrs), len(got))
+	}
+	for name, want := range got {
+		a, ok := attrs[name]
+		if !ok {
+			t.Errorf("attr type %q has no schema attribute", name)
+			continue
+		}
+		if !a.GetType().Equal(want) {
+			t.Errorf("%s: schema type %s != attr type %s", name, a.GetType(), want)
+		}
+	}
 }
 
 func Test_clientListEntrySchemaAttributes(t *testing.T) {
@@ -123,6 +160,7 @@ func Test_clientListEntrySchemaAttributes(t *testing.T) {
 			t.Errorf("missing attribute %q", key)
 		}
 	}
+	assertClientInfoNestedGroups(t, got, false)
 }
 
 func Test_clientListDataSource_Metadata(t *testing.T) {
@@ -193,16 +231,131 @@ func Test_clientListDataSource_Configure(t *testing.T) {
 }
 
 func Test_clientListEntryValues(t *testing.T) {
+	ctx := context.Background()
 	c := &gounifi.Client{
 		ID:  "abc123",
 		MAC: "aa:bb:cc:dd:ee:ff",
 	}
-	got := clientListEntryValues(c, nil)
+	got, diags := clientListEntryValues(ctx, c, nil)
+	if diags.HasError() {
+		t.Fatalf("clientListEntryValues: %v", diags)
+	}
 	if got["id"] != types.StringValue("abc123") {
 		t.Errorf("id = %v, want %q", got["id"], "abc123")
 	}
 	if got["mac"] != types.StringValue("aa:bb:cc:dd:ee:ff") {
 		t.Errorf("mac = %v, want %q", got["mac"], "aa:bb:cc:dd:ee:ff")
+	}
+}
+
+// Test_clientListEntryValues_nestedGroups checks the network, last_uplink,
+// last_connection_network, tx and rx objects are populated from ClientInfo and
+// that the value map satisfies clientListEntryAttrTypes().
+func Test_clientListEntryValues_nestedGroups(t *testing.T) {
+	ctx := context.Background()
+	txRate, txBytes := int64(1000), int64(2000)
+	rxRate, rxBytes := int64(3000), int64(4000)
+	c := &gounifi.Client{
+		ID:                       "abc123",
+		MAC:                      "aa:bb:cc:dd:ee:ff",
+		NetworkID:                "net-1",
+		VirtualNetworkOverrideID: "vnet-1",
+	}
+	info := &gounifi.ClientInfo{
+		NetworkName:               "LAN",
+		LastUplinkMac:             "11:22:33:44:55:66",
+		LastUplinkName:            "sw-1",
+		LastConnectionNetworkId:   "net-2",
+		LastConnectionNetworkName: "IoT",
+		TxRate:                    &txRate,
+		TxBytes:                   &txBytes,
+		RxRate:                    &rxRate,
+		RxBytes:                   &rxBytes,
+	}
+
+	got, diags := clientListEntryValues(ctx, c, info)
+	if diags.HasError() {
+		t.Fatalf("clientListEntryValues: %v", diags)
+	}
+	if _, d := types.ObjectValue(clientListEntryAttrTypes(), got); d.HasError() {
+		t.Fatalf("value map does not satisfy clientListEntryAttrTypes(): %v", d)
+	}
+
+	leaf := func(name, leaf string) attr.Value {
+		t.Helper()
+		obj := attrAs[types.Object](t, got[name])
+		v, ok := obj.Attributes()[leaf]
+		if !ok {
+			t.Fatalf("%s.%s missing", name, leaf)
+		}
+		return v
+	}
+	// network.id prefers the virtual network override, as network_id did.
+	if v := leaf("network", "id"); !v.Equal(types.StringValue("vnet-1")) {
+		t.Errorf("network.id = %v, want vnet-1", v)
+	}
+	if v := leaf("network", "name"); !v.Equal(types.StringValue("LAN")) {
+		t.Errorf("network.name = %v, want LAN", v)
+	}
+	if v := leaf("last_uplink", "mac"); !v.Equal(types.StringValue("11:22:33:44:55:66")) {
+		t.Errorf("last_uplink.mac = %v", v)
+	}
+	if v := leaf("last_uplink", "name"); !v.Equal(types.StringValue("sw-1")) {
+		t.Errorf("last_uplink.name = %v", v)
+	}
+	if v := leaf("last_connection_network", "id"); !v.Equal(types.StringValue("net-2")) {
+		t.Errorf("last_connection_network.id = %v", v)
+	}
+	if v := leaf("last_connection_network", "name"); !v.Equal(types.StringValue("IoT")) {
+		t.Errorf("last_connection_network.name = %v", v)
+	}
+	if v := leaf("tx", "rate"); !v.Equal(types.Int64Value(1000)) {
+		t.Errorf("tx.rate = %v", v)
+	}
+	if v := leaf("tx", "bytes"); !v.Equal(types.Int64Value(2000)) {
+		t.Errorf("tx.bytes = %v", v)
+	}
+	if v := leaf("rx", "rate"); !v.Equal(types.Int64Value(3000)) {
+		t.Errorf("rx.rate = %v", v)
+	}
+	if v := leaf("rx", "bytes"); !v.Equal(types.Int64Value(4000)) {
+		t.Errorf("rx.bytes = %v", v)
+	}
+}
+
+// Test_clientListEntryValues_noInfo checks that without ClientInfo the nested
+// objects are still known but every ClientInfo-sourced leaf is null, while
+// network.id still comes from the Client record.
+func Test_clientListEntryValues_noInfo(t *testing.T) {
+	ctx := context.Background()
+	c := &gounifi.Client{ID: "abc123", MAC: "aa:bb:cc:dd:ee:ff", NetworkID: "net-1"}
+
+	got, diags := clientListEntryValues(ctx, c, nil)
+	if diags.HasError() {
+		t.Fatalf("clientListEntryValues: %v", diags)
+	}
+	if _, d := types.ObjectValue(clientListEntryAttrTypes(), got); d.HasError() {
+		t.Fatalf("value map does not satisfy clientListEntryAttrTypes(): %v", d)
+	}
+
+	network := attrAs[types.Object](t, got["network"])
+	if v := network.Attributes()["id"]; !v.Equal(types.StringValue("net-1")) {
+		t.Errorf("network.id = %v, want net-1", v)
+	}
+	if v := network.Attributes()["name"]; !v.IsNull() {
+		t.Errorf("network.name = %v, want null", v)
+	}
+	for _, name := range []string{"last_uplink", "last_connection_network", "tx", "rx"} {
+		obj := attrAs[types.Object](t, got[name])
+		if obj.IsNull() || obj.IsUnknown() {
+			t.Errorf("%s: object should be known, got %v", name, obj)
+			continue
+		}
+		for leaf, v := range obj.Attributes() {
+			if !v.IsNull() {
+				t.Errorf("%s.%s = %v, want null", name, leaf, v)
+			}
+		}
 	}
 }
 

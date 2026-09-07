@@ -23,12 +23,11 @@ type clientQosRateDataSource struct {
 }
 
 type clientQosRateDataSourceModel struct {
-	ID             types.String   `tfsdk:"id"`
-	Site           types.String   `tfsdk:"site"`
-	Name           types.String   `tfsdk:"name"`
-	QOSRateMaxDown types.Int64    `tfsdk:"qos_rate_max_down"`
-	QOSRateMaxUp   types.Int64    `tfsdk:"qos_rate_max_up"`
-	Timeouts       timeouts.Value `tfsdk:"timeouts"`
+	ID       types.String   `tfsdk:"id"`
+	Site     types.String   `tfsdk:"site"`
+	Name     types.String   `tfsdk:"name"`
+	QOSRate  types.Object   `tfsdk:"qos_rate"`
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *clientQosRateDataSource) Metadata(
@@ -61,13 +60,19 @@ func (d *clientQosRateDataSource) Schema(
 				MarkdownDescription: "The name of the client QOS rate to look up.",
 				Required:            true,
 			},
-			"qos_rate_max_down": schema.Int64Attribute{
-				MarkdownDescription: "The maximum download rate.",
+			"qos_rate": schema.SingleNestedAttribute{
+				MarkdownDescription: "QoS rate limits applied to clients in this group, in kbps.",
 				Computed:            true,
-			},
-			"qos_rate_max_up": schema.Int64Attribute{
-				MarkdownDescription: "The maximum upload rate.",
-				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"max_down": schema.Int64Attribute{
+						MarkdownDescription: "The maximum download rate.",
+						Computed:            true,
+					},
+					"max_up": schema.Int64Attribute{
+						MarkdownDescription: "The maximum upload rate.",
+						Computed:            true,
+					},
+				},
 			},
 			"timeouts": timeouts.Attributes(ctx),
 		},
@@ -153,8 +158,20 @@ func (d *clientQosRateDataSource) Read(
 	data.ID = types.StringValue(clientGroup.ID)
 	data.Site = types.StringValue(site)
 	data.Name = types.StringValue(clientGroup.Name)
-	data.QOSRateMaxDown = types.Int64PointerValue(clientGroup.QOSRateMaxDown)
-	data.QOSRateMaxUp = types.Int64PointerValue(clientGroup.QOSRateMaxUp)
+
+	rate, rateDiags := types.ObjectValueFrom(
+		ctx,
+		clientQosRateRateAttrTypes(),
+		clientQosRateRateModel{
+			MaxDown: types.Int64PointerValue(clientGroup.QOSRateMaxDown),
+			MaxUp:   types.Int64PointerValue(clientGroup.QOSRateMaxUp),
+		},
+	)
+	resp.Diagnostics.Append(rateDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	data.QOSRate = rate
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

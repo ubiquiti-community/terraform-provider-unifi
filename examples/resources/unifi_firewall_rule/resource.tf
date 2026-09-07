@@ -15,7 +15,9 @@ resource "unifi_firewall_rule" "drop_to_gateway" {
   rule_index = 2011
   protocol   = "all"
 
-  dst_address = "192.168.1.1"
+  destination = {
+    address = "192.168.1.1"
+  }
 }
 
 # Accept established/related return traffic on the WAN inbound chain.
@@ -27,8 +29,10 @@ resource "unifi_firewall_rule" "wan_in_established" {
   rule_index = 3001
   protocol   = "all"
 
-  state_established = true
-  state_related     = true
+  state = {
+    established = true
+    related     = true
+  }
 }
 
 # Use firewall groups: allow the trusted admin hosts to reach the web ports.
@@ -52,8 +56,12 @@ resource "unifi_firewall_rule" "allow_admin_web" {
   rule_index = 2012
   protocol   = "tcp"
 
-  src_firewall_group_ids = [unifi_firewall_group.admin_hosts.id]
-  dst_firewall_group_ids = [unifi_firewall_group.web_ports.id]
+  source = {
+    firewall_group_ids = [unifi_firewall_group.admin_hosts.id]
+  }
+  destination = {
+    firewall_group_ids = [unifi_firewall_group.web_ports.id]
+  }
 }
 
 # Source/destination address and port with a single host source (ADDRv4).
@@ -65,10 +73,14 @@ resource "unifi_firewall_rule" "allow_ssh_from_host" {
   rule_index = 2013
   protocol   = "tcp"
 
-  src_address      = "192.168.1.5"
-  src_network_type = "ADDRv4"
-  dst_address      = "192.168.20.0/24"
-  dst_port         = "22"
+  source = {
+    address      = "192.168.1.5"
+    network_type = "ADDRv4"
+  }
+  destination = {
+    address = "192.168.20.0/24"
+    port    = "22"
+  }
 
   logging = true
 }
@@ -82,8 +94,10 @@ resource "unifi_firewall_rule" "reject_guest_udp" {
   rule_index = 4001
   protocol   = "udp"
 
-  dst_port = "53"
-  logging  = true
+  destination = {
+    port = "53"
+  }
+  logging = true
 }
 
 # IPv6 example on the WANv6 inbound chain, dropping all inbound IPv6.
