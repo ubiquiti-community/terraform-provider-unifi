@@ -2131,6 +2131,11 @@ func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 			wantError:   true,
 		},
 		{
+			// ipv6 = var.x with x unknown until apply: the configuration itself
+			// is unknown, so ModifyPlan cannot shape the object and the guard
+			// must reject it. (An omitted block also plans unknown on create,
+			// but planIPv6Defaults replaces that with its create-time shape
+			// before the guard runs.)
 			name:        "unknown ipv6 object: error",
 			ipv6Unknown: true,
 			wantError:   true,
@@ -2147,6 +2152,21 @@ func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 					path.Root("ipv6"),
 					types.ObjectUnknown(networkIPv6AttrTypes()),
 				)
+				// The helper's config is a null root object; build a known one
+				// with every attribute null except an unknown ipv6.
+				objType, ok := config.Schema.Type().TerraformType(ctx).(tftypes.Object)
+				if !ok {
+					t.Fatalf("schema type is not an object")
+				}
+				vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+				for name, at := range objType.AttributeTypes {
+					vals[name] = tftypes.NewValue(at, nil)
+				}
+				vals["ipv6"] = tftypes.NewValue(
+					objType.AttributeTypes["ipv6"],
+					tftypes.UnknownValue,
+				)
+				config.Raw = tftypes.NewValue(objType, vals)
 			} else {
 				diags = plan.SetAttribute(ctx, path.Root("ipv6").AtName("aliases"), tt.ipv6Aliases)
 			}

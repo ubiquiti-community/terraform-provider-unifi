@@ -1327,12 +1327,14 @@ func (r *networkResource) ModifyPlan(
 	// apply" error (#413).
 	// Read from the plan (not config) so that unknown values derived from
 	// data sources are caught here too. A wholly unknown ipv6 object hides
-	// the aliases value, so it is treated as unknown aliases.
+	// the aliases value, so it is treated as unknown aliases. The plan is
+	// read from resp, where planIPv6Defaults above has already replaced the
+	// unknown object an omitted block produces on create with its shape.
 	aliasesPath := path.Root("ipv6").AtName("aliases")
 	var ipv6Obj types.Object
 	var ipv6Aliases types.List
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("ipv6"), &ipv6Obj)...)
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, aliasesPath, &ipv6Aliases)...)
+	resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, path.Root("ipv6"), &ipv6Obj)...)
+	resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, aliasesPath, &ipv6Aliases)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}

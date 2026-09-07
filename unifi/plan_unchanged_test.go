@@ -38,24 +38,56 @@ func TestPlanUnchangedConfigIsEmpty(t *testing.T) {
 		typeName  string
 		resource  resource.Resource
 		overrides map[string]attr.Value
+		// create, when set, checks the planned state of a create (null prior)
+		// with the same required-only configuration.
+		create func(t *testing.T, planned map[string]tftypes.Value)
 	}{
 		{"unifi_network", &networkResource{}, map[string]attr.Value{
 			// ModifyPlan asserts the flat default; everything else drifts freely.
 			"ipv6.interface_type": types.StringValue("none"),
+		}, func(t *testing.T, planned map[string]tftypes.Value) {
+			// An omitted ipv6 block plans its create-time shape, not an unknown
+			// object, so the aliases guard and the write side both see it.
+			ipv6 := plannedObject(t, planned["ipv6"], "ipv6")
+			var s string
+			if err := ipv6["interface_type"].As(&s); err != nil || s != "none" {
+				t.Errorf("ipv6.interface_type = %v (%v), want none", ipv6["interface_type"], err)
+			}
 		}},
-		{"unifi_wlan", &wlanFrameworkResource{}, nil},
-		{"unifi_setting", &settingResource{}, nil},
-		{"unifi_device", &deviceResource{}, nil},
-		{"unifi_port_profile", &portProfileResource{}, nil},
-		{"unifi_firewall_rule", &firewallRuleResource{}, nil},
-		{"unifi_firewall_policy", &firewallPolicyResource{}, nil},
-		{"unifi_site_to_site_vpn", &siteToSiteVPNResource{}, nil},
-		{"unifi_radius_profile", &radiusProfileResource{}, nil},
-		{"unifi_radius_user", &radiusUserResource{}, nil},
-		{"unifi_client_qos_rate", &clientQosRateResource{}, nil},
-		{"unifi_static_route", &staticRouteFrameworkResource{}, nil},
-		{"unifi_vpn_server", &vpnServerResource{}, nil},
-		{"unifi_wan", &wanResource{}, nil},
+		{
+			"unifi_wlan",
+			&wlanFrameworkResource{},
+			nil,
+			func(t *testing.T, planned map[string]tftypes.Value) {
+				radius := plannedObject(t, planned["radius"], "radius")
+				var b bool
+				if err := radius["mac_auth_enabled"].As(&b); err != nil || b {
+					t.Errorf(
+						"radius.mac_auth_enabled = %v (%v), want false",
+						radius["mac_auth_enabled"],
+						err,
+					)
+				}
+				if radius["profile_id"].IsKnown() {
+					t.Errorf(
+						"radius.profile_id = %v, want unknown (controller-assigned)",
+						radius["profile_id"],
+					)
+				}
+			},
+		},
+		{"unifi_setting", &settingResource{}, nil, nil},
+		{"unifi_device", &deviceResource{}, nil, nil},
+		{"unifi_port_profile", &portProfileResource{}, nil, nil},
+		{"unifi_firewall_rule", &firewallRuleResource{}, nil, nil},
+		{"unifi_firewall_policy", &firewallPolicyResource{}, nil, nil},
+		{"unifi_site_to_site_vpn", &siteToSiteVPNResource{}, nil, nil},
+		{"unifi_radius_profile", &radiusProfileResource{}, nil, nil},
+		{"unifi_radius_user", &radiusUserResource{}, nil, nil},
+		{"unifi_client_qos_rate", &clientQosRateResource{}, nil, nil},
+		{"unifi_static_route", &staticRouteFrameworkResource{}, nil, nil},
+		{"unifi_vpn_server", &vpnServerResource{}, nil, nil},
+		{"unifi_wan", &wanResource{}, nil, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.typeName, func(t *testing.T) {
@@ -67,8 +99,25 @@ func TestPlanUnchangedConfigIsEmpty(t *testing.T) {
 			}
 			f := planFixture{ctx: ctx, t: t, overrides: tc.overrides}
 			prior, config := f.object(schemaResp.Schema, "")
+			schemaType := schemaResp.Schema.Type().TerraformType(ctx)
 
-			planned := planResourceChange(t, tc.typeName, schemaResp.Schema, prior, config)
+			// Create: a null prior state; Terraform core proposes the
+			// configuration with Computed attributes null.
+			created := planResourceChange(t, tc.typeName, schemaResp.Schema,
+				tftypes.NewValue(schemaType, nil), config, config)
+			if created.IsNull() {
+				t.Fatal("create planned a null state")
+			}
+			if tc.create != nil {
+				var createdAttrs map[string]tftypes.Value
+				if err := created.As(&createdAttrs); err != nil {
+					t.Fatalf("as object: %v", err)
+				}
+				tc.create(t, createdAttrs)
+			}
+
+			// Update with an unchanged configuration: the plan must equal prior.
+			planned := planResourceChange(t, tc.typeName, schemaResp.Schema, prior, prior, config)
 
 			diffs, err := prior.Diff(planned)
 			if err != nil {
@@ -88,14 +137,28 @@ func TestPlanUnchangedConfigIsEmpty(t *testing.T) {
 	}
 }
 
-// planResourceChange calls PlanResourceChange on the real provider with the
-// proposed new state equal to the prior state (what Terraform core sends for
-// an unchanged configuration) and returns the planned state.
+// plannedObject decodes a known object attribute of a planned state.
+func plannedObject(t *testing.T, v tftypes.Value, name string) map[string]tftypes.Value {
+	t.Helper()
+	if !v.IsKnown() || v.IsNull() {
+		t.Fatalf("%s = %v, want a known object", name, v)
+	}
+	var m map[string]tftypes.Value
+	if err := v.As(&m); err != nil {
+		t.Fatalf("%s: as object: %v", name, err)
+	}
+	return m
+}
+
+// planResourceChange calls PlanResourceChange on the real provider and returns
+// the planned state. For an unchanged configuration Terraform core sends a
+// proposed new state equal to the prior state; for a create the prior state is
+// null and the proposed state is the configuration.
 func planResourceChange(
 	t *testing.T,
 	typeName string,
 	s schema.Schema,
-	prior, config tftypes.Value,
+	prior, proposed, config tftypes.Value,
 ) tftypes.Value {
 	t.Helper()
 	ctx := context.Background()
@@ -115,7 +178,7 @@ func planResourceChange(
 	resp, err := srv.PlanResourceChange(ctx, &tfprotov6.PlanResourceChangeRequest{
 		TypeName:         typeName,
 		PriorState:       dv(prior),
-		ProposedNewState: dv(prior),
+		ProposedNewState: dv(proposed),
 		Config:           dv(config),
 	})
 	if err != nil {
