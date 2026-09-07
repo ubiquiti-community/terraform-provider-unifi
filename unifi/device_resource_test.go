@@ -596,6 +596,43 @@ func Test_deviceResource_IdentitySchema(t *testing.T) {
 	}
 }
 
+// The v0 identity keyed on the controller's internal "id"; v1 keys on "mac".
+// State written under v0 must have an upgrader or Terraform refuses to decode
+// it ("unsupported attribute \"id\"").
+func Test_deviceResource_IdentityUpgradePath(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	var schemaResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &schemaResp)
+	if got := schemaResp.IdentitySchema.GetVersion(); got != 1 {
+		t.Fatalf("identity schema version = %d, want 1", got)
+	}
+	if _, ok := schemaResp.IdentitySchema.Attributes["mac"]; !ok {
+		t.Fatal("identity schema missing \"mac\"")
+	}
+	if _, ok := schemaResp.IdentitySchema.Attributes["id"]; ok {
+		t.Fatal("identity schema still declares \"id\"")
+	}
+
+	upgraders := r.UpgradeIdentity(ctx)
+	for v := int64(0); v < schemaResp.IdentitySchema.GetVersion(); v++ {
+		up, ok := upgraders[v]
+		if !ok {
+			t.Fatalf("no identity upgrader for version %d", v)
+		}
+		if up.PriorSchema == nil {
+			t.Fatalf("identity upgrader %d has no PriorSchema", v)
+		}
+		if _, ok := up.PriorSchema.Attributes["id"]; !ok {
+			t.Fatalf("identity upgrader %d prior schema missing \"id\"", v)
+		}
+		if up.IdentityUpgrader == nil {
+			t.Fatalf("identity upgrader %d has no IdentityUpgrader func", v)
+		}
+	}
+}
+
 func Test_deviceResource_Schema(t *testing.T) {
 	type args struct {
 		ctx  context.Context

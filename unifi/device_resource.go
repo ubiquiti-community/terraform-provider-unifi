@@ -43,10 +43,11 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                 = &deviceResource{}
-	_ resource.ResourceWithImportState  = &deviceResource{}
-	_ resource.ResourceWithIdentity     = &deviceResource{}
-	_ resource.ResourceWithUpgradeState = &deviceResource{}
+	_ resource.Resource                    = &deviceResource{}
+	_ resource.ResourceWithImportState     = &deviceResource{}
+	_ resource.ResourceWithIdentity        = &deviceResource{}
+	_ resource.ResourceWithUpgradeState    = &deviceResource{}
+	_ resource.ResourceWithUpgradeIdentity = &deviceResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -316,6 +317,9 @@ func (r *deviceResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		// v0 -> v1: identity moved from the controller's internal device id
+		// ("id") to the device MAC ("mac"). See UpgradeIdentity.
+		Version: 1,
 		Attributes: map[string]identityschema.Attribute{
 			"mac": identityschema.StringAttribute{
 				CustomType:        hwtypes.MACAddressType{},
@@ -323,6 +327,87 @@ func (r *deviceResource) IdentitySchema(
 			},
 		},
 	}
+}
+
+// UpgradeIdentity migrates identity data stored under the pre-v1 schema,
+// which keyed on the controller's internal device id, to the current
+// MAC-keyed identity. It looks the device up by id to recover its MAC,
+// falling back to scanning the device list the way ImportState does.
+func (r *deviceResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return map[int64]resource.IdentityUpgrader{
+		0: {
+			PriorSchema: &identityschema.Schema{
+				Attributes: map[string]identityschema.Attribute{
+					"id": identityschema.StringAttribute{
+						RequiredForImport: true,
+					},
+				},
+			},
+			IdentityUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeIdentityRequest,
+				resp *resource.UpgradeIdentityResponse,
+			) {
+				var id string
+				resp.Diagnostics.Append(
+					req.Identity.GetAttribute(ctx, path.Root("id"), &id)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				site := r.client.Site
+
+				device, err := r.client.GetDevice(ctx, site, id)
+				if err != nil || device == nil || device.MAC == "" {
+					devices, listErr := r.client.ListDevice(ctx, site)
+					if listErr != nil {
+						resp.Diagnostics.AddError(
+							"Failed to Upgrade Device Identity",
+							fmt.Sprintf(
+								"Could not resolve MAC for device id %q while upgrading identity: %v (list fallback: %v)",
+								id,
+								err,
+								listErr,
+							),
+						)
+						return
+					}
+					for _, d := range devices {
+						if d.ID == id {
+							device = &d
+							break
+						}
+					}
+				}
+				if device == nil || device.MAC == "" {
+					resp.Diagnostics.AddError(
+						"Failed to Upgrade Device Identity",
+						fmt.Sprintf(
+							"No device found matching internal id %q on site %s; cannot migrate identity from id to mac.",
+							id,
+							site,
+						),
+					)
+					return
+				}
+
+				// SetAttribute merges into resp.Identity.Raw, which the
+				// framework leaves unset (no type) going into an upgrader;
+				// Set encodes the whole identity from scratch instead.
+				resp.Diagnostics.Append(
+					resp.Identity.Set(ctx, &deviceIdentityModel{
+						MAC: hwtypes.NewMACAddressValue(device.MAC),
+					})...)
+			},
+		},
+	}
+}
+
+// deviceIdentityModel is the current (v1) device identity: the MAC address.
+type deviceIdentityModel struct {
+	MAC hwtypes.MACAddress `tfsdk:"mac"`
 }
 
 func (r *deviceResource) Schema(
