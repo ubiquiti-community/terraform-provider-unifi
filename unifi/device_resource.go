@@ -1639,6 +1639,9 @@ func (r *deviceResource) ImportState(
 // and the post-apply read conflicted with a configured `true`. It is `omitempty`,
 // so a `false` stays off the wire and doesn't disturb the controller default.
 //
+// config_network must be included for per-device management IP/DNS changes. It
+// is optional on the API struct, so null Terraform config stays off the wire.
+//
 // radio_table and mesh_sta_vap_enabled are the same bug class for the mesh
 // toggles. radio_table[].vwire_enabled (the UI "Mesh Parent" toggle) is fully
 // wired through the schema and converters, but the hand-listed body never copied
@@ -1672,6 +1675,7 @@ func buildMinimalUpdateDevice(
 		LedOverrideColor:           deviceReq.LedOverrideColor,
 		LedOverrideColorBrightness: deviceReq.LedOverrideColorBrightness,
 		SwitchVLANEnabled:          deviceReq.SwitchVLANEnabled,
+		ConfigNetwork:              deviceReq.ConfigNetwork,
 		MeshStaVapEnabled:          deviceReq.MeshStaVapEnabled,
 		RadioTable:                 deviceReq.RadioTable,
 	}

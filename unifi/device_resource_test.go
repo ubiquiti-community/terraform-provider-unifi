@@ -668,10 +668,18 @@ func Test_deviceResource_ImportState(t *testing.T) {
 // values and the post-apply read conflicted with the plan.
 func Test_buildMinimalUpdateDevice(t *testing.T) {
 	deviceReq := &unifi.Device{
-		ID:                         "dev-1",
-		Type:                       "uap",
-		MAC:                        "00:11:22:33:44:55",
-		Name:                       "AP-Hallway",
+		ID:   "dev-1",
+		Type: "uap",
+		MAC:  "00:11:22:33:44:55",
+		Name: "AP-Hallway",
+		ConfigNetwork: &unifi.DeviceConfigNetwork{
+			Type:    "static",
+			IP:      "10.0.0.20",
+			Netmask: "255.255.255.0",
+			Gateway: "10.0.0.1",
+			DNS1:    "10.0.200.2",
+			DNS2:    "10.0.200.3",
+		},
 		LedOverride:                "on",
 		LedOverrideColor:           "#00ff00",
 		LedOverrideColorBrightness: ptrInt64(20),
@@ -704,6 +712,9 @@ func Test_buildMinimalUpdateDevice(t *testing.T) {
 			got.Name,
 			len(got.PortOverrides),
 		)
+	}
+	if got.ConfigNetwork == nil || got.ConfigNetwork.DNS1 != "10.0.200.2" || got.ConfigNetwork.DNS2 != "10.0.200.3" {
+		t.Errorf("ConfigNetwork DNS = %#v, want dns1/dns2 preserved", got.ConfigNetwork)
 	}
 
 	// Unset LED fields stay zero-valued (omitempty drops them from the PUT body).
