@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -567,17 +569,20 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 			name: "returns expected attribute types",
 			m:    firewallPolicyEndpointModel{},
 			want: map[string]attr.Type{
-				"zone_id":              types.StringType,
-				"matching_target":      types.StringType,
-				"network_ids":          types.ListType{ElemType: types.StringType},
-				"client_macs":          types.ListType{ElemType: types.StringType},
-				"ips":                  types.ListType{ElemType: types.StringType},
-				"web_domains":          types.ListType{ElemType: types.StringType},
-				"port":                 types.StringType,
-				"port_group_id":        types.StringType,
-				"ip_group_id":          types.StringType,
-				"port_matching_type":   types.StringType,
-				"matching_target_type": types.StringType,
+				"zone_id":                 types.StringType,
+				"matching_target":         types.StringType,
+				"network_ids":             types.ListType{ElemType: types.StringType},
+				"client_macs":             types.ListType{ElemType: types.StringType},
+				"ips":                     types.ListType{ElemType: types.StringType},
+				"web_domains":             types.ListType{ElemType: types.StringType},
+				"port":                    types.StringType,
+				"port_group_id":           types.StringType,
+				"ip_group_id":             types.StringType,
+				"port_matching_type":      types.StringType,
+				"matching_target_type":    types.StringType,
+				"match_opposite_ips":      types.BoolType,
+				"match_opposite_networks": types.BoolType,
+				"match_opposite_ports":    types.BoolType,
 			},
 		},
 	}
@@ -1365,17 +1370,20 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 				clientMACs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				webDomains, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				return firewallPolicyEndpointModel{
-					ZoneID:             types.StringValue("z1"),
-					MatchingTarget:     types.StringValue("IP"),
-					MatchingTargetType: types.StringValue("OBJECT"),
-					IPs:                ips,
-					NetworkIDs:         networkIDs,
-					ClientMACs:         clientMACs,
-					WebDomains:         webDomains,
-					Port:               types.StringValue("443"),
-					PortGroupID:        types.StringValue(""),
-					IPGroupID:          types.StringValue(""),
-					PortMatchingType:   types.StringValue("SPECIFIC"),
+					ZoneID:                types.StringValue("z1"),
+					MatchingTarget:        types.StringValue("IP"),
+					MatchingTargetType:    types.StringValue("OBJECT"),
+					IPs:                   ips,
+					NetworkIDs:            networkIDs,
+					ClientMACs:            clientMACs,
+					WebDomains:            webDomains,
+					Port:                  types.StringValue("443"),
+					PortGroupID:           types.StringValue(""),
+					IPGroupID:             types.StringValue(""),
+					PortMatchingType:      types.StringValue("SPECIFIC"),
+					MatchOppositeIPs:      types.BoolValue(false),
+					MatchOppositeNetworks: types.BoolValue(false),
+					MatchOppositePorts:    types.BoolValue(false),
 				}
 			}(),
 		},
@@ -1427,17 +1435,20 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 				clientMACs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				webDomains, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				return firewallPolicyEndpointModel{
-					ZoneID:             types.StringValue("z2"),
-					MatchingTarget:     types.StringValue("ANY"),
-					MatchingTargetType: types.StringValue("OBJECT"),
-					IPs:                ips,
-					NetworkIDs:         networkIDs,
-					ClientMACs:         clientMACs,
-					WebDomains:         webDomains,
-					Port:               types.StringValue("8080"),
-					PortGroupID:        types.StringValue(""),
-					IPGroupID:          types.StringValue(""),
-					PortMatchingType:   types.StringValue("SPECIFIC"),
+					ZoneID:                types.StringValue("z2"),
+					MatchingTarget:        types.StringValue("ANY"),
+					MatchingTargetType:    types.StringValue("OBJECT"),
+					IPs:                   ips,
+					NetworkIDs:            networkIDs,
+					ClientMACs:            clientMACs,
+					WebDomains:            webDomains,
+					Port:                  types.StringValue("8080"),
+					PortGroupID:           types.StringValue(""),
+					IPGroupID:             types.StringValue(""),
+					PortMatchingType:      types.StringValue("SPECIFIC"),
+					MatchOppositeIPs:      types.BoolValue(false),
+					MatchOppositeNetworks: types.BoolValue(false),
+					MatchOppositePorts:    types.BoolValue(false),
 				}
 			}(),
 		},
@@ -1750,6 +1761,146 @@ func TestFirewallPolicyEndpointListsUseStateForUnknown(t *testing.T) {
 			if len(la.PlanModifiers) == 0 {
 				t.Errorf("%s.%s must have a plan modifier (UseStateForUnknown) (#338)", ep, key)
 			}
+		}
+	}
+}
+
+// TestFirewallPolicyEndpointModelV0MatchesPriorSchema guards the invariant that
+// makes UpgradeState's schema derivation work: the v0 prior schema is built from
+// the *live* schema (only `port` is swapped back to an integer), so every
+// endpoint attribute added to the live schema also appears in the prior schema's
+// source/destination object type. firewallPolicyEndpointModelV0 is the decode
+// target for that object and is hand-maintained, and the framework requires an
+// exact 1:1 match between object attributes and `tfsdk` struct tags — so adding
+// an endpoint attribute without adding it here breaks the v0 -> v1 upgrade for
+// every practitioner still on schema v0 (provider < v0.50.0).
+func TestFirewallPolicyEndpointModelV0MatchesPriorSchema(t *testing.T) {
+	ctx := context.Background()
+
+	u, ok := (&firewallPolicyResource{}).UpgradeState(ctx)[0]
+	if !ok {
+		t.Fatal("no v0 state upgrader registered")
+	}
+
+	nested, ok := u.PriorSchema.Attributes["source"].(schema.SingleNestedAttribute)
+	if !ok {
+		t.Fatal("prior schema source is not a SingleNestedAttribute")
+	}
+
+	tags := map[string]bool{}
+	v0 := reflect.TypeOf(firewallPolicyEndpointModelV0{})
+	for i := range v0.NumField() {
+		if tag, ok := v0.Field(i).Tag.Lookup("tfsdk"); ok {
+			tags[tag] = true
+		}
+	}
+
+	for name := range nested.Attributes {
+		if !tags[name] {
+			t.Errorf(
+				"prior schema attribute %q has no `tfsdk:%q` field on firewallPolicyEndpointModelV0; "+
+					"add it or the v0 -> v1 state upgrade fails",
+				name, name,
+			)
+		}
+	}
+	for tag := range tags {
+		if _, ok := nested.Attributes[tag]; !ok {
+			t.Errorf(
+				"firewallPolicyEndpointModelV0 has `tfsdk:%q` with no matching prior schema attribute",
+				tag,
+			)
+		}
+	}
+}
+
+// TestFirewallPolicyUpgradeStateV0 drives the real v0 -> v1 upgrader with a
+// state document as Terraform stores it: an integer `port`, and none of the
+// attributes added to the endpoint since v1 shipped. It covers both the
+// upgrader's original purpose (port 443 -> "443", port 0 -> no port) and the
+// regression above, which the model/API round-trip tests cannot see because
+// they never build a value from the prior schema.
+func TestFirewallPolicyUpgradeStateV0(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallPolicyResource{}
+
+	u, ok := r.UpgradeState(ctx)[0]
+	if !ok {
+		t.Fatal("no v0 state upgrader registered")
+	}
+
+	endpointV0 := func(zone string, port int) map[string]any {
+		return map[string]any{
+			"zone_id": zone, "matching_target": "ANY", "matching_target_type": "ANY",
+			"network_ids": nil, "client_macs": nil, "ips": nil, "web_domains": nil,
+			"port": port, "port_group_id": "", "ip_group_id": "",
+			"port_matching_type": "ANY",
+		}
+	}
+	rawState, err := json.Marshal(map[string]any{
+		"id": "policy-1", "site": "default", "name": "v0 policy", "action": "ALLOW",
+		"enabled": true, "protocol": "all", "description": "", "logging": false,
+		"index": 2000, "create_allow_respond": false, "ip_version": "IPV4",
+		"connection_state_type": "ALL", "connection_states": []any{},
+		"icmp_typename": "", "icmp_v6_typename": "",
+		"schedule": nil, "timeouts": nil,
+		"source":      endpointV0("zone-src", 443),
+		"destination": endpointV0("zone-dst", 0),
+	})
+	if err != nil {
+		t.Fatalf("marshaling v0 state: %v", err)
+	}
+
+	priorValue, err := (&tfprotov6.RawState{JSON: rawState}).
+		Unmarshal(u.PriorSchema.Type().TerraformType(ctx))
+	if err != nil {
+		t.Fatalf("decoding v0 state against the prior schema: %v", err)
+	}
+
+	schemaResp := &fwresource.SchemaResponse{}
+	r.Schema(ctx, fwresource.SchemaRequest{}, schemaResp)
+
+	resp := &fwresource.UpgradeStateResponse{
+		State: tfsdk.State{
+			Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+			Schema: schemaResp.Schema,
+		},
+	}
+	u.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+		State: &tfsdk.State{Raw: priorValue, Schema: *u.PriorSchema},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("v0 -> v1 upgrade failed: %v", resp.Diagnostics)
+	}
+
+	var upgraded firewallPolicyModel
+	if diags := resp.State.Get(ctx, &upgraded); diags.HasError() {
+		t.Fatalf("reading upgraded state: %v", diags)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		obj      types.Object
+		wantPort types.String
+	}{
+		// 443 becomes "443"; 0 means "no port" and must not serialize as "0" (#288).
+		{"source", upgraded.Source, types.StringValue("443")},
+		{"destination", upgraded.Destination, types.StringNull()},
+	} {
+		var m firewallPolicyEndpointModel
+		var diags diag.Diagnostics
+		diags.Append(tc.obj.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			t.Fatalf("decoding upgraded %s: %v", tc.name, diags)
+		}
+		if !m.Port.Equal(tc.wantPort) {
+			t.Errorf("%s port = %v, want %v", tc.name, m.Port, tc.wantPort)
+		}
+		// v0 state carries no inversion flags; the upgrader seeds them false and
+		// the Read that follows the upgrade replaces them with the live values.
+		if m.MatchOppositeIPs.ValueBool() || m.MatchOppositeNetworks.ValueBool() ||
+			m.MatchOppositePorts.ValueBool() {
+			t.Errorf("%s match_opposite_* must default to false, got %+v", tc.name, m)
 		}
 	}
 }
