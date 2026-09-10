@@ -174,7 +174,10 @@ func (r *clientQosRateResource) Schema(
 						Computed:            true,
 						Default:             int64default.StaticInt64(-1),
 						Validators: []validator.Int64{
-							int64validator.Between(2, 100000),
+							int64validator.Any(
+								int64validator.OneOf(-1),
+								int64validator.Between(2, 100000),
+							),
 						},
 					},
 					"max_up": schema.Int64Attribute{
