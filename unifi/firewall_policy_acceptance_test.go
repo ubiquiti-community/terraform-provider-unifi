@@ -51,17 +51,17 @@ func TestAccFirewallPolicy_scheduleRoundTrip(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "schedule.mode", "EVERY_WEEK"),
 					resource.TestCheckResourceAttr(
 						resourceName,
-						"schedule.time_all_day",
+						"schedule.time.all_day",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						resourceName,
-						"schedule.time_range_start",
+						"schedule.time.range.start",
 						"09:00",
 					),
 					resource.TestCheckResourceAttr(
 						resourceName,
-						"schedule.time_range_end",
+						"schedule.time.range.end",
 						"17:30",
 					),
 					resource.TestCheckResourceAttr(

@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -22,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -65,30 +67,112 @@ type siteToSiteVPNResource struct {
 // purpose="site-vpn", vpn_type="ipsec-vpn" network — the UniFi manual
 // site-to-site IPsec VPN.
 type siteToSiteVPNResourceModel struct {
-	ID             types.String         `tfsdk:"id"`
-	Site           types.String         `tfsdk:"site"`
-	Name           types.String         `tfsdk:"name"`
-	Enabled        types.Bool           `tfsdk:"enabled"`
-	Interface      types.String         `tfsdk:"interface"`
-	PeerIP         iptypes.IPv4Address  `tfsdk:"peer_ip"`
-	LocalIP        iptypes.IPv4Address  `tfsdk:"local_ip"`
-	KeyExchange    types.String         `tfsdk:"key_exchange"`
-	PreSharedKey   types.String         `tfsdk:"pre_shared_key"`
-	PreSharedKeyWO types.String         `tfsdk:"pre_shared_key_wo"`
-	RemoteSubnets  types.List           `tfsdk:"remote_subnets"`
-	Profile        types.String         `tfsdk:"profile"`
-	IKEEncryption  types.String         `tfsdk:"ike_encryption"`
-	IKEHash        types.String         `tfsdk:"ike_hash"`
-	IKEDhGroup     types.Int64          `tfsdk:"ike_dh_group"`
-	IKELifetime    timetypes.GoDuration `tfsdk:"ike_lifetime"`
-	ESPEncryption  types.String         `tfsdk:"esp_encryption"`
-	ESPHash        types.String         `tfsdk:"esp_hash"`
-	ESPDhGroup     types.Int64          `tfsdk:"esp_dh_group"`
-	ESPLifetime    timetypes.GoDuration `tfsdk:"esp_lifetime"`
-	PFS            types.Bool           `tfsdk:"pfs"`
-	DynamicRouting types.Bool           `tfsdk:"dynamic_routing"`
-	RouteDistance  types.Int64          `tfsdk:"route_distance"`
-	Timeouts       timeouts.Value       `tfsdk:"timeouts"`
+	ID             types.String        `tfsdk:"id"`
+	Site           types.String        `tfsdk:"site"`
+	Name           types.String        `tfsdk:"name"`
+	Enabled        types.Bool          `tfsdk:"enabled"`
+	Interface      types.String        `tfsdk:"interface"`
+	PeerIP         iptypes.IPv4Address `tfsdk:"peer_ip"`
+	LocalIP        iptypes.IPv4Address `tfsdk:"local_ip"`
+	KeyExchange    types.String        `tfsdk:"key_exchange"`
+	PreSharedKey   types.String        `tfsdk:"pre_shared_key"`
+	PreSharedKeyWO types.String        `tfsdk:"pre_shared_key_wo"`
+	RemoteSubnets  types.List          `tfsdk:"remote_subnets"`
+	Profile        types.String        `tfsdk:"profile"`
+	IKE            types.Object        `tfsdk:"ike"`
+	ESP            types.Object        `tfsdk:"esp"`
+	PFS            types.Bool          `tfsdk:"pfs"`
+	DynamicRouting types.Bool          `tfsdk:"dynamic_routing"`
+	RouteDistance  types.Int64         `tfsdk:"route_distance"`
+	Timeouts       timeouts.Value      `tfsdk:"timeouts"`
+}
+
+// siteToSiteVPNProposalModel is the shape shared by the `ike` (phase 1) and
+// `esp` (phase 2) nested objects.
+type siteToSiteVPNProposalModel struct {
+	Encryption types.String         `tfsdk:"encryption"`
+	Hash       types.String         `tfsdk:"hash"`
+	DhGroup    types.Int64          `tfsdk:"dh_group"`
+	Lifetime   timetypes.GoDuration `tfsdk:"lifetime"`
+}
+
+func siteToSiteVPNProposalAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"encryption": types.StringType,
+		"hash":       types.StringType,
+		"dh_group":   types.Int64Type,
+		"lifetime":   timetypes.GoDurationType{},
+	}
+}
+
+// siteToSiteVPNProposalToFramework builds an `ike`/`esp` object from the API
+// fields, mapping nil/empty to null leaves exactly as the flat attributes did.
+func siteToSiteVPNProposalToFramework(
+	ctx context.Context,
+	encryption, hash *string,
+	dhGroup, lifetime *int64,
+) (types.Object, diag.Diagnostics) {
+	return types.ObjectValueFrom(ctx, siteToSiteVPNProposalAttrTypes(), siteToSiteVPNProposalModel{
+		Encryption: stringPtrOrNull(encryption),
+		Hash:       stringPtrOrNull(hash),
+		DhGroup:    types.Int64PointerValue(dhGroup),
+		Lifetime:   util.DurationPtrValue(lifetime, time.Second),
+	})
+}
+
+// siteToSiteVPNProposalSchema builds the `ike` / `esp` nested attribute. Both
+// phases share one shape (encryption, hash, dh_group, lifetime) and only
+// differ in their descriptions. Every leaf is Optional+Computed with
+// UseStateForUnknown, so the object carries the same plan modifier: omitting
+// the whole block keeps the controller's values, as the flat attributes did.
+func siteToSiteVPNProposalSchema(
+	phase, dhGroupNote, lifetimeExample string,
+) schema.SingleNestedAttribute {
+	cipherValues := []string{"aes128", "aes192", "aes256", "3des"}
+	hashValues := []string{"sha1", "md5", "sha256", "sha384", "sha512"}
+
+	return schema.SingleNestedAttribute{
+		MarkdownDescription: phase + " proposal. Only used when `profile = customized`.",
+		Optional:            true,
+		Computed:            true,
+		PlanModifiers:       []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+		Attributes: map[string]schema.Attribute{
+			"encryption": schema.StringAttribute{
+				MarkdownDescription: phase + " encryption. Only used when `profile = customized`.",
+				Optional:            true,
+				Computed:            true,
+				Validators:          []validator.String{stringvalidator.OneOf(cipherValues...)},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"hash": schema.StringAttribute{
+				MarkdownDescription: phase + " hash. Only used when `profile = customized`.",
+				Optional:            true,
+				Computed:            true,
+				Validators:          []validator.String{stringvalidator.OneOf(hashValues...)},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"dh_group": schema.Int64Attribute{
+				MarkdownDescription: phase + " Diffie-Hellman group" + dhGroupNote +
+					". Only used when `profile = customized`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"lifetime": schema.StringAttribute{
+				MarkdownDescription: phase + " security-association lifetime, as a Go " +
+					"duration string (e.g. " + lifetimeExample + "). Must be a whole number " +
+					"of seconds between `30s` and `86400s` (24h).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(30*time.Second, 86400*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+		},
+	}
 }
 
 // siteToSiteVPNIdentityModel describes the resource identity data model.
@@ -144,16 +228,15 @@ func (r *siteToSiteVPNResource) Schema(
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
-	cipherValues := []string{"aes128", "aes192", "aes256", "3des"}
-	hashValues := []string{"sha1", "md5", "sha256", "sha384", "sha512"}
-
 	resp.Schema = schema.Schema{
 		// v1: ike_lifetime/esp_lifetime changed from Int64 (seconds) to GoDuration.
-		Version: 1,
+		// v2: the flat ike_*/esp_* attributes moved into the nested `ike`/`esp`
+		//     objects. See UpgradeState.
+		Version: 2,
 		MarkdownDescription: "Manages a manual site-to-site IPsec VPN (the UniFi " +
 			"`Settings → VPN → Site-to-Site` network, `purpose = site-vpn`, " +
-			"`vpn_type = ipsec-vpn`). The advanced IKE/ESP attributes only apply " +
-			"when `profile = customized`.",
+			"`vpn_type = ipsec-vpn`). The advanced `ike`/`esp` proposal objects only " +
+			"apply when `profile = customized`.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -246,7 +329,7 @@ func (r *siteToSiteVPNResource) Schema(
 			},
 			"profile": schema.StringAttribute{
 				MarkdownDescription: "IPsec profile. One of `customized`, `azure_dynamic`, or " +
-					"`azure_static`. Set to `customized` to tune the IKE/ESP attributes below; " +
+					"`azure_static`. Set to `customized` to tune the `ike`/`esp` objects; " +
 					"the controller may derive the ESP values from the IKE ones.",
 				Optional: true,
 				Computed: true,
@@ -255,72 +338,8 @@ func (r *siteToSiteVPNResource) Schema(
 				},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"ike_encryption": schema.StringAttribute{
-				MarkdownDescription: "IKE (phase 1) encryption. Only used when `profile = customized`.",
-				Optional:            true,
-				Computed:            true,
-				Validators:          []validator.String{stringvalidator.OneOf(cipherValues...)},
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"ike_hash": schema.StringAttribute{
-				MarkdownDescription: "IKE (phase 1) hash. Only used when `profile = customized`.",
-				Optional:            true,
-				Computed:            true,
-				Validators:          []validator.String{stringvalidator.OneOf(hashValues...)},
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"ike_dh_group": schema.Int64Attribute{
-				MarkdownDescription: "IKE (phase 1) Diffie-Hellman group. Only used when `profile = customized`.",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
-			},
-			"ike_lifetime": schema.StringAttribute{
-				MarkdownDescription: "IKE (phase 1) security-association lifetime, as a Go " +
-					"duration string (e.g. `8h`, `28800s`). Must be a whole number of seconds " +
-					"between `30s` and `86400s` (24h).",
-				CustomType: timetypes.GoDurationType{},
-				Optional:   true,
-				Computed:   true,
-				Validators: []validator.String{
-					validators.GoDurationBetween(30*time.Second, 86400*time.Second),
-					validators.GoDurationMultipleOf(time.Second),
-				},
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"esp_encryption": schema.StringAttribute{
-				MarkdownDescription: "ESP (phase 2) encryption. Only used when `profile = customized`.",
-				Optional:            true,
-				Computed:            true,
-				Validators:          []validator.String{stringvalidator.OneOf(cipherValues...)},
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"esp_hash": schema.StringAttribute{
-				MarkdownDescription: "ESP (phase 2) hash. Only used when `profile = customized`.",
-				Optional:            true,
-				Computed:            true,
-				Validators:          []validator.String{stringvalidator.OneOf(hashValues...)},
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
-			"esp_dh_group": schema.Int64Attribute{
-				MarkdownDescription: "ESP (phase 2) Diffie-Hellman group (PFS). Only used when `profile = customized`.",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
-			},
-			"esp_lifetime": schema.StringAttribute{
-				MarkdownDescription: "ESP (phase 2) security-association lifetime, as a Go " +
-					"duration string (e.g. `1h`, `3600s`). Must be a whole number of seconds " +
-					"between `30s` and `86400s` (24h).",
-				CustomType: timetypes.GoDurationType{},
-				Optional:   true,
-				Computed:   true,
-				Validators: []validator.String{
-					validators.GoDurationBetween(30*time.Second, 86400*time.Second),
-					validators.GoDurationMultipleOf(time.Second),
-				},
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
+			"ike": siteToSiteVPNProposalSchema("IKE (phase 1)", "", "`8h`, `28800s`"),
+			"esp": siteToSiteVPNProposalSchema("ESP (phase 2)", " (PFS)", "`1h`, `3600s`"),
 			"pfs": schema.BoolAttribute{
 				MarkdownDescription: "Whether Perfect Forward Secrecy is enabled.",
 				Optional:            true,
@@ -348,8 +367,16 @@ func (r *siteToSiteVPNResource) Schema(
 	}
 }
 
-// UpgradeState migrates v0 state (ike_lifetime/esp_lifetime stored as integer
-// seconds) to v1 (GoDuration strings).
+// UpgradeState migrates prior site-to-site VPN state to the current schema
+// version.
+//
+//	v0 -> current: ike_lifetime/esp_lifetime changed from integer seconds to
+//	    GoDuration strings.
+//	v1 -> current: the flat ike_* and esp_* attributes moved into the nested
+//	    `ike` and `esp` objects (see nestSiteToSiteVPNState).
+//
+// The duration rewrite runs on the flat keys before nesting, so both
+// upgraders share one rewrite pipeline.
 func (r *siteToSiteVPNResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
@@ -357,8 +384,8 @@ func (r *siteToSiteVPNResource) UpgradeState(
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
 
-	return map[int64]resource.StateUpgrader{
-		0: {
+	upgrader := func(rewrite func(state map[string]any)) resource.StateUpgrader {
+		return resource.StateUpgrader{
 			StateUpgrader: func(
 				ctx context.Context,
 				req resource.UpgradeStateRequest,
@@ -367,12 +394,12 @@ func (r *siteToSiteVPNResource) UpgradeState(
 				if req.RawState == nil {
 					return
 				}
-				dv, err := util.UpgradeDurationRawState(
+				dv, err := util.UpgradeRawState(
 					schemaType,
 					req.RawState.JSON,
 					func(state map[string]any) {
-						util.SetDurationField(state, "ike_lifetime", time.Second)
-						util.SetDurationField(state, "esp_lifetime", time.Second)
+						rewrite(state)
+						nestSiteToSiteVPNState(state)
 					},
 				)
 				if err != nil {
@@ -384,8 +411,34 @@ func (r *siteToSiteVPNResource) UpgradeState(
 				}
 				resp.DynamicValue = dv
 			},
-		},
+		}
 	}
+
+	return map[int64]resource.StateUpgrader{
+		0: upgrader(func(state map[string]any) {
+			util.SetDurationField(state, "ike_lifetime", time.Second)
+			util.SetDurationField(state, "esp_lifetime", time.Second)
+		}),
+		1: upgrader(func(map[string]any) {}),
+	}
+}
+
+// nestSiteToSiteVPNState rewrites flat v0/v1 state into the nested `ike` and
+// `esp` objects introduced in schema v2. Absent keys are skipped, so it is
+// safe to run on state from any earlier version.
+func nestSiteToSiteVPNState(state map[string]any) {
+	util.NestFields(state, "ike", map[string]string{
+		"ike_encryption": "encryption",
+		"ike_hash":       "hash",
+		"ike_dh_group":   "dh_group",
+		"ike_lifetime":   "lifetime",
+	})
+	util.NestFields(state, "esp", map[string]string{
+		"esp_encryption": "encryption",
+		"esp_hash":       "hash",
+		"esp_dh_group":   "dh_group",
+		"esp_lifetime":   "lifetime",
+	})
 }
 
 func (r *siteToSiteVPNResource) ConfigValidators(
@@ -775,7 +828,7 @@ func (r *siteToSiteVPNResource) applyPreSharedKeyWO(
 	if diags.HasError() || wo.IsNull() || wo.IsUnknown() {
 		return false
 	}
-	network.IPSecPreSharedKey = util.Ptr(wo.ValueString())
+	network.IPSecPreSharedKey = new(wo.ValueString())
 	return true
 }
 
@@ -790,25 +843,36 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 
 	network := &unifi.Network{
 		Purpose:             unifi.PurposeSiteVPN,
-		Name:                util.Ptr(model.Name.ValueString()),
+		Name:                new(model.Name.ValueString()),
 		Enabled:             model.Enabled.ValueBool(),
-		VPNType:             util.Ptr("ipsec-vpn"),
+		VPNType:             new("ipsec-vpn"),
 		IPSecInterface:      optStr(model.Interface),
 		IPSecPeerIP:         optStr(model.PeerIP),
 		IPSecLocalIP:        optStr(model.LocalIP),
 		IPSecKeyExchange:    optStr(model.KeyExchange),
 		IPSecProfile:        optStr(model.Profile),
-		IPSecEncryption:     optStr(model.IKEEncryption),
-		IPSecHash:           optStr(model.IKEHash),
-		IPSecDhGroup:        optInt64(model.IKEDhGroup),
-		IPSecIkeLifetime:    util.DurationUnitsPtr(model.IKELifetime, time.Second),
-		IPSecEspEncryption:  optStr(model.ESPEncryption),
-		IPSecEspHash:        optStr(model.ESPHash),
-		IPSecEspDhGroup:     optInt64(model.ESPDhGroup),
-		IPSecEspLifetime:    util.DurationUnitsPtr(model.ESPLifetime, time.Second),
 		IPSecPfs:            model.PFS.ValueBool(),
 		IPSecDynamicRouting: model.DynamicRouting.ValueBool(),
 		RouteDistance:       optInt64(model.RouteDistance),
+	}
+
+	// Nested proposal groups. A null/unknown group contributes nothing, exactly
+	// as its flat attributes did when unset.
+	if ike, ok, d := util.ObjectAs[siteToSiteVPNProposalModel](ctx, model.IKE); ok {
+		network.IPSecEncryption = optStr(ike.Encryption)
+		network.IPSecHash = optStr(ike.Hash)
+		network.IPSecDhGroup = optInt64(ike.DhGroup)
+		network.IPSecIkeLifetime = util.DurationUnitsPtr(ike.Lifetime, time.Second)
+	} else {
+		diags.Append(d...)
+	}
+	if esp, ok, d := util.ObjectAs[siteToSiteVPNProposalModel](ctx, model.ESP); ok {
+		network.IPSecEspEncryption = optStr(esp.Encryption)
+		network.IPSecEspHash = optStr(esp.Hash)
+		network.IPSecEspDhGroup = optInt64(esp.DhGroup)
+		network.IPSecEspLifetime = util.DurationUnitsPtr(esp.Lifetime, time.Second)
+	} else {
+		diags.Append(d...)
 	}
 
 	if !model.PreSharedKey.IsNull() && !model.PreSharedKey.IsUnknown() {
@@ -845,14 +909,24 @@ func (r *siteToSiteVPNResource) networkToModel(
 	model.LocalIP = util.IPv4PtrValueOrNull(network.IPSecLocalIP)
 	model.KeyExchange = stringPtrOrNull(network.IPSecKeyExchange)
 	model.Profile = stringPtrOrNull(network.IPSecProfile)
-	model.IKEEncryption = stringPtrOrNull(network.IPSecEncryption)
-	model.IKEHash = stringPtrOrNull(network.IPSecHash)
-	model.IKEDhGroup = types.Int64PointerValue(network.IPSecDhGroup)
-	model.IKELifetime = util.DurationPtrValue(network.IPSecIkeLifetime, time.Second)
-	model.ESPEncryption = stringPtrOrNull(network.IPSecEspEncryption)
-	model.ESPHash = stringPtrOrNull(network.IPSecEspHash)
-	model.ESPDhGroup = types.Int64PointerValue(network.IPSecEspDhGroup)
-	model.ESPLifetime = util.DurationPtrValue(network.IPSecEspLifetime, time.Second)
+	ike, ikeDiags := siteToSiteVPNProposalToFramework(
+		ctx,
+		network.IPSecEncryption,
+		network.IPSecHash,
+		network.IPSecDhGroup,
+		network.IPSecIkeLifetime,
+	)
+	diags.Append(ikeDiags...)
+	model.IKE = ike
+	esp, espDiags := siteToSiteVPNProposalToFramework(
+		ctx,
+		network.IPSecEspEncryption,
+		network.IPSecEspHash,
+		network.IPSecEspDhGroup,
+		network.IPSecEspLifetime,
+	)
+	diags.Append(espDiags...)
+	model.ESP = esp
 	model.PFS = types.BoolValue(network.IPSecPfs)
 	model.DynamicRouting = types.BoolValue(network.IPSecDynamicRouting)
 	model.RouteDistance = types.Int64PointerValue(network.RouteDistance)

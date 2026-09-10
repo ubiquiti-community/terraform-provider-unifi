@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -75,8 +76,8 @@ func TestAccWLANFramework_additionalFields(t *testing.T) {
 			{
 				Config: testAccWLANFrameworkConfig_basic(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttrSet("unifi_wlan.test", "wpa_mode"),
-					resource.TestCheckResourceAttrSet("unifi_wlan.test", "wpa_enc"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "wpa.mode"),
+					resource.TestCheckResourceAttrSet("unifi_wlan.test", "wpa.enc"),
 					resource.TestCheckResourceAttrSet("unifi_wlan.test", "dtim_mode"),
 					resource.TestCheckResourceAttrSet("unifi_wlan.test", "group_rekey"),
 					resource.TestCheckResourceAttrSet("unifi_wlan.test", "iapp_enabled"),
@@ -152,7 +153,7 @@ func TestAccWLANFramework_import(t *testing.T) {
 }
 
 func testAccWLANFrameworkConfig_import(userGroupID string) string {
-	// network_id and ap_group_ids are pinned in config: they are optional,
+	// network_id and ap_group.ids are pinned in config: they are optional,
 	// non-computed attributes that the controller always assigns, so leaving
 	// them out makes the apply result inconsistent with the plan.
 	return fmt.Sprintf(`
@@ -169,7 +170,9 @@ resource "unifi_wlan" "test_import" {
 	security      = "open"
 	user_group_id = %q
 	network_id    = data.unifi_network.default.id
-	ap_group_ids  = [data.unifi_ap_group.default.id]
+	ap_group = {
+		ids = [data.unifi_ap_group.default.id]
+	}
 }
 `, userGroupID)
 }
@@ -402,7 +405,7 @@ func Test_wlanFrameworkResource_Schema(t *testing.T) {
 // the controller assigns on its own must be Computed so a controller-supplied
 // value doesn't trip "inconsistent result after apply". minimum_data_rate_*_kbps
 // previously defaulted to 0 (rejected/overridden by the controller in auto mode);
-// radius_profile_id and bc_filter_list were Optional-only and got populated by
+// radius.profile_id and bc_filter_list were Optional-only and got populated by
 // the controller.
 func Test_wlanFrameworkResource_Schema_computedControllerFields(t *testing.T) {
 	resp := &fwresource.SchemaResponse{}
@@ -411,12 +414,11 @@ func Test_wlanFrameworkResource_Schema_computedControllerFields(t *testing.T) {
 	for _, key := range []string{
 		"minimum_data_rate_2g_kbps",
 		"minimum_data_rate_5g_kbps",
-		"radius_profile_id",
+		"radius.profile_id",
 		"bc_filter_list",
 	} {
-		attr, ok := resp.Schema.Attributes[key]
-		if !ok {
-			t.Errorf("Schema missing attribute %q", key)
+		attr := wlanSchemaAttribute(t, resp.Schema, key)
+		if attr == nil {
 			continue
 		}
 		if !attr.IsComputed() {
@@ -425,14 +427,41 @@ func Test_wlanFrameworkResource_Schema_computedControllerFields(t *testing.T) {
 	}
 }
 
+// wlanSchemaAttribute looks up a (possibly dotted, nested) attribute path in
+// the WLAN resource schema, reporting a test error when it is missing.
+func wlanSchemaAttribute(t *testing.T, s fwschema.Schema, dotted string) fwschema.Attribute {
+	t.Helper()
+	parts := strings.Split(dotted, ".")
+	attr, ok := s.Attributes[parts[0]]
+	if !ok {
+		t.Errorf("Schema missing attribute %q", parts[0])
+		return nil
+	}
+	for i := 1; i < len(parts); i++ {
+		nested, ok := attr.(fwschema.SingleNestedAttribute)
+		if !ok {
+			t.Errorf("attribute %q is not a nested object", strings.Join(parts[:i], "."))
+			return nil
+		}
+		attr, ok = nested.Attributes[parts[i]]
+		if !ok {
+			t.Errorf("Schema missing attribute %q", strings.Join(parts[:i+1], "."))
+			return nil
+		}
+	}
+	return attr
+}
+
 func Test_wlanFrameworkResource_UpgradeState(t *testing.T) {
 	r := &wlanFrameworkResource{}
 	got := r.UpgradeState(context.Background())
 	if got == nil {
 		t.Fatal("UpgradeState() returned nil")
 	}
-	if _, ok := got[0]; !ok {
-		t.Error("UpgradeState() missing key 0")
+	for _, v := range []int64{0, 1} {
+		if _, ok := got[v]; !ok {
+			t.Errorf("UpgradeState() missing key %d", v)
+		}
 	}
 }
 
@@ -516,7 +545,7 @@ func Test_wlanFrameworkResource_planToWLAN(t *testing.T) {
 		PrivatePresharedKeys: types.ListNull(
 			types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()},
 		),
-		ApGroupIDs:          types.SetNull(types.StringType),
+		ApGroup:             types.ObjectNull(wlanApGroupAttrTypes()),
 		WLANBands:           types.SetNull(types.StringType),
 		Schedule:            types.ListNull(types.ObjectType{}),
 		BroadcastFilterList: types.SetNull(types.StringType),
@@ -906,18 +935,30 @@ func TestWLANPrivatePresharedKeys_rejectsInvalidPriorState(t *testing.T) {
 }
 
 // TestApplyEnhancedIotOverrides guards #283: when enhanced_iot is enabled the
-// controller forces iapp_enabled, wpa3_support, wpa3_transition, pmf_mode and
+// controller forces iapp_enabled, wpa3.support, wpa3.transition, pmf_mode and
 // dtim_ng, so the provider pins them in the plan to avoid an inconsistent-result
 // error. When enhanced_iot is false it must be a no-op.
 func TestApplyEnhancedIotOverrides(t *testing.T) {
+	wpa3 := func(support, transition, fastRoaming, enhanced192 bool) types.Object {
+		return types.ObjectValueMust(wlanWPA3AttrTypes(), map[string]attr.Value{
+			"support":      types.BoolValue(support),
+			"transition":   types.BoolValue(transition),
+			"fast_roaming": types.BoolValue(fastRoaming),
+			"enhanced_192": types.BoolValue(enhanced192),
+		})
+	}
+	wpa3Bool := func(obj types.Object, name string) bool {
+		t.Helper()
+		return attrAs[types.Bool](t, obj.Attributes()[name]).ValueBool()
+	}
+
 	t.Run("enhanced_iot true forces the controller-managed fields", func(t *testing.T) {
 		m := &wlanFrameworkResourceModel{
-			EnhancedIot:    types.BoolValue(true),
-			IappEnabled:    types.BoolValue(false),
-			WPA3Support:    types.BoolValue(true),
-			WPA3Transition: types.BoolValue(true),
-			PMFMode:        types.StringValue("optional"),
-			DTIMNg:         types.Int64Value(3),
+			EnhancedIot: types.BoolValue(true),
+			IappEnabled: types.BoolValue(false),
+			WPA3:        wpa3(true, true, true, false),
+			PMFMode:     types.StringValue("optional"),
+			DTIMNg:      types.Int64Value(3),
 		}
 		if !applyEnhancedIotOverrides(m) {
 			t.Fatal("expected overrides to be applied")
@@ -925,11 +966,15 @@ func TestApplyEnhancedIotOverrides(t *testing.T) {
 		if !m.IappEnabled.ValueBool() {
 			t.Errorf("iapp_enabled = %v, want true", m.IappEnabled.ValueBool())
 		}
-		if m.WPA3Support.ValueBool() {
-			t.Errorf("wpa3_support = %v, want false", m.WPA3Support.ValueBool())
+		if wpa3Bool(m.WPA3, "support") {
+			t.Errorf("wpa3.support = true, want false")
 		}
-		if m.WPA3Transition.ValueBool() {
-			t.Errorf("wpa3_transition = %v, want false", m.WPA3Transition.ValueBool())
+		if wpa3Bool(m.WPA3, "transition") {
+			t.Errorf("wpa3.transition = true, want false")
+		}
+		// The other wpa3 leaves are not controller-forced and must survive.
+		if !wpa3Bool(m.WPA3, "fast_roaming") {
+			t.Errorf("wpa3.fast_roaming = false, want the planned true kept")
 		}
 		if m.PMFMode.ValueString() != "disabled" {
 			t.Errorf("pmf_mode = %q, want disabled", m.PMFMode.ValueString())
@@ -939,18 +984,34 @@ func TestApplyEnhancedIotOverrides(t *testing.T) {
 		}
 	})
 
+	t.Run(
+		"enhanced_iot true with an unknown wpa3 object pins from the default",
+		func(t *testing.T) {
+			m := &wlanFrameworkResourceModel{
+				EnhancedIot: types.BoolValue(true),
+				WPA3:        types.ObjectUnknown(wlanWPA3AttrTypes()),
+			}
+			if !applyEnhancedIotOverrides(m) {
+				t.Fatal("expected overrides to be applied")
+			}
+			if !m.WPA3.Equal(wlanWPA3Default()) {
+				t.Errorf("wpa3 = %v, want the all-false default", m.WPA3)
+			}
+		},
+	)
+
 	t.Run("enhanced_iot false is a no-op", func(t *testing.T) {
 		m := &wlanFrameworkResourceModel{
 			EnhancedIot: types.BoolValue(false),
-			WPA3Support: types.BoolValue(true),
+			WPA3:        wpa3(true, false, false, false),
 			PMFMode:     types.StringValue("optional"),
 		}
 		if applyEnhancedIotOverrides(m) {
 			t.Fatal("expected no overrides when enhanced_iot is false")
 		}
-		if !m.WPA3Support.ValueBool() || m.PMFMode.ValueString() != "optional" {
+		if !wpa3Bool(m.WPA3, "support") || m.PMFMode.ValueString() != "optional" {
 			t.Errorf("non-IoT fields were modified: wpa3=%v pmf=%q",
-				m.WPA3Support.ValueBool(), m.PMFMode.ValueString())
+				m.WPA3, m.PMFMode.ValueString())
 		}
 	})
 }
@@ -1078,7 +1139,7 @@ func TestAccWLANFramework_wifi6ghzBand(t *testing.T) {
 					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "2g"),
 					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "5g"),
 					resource.TestCheckTypeSetElemAttr("unifi_wlan.test_6g", "wlan_bands.*", "6g"),
-					resource.TestCheckResourceAttr("unifi_wlan.test_6g", "wpa3_support", "true"),
+					resource.TestCheckResourceAttr("unifi_wlan.test_6g", "wpa3.support", "true"),
 				),
 			},
 			{
@@ -1095,7 +1156,7 @@ func TestAccWLANFramework_wifi6ghzBand(t *testing.T) {
 }
 
 func testAccWLANFrameworkConfig_wifi6ghzBand(userGroupID, bands string) string {
-	// network_id and ap_group_ids are pinned in config for the same reason as
+	// network_id and ap_group.ids are pinned in config for the same reason as
 	// the import test: they are optional, non-computed attributes the
 	// controller always assigns, so leaving them out makes the apply result
 	// inconsistent with the plan.
@@ -1109,16 +1170,20 @@ data "unifi_network" "default" {
 }
 
 resource "unifi_wlan" "test_6g" {
-	name            = "tfacc-wlan-6g"
-	security        = "wpapsk"
-	passphrase      = "pwd12345678"
-	wpa3_support    = true
-	wpa3_transition = true
-	pmf_mode        = "optional"
-	user_group_id   = %q
-	network_id      = data.unifi_network.default.id
-	ap_group_ids    = [data.unifi_ap_group.default.id]
-	wlan_bands      = [%s]
+	name          = "tfacc-wlan-6g"
+	security      = "wpapsk"
+	passphrase    = "pwd12345678"
+	pmf_mode      = "optional"
+	user_group_id = %q
+	network_id    = data.unifi_network.default.id
+	wlan_bands    = [%s]
+	wpa3 = {
+		support    = true
+		transition = true
+	}
+	ap_group = {
+		ids = [data.unifi_ap_group.default.id]
+	}
 }
 `, userGroupID, bands)
 }
@@ -1207,36 +1272,16 @@ func Test_reassertWLANBands(t *testing.T) {
 
 // Test_planToWLAN_bandsteeringMode verifies the write path for #388: a
 // declared value travels to the controller, and an unset (null or unknown)
-// value stays off the wire entirely — controllers without per-SSID band
-// steering must never be sent the key.
+// value stays off the wire entirely: UniFi Network 10.x moved band steering to
+// the access point, so the deprecated WLAN attribute is a no-op.
 func Test_planToWLAN_bandsteeringMode(t *testing.T) {
 	ctx := context.Background()
 	r := &wlanFrameworkResource{}
 
-	t.Run("declared value is sent", func(t *testing.T) {
-		plan := wlanFrameworkResourceModel{
-			Name:             types.StringValue("w"),
-			BandsteeringMode: types.StringValue("prefer_5g"),
-		}
-		wlan, diags := r.planToWLAN(ctx, plan)
-		if diags.HasError() {
-			t.Fatalf("planToWLAN: %v", diags)
-		}
-		if wlan.BandsteeringMode != "prefer_5g" {
-			t.Errorf("BandsteeringMode = %q, want prefer_5g", wlan.BandsteeringMode)
-		}
-		raw, err := json.Marshal(wlan)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		if !strings.Contains(string(raw), `"bandsteering_mode":"prefer_5g"`) {
-			t.Errorf("payload missing bandsteering_mode: %s", raw)
-		}
-	})
-
 	for name, value := range map[string]types.String{
-		"null stays off the wire":    types.StringNull(),
-		"unknown stays off the wire": types.StringUnknown(),
+		"declared stays off the wire": types.StringValue("prefer_5g"),
+		"null stays off the wire":     types.StringNull(),
+		"unknown stays off the wire":  types.StringUnknown(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			plan := wlanFrameworkResourceModel{
@@ -1258,26 +1303,13 @@ func Test_planToWLAN_bandsteeringMode(t *testing.T) {
 	}
 }
 
-// Test_wlanToModel_bandsteeringMode verifies the read path for #388:
-// controller echo wins; a missing key keeps the model's existing value (the
-// declared value on create/update, prior state on read) so controllers
-// without per-SSID band steering neither fail the apply with an
-// inconsistent-result error nor produce perpetual drift; and Unknown resolves
-// to null when the controller has nothing stored.
+// Test_wlanToModel_bandsteeringMode verifies the read path for the deprecated
+// attribute: the WLAN never reports band steering, so the model's existing
+// value is kept (declared on create/update, prior state on read) rather than
+// producing perpetual drift, and Unknown resolves to null.
 func Test_wlanToModel_bandsteeringMode(t *testing.T) {
 	ctx := context.Background()
 	r := &wlanFrameworkResource{}
-
-	t.Run("controller echo wins", func(t *testing.T) {
-		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringValue("off")}
-		wlan := &unifi.WLAN{ID: "id", Name: "w", BandsteeringMode: "equal"}
-		if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
-			t.Fatalf("wlanToModel: %v", diags)
-		}
-		if model.BandsteeringMode.ValueString() != "equal" {
-			t.Errorf("BandsteeringMode = %v, want controller echo equal", model.BandsteeringMode)
-		}
-	})
 
 	t.Run("missing key keeps the declared value", func(t *testing.T) {
 		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringValue("prefer_5g")}
@@ -1354,8 +1386,10 @@ resource "unifi_wlan" "test_bs" {
 	passphrase        = "pwd12345678"
 	user_group_id     = %q
 	network_id        = data.unifi_network.default.id
-	ap_group_ids      = [data.unifi_ap_group.default.id]
 	bandsteering_mode = %q
+	ap_group = {
+		ids = [data.unifi_ap_group.default.id]
+	}
 }
 `, userGroupID, mode)
 }

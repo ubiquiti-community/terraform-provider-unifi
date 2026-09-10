@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -86,6 +87,14 @@ func Test_clientInfoListDataSource_Schema(t *testing.T) {
 			t.Errorf("missing attribute %q", attr)
 		}
 	}
+	clients, ok := resp.Schema.Attributes["clients"].(schema.ListNestedAttribute)
+	if !ok {
+		t.Fatalf(
+			"clients is %T, want schema.ListNestedAttribute",
+			resp.Schema.Attributes["clients"],
+		)
+	}
+	assertClientInfoNestedGroups(t, clients.NestedObject.Attributes, true)
 }
 
 func Test_clientInfoListDataSource_Configure(t *testing.T) {

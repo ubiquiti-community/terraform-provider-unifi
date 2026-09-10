@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
@@ -353,48 +352,35 @@ func Test_portProfileResource_modelToAPIPortProfile(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				model: &portProfileResourceModel{
-					ID:                         types.StringNull(),
-					Site:                       types.StringNull(),
-					Name:                       types.StringValue("test"),
-					OpMode:                     types.StringValue("switch"),
-					Autoneg:                    types.BoolValue(true),
-					Dot1XCtrl:                  types.StringNull(),
-					Dot1XIdleTimeout:           timetypes.NewGoDurationNull(),
-					EgressRateLimitKbps:        types.Int64Null(),
-					EgressRateLimitKbpsEnabled: types.BoolNull(),
-					Forward:                    types.StringNull(),
-					FullDuplex:                 types.BoolNull(),
-					Isolation:                  types.BoolNull(),
-					LLDPMedEnabled:             types.BoolNull(),
-					LLDPMedNotifyEnabled:       types.BoolNull(),
-					NativeNetworkConfID:        types.StringNull(),
-					PoeMode:                    types.StringNull(),
-					PortSecurityEnabled:        types.BoolNull(),
-					PortSecurityMacAddress:     types.SetNull(types.StringType),
-					PriorityQueue1Level:        types.Int64Null(),
-					PriorityQueue2Level:        types.Int64Null(),
-					PriorityQueue3Level:        types.Int64Null(),
-					PriorityQueue4Level:        types.Int64Null(),
-					Speed:                      types.Int64Null(),
-					StormctrlBcastEnabled:      types.BoolNull(),
-					StormctrlBcastLevel:        types.Int64Null(),
-					StormctrlBcastRate:         types.Int64Null(),
-					StormctrlMcastEnabled:      types.BoolNull(),
-					StormctrlMcastLevel:        types.Int64Null(),
-					StormctrlMcastRate:         types.Int64Null(),
-					StormctrlType:              types.StringNull(),
-					StormctrlUcastEnabled:      types.BoolNull(),
-					StormctrlUcastLevel:        types.Int64Null(),
-					StormctrlUcastRate:         types.Int64Null(),
-					STPPortMode:                types.BoolNull(),
-					TaggedNetworkConfIDs:       types.SetNull(types.StringType),
-					VoiceNetworkConfID:         types.StringNull(),
-					ExcludedNetworkConfIDs:     types.SetNull(types.StringType),
-					MulticastRouterNetworkIDs:  types.SetNull(types.StringType),
-					TaggedVLANMgmt:             types.StringNull(),
-					FecMode:                    types.StringNull(),
-					SettingPreference:          types.StringNull(),
-					PortKeepaliveEnabled:       types.BoolNull(),
+					ID:                        types.StringNull(),
+					Site:                      types.StringNull(),
+					Name:                      types.StringValue("test"),
+					OpMode:                    types.StringValue("switch"),
+					Autoneg:                   types.BoolValue(true),
+					Dot1X:                     types.ObjectNull(portDot1xAttrTypes()),
+					EgressRateLimit:           types.ObjectNull(portEgressRateLimitAttrTypes()),
+					Forward:                   types.StringNull(),
+					FullDuplex:                types.BoolNull(),
+					Isolation:                 types.BoolNull(),
+					Lldpmed:                   types.ObjectNull(portLldpmedAttrTypes()),
+					NativeNetworkConfID:       types.StringNull(),
+					PoeMode:                   types.StringNull(),
+					PortSecurity:              types.ObjectNull(portProfilePortSecurityAttrTypes()),
+					PriorityQueue1Level:       types.Int64Null(),
+					PriorityQueue2Level:       types.Int64Null(),
+					PriorityQueue3Level:       types.Int64Null(),
+					PriorityQueue4Level:       types.Int64Null(),
+					Speed:                     types.Int64Null(),
+					Stormctrl:                 types.ObjectNull(portStormctrlAttrTypes()),
+					STPPortMode:               types.BoolNull(),
+					TaggedNetworkConfIDs:      types.SetNull(types.StringType),
+					VoiceNetworkConfID:        types.StringNull(),
+					ExcludedNetworkConfIDs:    types.SetNull(types.StringType),
+					MulticastRouterNetworkIDs: types.SetNull(types.StringType),
+					TaggedVLANMgmt:            types.StringNull(),
+					FecMode:                   types.StringNull(),
+					SettingPreference:         types.StringNull(),
+					PortKeepaliveEnabled:      types.BoolNull(),
 				},
 			},
 			want: &unifi.PortProfile{
@@ -467,8 +453,14 @@ func Test_portProfileResource_portProfileToModel(t *testing.T) {
 				if model.Site.ValueString() != "default" {
 					t.Errorf("Site = %q, want %q", model.Site.ValueString(), "default")
 				}
-				if !model.PortSecurityMacAddress.IsNull() {
-					t.Error("PortSecurityMacAddress should be null for empty API field")
+				if !model.PortSecurity.Attributes()["mac_address"].IsNull() {
+					t.Error("port_security.mac_address should be null for empty API field")
+				}
+				if got := attrAs[types.String](
+					t,
+					model.Dot1X.Attributes()["ctrl"],
+				).ValueString(); got != "force_authorized" {
+					t.Errorf("dot1x.ctrl = %q, want force_authorized default", got)
 				}
 			},
 		},

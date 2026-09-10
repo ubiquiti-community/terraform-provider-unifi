@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/models"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
@@ -25,50 +26,44 @@ type clientInfoDataSource struct {
 }
 
 type clientInfoDataSourceModel struct {
-	ID                        types.String         `tfsdk:"id"`
-	Site                      types.String         `tfsdk:"site"`
-	MAC                       types.String         `tfsdk:"mac"`
-	Name                      types.String         `tfsdk:"name"`
-	DisplayName               types.String         `tfsdk:"display_name"`
-	Hostname                  types.String         `tfsdk:"hostname"`
-	IP                        types.String         `tfsdk:"ip"`
-	FixedIP                   types.String         `tfsdk:"fixed_ip"`
-	NetworkID                 types.String         `tfsdk:"network_id"`
-	NetworkName               types.String         `tfsdk:"network_name"`
-	UsergroupID               types.String         `tfsdk:"usergroup_id"`
-	Blocked                   types.Bool           `tfsdk:"blocked"`
-	IsGuest                   types.Bool           `tfsdk:"is_guest"`
-	IsWired                   types.Bool           `tfsdk:"is_wired"`
-	Authorized                types.Bool           `tfsdk:"authorized"`
-	Status                    types.String         `tfsdk:"status"`
-	Uptime                    timetypes.GoDuration `tfsdk:"uptime"`
-	FirstSeen                 types.Int64          `tfsdk:"first_seen"`
-	LastSeen                  types.Int64          `tfsdk:"last_seen"`
-	Oui                       types.String         `tfsdk:"oui"`
-	LocalDNSRecord            types.String         `tfsdk:"local_dns_record"`
-	LocalDNSRecordEnabled     types.Bool           `tfsdk:"local_dns_record_enabled"`
-	UseFixedIP                types.Bool           `tfsdk:"use_fixedip"`
-	APMAC                     types.String         `tfsdk:"ap_mac"`
-	Channel                   types.Int64          `tfsdk:"channel"`
-	Radio                     types.String         `tfsdk:"radio"`
-	RadioName                 types.String         `tfsdk:"radio_name"`
-	Essid                     types.String         `tfsdk:"essid"`
-	BSSID                     types.String         `tfsdk:"bssid"`
-	Signal                    types.Int64          `tfsdk:"signal"`
-	RSSI                      types.Int64          `tfsdk:"rssi"`
-	Noise                     types.Int64          `tfsdk:"noise"`
-	TxRate                    types.Int64          `tfsdk:"tx_rate"`
-	RxRate                    types.Int64          `tfsdk:"rx_rate"`
-	TxBytes                   types.Int64          `tfsdk:"tx_bytes"`
-	RxBytes                   types.Int64          `tfsdk:"rx_bytes"`
-	WiredRateMbps             types.Int64          `tfsdk:"wired_rate_mbps"`
-	SwPort                    types.Int64          `tfsdk:"sw_port"`
-	LastUplinkMAC             types.String         `tfsdk:"last_uplink_mac"`
-	LastUplinkName            types.String         `tfsdk:"last_uplink_name"`
-	LastUplinkRemotePort      types.Int64          `tfsdk:"last_uplink_remote_port"`
-	LastConnectionNetworkID   types.String         `tfsdk:"last_connection_network_id"`
-	LastConnectionNetworkName types.String         `tfsdk:"last_connection_network_name"`
-	Timeouts                  timeouts.Value       `tfsdk:"timeouts"`
+	ID                    types.String         `tfsdk:"id"`
+	Site                  types.String         `tfsdk:"site"`
+	MAC                   types.String         `tfsdk:"mac"`
+	Name                  types.String         `tfsdk:"name"`
+	DisplayName           types.String         `tfsdk:"display_name"`
+	Hostname              types.String         `tfsdk:"hostname"`
+	IP                    types.String         `tfsdk:"ip"`
+	FixedIP               types.String         `tfsdk:"fixed_ip"`
+	Network               types.Object         `tfsdk:"network"`
+	UsergroupID           types.String         `tfsdk:"usergroup_id"`
+	Blocked               types.Bool           `tfsdk:"blocked"`
+	IsGuest               types.Bool           `tfsdk:"is_guest"`
+	IsWired               types.Bool           `tfsdk:"is_wired"`
+	Authorized            types.Bool           `tfsdk:"authorized"`
+	Status                types.String         `tfsdk:"status"`
+	Uptime                timetypes.GoDuration `tfsdk:"uptime"`
+	FirstSeen             types.Int64          `tfsdk:"first_seen"`
+	LastSeen              types.Int64          `tfsdk:"last_seen"`
+	Oui                   types.String         `tfsdk:"oui"`
+	LocalDNSRecord        types.String         `tfsdk:"local_dns_record"`
+	LocalDNSRecordEnabled types.Bool           `tfsdk:"local_dns_record_enabled"`
+	UseFixedIP            types.Bool           `tfsdk:"use_fixedip"`
+	APMAC                 types.String         `tfsdk:"ap_mac"`
+	Channel               types.Int64          `tfsdk:"channel"`
+	Radio                 types.String         `tfsdk:"radio"`
+	RadioName             types.String         `tfsdk:"radio_name"`
+	Essid                 types.String         `tfsdk:"essid"`
+	BSSID                 types.String         `tfsdk:"bssid"`
+	Signal                types.Int64          `tfsdk:"signal"`
+	RSSI                  types.Int64          `tfsdk:"rssi"`
+	Noise                 types.Int64          `tfsdk:"noise"`
+	Tx                    types.Object         `tfsdk:"tx"`
+	Rx                    types.Object         `tfsdk:"rx"`
+	WiredRateMbps         types.Int64          `tfsdk:"wired_rate_mbps"`
+	SwPort                types.Int64          `tfsdk:"sw_port"`
+	LastUplink            types.Object         `tfsdk:"last_uplink"`
+	LastConnectionNetwork types.Object         `tfsdk:"last_connection_network"`
+	Timeouts              timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (d *clientInfoDataSource) Metadata(
@@ -167,8 +162,6 @@ func (d *clientInfoDataSource) Read(
 	data.Hostname = util.StringValueOrNull(clientInfo.Hostname)
 	data.IP = util.StringValueOrNull(clientInfo.IP)
 	data.FixedIP = util.StringValueOrNull(clientInfo.FixedIP)
-	data.NetworkID = util.StringValueOrNull(clientInfo.NetworkId)
-	data.NetworkName = util.StringValueOrNull(clientInfo.NetworkName)
 	data.UsergroupID = util.StringValueOrNull(clientInfo.UsergroupId)
 	data.Blocked = types.BoolValue(clientInfo.Blocked)
 	data.IsGuest = types.BoolValue(clientInfo.IsGuest)
@@ -191,18 +184,37 @@ func (d *clientInfoDataSource) Read(
 	data.Signal = types.Int64PointerValue(clientInfo.Signal)
 	data.RSSI = types.Int64PointerValue(clientInfo.Rssi)
 	data.Noise = types.Int64PointerValue(clientInfo.Noise)
-	data.TxRate = types.Int64PointerValue(clientInfo.TxRate)
-	data.RxRate = types.Int64PointerValue(clientInfo.RxRate)
-	data.TxBytes = types.Int64PointerValue(clientInfo.TxBytes)
-	data.RxBytes = types.Int64PointerValue(clientInfo.RxBytes)
 	data.WiredRateMbps = types.Int64PointerValue(clientInfo.WiredRateMbps)
 	data.SwPort = types.Int64PointerValue(clientInfo.SwPort)
-	data.LastUplinkMAC = util.StringValueOrNull(clientInfo.LastUplinkMac)
-	data.LastUplinkName = util.StringValueOrNull(clientInfo.LastUplinkName)
-	data.LastConnectionNetworkID = util.StringValueOrNull(clientInfo.LastConnectionNetworkId)
-	data.LastConnectionNetworkName = util.StringValueOrNull(clientInfo.LastConnectionNetworkName)
-	data.LastUplinkRemotePort = types.Int64PointerValue(clientInfo.LastUplinkRemotePort)
 	data.Site = util.StringValueOrNull(site)
+
+	var diags diag.Diagnostics
+	data.Network, diags = models.ClientNetworkValue(
+		ctx,
+		clientInfo.NetworkId,
+		clientInfo.NetworkName,
+	)
+	resp.Diagnostics.Append(diags...)
+	data.LastUplink, diags = models.ClientLastUplinkValue(
+		ctx,
+		clientInfo.LastUplinkMac,
+		clientInfo.LastUplinkName,
+		clientInfo.LastUplinkRemotePort,
+	)
+	resp.Diagnostics.Append(diags...)
+	data.LastConnectionNetwork, diags = models.ClientNetworkValue(
+		ctx,
+		clientInfo.LastConnectionNetworkId,
+		clientInfo.LastConnectionNetworkName,
+	)
+	resp.Diagnostics.Append(diags...)
+	data.Tx, diags = models.ClientTrafficValue(ctx, clientInfo.TxRate, clientInfo.TxBytes)
+	resp.Diagnostics.Append(diags...)
+	data.Rx, diags = models.ClientTrafficValue(ctx, clientInfo.RxRate, clientInfo.RxBytes)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

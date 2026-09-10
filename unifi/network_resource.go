@@ -31,6 +31,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
@@ -109,6 +110,30 @@ func (m winsModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// dhcpServerOptionModel describes a DHCP option that hands a server list to
+// clients: `dhcp_server.dns` and `dhcp_server.ntp`.
+type dhcpServerOptionModel struct {
+	Enabled types.Bool `tfsdk:"enabled"`
+	Servers types.List `tfsdk:"servers"`
+}
+
+func (m dhcpServerOptionModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled": types.BoolType,
+		"servers": types.ListType{ElemType: types.StringType},
+	}
+}
+
+// dhcpServerOptionDefault reproduces what the flat dns_enabled/ntp_enabled
+// (default false) and dns_servers/ntp_servers (unset) attributes planned when
+// the practitioner left them out, so the request body is unchanged.
+func dhcpServerOptionDefault() types.Object {
+	return types.ObjectValueMust(dhcpServerOptionModel{}.AttributeTypes(), map[string]attr.Value{
+		"enabled": types.BoolValue(false),
+		"servers": types.ListNull(types.StringType),
+	})
+}
+
 // dhcpServerModel describes the DHCP server configuration.
 type dhcpServerModel struct {
 	Boot              types.Object         `tfsdk:"boot"`
@@ -117,36 +142,36 @@ type dhcpServerModel struct {
 	Stop              types.String         `tfsdk:"stop"`
 	GatewayEnabled    types.Bool           `tfsdk:"gateway_enabled"`
 	ConflictChecking  types.Bool           `tfsdk:"conflict_checking"`
-	NtpEnabled        types.Bool           `tfsdk:"ntp_enabled"`
-	NtpServers        types.List           `tfsdk:"ntp_servers"`
+	Ntp               types.Object         `tfsdk:"ntp"`
 	TimeOffsetEnabled types.Bool           `tfsdk:"time_offset_enabled"`
-	DnsEnabled        types.Bool           `tfsdk:"dns_enabled"`
+	Dns               types.Object         `tfsdk:"dns"`
 	Leasetime         timetypes.GoDuration `tfsdk:"leasetime"`
 	Wins              types.Object         `tfsdk:"wins"`
 	WpadUrl           types.String         `tfsdk:"wpad_url"`
 	TftpServer        types.String         `tfsdk:"tftp_server"`
 	UnifiController   types.String         `tfsdk:"unifi_controller"`
-	DnsServers        types.List           `tfsdk:"dns_servers"`
 }
 
 func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"boot":                types.ObjectType{AttrTypes: dhcpBootModel{}.AttributeTypes()},
-		"enabled":             types.BoolType,
-		"start":               types.StringType,
-		"stop":                types.StringType,
-		"gateway_enabled":     types.BoolType,
-		"conflict_checking":   types.BoolType,
-		"ntp_enabled":         types.BoolType,
-		"ntp_servers":         types.ListType{ElemType: types.StringType},
+		"boot":              types.ObjectType{AttrTypes: dhcpBootModel{}.AttributeTypes()},
+		"enabled":           types.BoolType,
+		"start":             types.StringType,
+		"stop":              types.StringType,
+		"gateway_enabled":   types.BoolType,
+		"conflict_checking": types.BoolType,
+		"ntp": types.ObjectType{
+			AttrTypes: dhcpServerOptionModel{}.AttributeTypes(),
+		},
 		"time_offset_enabled": types.BoolType,
-		"dns_enabled":         types.BoolType,
-		"leasetime":           timetypes.GoDurationType{},
-		"wins":                types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
-		"wpad_url":            types.StringType,
-		"tftp_server":         types.StringType,
-		"unifi_controller":    types.StringType,
-		"dns_servers":         types.ListType{ElemType: types.StringType},
+		"dns": types.ObjectType{
+			AttrTypes: dhcpServerOptionModel{}.AttributeTypes(),
+		},
+		"leasetime":        timetypes.GoDurationType{},
+		"wins":             types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
+		"wpad_url":         types.StringType,
+		"tftp_server":      types.StringType,
+		"unifi_controller": types.StringType,
 	}
 }
 
@@ -196,67 +221,201 @@ func (d dhcpRelayModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
+// dhcpV6DNSModel describes the `dhcp_v6_server.dns` nested object.
+type dhcpV6DNSModel struct {
+	Auto    types.Bool `tfsdk:"auto"`
+	Servers types.List `tfsdk:"servers"`
+}
+
+func (m dhcpV6DNSModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"auto":    types.BoolType,
+		"servers": types.ListType{ElemType: types.StringType},
+	}
+}
+
+// dhcpV6DNSDefault reproduces the flat dns_auto (default false) and
+// dns_servers (unset) defaults.
+func dhcpV6DNSDefault() types.Object {
+	return types.ObjectValueMust(dhcpV6DNSModel{}.AttributeTypes(), map[string]attr.Value{
+		"auto":    types.BoolValue(false),
+		"servers": types.ListNull(types.StringType),
+	})
+}
+
 // dhcpV6ServerModel describes the DHCPv6 server configuration.
 type dhcpV6ServerModel struct {
-	Enabled    types.Bool   `tfsdk:"enabled"`
-	DNSAuto    types.Bool   `tfsdk:"dns_auto"`
-	DNSServers types.List   `tfsdk:"dns_servers"`
-	Lease      types.Int64  `tfsdk:"lease"`
-	Start      types.String `tfsdk:"start"`
-	Stop       types.String `tfsdk:"stop"`
+	Enabled types.Bool   `tfsdk:"enabled"`
+	DNS     types.Object `tfsdk:"dns"`
+	Lease   types.Int64  `tfsdk:"lease"`
+	Start   types.String `tfsdk:"start"`
+	Stop    types.String `tfsdk:"stop"`
 }
 
 func (m dhcpV6ServerModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"enabled":     types.BoolType,
-		"dns_auto":    types.BoolType,
-		"dns_servers": types.ListType{ElemType: types.StringType},
-		"lease":       types.Int64Type,
-		"start":       types.StringType,
-		"stop":        types.StringType,
+		"enabled": types.BoolType,
+		"dns":     types.ObjectType{AttrTypes: dhcpV6DNSModel{}.AttributeTypes()},
+		"lease":   types.Int64Type,
+		"start":   types.StringType,
+		"stop":    types.StringType,
 	}
+}
+
+// networkIPv6Model is the `ipv6` nested object.
+type networkIPv6Model struct {
+	InterfaceType           types.String `tfsdk:"interface_type"`
+	ClientAddressAssignment types.String `tfsdk:"client_address_assignment"`
+	StaticSubnet            types.String `tfsdk:"static_subnet"`
+	Aliases                 types.List   `tfsdk:"aliases"`
+	RA                      types.Object `tfsdk:"ra"`
+	PD                      types.Object `tfsdk:"pd"`
+}
+
+func networkIPv6AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"interface_type":            types.StringType,
+		"client_address_assignment": types.StringType,
+		"static_subnet":             types.StringType,
+		"aliases":                   types.ListType{ElemType: types.StringType},
+		"ra":                        types.ObjectType{AttrTypes: networkIPv6RAAttrTypes()},
+		"pd":                        types.ObjectType{AttrTypes: networkIPv6PDAttrTypes()},
+	}
+}
+
+// networkIPv6RAModel is the `ipv6.ra` (router advertisement) nested object.
+type networkIPv6RAModel struct {
+	Enabled           types.Bool           `tfsdk:"enabled"`
+	Priority          types.String         `tfsdk:"priority"`
+	PreferredLifetime timetypes.GoDuration `tfsdk:"preferred_lifetime"`
+	ValidLifetime     timetypes.GoDuration `tfsdk:"valid_lifetime"`
+}
+
+func networkIPv6RAAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":            types.BoolType,
+		"priority":           types.StringType,
+		"preferred_lifetime": timetypes.GoDurationType{},
+		"valid_lifetime":     timetypes.GoDurationType{},
+	}
+}
+
+// networkIPv6PDModel is the `ipv6.pd` (prefix delegation) nested object.
+type networkIPv6PDModel struct {
+	Interface           types.String `tfsdk:"interface"`
+	Prefixid            types.String `tfsdk:"prefixid"`
+	Start               types.String `tfsdk:"start"`
+	Stop                types.String `tfsdk:"stop"`
+	AutoPrefixidEnabled types.Bool   `tfsdk:"auto_prefixid_enabled"`
+}
+
+func networkIPv6PDAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"interface":             types.StringType,
+		"prefixid":              types.StringType,
+		"start":                 types.StringType,
+		"stop":                  types.StringType,
+		"auto_prefixid_enabled": types.BoolType,
+	}
+}
+
+// The ipv6 group deliberately has no schema Default. The framework applies
+// attribute Defaults before its "did the plan change?" gate, and an object
+// Default carrying computed leaves can never equal the prior state, so it
+// would trip that gate on every plan and re-plan the resource's other
+// Computed attributes (firewall_zone_id) as unknown forever. Instead the
+// object and its ra/pd children use UseStateForUnknown, and ModifyPlan
+// reproduces what the flat ipv6_* attributes planned when the practitioner
+// left them out (see planIPv6Defaults): interface_type defaults to "none",
+// and on create the remaining leaves take the shapes below, exactly as their
+// flat predecessors did (Optional-only leaves null, Computed leaves unknown).
+
+func networkIPv6RAPlanShape() types.Object {
+	return types.ObjectValueMust(networkIPv6RAAttrTypes(), map[string]attr.Value{
+		"enabled":            types.BoolUnknown(),
+		"priority":           types.StringUnknown(),
+		"preferred_lifetime": timetypes.NewGoDurationUnknown(),
+		"valid_lifetime":     timetypes.NewGoDurationUnknown(),
+	})
+}
+
+func networkIPv6PDPlanShape() types.Object {
+	return types.ObjectValueMust(networkIPv6PDAttrTypes(), map[string]attr.Value{
+		"interface":             types.StringNull(),
+		"prefixid":              types.StringNull(),
+		"start":                 types.StringUnknown(),
+		"stop":                  types.StringUnknown(),
+		"auto_prefixid_enabled": types.BoolUnknown(),
+	})
+}
+
+func networkIPv6PlanShape() types.Object {
+	return types.ObjectValueMust(networkIPv6AttrTypes(), map[string]attr.Value{
+		"interface_type":            types.StringValue("none"),
+		"client_address_assignment": types.StringUnknown(),
+		"static_subnet":             types.StringNull(),
+		"aliases":                   types.ListNull(types.StringType),
+		"ra":                        networkIPv6RAPlanShape(),
+		"pd":                        networkIPv6PDPlanShape(),
+	})
+}
+
+// objectOfLeaves returns a known object whose every attribute is the null
+// (unknown=false) or unknown (unknown=true) value of its type. It stands in
+// for a null or unknown previous object where read code preserves leaves one
+// by one, so each leaf is treated exactly as its flat predecessor was.
+func objectOfLeaves(
+	ctx context.Context,
+	attrTypes map[string]attr.Type,
+	unknown bool,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	vals := make(map[string]attr.Value, len(attrTypes))
+	for name, t := range attrTypes {
+		var raw any
+		if unknown {
+			raw = tftypes.UnknownValue
+		}
+		v, err := t.ValueFromTerraform(ctx, tftypes.NewValue(t.TerraformType(ctx), raw))
+		if err != nil {
+			diags.AddError("Unable to build attribute value", err.Error())
+			return types.ObjectNull(attrTypes), diags
+		}
+		vals[name] = v
+	}
+	obj, d := types.ObjectValue(attrTypes, vals)
+	diags.Append(d...)
+	return obj, diags
 }
 
 // networkResourceModel describes the resource data model.
 type networkResourceModel struct {
-	ID                          types.String         `tfsdk:"id"`
-	Site                        types.String         `tfsdk:"site"`
-	Enabled                     types.Bool           `tfsdk:"enabled"`
-	Name                        types.String         `tfsdk:"name"`
-	NatOutboundIPAddresses      types.List           `tfsdk:"nat_outbound_ip_addresses"`
-	AutoScale                   types.Bool           `tfsdk:"auto_scale"`
-	Subnet                      cidrtypes.IPv4Prefix `tfsdk:"subnet"`
-	DomainName                  types.String         `tfsdk:"domain_name"`
-	Vlan                        types.Int64          `tfsdk:"vlan"`
-	NetworkIsolation            types.Bool           `tfsdk:"network_isolation"`
-	SettingPreference           types.String         `tfsdk:"setting_preference"`
-	InternetAccess              types.Bool           `tfsdk:"internet_access"`
-	IgmpSnooping                types.Bool           `tfsdk:"igmp_snooping"`
-	MulticastDNS                types.Bool           `tfsdk:"multicast_dns"`
-	GatewayType                 types.String         `tfsdk:"gateway_type"`
-	IPv6InterfaceType           types.String         `tfsdk:"ipv6_interface_type"`
-	IPv6ClientAddressAssignment types.String         `tfsdk:"ipv6_client_address_assignment"`
-	IPv6StaticSubnet            types.String         `tfsdk:"ipv6_static_subnet"`
-	IPv6RA                      types.Bool           `tfsdk:"ipv6_ra"`
-	IPv6RAPriority              types.String         `tfsdk:"ipv6_ra_priority"`
-	IPv6RAPreferredLifetime     timetypes.GoDuration `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAValidLifetime         timetypes.GoDuration `tfsdk:"ipv6_ra_valid_lifetime"`
-	IPv6PDInterface             types.String         `tfsdk:"ipv6_pd_interface"`
-	IPv6PDPrefixID              types.String         `tfsdk:"ipv6_pd_prefixid"`
-	IPv6PDStart                 types.String         `tfsdk:"ipv6_pd_start"`
-	IPv6PDStop                  types.String         `tfsdk:"ipv6_pd_stop"`
-	IPv6PDAutoPrefixidEnabled   types.Bool           `tfsdk:"ipv6_pd_auto_prefixid_enabled"`
-	LteLan                      types.Bool           `tfsdk:"lte_lan"`
-	IPAliases                   types.List           `tfsdk:"ip_aliases"`
-	IPv6Aliases                 types.List           `tfsdk:"ipv6_aliases"`
-	ThirdPartyGateway           types.Bool           `tfsdk:"third_party_gateway"`
-	Purpose                     types.String         `tfsdk:"purpose"`
-	DhcpGuarding                types.Object         `tfsdk:"dhcp_guarding"`
-	DhcpServer                  types.Object         `tfsdk:"dhcp_server"`
-	DhcpV6Server                types.Object         `tfsdk:"dhcp_v6_server"`
-	DhcpRelay                   types.Object         `tfsdk:"dhcp_relay"`
-	FirewallZoneID              types.String         `tfsdk:"firewall_zone_id"`
-	Timeouts                    timeouts.Value       `tfsdk:"timeouts"`
+	ID                     types.String         `tfsdk:"id"`
+	Site                   types.String         `tfsdk:"site"`
+	Enabled                types.Bool           `tfsdk:"enabled"`
+	Name                   types.String         `tfsdk:"name"`
+	NatOutboundIPAddresses types.List           `tfsdk:"nat_outbound_ip_addresses"`
+	AutoScale              types.Bool           `tfsdk:"auto_scale"`
+	Subnet                 cidrtypes.IPv4Prefix `tfsdk:"subnet"`
+	DomainName             types.String         `tfsdk:"domain_name"`
+	Vlan                   types.Int64          `tfsdk:"vlan"`
+	NetworkIsolation       types.Bool           `tfsdk:"network_isolation"`
+	SettingPreference      types.String         `tfsdk:"setting_preference"`
+	InternetAccess         types.Bool           `tfsdk:"internet_access"`
+	IgmpSnooping           types.Bool           `tfsdk:"igmp_snooping"`
+	MulticastDNS           types.Bool           `tfsdk:"multicast_dns"`
+	GatewayType            types.String         `tfsdk:"gateway_type"`
+	IPv6                   types.Object         `tfsdk:"ipv6"`
+	LteLan                 types.Bool           `tfsdk:"lte_lan"`
+	IPAliases              types.List           `tfsdk:"ip_aliases"`
+	ThirdPartyGateway      types.Bool           `tfsdk:"third_party_gateway"`
+	Purpose                types.String         `tfsdk:"purpose"`
+	DhcpGuarding           types.Object         `tfsdk:"dhcp_guarding"`
+	DhcpServer             types.Object         `tfsdk:"dhcp_server"`
+	DhcpV6Server           types.Object         `tfsdk:"dhcp_v6_server"`
+	DhcpRelay              types.Object         `tfsdk:"dhcp_relay"`
+	FirewallZoneID         types.String         `tfsdk:"firewall_zone_id"`
+	Timeouts               timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (r *networkResource) Metadata(
@@ -292,8 +451,11 @@ func (r *networkResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		// v1: leasetime, ipv6_ra_preferred_lifetime and ipv6_ra_valid_lifetime
-		// changed from Int64 (seconds) to GoDuration strings. See UpgradeState.
-		Version:             1,
+		// changed from Int64 (seconds) to GoDuration strings.
+		// v2: the flat ipv6_* attributes moved under `ipv6` (with `ra` and `pd`
+		// sub-objects), dhcp_server.dns_*/ntp_* under `dhcp_server.dns`/`ntp`,
+		// and dhcp_v6_server.dns_* under `dhcp_v6_server.dns`. See UpgradeState.
+		Version:             2,
 		MarkdownDescription: "`unifi_network` manages networks (VLANs) in the UniFi controller.",
 
 		Attributes: map[string]schema.Attribute{
@@ -431,113 +593,151 @@ func (r *networkResource) Schema(
 					stringvalidator.OneOf("default", "switch"),
 				},
 			},
-			"ipv6_interface_type": schema.StringAttribute{
-				MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("none"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("none", "pd", "static"),
-				},
-			},
-			"ipv6_client_address_assignment": schema.StringAttribute{
-				MarkdownDescription: "How clients on this network obtain an IPv6 address (UI: Networks → IPv6 → Client Address Assignment). One of `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). Computed from the controller when not set.",
-				Optional:            true,
-				Computed:            true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("slaac", "dhcpv6", "slaac-dhcpv6"),
-				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"ipv6_static_subnet": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 static subnet of the network. Only used when `ipv6_interface_type` is `static`.",
-				Optional:            true,
-			},
-			"ipv6_ra": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether IPv6 Router Advertisement (RA) is enabled.",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"ipv6_ra_priority": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.",
-				Optional:            true,
-				Computed:            true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("high", "medium", "low"),
-				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"ipv6_ra_preferred_lifetime": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime, as a Go " +
-					"duration string (e.g. `14400s`, `4h`). Must be a whole number of seconds " +
-					"between `0s` and `31536000s` (1 year).",
-				CustomType: timetypes.GoDurationType{},
-				Optional:   true,
-				Computed:   true,
-				Validators: []validator.String{
-					validators.GoDurationBetween(0, 31536000*time.Second),
-					validators.GoDurationMultipleOf(time.Second),
-				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"ipv6_ra_valid_lifetime": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 Router Advertisement valid lifetime, as a Go " +
-					"duration string (e.g. `86400s`, `24h`). Must be a whole number of seconds " +
-					"between `0s` and `31536000s` (1 year).",
-				CustomType: timetypes.GoDurationType{},
-				Optional:   true,
-				Computed:   true,
-				Validators: []validator.String{
-					validators.GoDurationBetween(0, 31536000*time.Second),
-					validators.GoDurationMultipleOf(time.Second),
-				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"ipv6_pd_interface": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 Prefix Delegation WAN interface (e.g., `wan`, `wan2`).",
-				Optional:            true,
-			},
-			"ipv6_pd_prefixid": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 Prefix Delegation prefix ID (hex string, e.g., `0`, `1a`).",
-				Optional:            true,
-			},
-			"ipv6_pd_start": schema.StringAttribute{
-				MarkdownDescription: "The start of the IPv6 Prefix Delegation range (e.g. `::2`). " +
-					"Required together with `ipv6_pd_stop` when `ipv6_interface_type` is " +
-					"`pd`, otherwise the controller rejects the network with " +
-					"`api.err.InvalidIpv6Addr`.",
+			"ipv6": schema.SingleNestedAttribute{
+				MarkdownDescription: "IPv6 settings for the network. When omitted, " +
+					"`interface_type` defaults to `none` and the remaining values are " +
+					"read from the controller.",
 				Optional: true,
 				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-			},
-			"ipv6_pd_stop": schema.StringAttribute{
-				MarkdownDescription: "The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). " +
-					"Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.",
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"ipv6_pd_auto_prefixid_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+				Attributes: map[string]schema.Attribute{
+					"interface_type": schema.StringAttribute{
+						MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`. Defaults to `none` when not set.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("none", "pd", "static"),
+						},
+					},
+					"client_address_assignment": schema.StringAttribute{
+						MarkdownDescription: "How clients on this network obtain an IPv6 address (UI: Networks → IPv6 → Client Address Assignment). One of `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). Computed from the controller when not set.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("slaac", "dhcpv6", "slaac-dhcpv6"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"static_subnet": schema.StringAttribute{
+						MarkdownDescription: "The IPv6 static subnet of the network. Only used when `interface_type` is `static`.",
+						Optional:            true,
+					},
+					"aliases": schema.ListAttribute{
+						MarkdownDescription: "List of IPv6 aliases for the network. Not currently supported: " +
+							"the underlying UniFi API client has no field for this value, so a " +
+							"non-empty list is rejected at plan time (#413).",
+						Optional:    true,
+						ElementType: types.StringType,
+					},
+					"ra": schema.SingleNestedAttribute{
+						MarkdownDescription: "IPv6 Router Advertisement (RA) settings.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseStateForUnknown(),
+						},
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Specifies whether IPv6 Router Advertisement (RA) is enabled.",
+								Optional:            true,
+								Computed:            true,
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"priority": schema.StringAttribute{
+								MarkdownDescription: "The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.",
+								Optional:            true,
+								Computed:            true,
+								Validators: []validator.String{
+									stringvalidator.OneOf("high", "medium", "low"),
+								},
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"preferred_lifetime": schema.StringAttribute{
+								MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime, as a Go " +
+									"duration string (e.g. `14400s`, `4h`). Must be a whole number of seconds " +
+									"between `0s` and `31536000s` (1 year).",
+								CustomType: timetypes.GoDurationType{},
+								Optional:   true,
+								Computed:   true,
+								Validators: []validator.String{
+									validators.GoDurationBetween(0, 31536000*time.Second),
+									validators.GoDurationMultipleOf(time.Second),
+								},
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"valid_lifetime": schema.StringAttribute{
+								MarkdownDescription: "The IPv6 Router Advertisement valid lifetime, as a Go " +
+									"duration string (e.g. `86400s`, `24h`). Must be a whole number of seconds " +
+									"between `0s` and `31536000s` (1 year).",
+								CustomType: timetypes.GoDurationType{},
+								Optional:   true,
+								Computed:   true,
+								Validators: []validator.String{
+									validators.GoDurationBetween(0, 31536000*time.Second),
+									validators.GoDurationMultipleOf(time.Second),
+								},
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+						},
+					},
+					"pd": schema.SingleNestedAttribute{
+						MarkdownDescription: "IPv6 Prefix Delegation (PD) settings, used when `interface_type` is `pd`.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseStateForUnknown(),
+						},
+						Attributes: map[string]schema.Attribute{
+							"interface": schema.StringAttribute{
+								MarkdownDescription: "The IPv6 Prefix Delegation WAN interface (e.g., `wan`, `wan2`).",
+								Optional:            true,
+							},
+							"prefixid": schema.StringAttribute{
+								MarkdownDescription: "The IPv6 Prefix Delegation prefix ID (hex string, e.g., `0`, `1a`).",
+								Optional:            true,
+							},
+							"start": schema.StringAttribute{
+								MarkdownDescription: "The start of the IPv6 Prefix Delegation range (e.g. `::2`). " +
+									"Required together with `stop` when `ipv6.interface_type` is " +
+									"`pd`, otherwise the controller rejects the network with " +
+									"`api.err.InvalidIpv6Addr`.",
+								Optional: true,
+								Computed: true,
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"stop": schema.StringAttribute{
+								MarkdownDescription: "The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). " +
+									"Required together with `start` when `ipv6.interface_type` is `pd`.",
+								Optional: true,
+								Computed: true,
+								PlanModifiers: []planmodifier.String{
+									stringplanmodifier.UseStateForUnknown(),
+								},
+							},
+							"auto_prefixid_enabled": schema.BoolAttribute{
+								MarkdownDescription: "Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.",
+								Optional:            true,
+								Computed:            true,
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseStateForUnknown(),
+								},
+							},
+						},
+					},
 				},
 			},
 			"lte_lan": schema.BoolAttribute{
@@ -557,13 +757,6 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "List of IP aliases for the network, in CIDR notation " +
 					"(e.g. `192.168.2.1/24`). The controller rejects entries without a " +
 					"prefix length.",
-				Optional:    true,
-				ElementType: types.StringType,
-			},
-			"ipv6_aliases": schema.ListAttribute{
-				MarkdownDescription: "List of IPv6 aliases for the network. Not currently supported: " +
-					"the underlying UniFi API client has no field for this value, so a " +
-					"non-empty list is rejected at plan time (#413).",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
@@ -688,24 +881,32 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(true),
 					},
-					"ntp_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether DHCP NTP is enabled.",
+					"ntp": schema.SingleNestedAttribute{
+						MarkdownDescription: "NTP servers handed out to DHCP clients.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-					},
-					"ntp_servers": schema.ListAttribute{
-						MarkdownDescription: "List of NTP server addresses for DHCP clients.",
-						Optional:            true,
-						ElementType:         types.StringType,
-						Validators: []validator.List{
-							listvalidator.SizeAtMost(2),
-							listvalidator.ValueStringsAre(
-								stringvalidator.Any(
-									validators.IPv4Validator(),
-									validators.IPv6Validator(),
-								),
-							),
+						Default:             objectdefault.StaticValue(dhcpServerOptionDefault()),
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Specifies whether DHCP NTP is enabled.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"servers": schema.ListAttribute{
+								MarkdownDescription: "List of NTP server addresses for DHCP clients.",
+								Optional:            true,
+								ElementType:         types.StringType,
+								Validators: []validator.List{
+									listvalidator.SizeAtMost(2),
+									listvalidator.ValueStringsAre(
+										stringvalidator.Any(
+											validators.IPv4Validator(),
+											validators.IPv6Validator(),
+										),
+									),
+								},
+							},
 						},
 					},
 					"time_offset_enabled": schema.BoolAttribute{
@@ -714,11 +915,27 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
-					"dns_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether DHCP DNS is enabled.",
+					"dns": schema.SingleNestedAttribute{
+						MarkdownDescription: "DNS servers handed out to DHCP clients.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						Default:             objectdefault.StaticValue(dhcpServerOptionDefault()),
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Specifies whether DHCP DNS is enabled.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"servers": schema.ListAttribute{
+								MarkdownDescription: "List of DNS server addresses for DHCP clients.",
+								Optional:            true,
+								ElementType:         types.StringType,
+								Validators: []validator.List{
+									listvalidator.SizeAtMost(4),
+								},
+							},
+						},
 					},
 					"leasetime": schema.StringAttribute{
 						MarkdownDescription: "Specifies the DHCP lease time, as a Go duration " +
@@ -773,14 +990,6 @@ func (r *networkResource) Schema(
 							validators.IPv4Validator(),
 						},
 					},
-					"dns_servers": schema.ListAttribute{
-						MarkdownDescription: "List of DNS server addresses for DHCP clients.",
-						Optional:            true,
-						ElementType:         types.StringType,
-						Validators: []validator.List{
-							listvalidator.SizeAtMost(4),
-						},
-					},
 				},
 			},
 			"dhcp_v6_server": schema.SingleNestedAttribute{
@@ -793,18 +1002,26 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
-					"dns_auto": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether DNS auto-discovery is enabled for DHCPv6.",
+					"dns": schema.SingleNestedAttribute{
+						MarkdownDescription: "DNS servers handed out to DHCPv6 clients.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-					},
-					"dns_servers": schema.ListAttribute{
-						MarkdownDescription: "List of DNS server addresses for DHCPv6 clients (maximum 4).",
-						Optional:            true,
-						ElementType:         types.StringType,
-						Validators: []validator.List{
-							listvalidator.SizeAtMost(4),
+						Default:             objectdefault.StaticValue(dhcpV6DNSDefault()),
+						Attributes: map[string]schema.Attribute{
+							"auto": schema.BoolAttribute{
+								MarkdownDescription: "Specifies whether DNS auto-discovery is enabled for DHCPv6.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"servers": schema.ListAttribute{
+								MarkdownDescription: "List of DNS server addresses for DHCPv6 clients (maximum 4).",
+								Optional:            true,
+								ElementType:         types.StringType,
+								Validators: []validator.List{
+									listvalidator.SizeAtMost(4),
+								},
+							},
 						},
 					},
 					"lease": schema.Int64Attribute{
@@ -857,9 +1074,17 @@ func (r *networkResource) Schema(
 	}
 }
 
-// UpgradeState migrates v0 state to v1: leasetime (nested in dhcp_server),
-// ipv6_ra_preferred_lifetime and ipv6_ra_valid_lifetime changed from integer
-// seconds to GoDuration strings.
+// UpgradeState migrates prior schema versions to the current one:
+//
+//	v0 -> current: leasetime (nested in dhcp_server), ipv6_ra_preferred_lifetime
+//	    and ipv6_ra_valid_lifetime changed from integer seconds to GoDuration
+//	    strings.
+//	v1 -> current: the flat ipv6_* attributes moved under `ipv6` (with `ra` and
+//	    `pd` sub-objects), dhcp_server.dns_*/ntp_* under `dhcp_server.dns`/`ntp`
+//	    and dhcp_v6_server.dns_* under `dhcp_v6_server.dns`. See nestNetworkState.
+//
+// Each upgrader targets the CURRENT schema type, so older state picks up every
+// later change via the shared rewrite and reconciliation.
 func (r *networkResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
@@ -867,8 +1092,8 @@ func (r *networkResource) UpgradeState(
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
 
-	return map[int64]resource.StateUpgrader{
-		0: {
+	upgrader := func(rewrite func(state map[string]any)) resource.StateUpgrader {
+		return resource.StateUpgrader{
 			StateUpgrader: func(
 				ctx context.Context,
 				req resource.UpgradeStateRequest,
@@ -877,15 +1102,12 @@ func (r *networkResource) UpgradeState(
 				if req.RawState == nil {
 					return
 				}
-				dv, err := util.UpgradeDurationRawState(
+				dv, err := util.UpgradeRawState(
 					schemaType,
 					req.RawState.JSON,
 					func(state map[string]any) {
-						util.SetDurationField(state, "ipv6_ra_preferred_lifetime", time.Second)
-						util.SetDurationField(state, "ipv6_ra_valid_lifetime", time.Second)
-						if dhcp, ok := state["dhcp_server"].(map[string]any); ok {
-							util.SetDurationField(dhcp, "leasetime", time.Second)
-						}
+						rewrite(state)
+						nestNetworkState(state)
 					},
 				)
 				if err != nil {
@@ -894,8 +1116,71 @@ func (r *networkResource) UpgradeState(
 				}
 				resp.DynamicValue = dv
 			},
-		},
+		}
 	}
+
+	return map[int64]resource.StateUpgrader{
+		0: upgrader(func(state map[string]any) {
+			util.SetDurationField(state, "ipv6_ra_preferred_lifetime", time.Second)
+			util.SetDurationField(state, "ipv6_ra_valid_lifetime", time.Second)
+			util.WithObject(state, "dhcp_server", func(dhcp map[string]any) {
+				util.SetDurationField(dhcp, "leasetime", time.Second)
+			})
+		}),
+		1: upgrader(func(map[string]any) {}),
+	}
+}
+
+// nestNetworkState rewrites flat v0/v1 network state into the nested-object
+// layout introduced in schema v2. Keys that are absent are skipped, so it is
+// safe to run on state from any earlier version.
+func nestNetworkState(state map[string]any) {
+	util.NestFields(state, "ipv6", map[string]string{
+		"ipv6_interface_type":            "interface_type",
+		"ipv6_client_address_assignment": "client_address_assignment",
+		"ipv6_static_subnet":             "static_subnet",
+		"ipv6_aliases":                   "aliases",
+		"ipv6_ra":                        "ra_enabled",
+		"ipv6_ra_priority":               "ra_priority",
+		"ipv6_ra_preferred_lifetime":     "ra_preferred_lifetime",
+		"ipv6_ra_valid_lifetime":         "ra_valid_lifetime",
+		"ipv6_pd_interface":              "pd_interface",
+		"ipv6_pd_prefixid":               "pd_prefixid",
+		"ipv6_pd_start":                  "pd_start",
+		"ipv6_pd_stop":                   "pd_stop",
+		"ipv6_pd_auto_prefixid_enabled":  "pd_auto_prefixid_enabled",
+	})
+	util.WithObject(state, "ipv6", func(v6 map[string]any) {
+		util.NestFields(v6, "ra", map[string]string{
+			"ra_enabled":            "enabled",
+			"ra_priority":           "priority",
+			"ra_preferred_lifetime": "preferred_lifetime",
+			"ra_valid_lifetime":     "valid_lifetime",
+		})
+		util.NestFields(v6, "pd", map[string]string{
+			"pd_interface":             "interface",
+			"pd_prefixid":              "prefixid",
+			"pd_start":                 "start",
+			"pd_stop":                  "stop",
+			"pd_auto_prefixid_enabled": "auto_prefixid_enabled",
+		})
+	})
+	util.WithObject(state, "dhcp_server", func(dhcp map[string]any) {
+		util.NestFields(dhcp, "dns", map[string]string{
+			"dns_enabled": "enabled",
+			"dns_servers": "servers",
+		})
+		util.NestFields(dhcp, "ntp", map[string]string{
+			"ntp_enabled": "enabled",
+			"ntp_servers": "servers",
+		})
+	})
+	util.WithObject(state, "dhcp_v6_server", func(v6 map[string]any) {
+		util.NestFields(v6, "dns", map[string]string{
+			"dns_auto":    "auto",
+			"dns_servers": "servers",
+		})
+	})
 }
 
 func (r *networkResource) Configure(
@@ -923,7 +1208,7 @@ func (r *networkResource) Configure(
 	r.client = client
 }
 
-// ModifyPlan rejects a configured ipv6_aliases (#413, unsupported by the
+// ModifyPlan rejects a configured ipv6.aliases (#413, unsupported by the
 // underlying client) and forces setting_preference to "manual" when DHCP
 // relay or DHCP guarding is enabled.
 //
@@ -934,6 +1219,59 @@ func (r *networkResource) Configure(
 // the explicit relay/guarding configuration. We only override the default;
 // an explicit user-provided value is left untouched (with a warning for the
 // unsatisfiable auto+guarding combination).
+// planIPv6Defaults reproduces the flat ipv6_* defaults for the nested ipv6
+// object without a schema Default (see the comment above
+// networkIPv6RAPlanShape for why a Default cannot be used):
+//
+//   - interface_type defaults to "none" whenever the configuration does not
+//     set it, whether the ipv6 block is present or omitted entirely;
+//   - when the block is omitted and there is no prior object to carry
+//     (create, or a state that never held one), the group takes its
+//     create-time shape: Optional-only leaves null, Computed leaves unknown.
+//
+// On update with the block omitted, UseStateForUnknown has already restored
+// the prior object, so only interface_type is (re)asserted here, exactly as
+// the flat attribute's Default did.
+func planIPv6Defaults(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	var configType types.String
+	var planIPv6 types.Object
+	diags.Append(req.Config.GetAttribute(
+		ctx, path.Root("ipv6").AtName("interface_type"), &configType)...)
+	diags.Append(req.Plan.GetAttribute(ctx, path.Root("ipv6"), &planIPv6)...)
+	if diags.HasError() || !configType.IsNull() {
+		// Configured (or unknown until apply): nothing to default.
+		return diags
+	}
+
+	var configIPv6 types.Object
+	diags.Append(req.Config.GetAttribute(ctx, path.Root("ipv6"), &configIPv6)...)
+	if diags.HasError() || configIPv6.IsUnknown() {
+		return diags
+	}
+
+	if planIPv6.IsNull() || planIPv6.IsUnknown() {
+		planIPv6 = networkIPv6PlanShape()
+	} else {
+		attrs := planIPv6.Attributes()
+		attrs["interface_type"] = types.StringValue("none")
+		obj, d := types.ObjectValue(networkIPv6AttrTypes(), attrs)
+		diags.Append(d...)
+		if diags.HasError() {
+			return diags
+		}
+		planIPv6 = obj
+	}
+
+	diags.Append(resp.Plan.SetAttribute(ctx, path.Root("ipv6"), planIPv6)...)
+	return diags
+}
+
 func (r *networkResource) ModifyPlan(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
@@ -941,6 +1279,11 @@ func (r *networkResource) ModifyPlan(
 ) {
 	if req.Plan.Raw.IsNull() {
 		return // resource is being destroyed
+	}
+
+	resp.Diagnostics.Append(planIPv6Defaults(ctx, req, resp)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// firewall_zone_id: Optional+Computed with no plan modifier, so on any
@@ -977,27 +1320,34 @@ func (r *networkResource) ModifyPlan(
 		}
 	}
 
-	// ipv6_aliases: go-unifi's Network struct has no field for this yet, so a
+	// ipv6.aliases: go-unifi's Network struct has no field for this yet, so a
 	// configured value can never reach the controller. Fail fast at plan time
 	// with a clear message instead of Create/Update silently dropping it and
 	// producing a confusing "provider produced inconsistent result after
 	// apply" error (#413).
 	// Read from the plan (not config) so that unknown values derived from
-	// data sources are caught here too.
+	// data sources are caught here too. A wholly unknown ipv6 object hides
+	// the aliases value, so it is treated as unknown aliases. The plan is
+	// read from resp, where planIPv6Defaults above has already replaced the
+	// unknown object an omitted block produces on create with its shape.
+	aliasesPath := path.Root("ipv6").AtName("aliases")
+	var ipv6Obj types.Object
 	var ipv6Aliases types.List
-	resp.Diagnostics.Append(
-		req.Plan.GetAttribute(ctx, path.Root("ipv6_aliases"), &ipv6Aliases)...)
+	resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, path.Root("ipv6"), &ipv6Obj)...)
+	resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, aliasesPath, &ipv6Aliases)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if !ipv6Aliases.IsNull() {
-		resp.Diagnostics.AddError(
-			"ipv6_aliases is not yet supported",
+	if ipv6Obj.IsUnknown() || !ipv6Aliases.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			aliasesPath,
+			"ipv6.aliases is not yet supported",
 			"The underlying UniFi API client (go-unifi) does not currently expose "+
-				"a field for ipv6_aliases, so the provider cannot send this value to "+
+				"a field for ipv6.aliases, so the provider cannot send this value to "+
 				"the controller even though the controller accepts and returns it. "+
-				"Remove ipv6_aliases from this configuration until upstream client "+
-				"support lands (see issue #413).",
+				"Remove ipv6.aliases from this configuration (and make sure the "+
+				"ipv6 object is known at plan time) until upstream client support "+
+				"lands (see issue #413).",
 		)
 		return
 	}
@@ -1005,7 +1355,7 @@ func (r *networkResource) ModifyPlan(
 	// ip_address_pool inside nat_outbound_ip_addresses: the field is not yet
 	// wired to the API request side (modelToNetwork ignores it) and Read always
 	// writes null, which causes the same inconsistent-result-after-apply failure
-	// as ipv6_aliases. Reject any non-null value at plan time.
+	// as ipv6.aliases. Reject any non-null value at plan time.
 	var natList types.List
 	resp.Diagnostics.Append(
 		req.Plan.GetAttribute(ctx, path.Root("nat_outbound_ip_addresses"), &natList)...)
@@ -1569,10 +1919,100 @@ func preserveUnmanagedDhcpServer(
 	return true
 }
 
+// networkIPv6FromAPI builds the ipv6 object from the controller's values. An
+// omitted interface_type normalizes to the schema default "none" so an
+// imported network does not perpetually plan null -> none (#414), an empty
+// pd.prefixid reads as null, and aliases is always null because go-unifi has
+// no field to carry it (#413; ModifyPlan rejects a configured value).
+func networkIPv6FromAPI(
+	ctx context.Context,
+	network *unifi.Network,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	ra, d := types.ObjectValueFrom(ctx, networkIPv6RAAttrTypes(), networkIPv6RAModel{
+		Enabled:  types.BoolValue(network.IPV6RaEnabled),
+		Priority: types.StringPointerValue(network.IPV6RaPriority),
+		PreferredLifetime: util.DurationPtrValue(
+			network.IPV6RaPreferredLifetime,
+			time.Second,
+		),
+		ValidLifetime: util.DurationPtrValue(network.IPV6RaValidLifetime, time.Second),
+	})
+	diags.Append(d...)
+	pd, d := types.ObjectValueFrom(ctx, networkIPv6PDAttrTypes(), networkIPv6PDModel{
+		Interface:           types.StringPointerValue(network.IPV6PDInterface),
+		Prefixid:            stringOrNull(network.IPV6PDPrefixid),
+		Start:               types.StringPointerValue(network.IPV6PDStart),
+		Stop:                types.StringPointerValue(network.IPV6PDStop),
+		AutoPrefixidEnabled: types.BoolValue(network.IPV6PDAutoPrefixidEnabled),
+	})
+	diags.Append(d...)
+	if diags.HasError() {
+		return types.ObjectNull(networkIPv6AttrTypes()), diags
+	}
+	interfaceType := types.StringValue("none")
+	if network.IPV6InterfaceType != nil && *network.IPV6InterfaceType != "" {
+		interfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+	}
+	obj, d := types.ObjectValueFrom(ctx, networkIPv6AttrTypes(), networkIPv6Model{
+		InterfaceType:           interfaceType,
+		ClientAddressAssignment: types.StringPointerValue(network.IPV6ClientAddressAssignment),
+		StaticSubnet:            types.StringPointerValue(network.IPV6Subnet),
+		Aliases:                 types.ListNull(types.StringType),
+		RA:                      ra,
+		PD:                      pd,
+	})
+	diags.Append(d...)
+	return obj, diags
+}
+
+// ipv6ToFramework builds the ipv6 object for the model. Corporate and guest
+// networks reflect the controller. For vlan-only networks (vlanOnly) the
+// controller omits the IPv6 fields, so previous (the plan or prior state) is
+// preserved leaf by leaf, the way the flat attributes were: only unknown
+// leaves resolve to the controller's value (the Computed +
+// UseStateForUnknown leaves are unknown on Create, and copying them verbatim
+// would trip "invalid result object after apply"), an absent interface_type
+// normalizes to the schema default "none" (#414), and aliases stays null.
+func (r *networkResource) ipv6ToFramework(
+	ctx context.Context,
+	network *unifi.Network,
+	previous types.Object,
+	vlanOnly bool,
+) (types.Object, diag.Diagnostics) {
+	api, diags := networkIPv6FromAPI(ctx, network)
+	if !vlanOnly || diags.HasError() {
+		return api, diags
+	}
+	if previous.IsNull() || previous.IsUnknown() {
+		var d diag.Diagnostics
+		previous, d = objectOfLeaves(ctx, networkIPv6AttrTypes(), previous.IsUnknown())
+		diags.Append(d...)
+		if diags.HasError() {
+			return api, diags
+		}
+	}
+	var prev, out networkIPv6Model
+	diags.Append(previous.As(ctx, &prev, basetypes.ObjectAsOptions{})...)
+	diags.Append(
+		util.ResolveUnknownObject(ctx, previous, api).As(ctx, &out, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return api, diags
+	}
+	if prev.InterfaceType.IsNull() || prev.InterfaceType.IsUnknown() ||
+		prev.InterfaceType.ValueString() == "" {
+		out.InterfaceType = types.StringValue("none")
+	}
+	out.Aliases = types.ListNull(types.StringType)
+	obj, d := types.ObjectValueFrom(ctx, networkIPv6AttrTypes(), out)
+	diags.Append(d...)
+	return obj, diags
+}
+
 // stringListOrNull builds a Terraform list from values. When values is empty,
 // it mirrors previous's null-ness instead of always collapsing to null: these
 // list attributes are Optional but not Computed, so an empty-list plan (e.g.
-// dns_servers = []) must read back as an empty list, not null, or Terraform
+// dns.servers = []) must read back as an empty list, not null, or Terraform
 // reports "provider produced inconsistent result after apply". A previous
 // value of null (attribute never configured) is preserved as null.
 func stringListOrNull(
@@ -1597,36 +2037,51 @@ func (r *networkResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Name:                        model.Name.ValueStringPointer(),
-		Purpose:                     unifi.PurposeCorporate,
-		NetworkGroup:                util.Ptr("LAN"),
-		AutoScaleEnabled:            model.AutoScale.ValueBool(),
-		IPSubnet:                    model.Subnet.ValueStringPointer(),
-		NetworkIsolationEnabled:     model.NetworkIsolation.ValueBool(),
-		SettingPreference:           model.SettingPreference.ValueStringPointer(),
-		InternetAccessEnabled:       model.InternetAccess.ValueBool(),
-		MdnsEnabled:                 model.MulticastDNS.ValueBool(),
-		GatewayType:                 model.GatewayType.ValueStringPointer(),
-		IPV6InterfaceType:           model.IPv6InterfaceType.ValueStringPointer(),
-		IPV6ClientAddressAssignment: optStr(model.IPv6ClientAddressAssignment),
-		IPV6Subnet:                  model.IPv6StaticSubnet.ValueStringPointer(),
-		IPV6RaEnabled:               model.IPv6RA.ValueBool(),
-		IPV6RaPriority:              optStr(model.IPv6RAPriority),
-		IPV6RaPreferredLifetime: util.DurationUnitsPtr(
-			model.IPv6RAPreferredLifetime,
-			time.Second,
-		),
-		IPV6RaValidLifetime:       util.DurationUnitsPtr(model.IPv6RAValidLifetime, time.Second),
-		IPV6PDInterface:           optStr(model.IPv6PDInterface),
-		IPV6PDPrefixid:            model.IPv6PDPrefixID.ValueString(),
-		IPV6PDStart:               optStr(model.IPv6PDStart),
-		IPV6PDStop:                optStr(model.IPv6PDStop),
-		IPV6PDAutoPrefixidEnabled: model.IPv6PDAutoPrefixidEnabled.ValueBool(),
-		LteLanEnabled:             model.LteLan.ValueBool(),
-		VLANEnabled:               !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
-		Enabled:                   model.Enabled.ValueBool(),
-		IGMPSnooping:              model.IgmpSnooping.ValueBool(),
-		IPAliases:                 []string{},
+		Name:                    model.Name.ValueStringPointer(),
+		Purpose:                 unifi.PurposeCorporate,
+		NetworkGroup:            new("LAN"),
+		AutoScaleEnabled:        model.AutoScale.ValueBool(),
+		IPSubnet:                model.Subnet.ValueStringPointer(),
+		NetworkIsolationEnabled: model.NetworkIsolation.ValueBool(),
+		SettingPreference:       model.SettingPreference.ValueStringPointer(),
+		InternetAccessEnabled:   model.InternetAccess.ValueBool(),
+		MdnsEnabled:             model.MulticastDNS.ValueBool(),
+		GatewayType:             model.GatewayType.ValueStringPointer(),
+		LteLanEnabled:           model.LteLan.ValueBool(),
+		VLANEnabled:             !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
+		Enabled:                 model.Enabled.ValueBool(),
+		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
+		IPAliases:               []string{},
+	}
+
+	// IPv6: a null or unknown object (or sub-object) contributes nothing,
+	// exactly as the unset flat attributes did.
+	if v6, ok, d := util.ObjectAs[networkIPv6Model](ctx, model.IPv6); ok {
+		network.IPV6InterfaceType = v6.InterfaceType.ValueStringPointer()
+		network.IPV6ClientAddressAssignment = optStr(v6.ClientAddressAssignment)
+		network.IPV6Subnet = v6.StaticSubnet.ValueStringPointer()
+		if ra, ok, d := util.ObjectAs[networkIPv6RAModel](ctx, v6.RA); ok {
+			network.IPV6RaEnabled = ra.Enabled.ValueBool()
+			network.IPV6RaPriority = optStr(ra.Priority)
+			network.IPV6RaPreferredLifetime = util.DurationUnitsPtr(
+				ra.PreferredLifetime,
+				time.Second,
+			)
+			network.IPV6RaValidLifetime = util.DurationUnitsPtr(ra.ValidLifetime, time.Second)
+		} else {
+			diags.Append(d...)
+		}
+		if pd, ok, d := util.ObjectAs[networkIPv6PDModel](ctx, v6.PD); ok {
+			network.IPV6PDInterface = optStr(pd.Interface)
+			network.IPV6PDPrefixid = pd.Prefixid.ValueString()
+			network.IPV6PDStart = optStr(pd.Start)
+			network.IPV6PDStop = optStr(pd.Stop)
+			network.IPV6PDAutoPrefixidEnabled = pd.AutoPrefixidEnabled.ValueBool()
+		} else {
+			diags.Append(d...)
+		}
+	} else {
+		diags.Append(d...)
 	}
 
 	// Purpose: default corporate, honor an explicitly configured value (guest,
@@ -1701,7 +2156,7 @@ func (r *networkResource) modelToNetwork(
 		}
 	}
 
-	// ipv6_aliases: go-unifi's Network struct has no field to send this to the
+	// ipv6.aliases: go-unifi's Network struct has no field to send this to the
 	// API (#413), so there is nothing to map here. ModifyPlan rejects a
 	// non-empty configured value before modelToNetwork ever runs.
 
@@ -1737,7 +2192,7 @@ func (r *networkResource) modelToNetwork(
 						network.DHCPDBootServer = dhcpBoot.Server.ValueString()
 					}
 					if dhcpBoot.Filename.IsNull() || dhcpBoot.Filename.IsUnknown() {
-						network.DHCPDBootFilename = util.Ptr("")
+						network.DHCPDBootFilename = new("")
 					} else {
 						network.DHCPDBootFilename = dhcpBoot.Filename.ValueStringPointer()
 					}
@@ -1745,19 +2200,25 @@ func (r *networkResource) modelToNetwork(
 			} else {
 				network.DHCPDBootEnabled = false
 				network.DHCPDBootServer = ""
-				network.DHCPDBootFilename = util.Ptr("")
+				network.DHCPDBootFilename = new("")
 			}
 			network.DHCPDEnabled = dhcpServer.Enabled.ValueBool()
 			network.DHCPDStart = dhcpServer.Start.ValueStringPointer()
 			network.DHCPDStop = dhcpServer.Stop.ValueStringPointer()
 			network.DHCPDGatewayEnabled = dhcpServer.GatewayEnabled.ValueBool()
 			network.DHCPDConflictChecking = dhcpServer.ConflictChecking.ValueBool()
-			network.DHCPDNtpEnabled = dhcpServer.NtpEnabled.ValueBool()
-
-			// Handle NTP servers
-			if !dhcpServer.NtpServers.IsNull() && !dhcpServer.NtpServers.IsUnknown() {
+			// Handle NTP servers. A null or unknown ntp object behaves like the
+			// unset flat attributes: disabled, with both server slots cleared.
+			var ntp dhcpServerOptionModel
+			if v, ok, d := util.ObjectAs[dhcpServerOptionModel](ctx, dhcpServer.Ntp); ok {
+				ntp = v
+			} else {
+				diags.Append(d...)
+			}
+			network.DHCPDNtpEnabled = ntp.Enabled.ValueBool()
+			if !ntp.Servers.IsNull() && !ntp.Servers.IsUnknown() {
 				var ntpServers []string
-				d := dhcpServer.NtpServers.ElementsAs(ctx, &ntpServers, false)
+				d := ntp.Servers.ElementsAs(ctx, &ntpServers, false)
 				diags.Append(d...)
 				if !diags.HasError() {
 					for i, ntp := range ntpServers {
@@ -1766,29 +2227,28 @@ func (r *networkResource) modelToNetwork(
 						}
 						switch i {
 						case 0:
-							network.DHCPDNtp1 = util.Ptr(ntp)
+							network.DHCPDNtp1 = new(ntp)
 						case 1:
-							network.DHCPDNtp2 = util.Ptr(ntp)
+							network.DHCPDNtp2 = new(ntp)
 						}
 					}
 					// Set remaining NTP servers to empty
 					for i := len(ntpServers); i < 2; i++ {
 						switch i {
 						case 0:
-							network.DHCPDNtp1 = util.Ptr("")
+							network.DHCPDNtp1 = new("")
 						case 1:
-							network.DHCPDNtp2 = util.Ptr("")
+							network.DHCPDNtp2 = new("")
 						}
 					}
 				}
 			} else {
 				// Set all NTP servers to empty string when not configured
-				network.DHCPDNtp1 = util.Ptr("")
-				network.DHCPDNtp2 = util.Ptr("")
+				network.DHCPDNtp1 = new("")
+				network.DHCPDNtp2 = new("")
 			}
 
 			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
-			network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
 			network.DHCPDLeaseTime = util.DurationUnitsPtr(dhcpServer.Leasetime, time.Second)
 
 			// Handle WINS configuration
@@ -1809,54 +2269,62 @@ func (r *networkResource) modelToNetwork(
 								}
 								switch i {
 								case 0:
-									network.DHCPDWins1 = util.Ptr(addr)
+									network.DHCPDWins1 = new(addr)
 								case 1:
-									network.DHCPDWins2 = util.Ptr(addr)
+									network.DHCPDWins2 = new(addr)
 								}
 							}
 							// Set remaining WINS servers to empty string
 							for i := len(addresses); i < 2; i++ {
 								switch i {
 								case 0:
-									network.DHCPDWins1 = util.Ptr("")
+									network.DHCPDWins1 = new("")
 								case 1:
-									network.DHCPDWins2 = util.Ptr("")
+									network.DHCPDWins2 = new("")
 								}
 							}
 						}
 					} else {
-						network.DHCPDWins1 = util.Ptr("")
-						network.DHCPDWins2 = util.Ptr("")
+						network.DHCPDWins1 = new("")
+						network.DHCPDWins2 = new("")
 					}
 				}
 			} else {
 				network.DHCPDWinsEnabled = false
-				network.DHCPDWins1 = util.Ptr("")
-				network.DHCPDWins2 = util.Ptr("")
+				network.DHCPDWins1 = new("")
+				network.DHCPDWins2 = new("")
 			}
 
 			if dhcpServer.WpadUrl.IsNull() || dhcpServer.WpadUrl.IsUnknown() {
-				network.DHCPDWPAdUrl = util.Ptr("")
+				network.DHCPDWPAdUrl = new("")
 			} else {
 				network.DHCPDWPAdUrl = dhcpServer.WpadUrl.ValueStringPointer()
 			}
 
 			if dhcpServer.TftpServer.IsNull() || dhcpServer.TftpServer.IsUnknown() {
-				network.DHCPDTFTPServer = util.Ptr("")
+				network.DHCPDTFTPServer = new("")
 			} else {
 				network.DHCPDTFTPServer = dhcpServer.TftpServer.ValueStringPointer()
 			}
 
 			if dhcpServer.UnifiController.IsNull() || dhcpServer.UnifiController.IsUnknown() {
-				network.DHCPDUnifiController = util.Ptr("")
+				network.DHCPDUnifiController = new("")
 			} else {
 				network.DHCPDUnifiController = dhcpServer.UnifiController.ValueStringPointer()
 			}
 
-			// Handle DNS servers
-			if !dhcpServer.DnsServers.IsNull() && !dhcpServer.DnsServers.IsUnknown() {
+			// Handle DNS servers. A null or unknown dns object behaves like the
+			// unset flat attributes: disabled, with every server slot cleared.
+			var dns dhcpServerOptionModel
+			if v, ok, d := util.ObjectAs[dhcpServerOptionModel](ctx, dhcpServer.Dns); ok {
+				dns = v
+			} else {
+				diags.Append(d...)
+			}
+			network.DHCPDDNSEnabled = dns.Enabled.ValueBool()
+			if !dns.Servers.IsNull() && !dns.Servers.IsUnknown() {
 				var dnsServers []string
-				d := dhcpServer.DnsServers.ElementsAs(ctx, &dnsServers, false)
+				d := dns.Servers.ElementsAs(ctx, &dnsServers, false)
 				diags.Append(d...)
 				if !diags.HasError() {
 					for i, dns := range dnsServers {
@@ -1865,61 +2333,61 @@ func (r *networkResource) modelToNetwork(
 						}
 						switch i {
 						case 0:
-							network.DHCPDDNS1 = dns
+							network.DHCPDDNS1 = new(dns)
 						case 1:
-							network.DHCPDDNS2 = dns
+							network.DHCPDDNS2 = new(dns)
 						case 2:
-							network.DHCPDDNS3 = dns
+							network.DHCPDDNS3 = new(dns)
 						case 3:
-							network.DHCPDDNS4 = dns
+							network.DHCPDDNS4 = new(dns)
 						}
 					}
 					// Set remaining DNS servers to empty string
 					for i := len(dnsServers); i < 4; i++ {
 						switch i {
 						case 0:
-							network.DHCPDDNS1 = ""
+							network.DHCPDDNS1 = new("")
 						case 1:
-							network.DHCPDDNS2 = ""
+							network.DHCPDDNS2 = new("")
 						case 2:
-							network.DHCPDDNS3 = ""
+							network.DHCPDDNS3 = new("")
 						case 3:
-							network.DHCPDDNS4 = ""
+							network.DHCPDDNS4 = new("")
 						}
 					}
 				}
 			} else {
 				// Set all DNS servers to empty string when not configured
-				network.DHCPDDNS1 = ""
-				network.DHCPDDNS2 = ""
-				network.DHCPDDNS3 = ""
-				network.DHCPDDNS4 = ""
+				network.DHCPDDNS1 = new("")
+				network.DHCPDDNS2 = new("")
+				network.DHCPDDNS3 = new("")
+				network.DHCPDDNS4 = new("")
 			}
 		}
 	} else if !relayEnabled {
 		// Set defaults when DHCP server is not configured (and relay is off).
 		network.DHCPDBootEnabled = false
 		network.DHCPDBootServer = ""
-		network.DHCPDBootFilename = util.Ptr("")
+		network.DHCPDBootFilename = new("")
 		network.DHCPDEnabled = true
 		network.DHCPDGatewayEnabled = false
 		network.DHCPDConflictChecking = true
 		network.DHCPDNtpEnabled = false
-		network.DHCPDNtp1 = util.Ptr("")
-		network.DHCPDNtp2 = util.Ptr("")
+		network.DHCPDNtp1 = new("")
+		network.DHCPDNtp2 = new("")
 		network.DHCPDTimeOffsetEnabled = false
 		network.DHCPDDNSEnabled = false
-		network.DHCPDLeaseTime = util.Ptr(int64(86400))
+		network.DHCPDLeaseTime = new(int64(86400))
 		network.DHCPDWinsEnabled = false
-		network.DHCPDWins1 = util.Ptr("")
-		network.DHCPDWins2 = util.Ptr("")
-		network.DHCPDWPAdUrl = util.Ptr("")
-		network.DHCPDTFTPServer = util.Ptr("")
-		network.DHCPDUnifiController = util.Ptr("")
-		network.DHCPDDNS1 = ""
-		network.DHCPDDNS2 = ""
-		network.DHCPDDNS3 = ""
-		network.DHCPDDNS4 = ""
+		network.DHCPDWins1 = new("")
+		network.DHCPDWins2 = new("")
+		network.DHCPDWPAdUrl = new("")
+		network.DHCPDTFTPServer = new("")
+		network.DHCPDUnifiController = new("")
+		network.DHCPDDNS1 = new("")
+		network.DHCPDDNS2 = new("")
+		network.DHCPDDNS3 = new("")
+		network.DHCPDDNS4 = new("")
 	}
 
 	// Handle DHCPv6 server configuration
@@ -1929,15 +2397,22 @@ func (r *networkResource) modelToNetwork(
 		diags.Append(d...)
 		if !diags.HasError() {
 			network.DHCPDV6Enabled = dhcpV6Server.Enabled.ValueBool()
-			network.DHCPDV6DNSAuto = dhcpV6Server.DNSAuto.ValueBool()
 			network.DHCPDV6Start = dhcpV6Server.Start.ValueStringPointer()
 			network.DHCPDV6Stop = dhcpV6Server.Stop.ValueStringPointer()
 			network.DHCPDV6LeaseTime = dhcpV6Server.Lease.ValueInt64Pointer()
 
-			// Handle DHCPv6 DNS servers
-			if !dhcpV6Server.DNSServers.IsNull() && !dhcpV6Server.DNSServers.IsUnknown() {
+			// Handle DHCPv6 DNS. A null or unknown dns object behaves like the
+			// unset flat attributes: auto off, with every server slot cleared.
+			var dns dhcpV6DNSModel
+			if v, ok, d := util.ObjectAs[dhcpV6DNSModel](ctx, dhcpV6Server.DNS); ok {
+				dns = v
+			} else {
+				diags.Append(d...)
+			}
+			network.DHCPDV6DNSAuto = dns.Auto.ValueBool()
+			if !dns.Servers.IsNull() && !dns.Servers.IsUnknown() {
 				var dnsServers []string
-				d := dhcpV6Server.DNSServers.ElementsAs(ctx, &dnsServers, false)
+				d := dns.Servers.ElementsAs(ctx, &dnsServers, false)
 				diags.Append(d...)
 				if !diags.HasError() {
 					for i, dns := range dnsServers {
@@ -1946,33 +2421,33 @@ func (r *networkResource) modelToNetwork(
 						}
 						switch i {
 						case 0:
-							network.DHCPDV6DNS1 = util.Ptr(dns)
+							network.DHCPDV6DNS1 = new(dns)
 						case 1:
-							network.DHCPDV6DNS2 = util.Ptr(dns)
+							network.DHCPDV6DNS2 = new(dns)
 						case 2:
-							network.DHCPDV6DNS3 = util.Ptr(dns)
+							network.DHCPDV6DNS3 = new(dns)
 						case 3:
-							network.DHCPDV6DNS4 = util.Ptr(dns)
+							network.DHCPDV6DNS4 = new(dns)
 						}
 					}
 					for i := len(dnsServers); i < 4; i++ {
 						switch i {
 						case 0:
-							network.DHCPDV6DNS1 = util.Ptr("")
+							network.DHCPDV6DNS1 = new("")
 						case 1:
-							network.DHCPDV6DNS2 = util.Ptr("")
+							network.DHCPDV6DNS2 = new("")
 						case 2:
-							network.DHCPDV6DNS3 = util.Ptr("")
+							network.DHCPDV6DNS3 = new("")
 						case 3:
-							network.DHCPDV6DNS4 = util.Ptr("")
+							network.DHCPDV6DNS4 = new("")
 						}
 					}
 				}
 			} else {
-				network.DHCPDV6DNS1 = util.Ptr("")
-				network.DHCPDV6DNS2 = util.Ptr("")
-				network.DHCPDV6DNS3 = util.Ptr("")
-				network.DHCPDV6DNS4 = util.Ptr("")
+				network.DHCPDV6DNS1 = new("")
+				network.DHCPDV6DNS2 = new("")
+				network.DHCPDV6DNS3 = new("")
+				network.DHCPDV6DNS4 = new("")
 			}
 		}
 	}
@@ -2064,78 +2539,18 @@ func (r *networkResource) networkToModel(
 		// Preserve configured values, but normalize import/read values that are
 		// absent because the controller omits fields irrelevant to vlan-only
 		// networks. Leaving these null/unknown would perpetually plan the schema
-		// defaults (gateway_type="default", ipv6_interface_type="none") (#414).
+		// defaults (gateway_type="default", ipv6.interface_type="none") (#414).
 		if previousModel.GatewayType.IsNull() || previousModel.GatewayType.IsUnknown() ||
 			previousModel.GatewayType.ValueString() == "" {
 			model.GatewayType = types.StringValue("default")
 		} else {
 			model.GatewayType = previousModel.GatewayType
 		}
-		if previousModel.IPv6InterfaceType.IsNull() ||
-			previousModel.IPv6InterfaceType.IsUnknown() ||
-			previousModel.IPv6InterfaceType.ValueString() == "" {
-			model.IPv6InterfaceType = types.StringValue("none")
-		} else {
-			model.IPv6InterfaceType = previousModel.IPv6InterfaceType
-		}
-		model.IPv6StaticSubnet = previousModel.IPv6StaticSubnet
-		model.IPv6PDInterface = previousModel.IPv6PDInterface
-		model.IPv6PDPrefixID = previousModel.IPv6PDPrefixID
+		// ipv6 is preserved leaf by leaf; see ipv6ToFramework for the rules.
+		ipv6Obj, d := r.ipv6ToFramework(ctx, network, previousModel.IPv6, true)
+		diags.Append(d...)
+		model.IPv6 = ipv6Obj
 		model.LteLan = previousModel.LteLan
-		// The IPv6 attributes below are Computed + UseStateForUnknown. On Create
-		// there is no prior state, so the plan carries them as unknown; copying
-		// the plan value verbatim would leave them unknown in the result and
-		// trip "invalid result object after apply". Resolve unknowns from the
-		// API value (vlan-only networks have no meaningful IPv6 config, so this
-		// is effectively the controller's zero value).
-		if previousModel.IPv6ClientAddressAssignment.IsUnknown() {
-			model.IPv6ClientAddressAssignment = types.StringPointerValue(
-				network.IPV6ClientAddressAssignment,
-			)
-		} else {
-			model.IPv6ClientAddressAssignment = previousModel.IPv6ClientAddressAssignment
-		}
-		if previousModel.IPv6RA.IsUnknown() {
-			model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
-		} else {
-			model.IPv6RA = previousModel.IPv6RA
-		}
-		if previousModel.IPv6RAPriority.IsUnknown() {
-			model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
-		} else {
-			model.IPv6RAPriority = previousModel.IPv6RAPriority
-		}
-		if previousModel.IPv6RAPreferredLifetime.IsUnknown() {
-			model.IPv6RAPreferredLifetime = util.DurationPtrValue(
-				network.IPV6RaPreferredLifetime,
-				time.Second,
-			)
-		} else {
-			model.IPv6RAPreferredLifetime = previousModel.IPv6RAPreferredLifetime
-		}
-		if previousModel.IPv6RAValidLifetime.IsUnknown() {
-			model.IPv6RAValidLifetime = util.DurationPtrValue(
-				network.IPV6RaValidLifetime,
-				time.Second,
-			)
-		} else {
-			model.IPv6RAValidLifetime = previousModel.IPv6RAValidLifetime
-		}
-		if previousModel.IPv6PDStart.IsUnknown() {
-			model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
-		} else {
-			model.IPv6PDStart = previousModel.IPv6PDStart
-		}
-		if previousModel.IPv6PDStop.IsUnknown() {
-			model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
-		} else {
-			model.IPv6PDStop = previousModel.IPv6PDStop
-		}
-		if previousModel.IPv6PDAutoPrefixidEnabled.IsUnknown() {
-			model.IPv6PDAutoPrefixidEnabled = types.BoolValue(network.IPV6PDAutoPrefixidEnabled)
-		} else {
-			model.IPv6PDAutoPrefixidEnabled = previousModel.IPv6PDAutoPrefixidEnabled
-		}
 		// domain_name uses UseStateForUnknown, so it may be unknown during Create.
 		// Resolve unknown to null since the API doesn't return it for vlan-only.
 		if previousModel.DomainName.IsUnknown() {
@@ -2172,31 +2587,14 @@ func (r *networkResource) networkToModel(
 		} else {
 			model.GatewayType = types.StringPointerValue(network.GatewayType)
 		}
-		if network.IPV6InterfaceType == nil || *network.IPV6InterfaceType == "" {
-			model.IPv6InterfaceType = types.StringValue("none")
-		} else {
-			model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-		}
-		model.IPv6ClientAddressAssignment = types.StringPointerValue(
-			network.IPV6ClientAddressAssignment,
+		ipv6Obj, d := r.ipv6ToFramework(
+			ctx,
+			network,
+			types.ObjectNull(networkIPv6AttrTypes()),
+			false,
 		)
-		model.IPv6StaticSubnet = types.StringPointerValue(network.IPV6Subnet)
-		model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
-		model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
-		model.IPv6RAPreferredLifetime = util.DurationPtrValue(
-			network.IPV6RaPreferredLifetime,
-			time.Second,
-		)
-		model.IPv6RAValidLifetime = util.DurationPtrValue(network.IPV6RaValidLifetime, time.Second)
-		model.IPv6PDInterface = types.StringPointerValue(network.IPV6PDInterface)
-		if network.IPV6PDPrefixid == "" {
-			model.IPv6PDPrefixID = types.StringNull()
-		} else {
-			model.IPv6PDPrefixID = types.StringValue(network.IPV6PDPrefixid)
-		}
-		model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
-		model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
-		model.IPv6PDAutoPrefixidEnabled = types.BoolValue(network.IPV6PDAutoPrefixidEnabled)
+		diags.Append(d...)
+		model.IPv6 = ipv6Obj
 		model.LteLan = types.BoolValue(network.LteLanEnabled)
 		model.DomainName = types.StringPointerValue(network.DomainName)
 	}
@@ -2299,12 +2697,6 @@ func (r *networkResource) networkToModel(
 		model.IPAliases = types.ListNull(types.StringType)
 	}
 
-	// ipv6_aliases: go-unifi's Network struct has no field to carry this value
-	// yet, even though the controller accepts and returns it (#413). ModifyPlan
-	// rejects a non-empty configured value before Create/Update run, so this
-	// only ever needs to represent the "unset" case.
-	model.IPv6Aliases = types.ListNull(types.StringType)
-
 	// Only populate dhcp_server if:
 	// 1. It was configured in the previous state (not null), OR
 	// 2. This is an import and DHCP is enabled (populate everything during import)
@@ -2328,12 +2720,23 @@ func (r *networkResource) networkToModel(
 		// "configured empty" (empty list) when the API reports no values.
 		var previousDhcpServer dhcpServerModel
 		var previousWins winsModel
+		var previousDNS, previousNTP dhcpServerOptionModel
 		if previousModel != nil && !previousModel.DhcpServer.IsNull() &&
 			!previousModel.DhcpServer.IsUnknown() {
 			d := previousModel.DhcpServer.As(ctx, &previousDhcpServer, basetypes.ObjectAsOptions{})
 			diags.Append(d...)
 			if !previousDhcpServer.Wins.IsNull() && !previousDhcpServer.Wins.IsUnknown() {
 				d := previousDhcpServer.Wins.As(ctx, &previousWins, basetypes.ObjectAsOptions{})
+				diags.Append(d...)
+			}
+			if v, ok, d := util.ObjectAs[dhcpServerOptionModel](ctx, previousDhcpServer.Dns); ok {
+				previousDNS = v
+			} else {
+				diags.Append(d...)
+			}
+			if v, ok, d := util.ObjectAs[dhcpServerOptionModel](ctx, previousDhcpServer.Ntp); ok {
+				previousNTP = v
+			} else {
 				diags.Append(d...)
 			}
 		}
@@ -2356,21 +2759,20 @@ func (r *networkResource) networkToModel(
 		diags.Append(d...)
 
 		// Build DNS servers list from DHCPDDNS1-4
-		var dnsServers []string
-		if network.DHCPDDNS1 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS1)
-		}
-		if network.DHCPDDNS2 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS2)
-		}
-		if network.DHCPDDNS3 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS3)
-		}
-		if network.DHCPDDNS4 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS4)
-		}
+		dnsServers := collectNonEmptyStringPointers(
+			network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4,
+		)
 
-		dnsServersList, d := stringListOrNull(ctx, dnsServers, previousDhcpServer.DnsServers)
+		dnsServersList, d := stringListOrNull(ctx, dnsServers, previousDNS.Servers)
+		diags.Append(d...)
+		dnsObj, d := types.ObjectValueFrom(
+			ctx,
+			dhcpServerOptionModel{}.AttributeTypes(),
+			dhcpServerOptionModel{
+				Enabled: types.BoolValue(network.DHCPDDNSEnabled),
+				Servers: dnsServersList,
+			},
+		)
 		diags.Append(d...)
 
 		// Build NTP servers list from DHCPDNtp1-2
@@ -2382,7 +2784,16 @@ func (r *networkResource) networkToModel(
 			ntpServers = append(ntpServers, *network.DHCPDNtp2)
 		}
 
-		ntpServersList, d := stringListOrNull(ctx, ntpServers, previousDhcpServer.NtpServers)
+		ntpServersList, d := stringListOrNull(ctx, ntpServers, previousNTP.Servers)
+		diags.Append(d...)
+		ntpObj, d := types.ObjectValueFrom(
+			ctx,
+			dhcpServerOptionModel{}.AttributeTypes(),
+			dhcpServerOptionModel{
+				Enabled: types.BoolValue(network.DHCPDNtpEnabled),
+				Servers: ntpServersList,
+			},
+		)
 		diags.Append(d...)
 
 		// Build WINS addresses list from DHCPDWins1-2
@@ -2410,10 +2821,9 @@ func (r *networkResource) networkToModel(
 			Enabled:           types.BoolValue(network.DHCPDEnabled),
 			GatewayEnabled:    types.BoolValue(network.DHCPDGatewayEnabled),
 			ConflictChecking:  types.BoolValue(network.DHCPDConflictChecking),
-			NtpEnabled:        types.BoolValue(network.DHCPDNtpEnabled),
-			NtpServers:        ntpServersList,
+			Ntp:               ntpObj,
 			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
-			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
+			Dns:               dnsObj,
 			Leasetime:         util.DurationPtrValue(network.DHCPDLeaseTime, time.Second),
 			Wins:              winsObj,
 			WpadUrl:           strPtrToType(network.DHCPDWPAdUrl),
@@ -2421,7 +2831,6 @@ func (r *networkResource) networkToModel(
 			Stop:              types.StringPointerValue(network.DHCPDStop),
 			TftpServer:        strPtrToType(network.DHCPDTFTPServer),
 			UnifiController:   strPtrToType(network.DHCPDUnifiController),
-			DnsServers:        dnsServersList,
 		}
 
 		dhcpServerObj, d := types.ObjectValueFrom(
@@ -2459,13 +2868,22 @@ func (r *networkResource) networkToModel(
 			dhcpv6DNSList = types.ListNull(types.StringType)
 		}
 
+		dhcpv6DNSObj, d := types.ObjectValueFrom(
+			ctx,
+			dhcpV6DNSModel{}.AttributeTypes(),
+			dhcpV6DNSModel{
+				Auto:    types.BoolValue(network.DHCPDV6DNSAuto),
+				Servers: dhcpv6DNSList,
+			},
+		)
+		diags.Append(d...)
+
 		dhcpV6ServerValue := dhcpV6ServerModel{
-			Enabled:    types.BoolValue(network.DHCPDV6Enabled),
-			DNSAuto:    types.BoolValue(network.DHCPDV6DNSAuto),
-			DNSServers: dhcpv6DNSList,
-			Lease:      types.Int64PointerValue(network.DHCPDV6LeaseTime),
-			Start:      types.StringPointerValue(network.DHCPDV6Start),
-			Stop:       types.StringPointerValue(network.DHCPDV6Stop),
+			Enabled: types.BoolValue(network.DHCPDV6Enabled),
+			DNS:     dhcpv6DNSObj,
+			Lease:   types.Int64PointerValue(network.DHCPDV6LeaseTime),
+			Start:   types.StringPointerValue(network.DHCPDV6Start),
+			Stop:    types.StringPointerValue(network.DHCPDV6Stop),
 		}
 		dhcpV6ServerObj, d := types.ObjectValueFrom(
 			ctx,

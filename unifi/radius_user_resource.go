@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -18,19 +19,28 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &radiusUserResource{}
-	_ resource.ResourceWithImportState = &radiusUserResource{}
-	_ resource.ResourceWithIdentity    = &radiusUserResource{}
+	_ resource.Resource                 = &radiusUserResource{}
+	_ resource.ResourceWithImportState  = &radiusUserResource{}
+	_ resource.ResourceWithIdentity     = &radiusUserResource{}
+	_ resource.ResourceWithUpgradeState = &radiusUserResource{}
 )
+
+// radiusUserSchemaVersion is the current schema version of unifi_radius_user
+// (and of its deprecated alias unifi_account, which shares the schema).
+//
+//	v1: tunnel_type, tunnel_medium_type and tunnel_config_type nested into `tunnel`.
+const radiusUserSchemaVersion = 1
 
 // Ensure provider defined types fully satisfy list interfaces.
 var (
@@ -53,16 +63,42 @@ type radiusUserResource struct {
 
 // radiusUserResourceModel describes the resource data model.
 type radiusUserResourceModel struct {
-	ID               types.String   `tfsdk:"id"`
-	Site             types.String   `tfsdk:"site"`
-	Name             types.String   `tfsdk:"name"`
-	Password         types.String   `tfsdk:"password"`
-	TunnelType       types.Int64    `tfsdk:"tunnel_type"`
-	TunnelMediumType types.Int64    `tfsdk:"tunnel_medium_type"`
-	NetworkID        types.String   `tfsdk:"network_id"`
-	VLAN             types.Int64    `tfsdk:"vlan"`
-	TunnelConfigType types.String   `tfsdk:"tunnel_config_type"`
-	Timeouts         timeouts.Value `tfsdk:"timeouts"`
+	ID        types.String   `tfsdk:"id"`
+	Site      types.String   `tfsdk:"site"`
+	Name      types.String   `tfsdk:"name"`
+	Password  types.String   `tfsdk:"password"`
+	Tunnel    types.Object   `tfsdk:"tunnel"`
+	NetworkID types.String   `tfsdk:"network_id"`
+	VLAN      types.Int64    `tfsdk:"vlan"`
+	Timeouts  timeouts.Value `tfsdk:"timeouts"`
+}
+
+// radiusUserTunnelModel is the `tunnel` nested object (formerly the flat
+// tunnel_type / tunnel_medium_type / tunnel_config_type).
+type radiusUserTunnelModel struct {
+	Type       types.Int64  `tfsdk:"type"`
+	MediumType types.Int64  `tfsdk:"medium_type"`
+	ConfigType types.String `tfsdk:"config_type"`
+}
+
+func radiusUserTunnelAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"type":        types.Int64Type,
+		"medium_type": types.Int64Type,
+		"config_type": types.StringType,
+	}
+}
+
+// radiusUserTunnelDefault reproduces the values the flat attributes used to
+// send when the practitioner left the whole group out of configuration
+// (tunnel_type 3, tunnel_medium_type 6, no tunnel_config_type), so the request
+// body on create is unchanged by the nesting.
+func radiusUserTunnelDefault() types.Object {
+	return types.ObjectValueMust(radiusUserTunnelAttrTypes(), map[string]attr.Value{
+		"type":        types.Int64Value(3),
+		"medium_type": types.Int64Value(6),
+		"config_type": types.StringNull(),
+	})
 }
 
 // radiusUserIdentityModel describes the resource identity data model.
@@ -115,6 +151,7 @@ func (r *radiusUserResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		Version: radiusUserSchemaVersion,
 		MarkdownDescription: `Manages a RADIUS user account
 
 To authenticate devices based on MAC address, use the MAC address as the username and password under client creation.
@@ -150,23 +187,38 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 				Required:            true,
 				Sensitive:           true,
 			},
-			"tunnel_type": schema.Int64Attribute{
-				MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. " +
-					"Valid values are 1-13; `13` (VLAN) is the most common.",
-				Optional: true,
-				Computed: true,
-				Default:  int64default.StaticInt64(3),
-				Validators: []validator.Int64{
-					int64validator.Between(1, 13),
-				},
-			},
-			"tunnel_medium_type": schema.Int64Attribute{
-				MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2",
+			"tunnel": schema.SingleNestedAttribute{
+				MarkdownDescription: "RFC 2868 tunnel attributes used for dynamic VLAN assignment.",
 				Optional:            true,
 				Computed:            true,
-				Default:             int64default.StaticInt64(6),
-				Validators: []validator.Int64{
-					int64validator.Between(1, 15),
+				Default:             objectdefault.StaticValue(radiusUserTunnelDefault()),
+				Attributes: map[string]schema.Attribute{
+					"type": schema.Int64Attribute{
+						MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. " +
+							"Valid values are 1-13; `13` (VLAN) is the most common.",
+						Optional: true,
+						Computed: true,
+						Default:  int64default.StaticInt64(3),
+						Validators: []validator.Int64{
+							int64validator.Between(1, 13),
+						},
+					},
+					"medium_type": schema.Int64Attribute{
+						MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2",
+						Optional:            true,
+						Computed:            true,
+						Default:             int64default.StaticInt64(6),
+						Validators: []validator.Int64{
+							int64validator.Between(1, 15),
+						},
+					},
+					"config_type": schema.StringAttribute{
+						MarkdownDescription: "The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.",
+						Optional:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("vpn", "802.1x", "custom"),
+						},
+					},
 				},
 			},
 			"network_id": schema.StringAttribute{
@@ -184,19 +236,53 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 					int64planmodifier.UseStateForUnknown(),
 				},
 			},
-			"tunnel_config_type": schema.StringAttribute{
-				MarkdownDescription: "The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.",
-				Optional:            true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("vpn", "802.1x", "custom"),
-				},
-			},
 			"timeouts": timeouts.Attributes(
 				ctx,
 				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
 			),
 		},
 	}
+}
+
+// UpgradeState migrates v0 state (flat tunnel_type, tunnel_medium_type and
+// tunnel_config_type) to the current schema, where they live under the nested
+// `tunnel` object (see nestRadiusUserState).
+func (r *radiusUserResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeRawState(schemaType, req.RawState.JSON, nestRadiusUserState)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade RADIUS user state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		},
+	}
+}
+
+// nestRadiusUserState rewrites decoded prior state so the flat tunnel_* keys
+// move under the nested `tunnel` object.
+func nestRadiusUserState(state map[string]any) {
+	util.NestFields(state, "tunnel", map[string]string{
+		"tunnel_type":        "type",
+		"tunnel_medium_type": "medium_type",
+		"tunnel_config_type": "config_type",
+	})
 }
 
 func (r *radiusUserResource) Configure(
@@ -245,7 +331,11 @@ func (r *radiusUserResource) Create(
 	defer cancel()
 
 	// Convert to unifi.Account
-	account := r.modelToRadiusUser(ctx, &data)
+	account, d := r.modelToRadiusUser(ctx, &data)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -271,7 +361,7 @@ func (r *radiusUserResource) Create(
 	}
 
 	// Convert back to model
-	r.radiusUserToModel(ctx, createdAccount, &data, site)
+	resp.Diagnostics.Append(r.radiusUserToModel(ctx, createdAccount, &data, site)...)
 
 	// Save data into Terraform state
 	identity := radiusUserIdentityModel{
@@ -347,7 +437,7 @@ func (r *radiusUserResource) Read(
 	}
 
 	// Convert to model
-	r.radiusUserToModel(ctx, account, &data, site)
+	resp.Diagnostics.Append(r.radiusUserToModel(ctx, account, &data, site)...)
 
 	// Terraform rejects any modification of a stored identity (even filling a
 	// previously-null attribute), so pass a stored identity through untouched
@@ -401,7 +491,11 @@ func (r *radiusUserResource) Update(
 	}
 
 	// Step 3: Convert the updated state to API format
-	account := r.modelToRadiusUser(ctx, &state)
+	account, d := r.modelToRadiusUser(ctx, &state)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	account.ID = state.ID.ValueString()
 
 	// Derive the VLAN from network_id when not set explicitly (#67).
@@ -423,7 +517,7 @@ func (r *radiusUserResource) Update(
 	}
 
 	// Step 5: Update state with API response
-	r.radiusUserToModel(ctx, updatedAccount, &state, site)
+	resp.Diagnostics.Append(r.radiusUserToModel(ctx, updatedAccount, &state, site)...)
 
 	// Pass a stored identity through untouched; derive it from state only for
 	// resources created before identity support.
@@ -532,7 +626,7 @@ func (r *radiusUserResource) ImportState(
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *radiusUserResource) applyPlanToState(
-	_ context.Context,
+	ctx context.Context,
 	plan *radiusUserResourceModel,
 	state *radiusUserResourceModel,
 ) {
@@ -543,36 +637,40 @@ func (r *radiusUserResource) applyPlanToState(
 	if !plan.Password.IsNull() && !plan.Password.IsUnknown() {
 		state.Password = plan.Password
 	}
-	if !plan.TunnelType.IsNull() && !plan.TunnelType.IsUnknown() {
-		state.TunnelType = plan.TunnelType
-	}
-	if !plan.TunnelMediumType.IsNull() && !plan.TunnelMediumType.IsUnknown() {
-		state.TunnelMediumType = plan.TunnelMediumType
-	}
+	// Every tunnel leaf the practitioner set in the plan is re-asserted on top
+	// of state, exactly as the flat attributes were.
+	state.Tunnel = util.OverlayKnownObject(ctx, plan.Tunnel, state.Tunnel)
 	if !plan.NetworkID.IsNull() && !plan.NetworkID.IsUnknown() {
 		state.NetworkID = plan.NetworkID
 	}
 	if !plan.VLAN.IsNull() && !plan.VLAN.IsUnknown() {
 		state.VLAN = plan.VLAN
 	}
-	if !plan.TunnelConfigType.IsNull() && !plan.TunnelConfigType.IsUnknown() {
-		state.TunnelConfigType = plan.TunnelConfigType
-	}
 }
 
 // modelToRadiusUser converts the Terraform model to the API struct.
 func (r *radiusUserResource) modelToRadiusUser(
-	_ context.Context,
+	ctx context.Context,
 	model *radiusUserResourceModel,
-) *unifi.Account {
+) (*unifi.Account, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
 	account := &unifi.Account{
 		Name:     model.Name.ValueString(),
 		Password: model.Password.ValueString(),
 	}
 
-	account.TunnelType = model.TunnelType.ValueInt64Pointer()
-
-	account.TunnelMediumType = model.TunnelMediumType.ValueInt64Pointer()
+	// A null/unknown tunnel group contributes nothing, exactly as its flat
+	// attributes did when unset.
+	if tunnel, ok, d := util.ObjectAs[radiusUserTunnelModel](ctx, model.Tunnel); ok {
+		account.TunnelType = tunnel.Type.ValueInt64Pointer()
+		account.TunnelMediumType = tunnel.MediumType.ValueInt64Pointer()
+		if !tunnel.ConfigType.IsNull() {
+			account.TunnelConfigType = tunnel.ConfigType.ValueString()
+		}
+	} else {
+		diags.Append(d...)
+	}
 
 	if !model.NetworkID.IsNull() {
 		account.NetworkID = model.NetworkID.ValueString()
@@ -580,11 +678,8 @@ func (r *radiusUserResource) modelToRadiusUser(
 	if !model.VLAN.IsNull() {
 		account.VLAN = model.VLAN.ValueInt64Pointer()
 	}
-	if !model.TunnelConfigType.IsNull() {
-		account.TunnelConfigType = model.TunnelConfigType.ValueString()
-	}
 
-	return account
+	return account, diags
 }
 
 // resolveVLAN determines the VLAN to assign to the account. An explicit `vlan`
@@ -627,17 +722,26 @@ func (r *radiusUserResource) resolveVLAN(
 
 // radiusUserToModel converts the API struct to the Terraform model.
 func (r *radiusUserResource) radiusUserToModel(
-	_ context.Context,
+	ctx context.Context,
 	account *unifi.Account,
 	model *radiusUserResourceModel,
 	site string,
-) {
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
 	model.ID = types.StringValue(account.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(account.Name)
 	model.Password = types.StringValue(account.Password)
-	model.TunnelType = types.Int64PointerValue(account.TunnelType)
-	model.TunnelMediumType = types.Int64PointerValue(account.TunnelMediumType)
+
+	// An empty tunnel_config_type from the controller maps to null, as before.
+	tunnel, d := types.ObjectValueFrom(ctx, radiusUserTunnelAttrTypes(), radiusUserTunnelModel{
+		Type:       types.Int64PointerValue(account.TunnelType),
+		MediumType: types.Int64PointerValue(account.TunnelMediumType),
+		ConfigType: util.StringValueOrNull(account.TunnelConfigType),
+	})
+	diags.Append(d...)
+	model.Tunnel = tunnel
 
 	if account.NetworkID != "" {
 		model.NetworkID = types.StringValue(account.NetworkID)
@@ -647,11 +751,7 @@ func (r *radiusUserResource) radiusUserToModel(
 
 	model.VLAN = types.Int64PointerValue(account.VLAN)
 
-	if account.TunnelConfigType != "" {
-		model.TunnelConfigType = types.StringValue(account.TunnelConfigType)
-	} else {
-		model.TunnelConfigType = types.StringNull()
-	}
+	return diags
 }
 
 // ListResourceConfigSchema implements [list.ListResource].
@@ -761,7 +861,7 @@ func (r *radiusUserResource) List(
 
 			// Convert to model.
 			var model radiusUserResourceModel
-			r.radiusUserToModel(ctx, &account, &model, site)
+			result.Diagnostics.Append(r.radiusUserToModel(ctx, &account, &model, site)...)
 			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 

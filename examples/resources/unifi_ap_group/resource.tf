@@ -1,5 +1,5 @@
 # unifi_ap_group manages a group of access points. AP groups can be referenced
-# from wireless networks (unifi_wlan via ap_group_ids) to control which access
+# from wireless networks (unifi_wlan via ap_group.ids) to control which access
 # points broadcast a given SSID.
 #
 # Members are the MAC addresses of the access points in the group. MAC addresses

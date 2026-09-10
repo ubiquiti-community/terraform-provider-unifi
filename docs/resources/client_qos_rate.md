@@ -15,8 +15,10 @@ Manages a client QOS rate, which can be used to limit bandwidth for groups of cl
 resource "unifi_client_qos_rate" "wifi" {
   name = "wifi"
 
-  qos_rate_max_down = 2000 # 2mbps
-  qos_rate_max_up   = 10   # 10kbps
+  qos_rate = {
+    max_down = 2000 # 2mbps
+    max_up   = 10   # 10kbps
+  }
 }
 
 
@@ -41,14 +43,22 @@ resource "unifi_client" "test" {
 
 ### Optional
 
-- `qos_rate_max_down` (Number) The QOS maximum download rate.
-- `qos_rate_max_up` (Number) The QOS maximum upload rate.
+- `qos_rate` (Attributes) QoS rate limits applied to clients in this group, in kbps. (see [below for nested schema](#nestedatt--qos_rate))
 - `site` (String) The name of the site to associate the client QOS rate with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `id` (String) The ID of the client QOS rate.
+
+<a id="nestedatt--qos_rate"></a>
+### Nested Schema for `qos_rate`
+
+Optional:
+
+- `max_down` (Number) The QOS maximum download rate.
+- `max_up` (Number) The QOS maximum upload rate.
+
 
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`

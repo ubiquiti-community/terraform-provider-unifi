@@ -61,31 +61,70 @@ Read-Only:
 - `ip` (String) The IP address of the client.
 - `is_guest` (Boolean) Whether the client is a guest.
 - `is_wired` (Boolean) Whether the client is connected via wired connection.
-- `last_connection_network_id` (String) The network ID of the last connection.
-- `last_connection_network_name` (String) The network name of the last connection.
+- `last_connection_network` (Attributes) The network of the client's last connection. (see [below for nested schema](#nestedatt--clients--last_connection_network))
 - `last_seen` (Number) Unix timestamp when the client was last seen.
-- `last_uplink_mac` (String) The MAC address of the last uplink device.
-- `last_uplink_name` (String) The name of the last uplink device.
-- `last_uplink_remote_port` (Number) The remote port of the last uplink device.
+- `last_uplink` (Attributes) The last uplink device the client was seen on. (see [below for nested schema](#nestedatt--clients--last_uplink))
 - `local_dns_record` (String) The local DNS record for this client.
 - `local_dns_record_enabled` (Boolean) Whether local DNS record is enabled for this client.
 - `mac` (String) The MAC address of the client.
 - `name` (String) The name of the client.
-- `network_id` (String) The network ID for this client.
-- `network_name` (String) The network name for this client.
+- `network` (Attributes) The network this client is on. (see [below for nested schema](#nestedatt--clients--network))
 - `noise` (Number) The noise level in dBm.
 - `oui` (String) The OUI (vendor) of the client's MAC address.
 - `radio` (String) The radio type (e.g., na, ng).
 - `radio_name` (String) The radio name (e.g., wifi0, wifi1).
 - `rssi` (Number) The RSSI value.
-- `rx_bytes` (Number) Total bytes received.
-- `rx_rate` (Number) The receive rate in kbps.
+- `rx` (Attributes) Receive statistics for the client. (see [below for nested schema](#nestedatt--clients--rx))
 - `signal` (Number) The signal strength in dBm.
 - `status` (String) The status of the client.
 - `sw_port` (Number) The switch port number the client is connected to.
-- `tx_bytes` (Number) Total bytes transmitted.
-- `tx_rate` (Number) The transmit rate in kbps.
+- `tx` (Attributes) Transmit statistics for the client. (see [below for nested schema](#nestedatt--clients--tx))
 - `uptime` (String) The uptime of the client, as a Go duration string.
 - `use_fixedip` (Boolean) Whether this client uses a fixed IP.
 - `usergroup_id` (String) The user group ID for the client.
 - `wired_rate_mbps` (Number) The wired connection rate in Mbps.
+
+<a id="nestedatt--clients--last_connection_network"></a>
+### Nested Schema for `clients.last_connection_network`
+
+Read-Only:
+
+- `id` (String) The network ID of the last connection.
+- `name` (String) The network name of the last connection.
+
+
+<a id="nestedatt--clients--last_uplink"></a>
+### Nested Schema for `clients.last_uplink`
+
+Read-Only:
+
+- `mac` (String) The MAC address of the last uplink device.
+- `name` (String) The name of the last uplink device.
+- `remote_port` (Number) The remote port of the last uplink device.
+
+
+<a id="nestedatt--clients--network"></a>
+### Nested Schema for `clients.network`
+
+Read-Only:
+
+- `id` (String) The network ID for this client.
+- `name` (String) The network name for this client.
+
+
+<a id="nestedatt--clients--rx"></a>
+### Nested Schema for `clients.rx`
+
+Read-Only:
+
+- `bytes` (Number) Total bytes received.
+- `rate` (Number) The receive rate in kbps.
+
+
+<a id="nestedatt--clients--tx"></a>
+### Nested Schema for `clients.tx`
+
+Read-Only:
+
+- `bytes` (Number) Total bytes transmitted.
+- `rate` (Number) The transmit rate in kbps.

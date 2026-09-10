@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -28,9 +30,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = &firewallRuleResource{}
-	_ resource.ResourceWithImportState = &firewallRuleResource{}
-	_ resource.ResourceWithIdentity    = &firewallRuleResource{}
+	_ resource.Resource                 = &firewallRuleResource{}
+	_ resource.ResourceWithImportState  = &firewallRuleResource{}
+	_ resource.ResourceWithIdentity     = &firewallRuleResource{}
+	_ resource.ResourceWithUpgradeState = &firewallRuleResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -70,39 +73,134 @@ type firewallRuleListFilterModel struct {
 }
 
 type firewallRuleResourceModel struct {
-	ID                  types.String       `tfsdk:"id"`
-	Site                types.String       `tfsdk:"site"`
-	Name                types.String       `tfsdk:"name"`
-	Action              types.String       `tfsdk:"action"`
-	Ruleset             types.String       `tfsdk:"ruleset"`
-	RuleIndex           types.Int64        `tfsdk:"rule_index"`
-	Protocol            types.String       `tfsdk:"protocol"`
-	ProtocolV6          types.String       `tfsdk:"protocol_v6"`
-	ICMPTypename        types.String       `tfsdk:"icmp_typename"`
-	ICMPV6Typename      types.String       `tfsdk:"icmp_v6_typename"`
-	Enabled             types.Bool         `tfsdk:"enabled"`
-	SrcNetworkID        types.String       `tfsdk:"src_network_id"`
-	SrcNetworkType      types.String       `tfsdk:"src_network_type"`
-	SrcFirewallGroupIDs types.Set          `tfsdk:"src_firewall_group_ids"`
-	SrcAddress          types.String       `tfsdk:"src_address"`
-	SrcAddressIPv6      types.String       `tfsdk:"src_address_ipv6"`
-	SrcPort             types.String       `tfsdk:"src_port"`
-	SrcMac              hwtypes.MACAddress `tfsdk:"src_mac"`
-	DstNetworkID        types.String       `tfsdk:"dst_network_id"`
-	DstNetworkType      types.String       `tfsdk:"dst_network_type"`
-	DstFirewallGroupIDs types.Set          `tfsdk:"dst_firewall_group_ids"`
-	DstAddress          types.String       `tfsdk:"dst_address"`
-	DstAddressIPv6      types.String       `tfsdk:"dst_address_ipv6"`
-	DstPort             types.String       `tfsdk:"dst_port"`
-	Logging             types.Bool         `tfsdk:"logging"`
-	StateEstablished    types.Bool         `tfsdk:"state_established"`
-	StateInvalid        types.Bool         `tfsdk:"state_invalid"`
-	StateNew            types.Bool         `tfsdk:"state_new"`
-	StateRelated        types.Bool         `tfsdk:"state_related"`
-	IPSec               types.String       `tfsdk:"ip_sec"`
-	SettingPreference   types.String       `tfsdk:"setting_preference"`
-	ProtocolMatchExcept types.Bool         `tfsdk:"protocol_match_excepted"`
-	Timeouts            timeouts.Value     `tfsdk:"timeouts"`
+	ID                  types.String   `tfsdk:"id"`
+	Site                types.String   `tfsdk:"site"`
+	Name                types.String   `tfsdk:"name"`
+	Action              types.String   `tfsdk:"action"`
+	Ruleset             types.String   `tfsdk:"ruleset"`
+	RuleIndex           types.Int64    `tfsdk:"rule_index"`
+	Protocol            types.String   `tfsdk:"protocol"`
+	ProtocolV6          types.String   `tfsdk:"protocol_v6"`
+	ICMP                types.Object   `tfsdk:"icmp"`
+	Enabled             types.Bool     `tfsdk:"enabled"`
+	Source              types.Object   `tfsdk:"source"`
+	Destination         types.Object   `tfsdk:"destination"`
+	Logging             types.Bool     `tfsdk:"logging"`
+	State               types.Object   `tfsdk:"state"`
+	IPSec               types.String   `tfsdk:"ip_sec"`
+	SettingPreference   types.String   `tfsdk:"setting_preference"`
+	ProtocolMatchExcept types.Bool     `tfsdk:"protocol_match_excepted"`
+	Timeouts            timeouts.Value `tfsdk:"timeouts"`
+}
+
+// firewallRuleICMPModel is the `icmp` nested object.
+type firewallRuleICMPModel struct {
+	Typename   types.String `tfsdk:"typename"`
+	V6Typename types.String `tfsdk:"v6_typename"`
+}
+
+func firewallRuleICMPAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"typename":    types.StringType,
+		"v6_typename": types.StringType,
+	}
+}
+
+// firewallRuleSourceModel is the `source` nested object.
+type firewallRuleSourceModel struct {
+	NetworkID        types.String       `tfsdk:"network_id"`
+	NetworkType      types.String       `tfsdk:"network_type"`
+	FirewallGroupIDs types.Set          `tfsdk:"firewall_group_ids"`
+	Address          types.String       `tfsdk:"address"`
+	AddressIPv6      types.String       `tfsdk:"address_ipv6"`
+	Port             types.String       `tfsdk:"port"`
+	Mac              hwtypes.MACAddress `tfsdk:"mac"`
+}
+
+func firewallRuleSourceAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"network_id":         types.StringType,
+		"network_type":       types.StringType,
+		"firewall_group_ids": types.SetType{ElemType: types.StringType},
+		"address":            types.StringType,
+		"address_ipv6":       types.StringType,
+		"port":               types.StringType,
+		"mac":                hwtypes.MACAddressType{},
+	}
+}
+
+// firewallRuleDestinationModel is the `destination` nested object.
+type firewallRuleDestinationModel struct {
+	NetworkID        types.String `tfsdk:"network_id"`
+	NetworkType      types.String `tfsdk:"network_type"`
+	FirewallGroupIDs types.Set    `tfsdk:"firewall_group_ids"`
+	Address          types.String `tfsdk:"address"`
+	AddressIPv6      types.String `tfsdk:"address_ipv6"`
+	Port             types.String `tfsdk:"port"`
+}
+
+func firewallRuleDestinationAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"network_id":         types.StringType,
+		"network_type":       types.StringType,
+		"firewall_group_ids": types.SetType{ElemType: types.StringType},
+		"address":            types.StringType,
+		"address_ipv6":       types.StringType,
+		"port":               types.StringType,
+	}
+}
+
+// firewallRuleStateModel is the `state` nested object.
+type firewallRuleStateModel struct {
+	Established types.Bool `tfsdk:"established"`
+	Invalid     types.Bool `tfsdk:"invalid"`
+	New         types.Bool `tfsdk:"new"`
+	Related     types.Bool `tfsdk:"related"`
+}
+
+func firewallRuleStateAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"established": types.BoolType,
+		"invalid":     types.BoolType,
+		"new":         types.BoolType,
+		"related":     types.BoolType,
+	}
+}
+
+// Object-level defaults reproduce the values the flat attributes used to send
+// when the practitioner left a whole group out of configuration, so the request
+// body on create is unchanged by the nesting.
+
+func firewallRuleSourceDefault() types.Object {
+	return types.ObjectValueMust(firewallRuleSourceAttrTypes(), map[string]attr.Value{
+		"network_id":         types.StringNull(),
+		"network_type":       types.StringValue("NETv4"),
+		"firewall_group_ids": types.SetNull(types.StringType),
+		"address":            types.StringNull(),
+		"address_ipv6":       types.StringNull(),
+		"port":               types.StringNull(),
+		"mac":                hwtypes.NewMACAddressNull(),
+	})
+}
+
+func firewallRuleDestinationDefault() types.Object {
+	return types.ObjectValueMust(firewallRuleDestinationAttrTypes(), map[string]attr.Value{
+		"network_id":         types.StringNull(),
+		"network_type":       types.StringValue("NETv4"),
+		"firewall_group_ids": types.SetNull(types.StringType),
+		"address":            types.StringNull(),
+		"address_ipv6":       types.StringNull(),
+		"port":               types.StringNull(),
+	})
+}
+
+func firewallRuleStateDefault() types.Object {
+	return types.ObjectValueMust(firewallRuleStateAttrTypes(), map[string]attr.Value{
+		"established": types.BoolValue(false),
+		"invalid":     types.BoolValue(false),
+		"new":         types.BoolValue(false),
+		"related":     types.BoolValue(false),
+	})
 }
 
 func (r *firewallRuleResource) Metadata(
@@ -137,6 +235,10 @@ func (r *firewallRuleResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: the flat src_*, dst_*, icmp_* and state_* attributes moved into
+		//     the nested source, destination, icmp and state objects. See
+		//     UpgradeState.
+		Version:             1,
 		MarkdownDescription: "Manages an individual firewall rule on the gateway.",
 
 		Attributes: map[string]schema.Attribute{
@@ -205,13 +307,19 @@ func (r *firewallRuleResource) Schema(
 				MarkdownDescription: "The IPv6 protocol of the rule.",
 				Optional:            true,
 			},
-			"icmp_typename": schema.StringAttribute{
-				MarkdownDescription: "ICMP type name.",
+			"icmp": schema.SingleNestedAttribute{
+				MarkdownDescription: "ICMP type matching for the firewall rule.",
 				Optional:            true,
-			},
-			"icmp_v6_typename": schema.StringAttribute{
-				MarkdownDescription: "ICMPv6 type name.",
-				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"typename": schema.StringAttribute{
+						MarkdownDescription: "ICMP type name.",
+						Optional:            true,
+					},
+					"v6_typename": schema.StringAttribute{
+						MarkdownDescription: "ICMPv6 type name.",
+						Optional:            true,
+					},
+				},
 			},
 			"enabled": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether the rule should be enabled.",
@@ -219,70 +327,86 @@ func (r *firewallRuleResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 			},
-			"src_network_id": schema.StringAttribute{
-				MarkdownDescription: "The source network ID for the firewall rule.",
-				Optional:            true,
-			},
-			"src_network_type": schema.StringAttribute{
-				MarkdownDescription: "The source network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.",
+			"source": schema.SingleNestedAttribute{
+				MarkdownDescription: "The source match criteria of the firewall rule.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("NETv4"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("ADDRv4", "NETv4"),
+				Default:             objectdefault.StaticValue(firewallRuleSourceDefault()),
+				Attributes: map[string]schema.Attribute{
+					"network_id": schema.StringAttribute{
+						MarkdownDescription: "The source network ID for the firewall rule.",
+						Optional:            true,
+					},
+					"network_type": schema.StringAttribute{
+						MarkdownDescription: "The source network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("NETv4"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("ADDRv4", "NETv4"),
+						},
+					},
+					"firewall_group_ids": schema.SetAttribute{
+						MarkdownDescription: "The source firewall group IDs for the firewall rule.",
+						Optional:            true,
+						ElementType:         types.StringType,
+					},
+					"address": schema.StringAttribute{
+						MarkdownDescription: "The source address for the firewall rule.",
+						Optional:            true,
+					},
+					"address_ipv6": schema.StringAttribute{
+						MarkdownDescription: "The IPv6 source address for the firewall rule.",
+						Optional:            true,
+					},
+					"port": schema.StringAttribute{
+						MarkdownDescription: "The source port of the firewall rule.",
+						Optional:            true,
+					},
+					"mac": schema.StringAttribute{
+						MarkdownDescription: "The source MAC address of the firewall rule.",
+						CustomType:          hwtypes.MACAddressType{},
+						Optional:            true,
+					},
 				},
 			},
-			"src_firewall_group_ids": schema.SetAttribute{
-				MarkdownDescription: "The source firewall group IDs for the firewall rule.",
-				Optional:            true,
-				ElementType:         types.StringType,
-			},
-			"src_address": schema.StringAttribute{
-				MarkdownDescription: "The source address for the firewall rule.",
-				Optional:            true,
-			},
-			"src_address_ipv6": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 source address for the firewall rule.",
-				Optional:            true,
-			},
-			"src_port": schema.StringAttribute{
-				MarkdownDescription: "The source port of the firewall rule.",
-				Optional:            true,
-			},
-			"src_mac": schema.StringAttribute{
-				MarkdownDescription: "The source MAC address of the firewall rule.",
-				CustomType:          hwtypes.MACAddressType{},
-				Optional:            true,
-			},
-			"dst_network_id": schema.StringAttribute{
-				MarkdownDescription: "The destination network ID of the firewall rule.",
-				Optional:            true,
-			},
-			"dst_network_type": schema.StringAttribute{
-				MarkdownDescription: "The destination network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.",
+			"destination": schema.SingleNestedAttribute{
+				MarkdownDescription: "The destination match criteria of the firewall rule.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("NETv4"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("ADDRv4", "NETv4"),
+				Default:             objectdefault.StaticValue(firewallRuleDestinationDefault()),
+				Attributes: map[string]schema.Attribute{
+					"network_id": schema.StringAttribute{
+						MarkdownDescription: "The destination network ID of the firewall rule.",
+						Optional:            true,
+					},
+					"network_type": schema.StringAttribute{
+						MarkdownDescription: "The destination network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("NETv4"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("ADDRv4", "NETv4"),
+						},
+					},
+					"firewall_group_ids": schema.SetAttribute{
+						MarkdownDescription: "The destination firewall group IDs of the firewall rule.",
+						Optional:            true,
+						ElementType:         types.StringType,
+					},
+					"address": schema.StringAttribute{
+						MarkdownDescription: "The destination address of the firewall rule.",
+						Optional:            true,
+					},
+					"address_ipv6": schema.StringAttribute{
+						MarkdownDescription: "The IPv6 destination address of the firewall rule.",
+						Optional:            true,
+					},
+					"port": schema.StringAttribute{
+						MarkdownDescription: "The destination port of the firewall rule.",
+						Optional:            true,
+					},
 				},
-			},
-			"dst_firewall_group_ids": schema.SetAttribute{
-				MarkdownDescription: "The destination firewall group IDs of the firewall rule.",
-				Optional:            true,
-				ElementType:         types.StringType,
-			},
-			"dst_address": schema.StringAttribute{
-				MarkdownDescription: "The destination address of the firewall rule.",
-				Optional:            true,
-			},
-			"dst_address_ipv6": schema.StringAttribute{
-				MarkdownDescription: "The IPv6 destination address of the firewall rule.",
-				Optional:            true,
-			},
-			"dst_port": schema.StringAttribute{
-				MarkdownDescription: "The destination port of the firewall rule.",
-				Optional:            true,
 			},
 			"logging": schema.BoolAttribute{
 				MarkdownDescription: "Enable logging for the firewall rule.",
@@ -290,29 +414,37 @@ func (r *firewallRuleResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
-			"state_established": schema.BoolAttribute{
-				MarkdownDescription: "Match where the state is established.",
+			"state": schema.SingleNestedAttribute{
+				MarkdownDescription: "Connection state matching for the firewall rule.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"state_invalid": schema.BoolAttribute{
-				MarkdownDescription: "Match where the state is invalid.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"state_new": schema.BoolAttribute{
-				MarkdownDescription: "Match where the state is new.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"state_related": schema.BoolAttribute{
-				MarkdownDescription: "Match where the state is related.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				Default:             objectdefault.StaticValue(firewallRuleStateDefault()),
+				Attributes: map[string]schema.Attribute{
+					"established": schema.BoolAttribute{
+						MarkdownDescription: "Match where the state is established.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"invalid": schema.BoolAttribute{
+						MarkdownDescription: "Match where the state is invalid.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"new": schema.BoolAttribute{
+						MarkdownDescription: "Match where the state is new.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"related": schema.BoolAttribute{
+						MarkdownDescription: "Match where the state is related.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+				},
 			},
 			"ip_sec": schema.StringAttribute{
 				MarkdownDescription: "Specify whether the rule matches on IPsec packets. Can be one of `match-ipset` or `match-none`.",
@@ -387,7 +519,11 @@ func (r *firewallRuleResource) Create(
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
-	firewallRule := r.modelToFirewallRule(ctx, &data)
+	firewallRule, convDiags := r.modelToFirewallRule(ctx, &data)
+	resp.Diagnostics.Append(convDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -403,7 +539,10 @@ func (r *firewallRuleResource) Create(
 		return
 	}
 
-	r.firewallRuleToModel(ctx, createdFirewallRule, &data, site)
+	resp.Diagnostics.Append(r.firewallRuleToModel(ctx, createdFirewallRule, &data, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	identity := firewallRuleIdentityModel{
 		ID:   data.ID,
@@ -472,7 +611,10 @@ func (r *firewallRuleResource) Read(
 		return
 	}
 
-	r.firewallRuleToModel(ctx, firewallRule, &data, site)
+	resp.Diagnostics.Append(r.firewallRuleToModel(ctx, firewallRule, &data, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
 		identity.ID = data.ID
@@ -514,7 +656,11 @@ func (r *firewallRuleResource) Update(
 		site = r.client.Site
 	}
 
-	firewallRule := r.modelToFirewallRule(ctx, &state)
+	firewallRule, convDiags := r.modelToFirewallRule(ctx, &state)
+	resp.Diagnostics.Append(convDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	firewallRule.ID = state.ID.ValueString()
 
 	updatedFirewallRule, err := r.client.UpdateFirewallRule(ctx, site, firewallRule)
@@ -526,7 +672,10 @@ func (r *firewallRuleResource) Update(
 		return
 	}
 
-	r.firewallRuleToModel(ctx, updatedFirewallRule, &state, site)
+	resp.Diagnostics.Append(r.firewallRuleToModel(ctx, updatedFirewallRule, &state, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	state.Timeouts = plan.Timeouts
 
@@ -641,8 +790,89 @@ func (r *firewallRuleResource) ImportState(
 	}
 }
 
+// UpgradeState migrates prior firewall rule state to the current schema version.
+//
+//	v0 -> current: the flat src_*, dst_*, icmp_* and state_* attributes moved
+//	    into the nested source, destination, icmp and state objects. See
+//	    nestFirewallRuleState.
+func (r *firewallRuleResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeRawState(
+					schemaType,
+					req.RawState.JSON,
+					nestFirewallRuleState,
+				)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Failed to upgrade firewall rule state",
+						err.Error(),
+					)
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		},
+	}
+}
+
+// nestFirewallRuleState rewrites flat v0 firewall rule state into the
+// nested-object layout introduced in schema v1. Keys that are absent are
+// skipped, so it is safe to run on state written before a field existed.
+func nestFirewallRuleState(state map[string]any) {
+	util.NestFields(state, "source", map[string]string{
+		"src_network_id":         "network_id",
+		"src_network_type":       "network_type",
+		"src_firewall_group_ids": "firewall_group_ids",
+		"src_address":            "address",
+		"src_address_ipv6":       "address_ipv6",
+		"src_port":               "port",
+		"src_mac":                "mac",
+	})
+	util.NestFields(state, "destination", map[string]string{
+		"dst_network_id":         "network_id",
+		"dst_network_type":       "network_type",
+		"dst_firewall_group_ids": "firewall_group_ids",
+		"dst_address":            "address",
+		"dst_address_ipv6":       "address_ipv6",
+		"dst_port":               "port",
+	})
+	util.NestFields(state, "icmp", map[string]string{
+		"icmp_typename":    "typename",
+		"icmp_v6_typename": "v6_typename",
+	})
+	// icmp is Optional-only: an unset group is a null object, not an object
+	// of nulls, so v0 state with neither ICMP type set must not upgrade into
+	// an `icmp = {}` that the next plan would want to remove.
+	util.WithObject(state, "icmp", func(icmp map[string]any) {
+		if icmp["typename"] == nil && icmp["v6_typename"] == nil {
+			state["icmp"] = nil
+		}
+	})
+	util.NestFields(state, "state", map[string]string{
+		"state_established": "established",
+		"state_invalid":     "invalid",
+		"state_new":         "new",
+		"state_related":     "related",
+	})
+}
+
 func (r *firewallRuleResource) applyPlanToState(
-	_ context.Context,
+	ctx context.Context,
 	plan *firewallRuleResourceModel,
 	state *firewallRuleResourceModel,
 ) {
@@ -664,69 +894,18 @@ func (r *firewallRuleResource) applyPlanToState(
 	if !plan.ProtocolV6.IsNull() && !plan.ProtocolV6.IsUnknown() {
 		state.ProtocolV6 = plan.ProtocolV6
 	}
-	if !plan.ICMPTypename.IsNull() && !plan.ICMPTypename.IsUnknown() {
-		state.ICMPTypename = plan.ICMPTypename
-	}
-	if !plan.ICMPV6Typename.IsNull() && !plan.ICMPV6Typename.IsUnknown() {
-		state.ICMPV6Typename = plan.ICMPV6Typename
-	}
+	// Nested groups: re-assert every sub-attribute the plan knows, keeping
+	// the state's value for the rest (exactly as the flat attributes did).
+	state.ICMP = util.OverlayKnownObject(ctx, plan.ICMP, state.ICMP)
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
 		state.Enabled = plan.Enabled
 	}
-	if !plan.SrcNetworkID.IsNull() && !plan.SrcNetworkID.IsUnknown() {
-		state.SrcNetworkID = plan.SrcNetworkID
-	}
-	if !plan.SrcNetworkType.IsNull() && !plan.SrcNetworkType.IsUnknown() {
-		state.SrcNetworkType = plan.SrcNetworkType
-	}
-	if !plan.SrcFirewallGroupIDs.IsNull() && !plan.SrcFirewallGroupIDs.IsUnknown() {
-		state.SrcFirewallGroupIDs = plan.SrcFirewallGroupIDs
-	}
-	if !plan.SrcAddress.IsNull() && !plan.SrcAddress.IsUnknown() {
-		state.SrcAddress = plan.SrcAddress
-	}
-	if !plan.SrcAddressIPv6.IsNull() && !plan.SrcAddressIPv6.IsUnknown() {
-		state.SrcAddressIPv6 = plan.SrcAddressIPv6
-	}
-	if !plan.SrcPort.IsNull() && !plan.SrcPort.IsUnknown() {
-		state.SrcPort = plan.SrcPort
-	}
-	if !plan.SrcMac.IsNull() && !plan.SrcMac.IsUnknown() {
-		state.SrcMac = plan.SrcMac
-	}
-	if !plan.DstNetworkID.IsNull() && !plan.DstNetworkID.IsUnknown() {
-		state.DstNetworkID = plan.DstNetworkID
-	}
-	if !plan.DstNetworkType.IsNull() && !plan.DstNetworkType.IsUnknown() {
-		state.DstNetworkType = plan.DstNetworkType
-	}
-	if !plan.DstFirewallGroupIDs.IsNull() && !plan.DstFirewallGroupIDs.IsUnknown() {
-		state.DstFirewallGroupIDs = plan.DstFirewallGroupIDs
-	}
-	if !plan.DstAddress.IsNull() && !plan.DstAddress.IsUnknown() {
-		state.DstAddress = plan.DstAddress
-	}
-	if !plan.DstAddressIPv6.IsNull() && !plan.DstAddressIPv6.IsUnknown() {
-		state.DstAddressIPv6 = plan.DstAddressIPv6
-	}
-	if !plan.DstPort.IsNull() && !plan.DstPort.IsUnknown() {
-		state.DstPort = plan.DstPort
-	}
+	state.Source = util.OverlayKnownObject(ctx, plan.Source, state.Source)
+	state.Destination = util.OverlayKnownObject(ctx, plan.Destination, state.Destination)
 	if !plan.Logging.IsNull() && !plan.Logging.IsUnknown() {
 		state.Logging = plan.Logging
 	}
-	if !plan.StateEstablished.IsNull() && !plan.StateEstablished.IsUnknown() {
-		state.StateEstablished = plan.StateEstablished
-	}
-	if !plan.StateInvalid.IsNull() && !plan.StateInvalid.IsUnknown() {
-		state.StateInvalid = plan.StateInvalid
-	}
-	if !plan.StateNew.IsNull() && !plan.StateNew.IsUnknown() {
-		state.StateNew = plan.StateNew
-	}
-	if !plan.StateRelated.IsNull() && !plan.StateRelated.IsUnknown() {
-		state.StateRelated = plan.StateRelated
-	}
+	state.State = util.OverlayKnownObject(ctx, plan.State, state.State)
 	if !plan.IPSec.IsNull() && !plan.IPSec.IsUnknown() {
 		state.IPSec = plan.IPSec
 	}
@@ -741,7 +920,9 @@ func (r *firewallRuleResource) applyPlanToState(
 func (r *firewallRuleResource) modelToFirewallRule(
 	ctx context.Context,
 	model *firewallRuleResourceModel,
-) *unifi.FirewallRule {
+) (*unifi.FirewallRule, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
 	firewallRule := &unifi.FirewallRule{
 		Name:      model.Name.ValueString(),
 		Action:    model.Action.ValueString(),
@@ -756,73 +937,94 @@ func (r *firewallRuleResource) modelToFirewallRule(
 	if !model.ProtocolV6.IsNull() {
 		firewallRule.ProtocolV6 = model.ProtocolV6.ValueString()
 	}
-	if !model.ICMPTypename.IsNull() {
-		firewallRule.ICMPTypename = model.ICMPTypename.ValueString()
-	}
-	if !model.ICMPV6Typename.IsNull() {
-		firewallRule.ICMPv6Typename = model.ICMPV6Typename.ValueString()
+
+	// A null or unknown nested group contributes nothing, exactly as the
+	// flat attributes did when unset.
+	if icmp, ok, d := util.ObjectAs[firewallRuleICMPModel](ctx, model.ICMP); ok {
+		if !icmp.Typename.IsNull() {
+			firewallRule.ICMPTypename = icmp.Typename.ValueString()
+		}
+		if !icmp.V6Typename.IsNull() {
+			firewallRule.ICMPv6Typename = icmp.V6Typename.ValueString()
+		}
+	} else {
+		diags.Append(d...)
 	}
 
-	if !model.SrcNetworkID.IsNull() {
-		firewallRule.SrcNetworkID = model.SrcNetworkID.ValueString()
-	}
-	if !model.SrcNetworkType.IsNull() {
-		firewallRule.SrcNetworkType = model.SrcNetworkType.ValueString()
-	}
-	if !model.SrcFirewallGroupIDs.IsNull() {
-		var groupIDs []string
-		model.SrcFirewallGroupIDs.ElementsAs(ctx, &groupIDs, false)
-		firewallRule.SrcFirewallGroupIDs = groupIDs
-	}
-	if !model.SrcAddress.IsNull() {
-		firewallRule.SrcAddress = model.SrcAddress.ValueString()
-	}
-	if !model.SrcAddressIPv6.IsNull() {
-		firewallRule.SrcAddressIPV6 = model.SrcAddressIPv6.ValueString()
-	}
-	if !model.SrcPort.IsNull() {
-		firewallRule.SrcPort = model.SrcPort.ValueString()
-	}
-	if !model.SrcMac.IsNull() {
-		firewallRule.SrcMACAddress = model.SrcMac.ValueString()
+	if src, ok, d := util.ObjectAs[firewallRuleSourceModel](ctx, model.Source); ok {
+		if !src.NetworkID.IsNull() {
+			firewallRule.SrcNetworkID = src.NetworkID.ValueString()
+		}
+		if !src.NetworkType.IsNull() {
+			firewallRule.SrcNetworkType = src.NetworkType.ValueString()
+		}
+		if !src.FirewallGroupIDs.IsNull() {
+			var groupIDs []string
+			diags.Append(src.FirewallGroupIDs.ElementsAs(ctx, &groupIDs, false)...)
+			firewallRule.SrcFirewallGroupIDs = groupIDs
+		}
+		if !src.Address.IsNull() {
+			firewallRule.SrcAddress = src.Address.ValueString()
+		}
+		if !src.AddressIPv6.IsNull() {
+			firewallRule.SrcAddressIPV6 = src.AddressIPv6.ValueString()
+		}
+		if !src.Port.IsNull() {
+			firewallRule.SrcPort = src.Port.ValueString()
+		}
+		if !src.Mac.IsNull() {
+			firewallRule.SrcMACAddress = src.Mac.ValueString()
+		}
+	} else {
+		diags.Append(d...)
 	}
 
-	if !model.DstNetworkID.IsNull() {
-		firewallRule.DstNetworkID = model.DstNetworkID.ValueString()
-	}
-	if !model.DstNetworkType.IsNull() {
-		firewallRule.DstNetworkType = model.DstNetworkType.ValueString()
-	}
-	if !model.DstFirewallGroupIDs.IsNull() {
-		var groupIDs []string
-		model.DstFirewallGroupIDs.ElementsAs(ctx, &groupIDs, false)
-		firewallRule.DstFirewallGroupIDs = groupIDs
-	}
-	if !model.DstAddress.IsNull() {
-		firewallRule.DstAddress = model.DstAddress.ValueString()
-	}
-	if !model.DstAddressIPv6.IsNull() {
-		firewallRule.DstAddressIPV6 = model.DstAddressIPv6.ValueString()
-	}
-	if !model.DstPort.IsNull() {
-		firewallRule.DstPort = model.DstPort.ValueString()
+	if dst, ok, d := util.ObjectAs[firewallRuleDestinationModel](ctx, model.Destination); ok {
+		if !dst.NetworkID.IsNull() {
+			firewallRule.DstNetworkID = dst.NetworkID.ValueString()
+		}
+		if !dst.NetworkType.IsNull() {
+			firewallRule.DstNetworkType = dst.NetworkType.ValueString()
+		}
+		if !dst.FirewallGroupIDs.IsNull() {
+			var groupIDs []string
+			diags.Append(dst.FirewallGroupIDs.ElementsAs(ctx, &groupIDs, false)...)
+			firewallRule.DstFirewallGroupIDs = groupIDs
+		}
+		if !dst.Address.IsNull() {
+			firewallRule.DstAddress = dst.Address.ValueString()
+		}
+		if !dst.AddressIPv6.IsNull() {
+			firewallRule.DstAddressIPV6 = dst.AddressIPv6.ValueString()
+		}
+		if !dst.Port.IsNull() {
+			firewallRule.DstPort = dst.Port.ValueString()
+		}
+	} else {
+		diags.Append(d...)
 	}
 
 	if !model.Logging.IsNull() {
 		firewallRule.Logging = model.Logging.ValueBool()
 	}
-	if !model.StateEstablished.IsNull() {
-		firewallRule.StateEstablished = model.StateEstablished.ValueBool()
+
+	if st, ok, d := util.ObjectAs[firewallRuleStateModel](ctx, model.State); ok {
+		if !st.Established.IsNull() {
+			firewallRule.StateEstablished = st.Established.ValueBool()
+		}
+		if !st.Invalid.IsNull() {
+			firewallRule.StateInvalid = st.Invalid.ValueBool()
+		}
+		if !st.New.IsNull() {
+			firewallRule.StateNew = st.New.ValueBool()
+		}
+		if !st.Related.IsNull() {
+			firewallRule.StateRelated = st.Related.ValueBool()
+		}
+	} else {
+		diags.Append(d...)
 	}
-	if !model.StateInvalid.IsNull() {
-		firewallRule.StateInvalid = model.StateInvalid.ValueBool()
-	}
-	if !model.StateNew.IsNull() {
-		firewallRule.StateNew = model.StateNew.ValueBool()
-	}
-	if !model.StateRelated.IsNull() {
-		firewallRule.StateRelated = model.StateRelated.ValueBool()
-	}
+
 	if !model.IPSec.IsNull() {
 		firewallRule.IPSec = model.IPSec.ValueString()
 	}
@@ -831,7 +1033,7 @@ func (r *firewallRuleResource) modelToFirewallRule(
 	}
 	firewallRule.ProtocolMatchExcepted = model.ProtocolMatchExcept.ValueBool()
 
-	return firewallRule
+	return firewallRule, diags
 }
 
 func (r *firewallRuleResource) firewallRuleToModel(
@@ -839,7 +1041,9 @@ func (r *firewallRuleResource) firewallRuleToModel(
 	firewallRule *unifi.FirewallRule,
 	model *firewallRuleResourceModel,
 	site string,
-) {
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
 	model.ID = types.StringValue(firewallRule.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(firewallRule.Name)
@@ -847,126 +1051,116 @@ func (r *firewallRuleResource) firewallRuleToModel(
 	model.Ruleset = types.StringValue(firewallRule.Ruleset)
 	model.RuleIndex = types.Int64PointerValue(firewallRule.RuleIndex)
 	model.Enabled = types.BoolValue(firewallRule.Enabled)
+	model.Protocol = stringOrNull(firewallRule.Protocol)
+	model.ProtocolV6 = stringOrNull(firewallRule.ProtocolV6)
 
-	if firewallRule.Protocol != "" {
-		model.Protocol = types.StringValue(firewallRule.Protocol)
-	} else {
-		model.Protocol = types.StringNull()
-	}
+	icmp, d := firewallRuleICMPToFramework(ctx, firewallRule, model.ICMP)
+	diags.Append(d...)
+	model.ICMP = icmp
 
-	if firewallRule.ProtocolV6 != "" {
-		model.ProtocolV6 = types.StringValue(firewallRule.ProtocolV6)
-	} else {
-		model.ProtocolV6 = types.StringNull()
-	}
+	srcGroupIDs, d := firewallRuleGroupIDsToFramework(ctx, firewallRule.SrcFirewallGroupIDs)
+	diags.Append(d...)
+	source, d := types.ObjectValueFrom(ctx, firewallRuleSourceAttrTypes(), firewallRuleSourceModel{
+		NetworkID:        stringOrNull(firewallRule.SrcNetworkID),
+		NetworkType:      firewallRuleNetworkTypeToFramework(firewallRule.SrcNetworkType),
+		FirewallGroupIDs: srcGroupIDs,
+		Address:          stringOrNull(firewallRule.SrcAddress),
+		AddressIPv6:      stringOrNull(firewallRule.SrcAddressIPV6),
+		Port:             stringOrNull(firewallRule.SrcPort),
+		Mac:              util.MACValueOrNull(firewallRule.SrcMACAddress),
+	})
+	diags.Append(d...)
+	model.Source = source
 
-	if firewallRule.ICMPTypename != "" {
-		model.ICMPTypename = types.StringValue(firewallRule.ICMPTypename)
-	} else {
-		model.ICMPTypename = types.StringNull()
-	}
-
-	if firewallRule.ICMPv6Typename != "" {
-		model.ICMPV6Typename = types.StringValue(firewallRule.ICMPv6Typename)
-	} else {
-		model.ICMPV6Typename = types.StringNull()
-	}
-
-	if firewallRule.SrcNetworkID != "" {
-		model.SrcNetworkID = types.StringValue(firewallRule.SrcNetworkID)
-	} else {
-		model.SrcNetworkID = types.StringNull()
-	}
-
-	if firewallRule.SrcNetworkType != "" {
-		model.SrcNetworkType = types.StringValue(firewallRule.SrcNetworkType)
-	} else {
-		model.SrcNetworkType = types.StringValue("NETv4")
-	}
-
-	if len(firewallRule.SrcFirewallGroupIDs) > 0 {
-		groupIDs, _ := types.SetValueFrom(ctx, types.StringType, firewallRule.SrcFirewallGroupIDs)
-		model.SrcFirewallGroupIDs = groupIDs
-	} else {
-		model.SrcFirewallGroupIDs = types.SetNull(types.StringType)
-	}
-
-	if firewallRule.SrcAddress != "" {
-		model.SrcAddress = types.StringValue(firewallRule.SrcAddress)
-	} else {
-		model.SrcAddress = types.StringNull()
-	}
-
-	if firewallRule.SrcAddressIPV6 != "" {
-		model.SrcAddressIPv6 = types.StringValue(firewallRule.SrcAddressIPV6)
-	} else {
-		model.SrcAddressIPv6 = types.StringNull()
-	}
-
-	if firewallRule.SrcPort != "" {
-		model.SrcPort = types.StringValue(firewallRule.SrcPort)
-	} else {
-		model.SrcPort = types.StringNull()
-	}
-
-	model.SrcMac = util.MACValueOrNull(firewallRule.SrcMACAddress)
-
-	if firewallRule.DstNetworkID != "" {
-		model.DstNetworkID = types.StringValue(firewallRule.DstNetworkID)
-	} else {
-		model.DstNetworkID = types.StringNull()
-	}
-
-	if firewallRule.DstNetworkType != "" {
-		model.DstNetworkType = types.StringValue(firewallRule.DstNetworkType)
-	} else {
-		model.DstNetworkType = types.StringValue("NETv4")
-	}
-
-	if len(firewallRule.DstFirewallGroupIDs) > 0 {
-		groupIDs, _ := types.SetValueFrom(ctx, types.StringType, firewallRule.DstFirewallGroupIDs)
-		model.DstFirewallGroupIDs = groupIDs
-	} else {
-		model.DstFirewallGroupIDs = types.SetNull(types.StringType)
-	}
-
-	if firewallRule.DstAddress != "" {
-		model.DstAddress = types.StringValue(firewallRule.DstAddress)
-	} else {
-		model.DstAddress = types.StringNull()
-	}
-
-	if firewallRule.DstAddressIPV6 != "" {
-		model.DstAddressIPv6 = types.StringValue(firewallRule.DstAddressIPV6)
-	} else {
-		model.DstAddressIPv6 = types.StringNull()
-	}
-
-	if firewallRule.DstPort != "" {
-		model.DstPort = types.StringValue(firewallRule.DstPort)
-	} else {
-		model.DstPort = types.StringNull()
-	}
+	dstGroupIDs, d := firewallRuleGroupIDsToFramework(ctx, firewallRule.DstFirewallGroupIDs)
+	diags.Append(d...)
+	destination, d := types.ObjectValueFrom(
+		ctx,
+		firewallRuleDestinationAttrTypes(),
+		firewallRuleDestinationModel{
+			NetworkID:        stringOrNull(firewallRule.DstNetworkID),
+			NetworkType:      firewallRuleNetworkTypeToFramework(firewallRule.DstNetworkType),
+			FirewallGroupIDs: dstGroupIDs,
+			Address:          stringOrNull(firewallRule.DstAddress),
+			AddressIPv6:      stringOrNull(firewallRule.DstAddressIPV6),
+			Port:             stringOrNull(firewallRule.DstPort),
+		},
+	)
+	diags.Append(d...)
+	model.Destination = destination
 
 	model.Logging = types.BoolValue(firewallRule.Logging)
-	model.StateEstablished = types.BoolValue(firewallRule.StateEstablished)
-	model.StateInvalid = types.BoolValue(firewallRule.StateInvalid)
-	model.StateNew = types.BoolValue(firewallRule.StateNew)
-	model.StateRelated = types.BoolValue(firewallRule.StateRelated)
 
-	if firewallRule.IPSec != "" {
-		model.IPSec = types.StringValue(firewallRule.IPSec)
-	} else {
-		model.IPSec = types.StringNull()
-	}
+	state, d := types.ObjectValueFrom(ctx, firewallRuleStateAttrTypes(), firewallRuleStateModel{
+		Established: types.BoolValue(firewallRule.StateEstablished),
+		Invalid:     types.BoolValue(firewallRule.StateInvalid),
+		New:         types.BoolValue(firewallRule.StateNew),
+		Related:     types.BoolValue(firewallRule.StateRelated),
+	})
+	diags.Append(d...)
+	model.State = state
 
-	if firewallRule.SettingPreference != "" {
-		model.SettingPreference = types.StringValue(firewallRule.SettingPreference)
-	} else {
-		model.SettingPreference = types.StringNull()
-	}
-
+	model.IPSec = stringOrNull(firewallRule.IPSec)
+	model.SettingPreference = stringOrNull(firewallRule.SettingPreference)
 	model.ProtocolMatchExcept = types.BoolValue(firewallRule.ProtocolMatchExcepted)
+
+	return diags
+}
+
+// firewallRuleICMPToFramework builds the `icmp` object from the API response.
+// Both leaves are Optional-only, so a rule with neither ICMP type set reads
+// back as a null object (as the flat attributes read back as null). The one
+// exception is a practitioner-supplied empty block (`icmp = {}`), which has no
+// API representation and is kept as configured.
+func firewallRuleICMPToFramework(
+	ctx context.Context,
+	firewallRule *unifi.FirewallRule,
+	prior types.Object,
+) (types.Object, diag.Diagnostics) {
+	icmp := firewallRuleICMPModel{
+		Typename:   stringOrNull(firewallRule.ICMPTypename),
+		V6Typename: stringOrNull(firewallRule.ICMPv6Typename),
+	}
+	if icmp.Typename.IsNull() && icmp.V6Typename.IsNull() && !isKnownEmptyObject(prior) {
+		return types.ObjectNull(firewallRuleICMPAttrTypes()), nil
+	}
+	return types.ObjectValueFrom(ctx, firewallRuleICMPAttrTypes(), icmp)
+}
+
+// isKnownEmptyObject reports whether obj is a known, non-null object whose
+// attributes are all null - the value of an empty `x = {}` block.
+func isKnownEmptyObject(obj types.Object) bool {
+	if obj.IsNull() || obj.IsUnknown() {
+		return false
+	}
+	for _, v := range obj.Attributes() {
+		if !v.IsNull() {
+			return false
+		}
+	}
+	return true
+}
+
+// firewallRuleNetworkTypeToFramework mirrors the `network_type` default: the
+// controller omits it for rules that match by network, so an empty value
+// reads back as `NETv4`.
+func firewallRuleNetworkTypeToFramework(networkType string) types.String {
+	if networkType == "" {
+		return types.StringValue("NETv4")
+	}
+	return types.StringValue(networkType)
+}
+
+// firewallRuleGroupIDsToFramework converts a firewall group ID list to a Set,
+// null when empty.
+func firewallRuleGroupIDsToFramework(
+	ctx context.Context,
+	ids []string,
+) (types.Set, diag.Diagnostics) {
+	if len(ids) == 0 {
+		return types.SetNull(types.StringType), nil
+	}
+	return types.SetValueFrom(ctx, types.StringType, ids)
 }
 
 // ListResourceConfigSchema implements [list.ListResource].
@@ -1099,7 +1293,7 @@ func (r *firewallRuleResource) List(
 			// Convert to model.
 			var model firewallRuleResourceModel
 			ruleCopy := rule
-			r.firewallRuleToModel(ctx, &ruleCopy, &model, site)
+			result.Diagnostics.Append(r.firewallRuleToModel(ctx, &ruleCopy, &model, site)...)
 			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 

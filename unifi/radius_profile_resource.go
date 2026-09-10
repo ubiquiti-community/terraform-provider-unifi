@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -61,19 +63,63 @@ type radiusServerModel struct {
 }
 
 type radiusProfileResourceModel struct {
-	ID                    types.String         `tfsdk:"id"`
-	Site                  types.String         `tfsdk:"site"`
-	Name                  types.String         `tfsdk:"name"`
-	AccountingEnabled     types.Bool           `tfsdk:"accounting_enabled"`
-	InterimUpdateEnabled  types.Bool           `tfsdk:"interim_update_enabled"`
-	InterimUpdateInterval timetypes.GoDuration `tfsdk:"interim_update_interval"`
-	UseUSGAcctServer      types.Bool           `tfsdk:"use_usg_acct_server"`
-	UseUSGAuthServer      types.Bool           `tfsdk:"use_usg_auth_server"`
-	VlanEnabled           types.Bool           `tfsdk:"vlan_enabled"`
-	VlanWlanMode          types.String         `tfsdk:"vlan_wlan_mode"`
-	AuthServer            []radiusServerModel  `tfsdk:"auth_server"`
-	AcctServer            []radiusServerModel  `tfsdk:"acct_server"`
-	Timeouts              timeouts.Value       `tfsdk:"timeouts"`
+	ID                types.String        `tfsdk:"id"`
+	Site              types.String        `tfsdk:"site"`
+	Name              types.String        `tfsdk:"name"`
+	AccountingEnabled types.Bool          `tfsdk:"accounting_enabled"`
+	InterimUpdate     types.Object        `tfsdk:"interim_update"`
+	UseUSGAcctServer  types.Bool          `tfsdk:"use_usg_acct_server"`
+	UseUSGAuthServer  types.Bool          `tfsdk:"use_usg_auth_server"`
+	Vlan              types.Object        `tfsdk:"vlan"`
+	AuthServer        []radiusServerModel `tfsdk:"auth_server"`
+	AcctServer        []radiusServerModel `tfsdk:"acct_server"`
+	Timeouts          timeouts.Value      `tfsdk:"timeouts"`
+}
+
+// radiusProfileInterimUpdateModel is the `interim_update` nested object
+// (formerly the flat interim_update_enabled / interim_update_interval).
+type radiusProfileInterimUpdateModel struct {
+	Enabled  types.Bool           `tfsdk:"enabled"`
+	Interval timetypes.GoDuration `tfsdk:"interval"`
+}
+
+func radiusProfileInterimUpdateAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":  types.BoolType,
+		"interval": timetypes.GoDurationType{},
+	}
+}
+
+// radiusProfileVlanModel is the `vlan` nested object (formerly the flat
+// vlan_enabled / vlan_wlan_mode).
+type radiusProfileVlanModel struct {
+	Enabled  types.Bool   `tfsdk:"enabled"`
+	WlanMode types.String `tfsdk:"wlan_mode"`
+}
+
+func radiusProfileVlanAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled":   types.BoolType,
+		"wlan_mode": types.StringType,
+	}
+}
+
+// Object-level defaults reproduce the values the flat attributes used to send
+// when the practitioner left a whole group out of configuration, so the
+// request body on create is unchanged by the nesting.
+
+func radiusProfileInterimUpdateDefault() types.Object {
+	return types.ObjectValueMust(radiusProfileInterimUpdateAttrTypes(), map[string]attr.Value{
+		"enabled":  types.BoolValue(false),
+		"interval": timetypes.NewGoDurationValue(time.Hour),
+	})
+}
+
+func radiusProfileVlanDefault() types.Object {
+	return types.ObjectValueMust(radiusProfileVlanAttrTypes(), map[string]attr.Value{
+		"enabled":   types.BoolValue(false),
+		"wlan_mode": types.StringValue(""),
+	})
 }
 
 // radiusProfileIdentityModel describes the resource identity data model.
@@ -127,7 +173,8 @@ func (r *radiusProfileResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		// v1: interim_update_interval changed from Int64 (seconds) to GoDuration.
-		Version:             1,
+		// v2: interim_update_* and vlan_* nested into `interim_update` and `vlan`.
+		Version:             2,
 		MarkdownDescription: "Manages RADIUS profiles.",
 
 		Attributes: map[string]schema.Attribute{
@@ -157,21 +204,29 @@ func (r *radiusProfileResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
-			"interim_update_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to use interim_update.",
+			"interim_update": schema.SingleNestedAttribute{
+				MarkdownDescription: "RADIUS interim accounting update settings.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"interim_update_interval": schema.StringAttribute{
-				MarkdownDescription: "Specifies the RADIUS interim update interval, as a Go " +
-					"duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s`.",
-				CustomType: timetypes.GoDurationType{},
-				Optional:   true,
-				Computed:   true,
-				Default:    stringdefault.StaticString("1h0m0s"),
-				Validators: []validator.String{
-					validators.GoDurationMultipleOf(time.Second),
+				Default:             objectdefault.StaticValue(radiusProfileInterimUpdateDefault()),
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether to use interim_update.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"interval": schema.StringAttribute{
+						MarkdownDescription: "Specifies the RADIUS interim update interval, as a Go " +
+							"duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s`.",
+						CustomType: timetypes.GoDurationType{},
+						Optional:   true,
+						Computed:   true,
+						Default:    stringdefault.StaticString("1h0m0s"),
+						Validators: []validator.String{
+							validators.GoDurationMultipleOf(time.Second),
+						},
+					},
 				},
 			},
 			"use_usg_acct_server": schema.BoolAttribute{
@@ -186,19 +241,27 @@ func (r *radiusProfileResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
-			"vlan_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to use vlan on wired connections.",
+			"vlan": schema.SingleNestedAttribute{
+				MarkdownDescription: "Dynamic VLAN assignment settings.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"vlan_wlan_mode": schema.StringAttribute{
-				MarkdownDescription: "Specifies whether to use vlan on wireless connections. Must be one of `disabled`, `optional`, or `required`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString(""),
-				Validators: []validator.String{
-					stringvalidator.OneOf("disabled", "optional", "required"),
+				Default:             objectdefault.StaticValue(radiusProfileVlanDefault()),
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Specifies whether to use vlan on wired connections.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"wlan_mode": schema.StringAttribute{
+						MarkdownDescription: "Specifies whether to use vlan on wireless connections. Must be one of `disabled`, `optional`, or `required`.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString(""),
+						Validators: []validator.String{
+							stringvalidator.OneOf("disabled", "optional", "required"),
+						},
+					},
 				},
 			},
 			"timeouts": timeouts.Attributes(
@@ -273,8 +336,13 @@ func (r *radiusProfileResource) Schema(
 	}
 }
 
-// UpgradeState migrates v0 state (interim_update_interval stored as integer
-// seconds) to v1 (a GoDuration string).
+// UpgradeState migrates prior-version state to the current schema:
+//
+//	v0 -> current: interim_update_interval changed from integer seconds to a
+//	    GoDuration string.
+//	v1 -> current: the flat interim_update_* and vlan_* attributes moved into
+//	    the nested `interim_update` and `vlan` objects (see
+//	    nestRadiusProfileState).
 func (r *radiusProfileResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
@@ -282,8 +350,8 @@ func (r *radiusProfileResource) UpgradeState(
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
 
-	return map[int64]resource.StateUpgrader{
-		0: {
+	upgrader := func(rewrite func(state map[string]any)) resource.StateUpgrader {
+		return resource.StateUpgrader{
 			StateUpgrader: func(
 				ctx context.Context,
 				req resource.UpgradeStateRequest,
@@ -292,11 +360,12 @@ func (r *radiusProfileResource) UpgradeState(
 				if req.RawState == nil {
 					return
 				}
-				dv, err := util.UpgradeDurationRawState(
+				dv, err := util.UpgradeRawState(
 					schemaType,
 					req.RawState.JSON,
 					func(state map[string]any) {
-						util.SetDurationField(state, "interim_update_interval", time.Second)
+						rewrite(state)
+						nestRadiusProfileState(state)
 					},
 				)
 				if err != nil {
@@ -305,8 +374,28 @@ func (r *radiusProfileResource) UpgradeState(
 				}
 				resp.DynamicValue = dv
 			},
-		},
+		}
 	}
+
+	return map[int64]resource.StateUpgrader{
+		0: upgrader(func(state map[string]any) {
+			util.SetDurationField(state, "interim_update_interval", time.Second)
+		}),
+		1: upgrader(func(map[string]any) {}),
+	}
+}
+
+// nestRadiusProfileState rewrites decoded prior state so the flat
+// interim_update_* and vlan_* keys move under their nested objects.
+func nestRadiusProfileState(state map[string]any) {
+	util.NestFields(state, "interim_update", map[string]string{
+		"interim_update_enabled":  "enabled",
+		"interim_update_interval": "interval",
+	})
+	util.NestFields(state, "vlan", map[string]string{
+		"vlan_enabled":   "enabled",
+		"vlan_wlan_mode": "wlan_mode",
+	})
 }
 
 func (r *radiusProfileResource) Configure(
@@ -353,7 +442,11 @@ func (r *radiusProfileResource) Create(
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
-	radiusProfile := r.modelToRadiusProfile(ctx, &data)
+	radiusProfile, d := r.modelToRadiusProfile(ctx, &data)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -369,7 +462,7 @@ func (r *radiusProfileResource) Create(
 		return
 	}
 
-	r.radiusProfileToModel(ctx, createdRadiusProfile, &data, site)
+	resp.Diagnostics.Append(r.radiusProfileToModel(ctx, createdRadiusProfile, &data, site)...)
 
 	identity := radiusProfileIdentityModel{
 		ID:   data.ID,
@@ -441,7 +534,7 @@ func (r *radiusProfileResource) Read(
 		return
 	}
 
-	r.radiusProfileToModel(ctx, radiusProfile, &data, site)
+	resp.Diagnostics.Append(r.radiusProfileToModel(ctx, radiusProfile, &data, site)...)
 
 	// Terraform rejects any modification of a stored identity (even filling a
 	// previously-null attribute), so pass a stored identity through untouched
@@ -490,7 +583,11 @@ func (r *radiusProfileResource) Update(
 		site = r.client.Site
 	}
 
-	radiusProfile := r.modelToRadiusProfile(ctx, &state)
+	radiusProfile, d := r.modelToRadiusProfile(ctx, &state)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	radiusProfile.ID = state.ID.ValueString()
 
 	updatedRadiusProfile, err := r.client.UpdateRADIUSProfile(ctx, site, radiusProfile)
@@ -502,7 +599,7 @@ func (r *radiusProfileResource) Update(
 		return
 	}
 
-	r.radiusProfileToModel(ctx, updatedRadiusProfile, &state, site)
+	resp.Diagnostics.Append(r.radiusProfileToModel(ctx, updatedRadiusProfile, &state, site)...)
 
 	state.Timeouts = plan.Timeouts
 
@@ -611,7 +708,7 @@ func (r *radiusProfileResource) ImportState(
 }
 
 func (r *radiusProfileResource) applyPlanToState(
-	_ context.Context,
+	ctx context.Context,
 	plan *radiusProfileResourceModel,
 	state *radiusProfileResourceModel,
 ) {
@@ -621,24 +718,16 @@ func (r *radiusProfileResource) applyPlanToState(
 	if !plan.AccountingEnabled.IsNull() && !plan.AccountingEnabled.IsUnknown() {
 		state.AccountingEnabled = plan.AccountingEnabled
 	}
-	if !plan.InterimUpdateEnabled.IsNull() && !plan.InterimUpdateEnabled.IsUnknown() {
-		state.InterimUpdateEnabled = plan.InterimUpdateEnabled
-	}
-	if !plan.InterimUpdateInterval.IsNull() && !plan.InterimUpdateInterval.IsUnknown() {
-		state.InterimUpdateInterval = plan.InterimUpdateInterval
-	}
+	// Nested groups: every leaf the practitioner set in the plan is re-asserted
+	// on top of state, exactly as the flat attributes were.
+	state.InterimUpdate = util.OverlayKnownObject(ctx, plan.InterimUpdate, state.InterimUpdate)
 	if !plan.UseUSGAcctServer.IsNull() && !plan.UseUSGAcctServer.IsUnknown() {
 		state.UseUSGAcctServer = plan.UseUSGAcctServer
 	}
 	if !plan.UseUSGAuthServer.IsNull() && !plan.UseUSGAuthServer.IsUnknown() {
 		state.UseUSGAuthServer = plan.UseUSGAuthServer
 	}
-	if !plan.VlanEnabled.IsNull() && !plan.VlanEnabled.IsUnknown() {
-		state.VlanEnabled = plan.VlanEnabled
-	}
-	if !plan.VlanWlanMode.IsNull() && !plan.VlanWlanMode.IsUnknown() {
-		state.VlanWlanMode = plan.VlanWlanMode
-	}
+	state.Vlan = util.OverlayKnownObject(ctx, plan.Vlan, state.Vlan)
 	if plan.AuthServer != nil {
 		state.AuthServer = plan.AuthServer
 	}
@@ -648,18 +737,31 @@ func (r *radiusProfileResource) applyPlanToState(
 }
 
 func (r *radiusProfileResource) modelToRadiusProfile(
-	_ context.Context,
+	ctx context.Context,
 	model *radiusProfileResourceModel,
-) *unifi.RADIUSProfile {
+) (*unifi.RADIUSProfile, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
 	radiusProfile := &unifi.RADIUSProfile{
-		Name:                  model.Name.ValueString(),
-		AccountingEnabled:     model.AccountingEnabled.ValueBool(),
-		InterimUpdateEnabled:  model.InterimUpdateEnabled.ValueBool(),
-		InterimUpdateInterval: util.DurationUnitsPtr(model.InterimUpdateInterval, time.Second),
-		UseUsgAcctServer:      model.UseUSGAcctServer.ValueBool(),
-		UseUsgAuthServer:      model.UseUSGAuthServer.ValueBool(),
-		VLANEnabled:           model.VlanEnabled.ValueBool(),
-		VLANWLANMode:          model.VlanWlanMode.ValueString(),
+		Name:              model.Name.ValueString(),
+		AccountingEnabled: model.AccountingEnabled.ValueBool(),
+		UseUsgAcctServer:  model.UseUSGAcctServer.ValueBool(),
+		UseUsgAuthServer:  model.UseUSGAuthServer.ValueBool(),
+	}
+
+	// Nested groups. A null/unknown group contributes nothing, exactly as its
+	// flat attributes did when unset.
+	if iu, ok, d := util.ObjectAs[radiusProfileInterimUpdateModel](ctx, model.InterimUpdate); ok {
+		radiusProfile.InterimUpdateEnabled = iu.Enabled.ValueBool()
+		radiusProfile.InterimUpdateInterval = util.DurationUnitsPtr(iu.Interval, time.Second)
+	} else {
+		diags.Append(d...)
+	}
+	if vlan, ok, d := util.ObjectAs[radiusProfileVlanModel](ctx, model.Vlan); ok {
+		radiusProfile.VLANEnabled = vlan.Enabled.ValueBool()
+		radiusProfile.VLANWLANMode = vlan.WlanMode.ValueString()
+	} else {
+		diags.Append(d...)
 	}
 
 	for _, authServer := range model.AuthServer {
@@ -684,28 +786,41 @@ func (r *radiusProfileResource) modelToRadiusProfile(
 		)
 	}
 
-	return radiusProfile
+	return radiusProfile, diags
 }
 
 func (r *radiusProfileResource) radiusProfileToModel(
-	_ context.Context,
+	ctx context.Context,
 	radiusProfile *unifi.RADIUSProfile,
 	model *radiusProfileResourceModel,
 	site string,
-) {
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
 	model.ID = types.StringValue(radiusProfile.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringValue(radiusProfile.Name)
 	model.AccountingEnabled = types.BoolValue(radiusProfile.AccountingEnabled)
-	model.InterimUpdateEnabled = types.BoolValue(radiusProfile.InterimUpdateEnabled)
-	model.InterimUpdateInterval = util.DurationPtrValue(
-		radiusProfile.InterimUpdateInterval,
-		time.Second,
-	)
 	model.UseUSGAcctServer = types.BoolValue(radiusProfile.UseUsgAcctServer)
 	model.UseUSGAuthServer = types.BoolValue(radiusProfile.UseUsgAuthServer)
-	model.VlanEnabled = types.BoolValue(radiusProfile.VLANEnabled)
-	model.VlanWlanMode = types.StringValue(radiusProfile.VLANWLANMode)
+
+	interimUpdate, d := types.ObjectValueFrom(
+		ctx,
+		radiusProfileInterimUpdateAttrTypes(),
+		radiusProfileInterimUpdateModel{
+			Enabled:  types.BoolValue(radiusProfile.InterimUpdateEnabled),
+			Interval: util.DurationPtrValue(radiusProfile.InterimUpdateInterval, time.Second),
+		},
+	)
+	diags.Append(d...)
+	model.InterimUpdate = interimUpdate
+
+	vlan, d := types.ObjectValueFrom(ctx, radiusProfileVlanAttrTypes(), radiusProfileVlanModel{
+		Enabled:  types.BoolValue(radiusProfile.VLANEnabled),
+		WlanMode: types.StringValue(radiusProfile.VLANWLANMode),
+	})
+	diags.Append(d...)
+	model.Vlan = vlan
 
 	model.AuthServer = []radiusServerModel{}
 	for _, authServer := range radiusProfile.AuthServers {
@@ -724,6 +839,8 @@ func (r *radiusProfileResource) radiusProfileToModel(
 			Secret: types.StringValue(acctServer.Secret),
 		})
 	}
+
+	return diags
 }
 
 // ListResourceConfigSchema implements [list.ListResource].
@@ -833,7 +950,7 @@ func (r *radiusProfileResource) List(
 
 			// Convert to model.
 			var model radiusProfileResourceModel
-			r.radiusProfileToModel(ctx, &profile, &model, site)
+			result.Diagnostics.Append(r.radiusProfileToModel(ctx, &profile, &model, site)...)
 			model.Timeouts = timeoutsNullValue()
 			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 

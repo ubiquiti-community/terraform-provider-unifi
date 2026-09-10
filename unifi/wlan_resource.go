@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
@@ -70,11 +71,142 @@ type wlanFrameworkResource struct {
 
 // wlanScheduleModel represents a schedule block for WLAN.
 type wlanScheduleModel struct {
-	DayOfWeek   types.String         `tfsdk:"day_of_week"`
-	StartHour   types.Int64          `tfsdk:"start_hour"`
-	StartMinute types.Int64          `tfsdk:"start_minute"`
-	Duration    timetypes.GoDuration `tfsdk:"duration"`
-	Name        types.String         `tfsdk:"name"`
+	DayOfWeek types.String         `tfsdk:"day_of_week"`
+	Start     types.Object         `tfsdk:"start"`
+	Duration  timetypes.GoDuration `tfsdk:"duration"`
+	Name      types.String         `tfsdk:"name"`
+}
+
+func wlanScheduleAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"day_of_week": types.StringType,
+		"start":       types.ObjectType{AttrTypes: wlanScheduleStartAttrTypes()},
+		"duration":    timetypes.GoDurationType{},
+		"name":        types.StringType,
+	}
+}
+
+// wlanScheduleStartModel is the `schedule[].start` nested object.
+type wlanScheduleStartModel struct {
+	Hour   types.Int64 `tfsdk:"hour"`
+	Minute types.Int64 `tfsdk:"minute"`
+}
+
+func wlanScheduleStartAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"hour":   types.Int64Type,
+		"minute": types.Int64Type,
+	}
+}
+
+// wlanWPAModel is the `wpa` nested object.
+type wlanWPAModel struct {
+	Mode types.String `tfsdk:"mode"`
+	Enc  types.String `tfsdk:"enc"`
+}
+
+func wlanWPAAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"mode": types.StringType,
+		"enc":  types.StringType,
+	}
+}
+
+// wlanWPA3Model is the `wpa3` nested object.
+type wlanWPA3Model struct {
+	Support     types.Bool `tfsdk:"support"`
+	Transition  types.Bool `tfsdk:"transition"`
+	FastRoaming types.Bool `tfsdk:"fast_roaming"`
+	Enhanced192 types.Bool `tfsdk:"enhanced_192"`
+}
+
+func wlanWPA3AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"support":      types.BoolType,
+		"transition":   types.BoolType,
+		"fast_roaming": types.BoolType,
+		"enhanced_192": types.BoolType,
+	}
+}
+
+// wlanRadiusModel is the `radius` nested object.
+type wlanRadiusModel struct {
+	ProfileID      types.String `tfsdk:"profile_id"`
+	MacAuthEnabled types.Bool   `tfsdk:"mac_auth_enabled"`
+}
+
+func wlanRadiusAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"profile_id":       types.StringType,
+		"mac_auth_enabled": types.BoolType,
+	}
+}
+
+// wlanRoamingAssistantModel is a `roaming_assistant_*` nested object.
+type wlanRoamingAssistantModel struct {
+	Enabled types.Bool  `tfsdk:"enabled"`
+	Rssi    types.Int64 `tfsdk:"rssi"`
+}
+
+func wlanRoamingAssistantAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enabled": types.BoolType,
+		"rssi":    types.Int64Type,
+	}
+}
+
+// wlanApGroupModel is the `ap_group` nested object.
+type wlanApGroupModel struct {
+	IDs  types.Set    `tfsdk:"ids"`
+	Mode types.String `tfsdk:"mode"`
+}
+
+func wlanApGroupAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"ids":  types.SetType{ElemType: types.StringType},
+		"mode": types.StringType,
+	}
+}
+
+// Object-level defaults reproduce the values the flat attributes used to send
+// when the practitioner leaves a whole group out of configuration, so the
+// request body on create is unchanged by the nesting.
+
+func wlanWPADefault() types.Object {
+	return types.ObjectValueMust(wlanWPAAttrTypes(), map[string]attr.Value{
+		"mode": types.StringValue("wpa2"),
+		"enc":  types.StringValue("ccmp"),
+	})
+}
+
+func wlanWPA3Default() types.Object {
+	return types.ObjectValueMust(wlanWPA3AttrTypes(), map[string]attr.Value{
+		"support":      types.BoolValue(false),
+		"transition":   types.BoolValue(false),
+		"fast_roaming": types.BoolValue(false),
+		"enhanced_192": types.BoolValue(false),
+	})
+}
+
+// wlanRadiusPlanShape is what the radius group plans on create when the
+// configuration omits it: profile_id resolves from the controller (it may
+// assign a default profile) and mac_auth_enabled defaults to false. The group
+// has no schema Default on purpose: a Default carrying the computed profile_id
+// can never equal the prior state, so it would trip the framework's plan-change
+// gate on every plan and re-plan bandsteering_mode as unknown forever. See
+// planRadiusDefaults.
+func wlanRadiusPlanShape() types.Object {
+	return types.ObjectValueMust(wlanRadiusAttrTypes(), map[string]attr.Value{
+		"profile_id":       types.StringUnknown(),
+		"mac_auth_enabled": types.BoolValue(false),
+	})
+}
+
+func wlanApGroupDefault() types.Object {
+	return types.ObjectValueMust(wlanApGroupAttrTypes(), map[string]attr.Value{
+		"ids":  types.SetNull(types.StringType),
+		"mode": types.StringValue("all"),
+	})
 }
 
 // wlanMacFilterModel represents the MAC filter configuration for WLAN.
@@ -106,16 +238,14 @@ type wlanFrameworkResourceModel struct {
 	NetworkID                   types.String `tfsdk:"network_id"`
 	UserGroupID                 types.String `tfsdk:"user_group_id"`
 	Security                    types.String `tfsdk:"security"`
-	WPA3Support                 types.Bool   `tfsdk:"wpa3_support"`
-	WPA3Transition              types.Bool   `tfsdk:"wpa3_transition"`
+	WPA3                        types.Object `tfsdk:"wpa3"`
 	PMFMode                     types.String `tfsdk:"pmf_mode"`
 	Passphrase                  types.String `tfsdk:"passphrase"`
 	PassphraseWO                types.String `tfsdk:"passphrase_wo"`
 	HideSSID                    types.Bool   `tfsdk:"hide_ssid"`
 	IsGuest                     types.Bool   `tfsdk:"is_guest"`
 	Enabled                     types.Bool   `tfsdk:"enabled"`
-	ApGroupIDs                  types.Set    `tfsdk:"ap_group_ids"`
-	ApGroupMode                 types.String `tfsdk:"ap_group_mode"`
+	ApGroup                     types.Object `tfsdk:"ap_group"`
 	VLANEnabled                 types.Bool   `tfsdk:"vlan_enabled"`
 	VLAN                        types.Int64  `tfsdk:"vlan"`
 	WLANBand                    types.String `tfsdk:"wlan_band"`
@@ -125,7 +255,9 @@ type wlanFrameworkResourceModel struct {
 	MacFilter                   types.Object `tfsdk:"mac_filter"`
 	PrivatePresharedKeysEnabled types.Bool   `tfsdk:"private_preshared_keys_enabled"`
 	PrivatePresharedKeys        types.List   `tfsdk:"private_preshared_keys"`
-	RadiusProfileID             types.String `tfsdk:"radius_profile_id"`
+	Radius                      types.Object `tfsdk:"radius"`
+	RoamingAssistantNa          types.Object `tfsdk:"roaming_assistant_na"`
+	RoamingAssistant6E          types.Object `tfsdk:"roaming_assistant_6e"`
 	NasIDentifierType           types.String `tfsdk:"nas_identifier_type"`
 	Schedule                    types.List   `tfsdk:"schedule"`
 	No2GhzOui                   types.Bool   `tfsdk:"no2ghz_oui"`
@@ -139,8 +271,7 @@ type wlanFrameworkResourceModel struct {
 	MinrateSettingPreference    types.String `tfsdk:"minrate_setting_preference"`
 
 	// Security / encryption
-	WPAMode types.String `tfsdk:"wpa_mode"`
-	WPAEnc  types.String `tfsdk:"wpa_enc"`
+	WPA types.Object `tfsdk:"wpa"`
 
 	// DTIM
 	DTIMMode types.String `tfsdk:"dtim_mode"`
@@ -149,15 +280,12 @@ type wlanFrameworkResourceModel struct {
 	DTIM6E   types.Int64  `tfsdk:"dtim_6e"`
 
 	// Misc toggles
-	GroupRekey           types.Int64 `tfsdk:"group_rekey"`
-	IappEnabled          types.Bool  `tfsdk:"iapp_enabled"`
-	WPA3FastRoaming      types.Bool  `tfsdk:"wpa3_fast_roaming"`
-	WPA3Enhanced192      types.Bool  `tfsdk:"wpa3_enhanced_192"`
-	RADIUSMacAuthEnabled types.Bool  `tfsdk:"radius_mac_auth_enabled"`
-	EnhancedIot          types.Bool  `tfsdk:"enhanced_iot"`
-	Hotspot2ConfEnabled  types.Bool  `tfsdk:"hotspot2conf_enabled"`
-	MloEnabled           types.Bool  `tfsdk:"mlo_enabled"`
-	BroadcastFilterList  types.Set   `tfsdk:"bc_filter_list"`
+	GroupRekey          types.Int64 `tfsdk:"group_rekey"`
+	IappEnabled         types.Bool  `tfsdk:"iapp_enabled"`
+	EnhancedIot         types.Bool  `tfsdk:"enhanced_iot"`
+	Hotspot2ConfEnabled types.Bool  `tfsdk:"hotspot2conf_enabled"`
+	MloEnabled          types.Bool  `tfsdk:"mlo_enabled"`
+	BroadcastFilterList types.Set   `tfsdk:"bc_filter_list"`
 
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
@@ -213,7 +341,10 @@ func (r *wlanFrameworkResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		// v1: schedule[].duration changed from Int64 (minutes) to a GoDuration string.
-		Version:             1,
+		// v2: the flat wpa_*, wpa3_*, radius_*, ap_group_* and schedule[].start_*
+		//     attributes moved into nested objects (wpa, wpa3, radius, ap_group,
+		//     schedule[].start). See UpgradeState.
+		Version:             2,
 		MarkdownDescription: "Manages a WiFi network / SSID in UniFi Controller",
 
 		Attributes: map[string]schema.Attribute{
@@ -252,17 +383,37 @@ func (r *wlanFrameworkResource) Schema(
 					stringvalidator.OneOf("wpapsk", "wpaeap", "open"),
 				},
 			},
-			"wpa3_support": schema.BoolAttribute{
-				MarkdownDescription: "Enable WPA 3 support (security must be `wpapsk` and PMF must be turned on).",
+			"wpa3": schema.SingleNestedAttribute{
+				MarkdownDescription: "WPA3 settings.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"wpa3_transition": schema.BoolAttribute{
-				MarkdownDescription: "Enable WPA 3 and WPA 2 support (security must be `wpapsk` and `wpa3_support` must be true).",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				Default:             objectdefault.StaticValue(wlanWPA3Default()),
+				Attributes: map[string]schema.Attribute{
+					"support": schema.BoolAttribute{
+						MarkdownDescription: "Enable WPA 3 support (security must be `wpapsk` and PMF must be turned on).",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"transition": schema.BoolAttribute{
+						MarkdownDescription: "Enable WPA 3 and WPA 2 support (security must be `wpapsk` and `wpa3.support` must be true).",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"fast_roaming": schema.BoolAttribute{
+						MarkdownDescription: "Enable WPA3 fast roaming (802.11r).",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+					"enhanced_192": schema.BoolAttribute{
+						MarkdownDescription: "Enable WPA3 Enterprise 192-bit mode.",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+				},
 			},
 			"pmf_mode": schema.StringAttribute{
 				MarkdownDescription: "Enable Protected Management Frames. This cannot be disabled if using WPA 3.",
@@ -308,18 +459,26 @@ func (r *wlanFrameworkResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
 			},
-			"ap_group_ids": schema.SetAttribute{
-				MarkdownDescription: "List of AP group IDs to apply this WLAN to.",
-				Optional:            true,
-				ElementType:         types.StringType,
-			},
-			"ap_group_mode": schema.StringAttribute{
-				MarkdownDescription: "Access point group mode.",
+			"ap_group": schema.SingleNestedAttribute{
+				MarkdownDescription: "Access point group assignment.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("all"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("all", "groups", "devices"),
+				Default:             objectdefault.StaticValue(wlanApGroupDefault()),
+				Attributes: map[string]schema.Attribute{
+					"ids": schema.SetAttribute{
+						MarkdownDescription: "List of AP group IDs to apply this WLAN to.",
+						Optional:            true,
+						ElementType:         types.StringType,
+					},
+					"mode": schema.StringAttribute{
+						MarkdownDescription: "Access point group mode.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("all"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("all", "groups", "devices"),
+						},
+					},
 				},
 			},
 			"vlan_enabled": schema.BoolAttribute{
@@ -357,15 +516,75 @@ func (r *wlanFrameworkResource) Schema(
 					setvalidator.ValueStringsAre(stringvalidator.OneOf("2g", "5g", "6g")),
 				},
 			},
-			"bandsteering_mode": schema.StringAttribute{
-				MarkdownDescription: "Per-SSID band steering mode. Steers dual-band capable " +
-					"clients toward the less congested / higher-throughput band. Valid values " +
-					"are `off`, `equal` and `prefer_5g`. Requires a controller that exposes " +
-					"per-SSID band steering on the WLAN (Network 9/10.x; on WiFi 6/7 access " +
-					"points this replaces the legacy device-level control). Left unset, the " +
-					"controller default applies.",
+			"roaming_assistant_na": schema.SingleNestedAttribute{
+				MarkdownDescription: "5 GHz roaming assistant. Disconnects clients whose " +
+					"signal drops below `rssi` so they re-associate with a closer AP. " +
+					"Replaces the device-level `radio_table.assisted_roaming_*` attributes, " +
+					"which UniFi Network 10.x moved to the WLAN.",
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable the 5 GHz roaming assistant.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"rssi": schema.Int64Attribute{
+						MarkdownDescription: "Signal strength threshold in dBm, `-80` to `-60`. " +
+							"The controller supplies a value when unset.",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.Int64{
+							int64validator.Between(-80, -60),
+						},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"roaming_assistant_6e": schema.SingleNestedAttribute{
+				MarkdownDescription: "6 GHz roaming assistant. Disconnects clients whose " +
+					"signal drops below `rssi` so they re-associate with a closer AP.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable the 6 GHz roaming assistant.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"rssi": schema.Int64Attribute{
+						MarkdownDescription: "Signal strength threshold in dBm, `-90` to `-70`. " +
+							"The controller supplies a value when unset.",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.Int64{
+							int64validator.Between(-90, -70),
+						},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
+			"bandsteering_mode": schema.StringAttribute{
+				MarkdownDescription: "**Moved to `unifi_device.bandsteering_mode`.** Per-SSID " +
+					"band steering mode (`off`, `equal`, `prefer_5g`), which steers dual-band " +
+					"capable clients toward the less congested / higher-throughput band. " +
+					"UniFi Network 10.x moved band steering off the WLAN back to the access " +
+					"point, so this attribute no longer reaches the controller: set " +
+					"`bandsteering_mode` on the `unifi_device` resource for the AP instead. " +
+					"Still accepted and preserved in state for one release.",
+				DeprecationMessage: "Deprecated: UniFi Network 10.x moved band steering off the WLAN to the access point, where the provider already exposes it as `unifi_device.bandsteering_mode`. This attribute no longer reaches the controller and will be removed in a future release.",
+				Optional:           true,
+				Computed:           true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("off", "equal", "prefer_5g"),
 				},
@@ -438,13 +657,28 @@ func (r *wlanFrameworkResource) Schema(
 					},
 				},
 			},
-			"radius_profile_id": schema.StringAttribute{
-				MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`. " +
-					"The controller may assign a default profile, so this is computed when unset.",
-				Optional: true,
-				Computed: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+			"radius": schema.SingleNestedAttribute{
+				MarkdownDescription: "RADIUS settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"profile_id": schema.StringAttribute{
+						MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`. " +
+							"The controller may assign a default profile, so this is computed when unset.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"mac_auth_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable RADIUS MAC authentication. Defaults to `false` when not set.",
+						Optional:            true,
+						Computed:            true,
+					},
 				},
 			},
 			"nas_identifier_type": schema.StringAttribute{
@@ -541,22 +775,30 @@ func (r *wlanFrameworkResource) Schema(
 					stringvalidator.OneOf("auto", "manual"),
 				},
 			},
-			"wpa_mode": schema.StringAttribute{
-				MarkdownDescription: "WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`.",
+			"wpa": schema.SingleNestedAttribute{
+				MarkdownDescription: "WPA mode and encryption settings.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("wpa2"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("auto", "wpa1", "wpa2"),
-				},
-			},
-			"wpa_enc": schema.StringAttribute{
-				MarkdownDescription: "WPA encryption. Can be one of `auto`, `ccmp`, `gcmp`, `ccmp-256`, or `gcmp-256`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("ccmp"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("auto", "ccmp", "gcmp", "ccmp-256", "gcmp-256"),
+				Default:             objectdefault.StaticValue(wlanWPADefault()),
+				Attributes: map[string]schema.Attribute{
+					"mode": schema.StringAttribute{
+						MarkdownDescription: "WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("wpa2"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("auto", "wpa1", "wpa2"),
+						},
+					},
+					"enc": schema.StringAttribute{
+						MarkdownDescription: "WPA encryption. Can be one of `auto`, `ccmp`, `gcmp`, `ccmp-256`, or `gcmp-256`.",
+						Optional:            true,
+						Computed:            true,
+						Default:             stringdefault.StaticString("ccmp"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("auto", "ccmp", "gcmp", "ccmp-256", "gcmp-256"),
+						},
+					},
 				},
 			},
 			"dtim_mode": schema.StringAttribute{
@@ -615,28 +857,10 @@ func (r *wlanFrameworkResource) Schema(
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"wpa3_fast_roaming": schema.BoolAttribute{
-				MarkdownDescription: "Enable WPA3 fast roaming (802.11r).",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"wpa3_enhanced_192": schema.BoolAttribute{
-				MarkdownDescription: "Enable WPA3 Enterprise 192-bit mode.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
-			"radius_mac_auth_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable RADIUS MAC authentication.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-			},
 			"enhanced_iot": schema.BoolAttribute{
 				MarkdownDescription: "Enable enhanced IoT connectivity. When `true`, the " +
-					"controller forces `iapp_enabled = true`, `wpa3_support = false`, " +
-					"`wpa3_transition = false`, `pmf_mode = \"disabled\"` and `dtim_ng = 1`; " +
+					"controller forces `iapp_enabled = true`, `wpa3.support = false`, " +
+					"`wpa3.transition = false`, `pmf_mode = \"disabled\"` and `dtim_ng = 1`; " +
 					"the provider pins those fields to match, so any conflicting values you " +
 					"set for them are ignored (this disables WPA3 on the SSID).",
 				Optional: true,
@@ -696,20 +920,26 @@ func (r *wlanFrameworkResource) Schema(
 								),
 							},
 						},
-						"start_hour": schema.Int64Attribute{
-							MarkdownDescription: "Start hour for the block (0-23).",
+						"start": schema.SingleNestedAttribute{
+							MarkdownDescription: "Start time of the block.",
 							Required:            true,
-							Validators: []validator.Int64{
-								int64validator.Between(0, 23),
-							},
-						},
-						"start_minute": schema.Int64Attribute{
-							MarkdownDescription: "Start minute for the block (0-59).",
-							Optional:            true,
-							Computed:            true,
-							Default:             int64default.StaticInt64(0),
-							Validators: []validator.Int64{
-								int64validator.Between(0, 59),
+							Attributes: map[string]schema.Attribute{
+								"hour": schema.Int64Attribute{
+									MarkdownDescription: "Start hour for the block (0-23).",
+									Required:            true,
+									Validators: []validator.Int64{
+										int64validator.Between(0, 23),
+									},
+								},
+								"minute": schema.Int64Attribute{
+									MarkdownDescription: "Start minute for the block (0-59).",
+									Optional:            true,
+									Computed:            true,
+									Default:             int64default.StaticInt64(0),
+									Validators: []validator.Int64{
+										int64validator.Between(0, 59),
+									},
+								},
 							},
 						},
 						"duration": schema.StringAttribute{
@@ -735,8 +965,13 @@ func (r *wlanFrameworkResource) Schema(
 	}
 }
 
-// UpgradeState migrates v0 state (schedule[].duration stored as integer minutes)
-// to v1 (GoDuration strings).
+// UpgradeState migrates prior WLAN state to the current schema version.
+//
+//	v0 -> current: schedule[].duration changed from integer minutes to a
+//	    GoDuration string.
+//	v1 -> current: the flat wpa_*, wpa3_*, radius_*, ap_group_* and
+//	    schedule[].start_* attributes moved into nested objects (see
+//	    nestWLANState).
 func (r *wlanFrameworkResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
@@ -744,8 +979,8 @@ func (r *wlanFrameworkResource) UpgradeState(
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
 
-	return map[int64]resource.StateUpgrader{
-		0: {
+	upgrader := func(rewrite func(state map[string]any)) resource.StateUpgrader {
+		return resource.StateUpgrader{
 			StateUpgrader: func(
 				ctx context.Context,
 				req resource.UpgradeStateRequest,
@@ -754,17 +989,12 @@ func (r *wlanFrameworkResource) UpgradeState(
 				if req.RawState == nil {
 					return
 				}
-				dv, err := util.UpgradeDurationRawState(
+				dv, err := util.UpgradeRawState(
 					schemaType,
 					req.RawState.JSON,
 					func(state map[string]any) {
-						if scheds, ok := state["schedule"].([]any); ok {
-							for _, s := range scheds {
-								if sm, ok := s.(map[string]any); ok {
-									util.SetDurationField(sm, "duration", time.Minute)
-								}
-							}
-						}
+						rewrite(state)
+						nestWLANState(state)
 					},
 				)
 				if err != nil {
@@ -773,8 +1003,47 @@ func (r *wlanFrameworkResource) UpgradeState(
 				}
 				resp.DynamicValue = dv
 			},
-		},
+		}
 	}
+
+	return map[int64]resource.StateUpgrader{
+		0: upgrader(func(state map[string]any) {
+			util.EachObject(state, "schedule", func(sched map[string]any) {
+				util.SetDurationField(sched, "duration", time.Minute)
+			})
+		}),
+		1: upgrader(func(map[string]any) {}),
+	}
+}
+
+// nestWLANState rewrites flat v0-v1 WLAN state into the nested-object layout
+// introduced in schema v2. Keys that are absent are skipped, so it is safe to
+// run on state from any earlier version.
+func nestWLANState(state map[string]any) {
+	util.NestFields(state, "wpa", map[string]string{
+		"wpa_mode": "mode",
+		"wpa_enc":  "enc",
+	})
+	util.NestFields(state, "wpa3", map[string]string{
+		"wpa3_support":      "support",
+		"wpa3_transition":   "transition",
+		"wpa3_fast_roaming": "fast_roaming",
+		"wpa3_enhanced_192": "enhanced_192",
+	})
+	util.NestFields(state, "radius", map[string]string{
+		"radius_profile_id":       "profile_id",
+		"radius_mac_auth_enabled": "mac_auth_enabled",
+	})
+	util.NestFields(state, "ap_group", map[string]string{
+		"ap_group_ids":  "ids",
+		"ap_group_mode": "mode",
+	})
+	util.EachObject(state, "schedule", func(sched map[string]any) {
+		util.NestFields(sched, "start", map[string]string{
+			"start_hour":   "hour",
+			"start_minute": "minute",
+		})
+	})
 }
 
 func (r *wlanFrameworkResource) Configure(
@@ -803,7 +1072,7 @@ func (r *wlanFrameworkResource) Configure(
 
 // ModifyPlan reconciles the fields the controller forces when enhanced IoT is
 // enabled. With `enhanced_iot = true` the controller silently overrides
-// iapp_enabled, wpa3_support, wpa3_transition, pmf_mode and dtim_ng with fixed
+// iapp_enabled, wpa3.support, wpa3.transition, pmf_mode and dtim_ng with fixed
 // values, so a plan that kept the configured/default values would fail the
 // post-apply consistency check (and re-propose them on every plan). Pin those
 // fields to what the controller will return. When enhanced_iot is false (the
@@ -824,9 +1093,57 @@ func (r *wlanFrameworkResource) ModifyPlan(
 		return
 	}
 
-	if applyEnhancedIotOverrides(&plan) {
+	changed := applyEnhancedIotOverrides(&plan)
+
+	radiusChanged, d := planRadiusDefaults(ctx, req, &plan)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if changed || radiusChanged {
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 	}
+}
+
+// planRadiusDefaults reproduces the flat radius_mac_auth_enabled default for
+// the nested radius object without a schema Default (see wlanRadiusPlanShape):
+// mac_auth_enabled defaults to false whenever the configuration does not set
+// it, and when the block is omitted with no prior object to carry (create),
+// the group takes its create-time shape. Returns true when plan was changed.
+func planRadiusDefaults(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	plan *wlanFrameworkResourceModel,
+) (bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	var configMacAuth types.Bool
+	var configRadius types.Object
+	diags.Append(req.Config.GetAttribute(
+		ctx, path.Root("radius").AtName("mac_auth_enabled"), &configMacAuth)...)
+	diags.Append(req.Config.GetAttribute(ctx, path.Root("radius"), &configRadius)...)
+	if diags.HasError() || !configMacAuth.IsNull() || configRadius.IsUnknown() {
+		return false, diags
+	}
+
+	if plan.Radius.IsNull() || plan.Radius.IsUnknown() {
+		plan.Radius = wlanRadiusPlanShape()
+		return true, diags
+	}
+	attrs := plan.Radius.Attributes()
+	if v, ok := attrs["mac_auth_enabled"].(types.Bool); ok && !v.IsNull() && !v.IsUnknown() &&
+		!v.ValueBool() {
+		return false, diags
+	}
+	attrs["mac_auth_enabled"] = types.BoolValue(false)
+	obj, d := types.ObjectValue(wlanRadiusAttrTypes(), attrs)
+	diags.Append(d...)
+	if diags.HasError() {
+		return false, diags
+	}
+	plan.Radius = obj
+	return true, diags
 }
 
 // applyEnhancedIotOverrides pins the fields the controller forces when
@@ -837,11 +1154,27 @@ func applyEnhancedIotOverrides(plan *wlanFrameworkResourceModel) bool {
 		return false
 	}
 	plan.IappEnabled = types.BoolValue(true)
-	plan.WPA3Support = types.BoolValue(false)
-	plan.WPA3Transition = types.BoolValue(false)
+	plan.WPA3 = wlanWPA3Pinned(plan.WPA3)
 	plan.PMFMode = types.StringValue("disabled")
 	plan.DTIMNg = types.Int64Value(1)
 	return true
+}
+
+// wlanWPA3Pinned returns wpa3 with `support` and `transition` forced to false,
+// keeping the remaining leaves as planned. A null or unknown object (which the
+// object default normally rules out) starts from the schema default.
+func wlanWPA3Pinned(wpa3 types.Object) types.Object {
+	base := wpa3
+	if base.IsNull() || base.IsUnknown() {
+		base = wlanWPA3Default()
+	}
+	attrs := make(map[string]attr.Value, len(wlanWPA3AttrTypes()))
+	for name, v := range base.Attributes() {
+		attrs[name] = v
+	}
+	attrs["support"] = types.BoolValue(false)
+	attrs["transition"] = types.BoolValue(false)
+	return types.ObjectValueMust(wlanWPA3AttrTypes(), attrs)
 }
 
 // setDefaultWLANGroupID populates wlan.WLANGroupID when it is empty. go-unifi
@@ -917,8 +1250,8 @@ func (r *wlanFrameworkResource) Create(
 		wlan.Passphrase = passphraseWO.ValueString()
 	}
 
-	// UDM SE API requires ap_group_ids to be set even when ap_group_mode is "all".
-	// Look up and set the default AP group ID if ap_group_mode is "all" and no ap_group_ids specified.
+	// UDM SE API requires ap_group.ids to be set even when ap_group.mode is "all".
+	// Look up and set the default AP group ID if ap_group.mode is "all" and no ap_group.ids specified.
 	if wlan.ApGroupMode == "all" && len(wlan.ApGroupIDs) == 0 {
 		apGroups, err := r.client.ListAPGroup(ctx, site)
 		if err != nil {
@@ -1278,7 +1611,7 @@ func (r *wlanFrameworkResource) readPassphraseWO(
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
 func (r *wlanFrameworkResource) applyPlanToState(
-	_ context.Context,
+	ctx context.Context,
 	plan *wlanFrameworkResourceModel,
 	state *wlanFrameworkResourceModel,
 ) {
@@ -1295,12 +1628,12 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.Security.IsNull() && !plan.Security.IsUnknown() {
 		state.Security = plan.Security
 	}
-	if !plan.WPA3Support.IsNull() && !plan.WPA3Support.IsUnknown() {
-		state.WPA3Support = plan.WPA3Support
-	}
-	if !plan.WPA3Transition.IsNull() && !plan.WPA3Transition.IsUnknown() {
-		state.WPA3Transition = plan.WPA3Transition
-	}
+	// Nested groups: re-assert every leaf the plan knows, keeping the
+	// controller's value for the rest (exactly as the flat leaves did).
+	state.WPA3 = util.OverlayKnownObject(ctx, plan.WPA3, state.WPA3)
+	state.WPA = util.OverlayKnownObject(ctx, plan.WPA, state.WPA)
+	state.Radius = util.OverlayKnownObject(ctx, plan.Radius, state.Radius)
+	state.ApGroup = util.OverlayKnownObject(ctx, plan.ApGroup, state.ApGroup)
 	if !plan.PMFMode.IsNull() && !plan.PMFMode.IsUnknown() {
 		state.PMFMode = plan.PMFMode
 	}
@@ -1315,12 +1648,6 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	}
 	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
 		state.Enabled = plan.Enabled
-	}
-	if !plan.ApGroupIDs.IsNull() && !plan.ApGroupIDs.IsUnknown() {
-		state.ApGroupIDs = plan.ApGroupIDs
-	}
-	if !plan.ApGroupMode.IsNull() && !plan.ApGroupMode.IsUnknown() {
-		state.ApGroupMode = plan.ApGroupMode
 	}
 	if !plan.VLANEnabled.IsNull() && !plan.VLANEnabled.IsUnknown() {
 		state.VLANEnabled = plan.VLANEnabled
@@ -1349,9 +1676,6 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	}
 	if !plan.PrivatePresharedKeys.IsNull() && !plan.PrivatePresharedKeys.IsUnknown() {
 		state.PrivatePresharedKeys = plan.PrivatePresharedKeys
-	}
-	if !plan.RadiusProfileID.IsNull() && !plan.RadiusProfileID.IsUnknown() {
-		state.RadiusProfileID = plan.RadiusProfileID
 	}
 	if !plan.NasIDentifierType.IsNull() && !plan.NasIDentifierType.IsUnknown() {
 		state.NasIDentifierType = plan.NasIDentifierType
@@ -1386,12 +1710,6 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.MinrateSettingPreference.IsNull() && !plan.MinrateSettingPreference.IsUnknown() {
 		state.MinrateSettingPreference = plan.MinrateSettingPreference
 	}
-	if !plan.WPAMode.IsNull() && !plan.WPAMode.IsUnknown() {
-		state.WPAMode = plan.WPAMode
-	}
-	if !plan.WPAEnc.IsNull() && !plan.WPAEnc.IsUnknown() {
-		state.WPAEnc = plan.WPAEnc
-	}
 	if !plan.DTIMMode.IsNull() && !plan.DTIMMode.IsUnknown() {
 		state.DTIMMode = plan.DTIMMode
 	}
@@ -1409,15 +1727,6 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	}
 	if !plan.IappEnabled.IsNull() && !plan.IappEnabled.IsUnknown() {
 		state.IappEnabled = plan.IappEnabled
-	}
-	if !plan.WPA3FastRoaming.IsNull() && !plan.WPA3FastRoaming.IsUnknown() {
-		state.WPA3FastRoaming = plan.WPA3FastRoaming
-	}
-	if !plan.WPA3Enhanced192.IsNull() && !plan.WPA3Enhanced192.IsUnknown() {
-		state.WPA3Enhanced192 = plan.WPA3Enhanced192
-	}
-	if !plan.RADIUSMacAuthEnabled.IsNull() && !plan.RADIUSMacAuthEnabled.IsUnknown() {
-		state.RADIUSMacAuthEnabled = plan.RADIUSMacAuthEnabled
 	}
 	if !plan.EnhancedIot.IsNull() && !plan.EnhancedIot.IsUnknown() {
 		state.EnhancedIot = plan.EnhancedIot
@@ -1543,33 +1852,26 @@ func (r *wlanFrameworkResource) planToWLAN(
 	var diags diag.Diagnostics
 
 	wlan := &unifi.WLAN{
-		ID:                      plan.ID.ValueString(),
-		Name:                    plan.Name.ValueString(),
-		NetworkID:               plan.NetworkID.ValueString(),
-		UserGroupID:             plan.UserGroupID.ValueString(),
-		Security:                plan.Security.ValueString(),
-		WPA3Support:             plan.WPA3Support.ValueBool(),
-		WPA3Transition:          plan.WPA3Transition.ValueBool(),
-		PMFMode:                 plan.PMFMode.ValueString(),
-		Passphrase:              plan.Passphrase.ValueString(),
-		HideSSID:                plan.HideSSID.ValueBool(),
-		IsGuest:                 plan.IsGuest.ValueBool(),
-		Enabled:                 plan.Enabled.ValueBool(),
-		ApGroupMode:             plan.ApGroupMode.ValueString(),
-		VLANEnabled:             plan.VLANEnabled.ValueBool(),
-		VLAN:                    plan.VLAN.ValueInt64Pointer(),
-		MulticastEnhanceEnabled: plan.MulticastEnhance.ValueBool(),
-		RADIUSProfileID:         plan.RadiusProfileID.ValueString(),
-		NasIDentifierType:       plan.NasIDentifierType.ValueString(),
-		No2GhzOui:               plan.No2GhzOui.ValueBool(),
-		L2Isolation:             plan.L2Isolation.ValueBool(),
-		ProxyArp:                plan.ProxyArp.ValueBool(),
-		BssTransition:           plan.BssTransition.ValueBool(),
-		UapsdEnabled:            plan.Uapsd.ValueBool(),
-		FastRoamingEnabled:      plan.FastRoamingEnabled.ValueBool(),
-		// Unknown/null → "" → omitempty keeps it off the wire, so controllers
-		// without per-SSID band steering are never sent the key (#388).
-		BandsteeringMode:         plan.BandsteeringMode.ValueString(),
+		ID:                       plan.ID.ValueString(),
+		Name:                     plan.Name.ValueString(),
+		NetworkID:                plan.NetworkID.ValueString(),
+		UserGroupID:              plan.UserGroupID.ValueString(),
+		Security:                 plan.Security.ValueString(),
+		PMFMode:                  plan.PMFMode.ValueString(),
+		Passphrase:               plan.Passphrase.ValueString(),
+		HideSSID:                 plan.HideSSID.ValueBool(),
+		IsGuest:                  plan.IsGuest.ValueBool(),
+		Enabled:                  plan.Enabled.ValueBool(),
+		VLANEnabled:              plan.VLANEnabled.ValueBool(),
+		VLAN:                     plan.VLAN.ValueInt64Pointer(),
+		MulticastEnhanceEnabled:  plan.MulticastEnhance.ValueBool(),
+		NasIDentifierType:        plan.NasIDentifierType.ValueString(),
+		No2GhzOui:                plan.No2GhzOui.ValueBool(),
+		L2Isolation:              plan.L2Isolation.ValueBool(),
+		ProxyArp:                 plan.ProxyArp.ValueBool(),
+		BssTransition:            plan.BssTransition.ValueBool(),
+		UapsdEnabled:             plan.Uapsd.ValueBool(),
+		FastRoamingEnabled:       plan.FastRoamingEnabled.ValueBool(),
 		MinrateSettingPreference: plan.MinrateSettingPreference.ValueString(),
 		MinrateNgEnabled:         plan.MinimumDataRate2GKbps.ValueInt64() > 0,
 		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64Pointer(),
@@ -1578,17 +1880,71 @@ func (r *wlanFrameworkResource) planToWLAN(
 
 		GroupRekey:         plan.GroupRekey.ValueInt64Pointer(),
 		DTIMMode:           plan.DTIMMode.ValueString(),
-		WPAEnc:             plan.WPAEnc.ValueString(),
-		WPAMode:            plan.WPAMode.ValueString(),
 		NameCombineEnabled: true,
 
-		IappEnabled:          plan.IappEnabled.ValueBool(),
-		WPA3FastRoaming:      plan.WPA3FastRoaming.ValueBool(),
-		WPA3Enhanced192:      plan.WPA3Enhanced192.ValueBool(),
-		RADIUSMACAuthEnabled: plan.RADIUSMacAuthEnabled.ValueBool(),
-		EnhancedIot:          plan.EnhancedIot.ValueBool(),
-		Hotspot2ConfEnabled:  plan.Hotspot2ConfEnabled.ValueBool(),
-		MloEnabled:           plan.MloEnabled.ValueBool(),
+		IappEnabled:         plan.IappEnabled.ValueBool(),
+		EnhancedIot:         plan.EnhancedIot.ValueBool(),
+		Hotspot2ConfEnabled: plan.Hotspot2ConfEnabled.ValueBool(),
+		MloEnabled:          plan.MloEnabled.ValueBool(),
+	}
+
+	// Nested groups. A null/unknown group contributes nothing, exactly as its
+	// flat attributes did when unset; a null/unknown leaf inside a known group
+	// yields the zero value, as the flat leaf's Value* accessor did.
+	wpa, ok, d := util.ObjectAs[wlanWPAModel](ctx, plan.WPA)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if ok {
+		wlan.WPAMode = wpa.Mode.ValueString()
+		wlan.WPAEnc = wpa.Enc.ValueString()
+	}
+
+	wpa3, ok, d := util.ObjectAs[wlanWPA3Model](ctx, plan.WPA3)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if ok {
+		wlan.WPA3Support = wpa3.Support.ValueBool()
+		wlan.WPA3Transition = wpa3.Transition.ValueBool()
+		wlan.WPA3FastRoaming = wpa3.FastRoaming.ValueBool()
+		wlan.WPA3Enhanced192 = wpa3.Enhanced192.ValueBool()
+	}
+
+	radius, ok, d := util.ObjectAs[wlanRadiusModel](ctx, plan.Radius)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if ok {
+		wlan.RADIUSProfileID = radius.ProfileID.ValueString()
+		wlan.RADIUSMACAuthEnabled = radius.MacAuthEnabled.ValueBool()
+	}
+
+	na, naOK, d := util.ObjectAs[wlanRoamingAssistantModel](ctx, plan.RoamingAssistantNa)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if naOK {
+		wlan.RoamingAssistantNaEnabled = na.Enabled.ValueBool()
+		if !na.Rssi.IsNull() && !na.Rssi.IsUnknown() {
+			wlan.RoamingAssistantNaRssi = na.Rssi.ValueInt64Pointer()
+		}
+	}
+
+	sixE, sixEOK, d := util.ObjectAs[wlanRoamingAssistantModel](ctx, plan.RoamingAssistant6E)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if sixEOK {
+		wlan.RoamingAssistant6EEnabled = sixE.Enabled.ValueBool()
+		if !sixE.Rssi.IsNull() && !sixE.Rssi.IsUnknown() {
+			wlan.RoamingAssistant6ERssi = sixE.Rssi.ValueInt64Pointer()
+		}
 	}
 
 	// DTIM per-band values (only sent when explicitly configured)
@@ -1658,16 +2014,24 @@ func (r *wlanFrameworkResource) planToWLAN(
 		}
 	}
 
-	// Handle AP group IDs
-	if !plan.ApGroupIDs.IsNull() && !plan.ApGroupIDs.IsUnknown() {
-		var apGroupList []types.String
-		diags.Append(plan.ApGroupIDs.ElementsAs(ctx, &apGroupList, false)...)
-		if diags.HasError() {
-			return nil, diags
-		}
+	// Handle AP group
+	apGroup, ok, d := util.ObjectAs[wlanApGroupModel](ctx, plan.ApGroup)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if ok {
+		wlan.ApGroupMode = apGroup.Mode.ValueString()
+		if !apGroup.IDs.IsNull() && !apGroup.IDs.IsUnknown() {
+			var apGroupList []types.String
+			diags.Append(apGroup.IDs.ElementsAs(ctx, &apGroupList, false)...)
+			if diags.HasError() {
+				return nil, diags
+			}
 
-		for _, apGroupID := range apGroupList {
-			wlan.ApGroupIDs = append(wlan.ApGroupIDs, apGroupID.ValueString())
+			for _, apGroupID := range apGroupList {
+				wlan.ApGroupIDs = append(wlan.ApGroupIDs, apGroupID.ValueString())
+			}
 		}
 	}
 
@@ -1709,12 +2073,19 @@ func (r *wlanFrameworkResource) planToWLAN(
 		}
 
 		for _, sched := range schedules {
+			// A null/unknown start object leaves hour/minute unset, exactly as
+			// null/unknown flat start_hour/start_minute did.
+			start, _, d := util.ObjectAs[wlanScheduleStartModel](ctx, sched.Start)
+			diags.Append(d...)
+			if diags.HasError() {
+				return nil, diags
+			}
 			wlan.ScheduleWithDuration = append(
 				wlan.ScheduleWithDuration,
 				unifi.WLANScheduleWithDuration{
 					StartDaysOfWeek: []string{sched.DayOfWeek.ValueString()},
-					StartHour:       sched.StartHour.ValueInt64Pointer(),
-					StartMinute:     sched.StartMinute.ValueInt64Pointer(),
+					StartHour:       start.Hour.ValueInt64Pointer(),
+					StartMinute:     start.Minute.ValueInt64Pointer(),
 					DurationMinutes: util.DurationUnitsPtr(sched.Duration, time.Minute),
 					Name:            sched.Name.ValueString(),
 				},
@@ -1820,8 +2191,15 @@ func (r *wlanFrameworkResource) wlanToModel(
 
 	model.UserGroupID = types.StringValue(wlan.UserGroupID)
 	model.Security = types.StringValue(wlan.Security)
-	model.WPA3Support = types.BoolValue(wlan.WPA3Support)
-	model.WPA3Transition = types.BoolValue(wlan.WPA3Transition)
+
+	wpa3, d := types.ObjectValueFrom(ctx, wlanWPA3AttrTypes(), wlanWPA3Model{
+		Support:     types.BoolValue(wlan.WPA3Support),
+		Transition:  types.BoolValue(wlan.WPA3Transition),
+		FastRoaming: types.BoolValue(wlan.WPA3FastRoaming),
+		Enhanced192: types.BoolValue(wlan.WPA3Enhanced192),
+	})
+	diags.Append(d...)
+	model.WPA3 = wpa3
 
 	if wlan.PMFMode != "" {
 		model.PMFMode = types.StringValue(wlan.PMFMode)
@@ -1838,11 +2216,26 @@ func (r *wlanFrameworkResource) wlanToModel(
 	model.IsGuest = types.BoolValue(wlan.IsGuest)
 	model.Enabled = types.BoolValue(wlan.Enabled)
 
-	if wlan.ApGroupMode != "" {
-		model.ApGroupMode = types.StringValue(wlan.ApGroupMode)
-	} else {
-		model.ApGroupMode = types.StringValue("all")
+	// Handle AP group
+	apGroupIDs := types.SetNull(types.StringType)
+	if len(wlan.ApGroupIDs) > 0 {
+		apGroupValues := make([]attr.Value, len(wlan.ApGroupIDs))
+		for i, id := range wlan.ApGroupIDs {
+			apGroupValues[i] = types.StringValue(id)
+		}
+		apGroupIDs, d = types.SetValue(types.StringType, apGroupValues)
+		diags.Append(d...)
 	}
+	apGroupMode := types.StringValue("all")
+	if wlan.ApGroupMode != "" {
+		apGroupMode = types.StringValue(wlan.ApGroupMode)
+	}
+	apGroup, d := types.ObjectValueFrom(ctx, wlanApGroupAttrTypes(), wlanApGroupModel{
+		IDs:  apGroupIDs,
+		Mode: apGroupMode,
+	})
+	diags.Append(d...)
+	model.ApGroup = apGroup
 
 	model.VLANEnabled = types.BoolValue(wlan.VLANEnabled)
 	model.VLAN = types.Int64PointerValue(wlan.VLAN)
@@ -1853,15 +2246,11 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.WLANBand = types.StringValue("both")
 	}
 
-	// Per-SSID band steering (#388). Controllers without the feature never
-	// echo the key: keep the model's existing value in that case — the
-	// declared value on create/update, the prior state on read — so a config
-	// on an unsupporting controller doesn't fail the apply with an
-	// inconsistent-result error or produce perpetual drift. An Unknown value
-	// (never configured, nothing stored) resolves to null.
-	if wlan.BandsteeringMode != "" {
-		model.BandsteeringMode = types.StringValue(wlan.BandsteeringMode)
-	} else if model.BandsteeringMode.IsUnknown() {
+	// Deprecated no-op: v10 moved band steering to the access point, so the
+	// WLAN never reports it. Keep whatever the model already carries — the
+	// declared value on create/update, the prior state on read — and resolve a
+	// never-configured Unknown to null (#388).
+	if model.BandsteeringMode.IsUnknown() {
 		model.BandsteeringMode = types.StringNull()
 	}
 
@@ -1880,7 +2269,6 @@ func (r *wlanFrameworkResource) wlanToModel(
 		for i, mac := range wlan.MACFilterList {
 			macValues[i] = types.StringValue(mac)
 		}
-		var d diag.Diagnostics
 		macFilterList, d = types.SetValue(types.StringType, macValues)
 		diags.Append(d...)
 	} else {
@@ -1911,11 +2299,28 @@ func (r *wlanFrameworkResource) wlanToModel(
 	model.PrivatePresharedKeys, d = privatePresharedKeysState(ctx, wlan, model.PrivatePresharedKeys)
 	diags.Append(d...)
 
-	if wlan.RADIUSProfileID != "" {
-		model.RadiusProfileID = types.StringValue(wlan.RADIUSProfileID)
-	} else {
-		model.RadiusProfileID = types.StringNull()
-	}
+	radius, d := types.ObjectValueFrom(ctx, wlanRadiusAttrTypes(), wlanRadiusModel{
+		ProfileID:      stringOrNull(wlan.RADIUSProfileID),
+		MacAuthEnabled: types.BoolValue(wlan.RADIUSMACAuthEnabled),
+	})
+	diags.Append(d...)
+	model.Radius = radius
+
+	roamingNa, d := types.ObjectValueFrom(
+		ctx, wlanRoamingAssistantAttrTypes(), wlanRoamingAssistantModel{
+			Enabled: types.BoolValue(wlan.RoamingAssistantNaEnabled),
+			Rssi:    types.Int64PointerValue(wlan.RoamingAssistantNaRssi),
+		})
+	diags.Append(d...)
+	model.RoamingAssistantNa = roamingNa
+
+	roaming6E, d := types.ObjectValueFrom(
+		ctx, wlanRoamingAssistantAttrTypes(), wlanRoamingAssistantModel{
+			Enabled: types.BoolValue(wlan.RoamingAssistant6EEnabled),
+			Rssi:    types.Int64PointerValue(wlan.RoamingAssistant6ERssi),
+		})
+	diags.Append(d...)
+	model.RoamingAssistant6E = roaming6E
 
 	if wlan.NasIDentifierType != "" {
 		model.NasIDentifierType = types.StringValue(wlan.NasIDentifierType)
@@ -1950,16 +2355,21 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.MinimumDataRate5GKbps = types.Int64Value(0)
 	}
 
+	wpaMode := types.StringValue("wpa2")
 	if wlan.WPAMode != "" {
-		model.WPAMode = types.StringValue(wlan.WPAMode)
-	} else {
-		model.WPAMode = types.StringValue("wpa2")
+		wpaMode = types.StringValue(wlan.WPAMode)
 	}
+	wpaEnc := types.StringValue("ccmp")
 	if wlan.WPAEnc != "" {
-		model.WPAEnc = types.StringValue(wlan.WPAEnc)
-	} else {
-		model.WPAEnc = types.StringValue("ccmp")
+		wpaEnc = types.StringValue(wlan.WPAEnc)
 	}
+	wpa, d := types.ObjectValueFrom(ctx, wlanWPAAttrTypes(), wlanWPAModel{
+		Mode: wpaMode,
+		Enc:  wpaEnc,
+	})
+	diags.Append(d...)
+	model.WPA = wpa
+
 	if wlan.DTIMMode != "" {
 		model.DTIMMode = types.StringValue(wlan.DTIMMode)
 	} else {
@@ -1970,9 +2380,6 @@ func (r *wlanFrameworkResource) wlanToModel(
 	model.DTIMNa = types.Int64PointerValue(wlan.DTIMNa)
 	model.DTIM6E = types.Int64PointerValue(wlan.DTIM6E)
 	model.IappEnabled = types.BoolValue(wlan.IappEnabled)
-	model.WPA3FastRoaming = types.BoolValue(wlan.WPA3FastRoaming)
-	model.WPA3Enhanced192 = types.BoolValue(wlan.WPA3Enhanced192)
-	model.RADIUSMacAuthEnabled = types.BoolValue(wlan.RADIUSMACAuthEnabled)
 	model.EnhancedIot = types.BoolValue(wlan.EnhancedIot)
 	model.Hotspot2ConfEnabled = types.BoolValue(wlan.Hotspot2ConfEnabled)
 	model.MloEnabled = types.BoolValue(wlan.MloEnabled)
@@ -1989,19 +2396,6 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.BroadcastFilterList = types.SetNull(types.StringType)
 	}
 
-	// Handle AP group IDs
-	if len(wlan.ApGroupIDs) > 0 {
-		apGroupValues := make([]attr.Value, len(wlan.ApGroupIDs))
-		for i, id := range wlan.ApGroupIDs {
-			apGroupValues[i] = types.StringValue(id)
-		}
-		apGroupSet, d := types.SetValue(types.StringType, apGroupValues)
-		diags.Append(d...)
-		model.ApGroupIDs = apGroupSet
-	} else {
-		model.ApGroupIDs = types.SetNull(types.StringType)
-	}
-
 	// Handle WLAN bands
 	if len(wlan.WLANBands) > 0 {
 		bandValues := make([]attr.Value, len(wlan.WLANBands))
@@ -2016,55 +2410,34 @@ func (r *wlanFrameworkResource) wlanToModel(
 	}
 
 	// Handle schedule - convert WLANScheduleWithDuration back to individual schedule entries
+	scheduleType := types.ObjectType{AttrTypes: wlanScheduleAttrTypes()}
 	if len(wlan.ScheduleWithDuration) > 0 {
 		var scheduleValues []attr.Value
 		for _, sched := range wlan.ScheduleWithDuration {
+			start, d := types.ObjectValueFrom(ctx, wlanScheduleStartAttrTypes(),
+				wlanScheduleStartModel{
+					Hour:   types.Int64PointerValue(sched.StartHour),
+					Minute: types.Int64PointerValue(sched.StartMinute),
+				})
+			diags.Append(d...)
 			// Each schedule can have multiple days of week, so we need to expand them
 			for _, dow := range sched.StartDaysOfWeek {
-				scheduleObj, d := types.ObjectValue(
-					map[string]attr.Type{
-						"day_of_week":  types.StringType,
-						"start_hour":   types.Int64Type,
-						"start_minute": types.Int64Type,
-						"duration":     timetypes.GoDurationType{},
-						"name":         types.StringType,
-					},
-					map[string]attr.Value{
-						"day_of_week":  types.StringValue(dow),
-						"start_hour":   types.Int64PointerValue(sched.StartHour),
-						"start_minute": types.Int64PointerValue(sched.StartMinute),
-						"duration":     util.DurationPtrValue(sched.DurationMinutes, time.Minute),
-						"name":         types.StringValue(sched.Name),
-					},
-				)
+				scheduleObj, d := types.ObjectValueFrom(ctx, wlanScheduleAttrTypes(),
+					wlanScheduleModel{
+						DayOfWeek: types.StringValue(dow),
+						Start:     start,
+						Duration:  util.DurationPtrValue(sched.DurationMinutes, time.Minute),
+						Name:      types.StringValue(sched.Name),
+					})
 				diags.Append(d...)
 				scheduleValues = append(scheduleValues, scheduleObj)
 			}
 		}
-		scheduleList, d := types.ListValue(
-			types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"day_of_week":  types.StringType,
-					"start_hour":   types.Int64Type,
-					"start_minute": types.Int64Type,
-					"duration":     timetypes.GoDurationType{},
-					"name":         types.StringType,
-				},
-			},
-			scheduleValues,
-		)
+		scheduleList, d := types.ListValue(scheduleType, scheduleValues)
 		diags.Append(d...)
 		model.Schedule = scheduleList
 	} else {
-		model.Schedule = types.ListNull(types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"day_of_week":  types.StringType,
-				"start_hour":   types.Int64Type,
-				"start_minute": types.Int64Type,
-				"duration":     timetypes.GoDurationType{},
-				"name":         types.StringType,
-			},
-		})
+		model.Schedule = types.ListNull(scheduleType)
 	}
 
 	return diags

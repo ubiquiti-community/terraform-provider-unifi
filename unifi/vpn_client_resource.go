@@ -29,7 +29,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
-	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -735,7 +734,7 @@ func (r *vpnClientResource) modelToNetwork(
 		Purpose:               unifi.PurposeVPNClient,
 		Enabled:               model.Enabled.ValueBool(),
 		IPSubnet:              model.Subnet.ValueStringPointer(),
-		VPNType:               util.Ptr("wireguard-client"),
+		VPNType:               new("wireguard-client"),
 		VPNClientDefaultRoute: model.DefaultRoute.ValueBool(),
 		VPNClientPullDNS:      model.PullDNS.ValueBool(),
 	}
@@ -757,10 +756,10 @@ func (r *vpnClientResource) modelToNetwork(
 				diags.Append(d...)
 				if !diags.HasError() {
 					if len(dnsServers) > 0 {
-						network.DHCPDDNS1 = dnsServers[0]
+						network.DHCPDDNS1 = new(dnsServers[0])
 					}
 					if len(dnsServers) > 1 {
-						network.DHCPDDNS2 = dnsServers[1]
+						network.DHCPDDNS2 = new(dnsServers[1])
 					}
 				}
 			}
@@ -783,30 +782,30 @@ func (r *vpnClientResource) modelToNetwork(
 						return nil, diags
 					}
 
-					network.WireguardClientMode = util.Ptr("manual")
-					network.WireguardClientPeerPublicKey = util.Ptr(parsed.PublicKey)
-					network.WireguardClientPeerIP = util.Ptr(parsed.EndpointIP)
-					network.WireguardClientPeerPort = util.Ptr(parsed.EndpointPort)
+					network.WireguardClientMode = new("manual")
+					network.WireguardClientPeerPublicKey = new(parsed.PublicKey)
+					network.WireguardClientPeerIP = new(parsed.EndpointIP)
+					network.WireguardClientPeerPort = new(parsed.EndpointPort)
 
 					// Use private key from config file if not set explicitly
 					if parsed.PrivateKey != "" &&
 						(wireguard.PrivateKey.IsNull() || wireguard.PrivateKey.IsUnknown()) {
-						network.WireguardPrivateKey = util.Ptr(parsed.PrivateKey)
+						network.WireguardPrivateKey = new(parsed.PrivateKey)
 					}
 
 					// Use preshared key from config file if present
 					if parsed.PresharedKey != "" {
 						network.WireguardClientPresharedKeyEnabled = true
-						network.WireguardClientPresharedKey = util.Ptr(parsed.PresharedKey)
+						network.WireguardClientPresharedKey = new(parsed.PresharedKey)
 					}
 
 					// Use DNS servers from config file if not set explicitly
 					if len(parsed.DNS) > 0 && wireguard.DnsServers.IsNull() {
 						if len(parsed.DNS) > 0 {
-							network.DHCPDDNS1 = parsed.DNS[0]
+							network.DHCPDDNS1 = new(parsed.DNS[0])
 						}
 						if len(parsed.DNS) > 1 {
-							network.DHCPDDNS2 = parsed.DNS[1]
+							network.DHCPDDNS2 = new(parsed.DNS[1])
 						}
 					}
 				}
@@ -816,7 +815,7 @@ func (r *vpnClientResource) modelToNetwork(
 				d := wireguard.Peer.As(ctx, &peer, basetypes.ObjectAsOptions{})
 				diags.Append(d...)
 				if !diags.HasError() {
-					network.WireguardClientMode = util.Ptr("manual")
+					network.WireguardClientMode = new("manual")
 					network.WireguardClientPeerIP = peer.IP.ValueStringPointer()
 					network.WireguardClientPeerPort = peer.Port.ValueInt64Pointer()
 					network.WireguardClientPeerPublicKey = peer.PublicKey.ValueStringPointer()
@@ -917,13 +916,7 @@ func (r *vpnClientResource) networkToModel(
 		diags.Append(d...)
 		dnsServersList = priorWG.DnsServers
 	} else {
-		var dnsServers []string
-		if network.DHCPDDNS1 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS1)
-		}
-		if network.DHCPDDNS2 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS2)
-		}
+		dnsServers := collectNonEmptyStringPointers(network.DHCPDDNS1, network.DHCPDDNS2)
 		if len(dnsServers) > 0 {
 			var d diag.Diagnostics
 			dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)

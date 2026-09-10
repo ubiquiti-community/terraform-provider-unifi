@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -32,6 +33,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 var (
@@ -93,44 +95,131 @@ type firewallPolicyModel struct {
 	IPVersion          types.String `tfsdk:"ip_version"`
 	// Firmware-managed fields the controller requires back on every PUT. They are
 	// not user-settable; the provider round-trips them so updates don't drop them
-	// (an omitted connection_state_type/icmp_typename makes the PUT fail HTTP 400).
+	// (an omitted connection_state_type/icmp.typename makes the PUT fail HTTP 400).
 	ConnectionStateType types.String   `tfsdk:"connection_state_type"`
 	ConnectionStates    types.List     `tfsdk:"connection_states"`
-	ICMPTypename        types.String   `tfsdk:"icmp_typename"`
-	ICMPV6Typename      types.String   `tfsdk:"icmp_v6_typename"`
+	ICMP                types.Object   `tfsdk:"icmp"`
 	Schedule            types.Object   `tfsdk:"schedule"`
 	Source              types.Object   `tfsdk:"source"`
 	Destination         types.Object   `tfsdk:"destination"`
 	Timeouts            timeouts.Value `tfsdk:"timeouts"`
 }
 
+// firewallPolicyICMPModel is the nested `icmp` object: the controller-managed
+// ICMP/ICMPv6 type matching modes that must be round-tripped on every PUT.
+type firewallPolicyICMPModel struct {
+	Typename   types.String `tfsdk:"typename"`
+	V6Typename types.String `tfsdk:"v6_typename"`
+}
+
+func (m firewallPolicyICMPModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"typename":    types.StringType,
+		"v6_typename": types.StringType,
+	}
+}
+
 // firewallPolicyScheduleModel is the complete schedule shape returned by the
 // zone-based firewall API. Date is used by ONE_TIME_ONLY on older firmware;
 // DateStart/DateEnd are also returned by newer Network application versions.
 type firewallPolicyScheduleModel struct {
-	Date           types.String `tfsdk:"date"`
-	DateStart      types.String `tfsdk:"date_start"`
-	DateEnd        types.String `tfsdk:"date_end"`
-	Mode           types.String `tfsdk:"mode"`
-	Normalize      types.Bool   `tfsdk:"normalize"`
-	RepeatOnDays   types.Set    `tfsdk:"repeat_on_days"`
-	TimeAllDay     types.Bool   `tfsdk:"time_all_day"`
-	TimeRangeStart types.String `tfsdk:"time_range_start"`
-	TimeRangeEnd   types.String `tfsdk:"time_range_end"`
+	Date         types.String `tfsdk:"date"`
+	DateStart    types.String `tfsdk:"date_start"`
+	DateEnd      types.String `tfsdk:"date_end"`
+	Mode         types.String `tfsdk:"mode"`
+	Normalize    types.Bool   `tfsdk:"normalize"`
+	RepeatOnDays types.Set    `tfsdk:"repeat_on_days"`
+	Time         types.Object `tfsdk:"time"`
 }
 
 func (m firewallPolicyScheduleModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"date":             types.StringType,
-		"date_start":       types.StringType,
-		"date_end":         types.StringType,
-		"mode":             types.StringType,
-		"normalize":        types.BoolType,
-		"repeat_on_days":   types.SetType{ElemType: types.StringType},
-		"time_all_day":     types.BoolType,
-		"time_range_start": types.StringType,
-		"time_range_end":   types.StringType,
+		"date":           types.StringType,
+		"date_start":     types.StringType,
+		"date_end":       types.StringType,
+		"mode":           types.StringType,
+		"normalize":      types.BoolType,
+		"repeat_on_days": types.SetType{ElemType: types.StringType},
+		"time": types.ObjectType{
+			AttrTypes: firewallPolicyScheduleTimeModel{}.AttributeTypes(),
+		},
 	}
+}
+
+// firewallPolicyScheduleTimeModel is the nested `schedule.time` object.
+type firewallPolicyScheduleTimeModel struct {
+	AllDay types.Bool   `tfsdk:"all_day"`
+	Range  types.Object `tfsdk:"range"`
+}
+
+func (m firewallPolicyScheduleTimeModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"all_day": types.BoolType,
+		"range": types.ObjectType{
+			AttrTypes: firewallPolicyScheduleTimeRangeModel{}.AttributeTypes(),
+		},
+	}
+}
+
+// firewallPolicyScheduleTimeRangeModel is the nested `schedule.time.range`
+// object holding the HH:MM boundaries of a timed schedule.
+type firewallPolicyScheduleTimeRangeModel struct {
+	Start types.String `tfsdk:"start"`
+	End   types.String `tfsdk:"end"`
+}
+
+func (m firewallPolicyScheduleTimeRangeModel) AttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"start": types.StringType,
+		"end":   types.StringType,
+	}
+}
+
+// firewallPolicyScheduleTimeValue builds a known `schedule.time` object from
+// its leaves. The read path, plan normalization and tests all go through it so
+// the object shape is always the same: a known object whose leaves may be
+// null, exactly as the former flat attributes were always present in state.
+func firewallPolicyScheduleTimeValue(allDay types.Bool, start, end types.String) types.Object {
+	timeRange := types.ObjectValueMust(
+		firewallPolicyScheduleTimeRangeModel{}.AttributeTypes(),
+		map[string]attr.Value{"start": start, "end": end},
+	)
+	return types.ObjectValueMust(
+		firewallPolicyScheduleTimeModel{}.AttributeTypes(),
+		map[string]attr.Value{"all_day": allDay, "range": timeRange},
+	)
+}
+
+// firewallPolicyScheduleTimeFields splits a `schedule.time` object into its
+// leaves with the null/unknown semantics the flat attributes had: an unknown
+// object (or range) yields unknown leaves and a null one yields null leaves.
+func firewallPolicyScheduleTimeFields(obj types.Object) (types.Bool, types.String, types.String) {
+	if obj.IsUnknown() {
+		return types.BoolUnknown(), types.StringUnknown(), types.StringUnknown()
+	}
+	allDay, start, end := types.BoolNull(), types.StringNull(), types.StringNull()
+	if obj.IsNull() {
+		return allDay, start, end
+	}
+	attrs := obj.Attributes()
+	if v, ok := attrs["all_day"].(types.Bool); ok {
+		allDay = v
+	}
+	timeRange, ok := attrs["range"].(types.Object)
+	switch {
+	case !ok || timeRange.IsNull():
+		return allDay, start, end
+	case timeRange.IsUnknown():
+		return allDay, types.StringUnknown(), types.StringUnknown()
+	}
+	rangeAttrs := timeRange.Attributes()
+	if v, ok := rangeAttrs["start"].(types.String); ok {
+		start = v
+	}
+	if v, ok := rangeAttrs["end"].(types.String); ok {
+		end = v
+	}
+	return allDay, start, end
 }
 
 func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
@@ -182,26 +271,36 @@ func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
 				stringvalidator.OneOf("mon", "tue", "wed", "thu", "fri", "sat", "sun"),
 			)},
 		},
-		"time_all_day": schema.BoolAttribute{
-			MarkdownDescription: "Whether the policy is active all day.",
+		"time": schema.SingleNestedAttribute{
+			MarkdownDescription: "Time of day during which a timed schedule is active.",
 			Optional:            true,
 			Computed:            true,
-		},
-		"time_range_start": schema.StringAttribute{
-			MarkdownDescription: "Start time in 24-hour `HH:MM` format.",
-			Optional:            true,
-			Computed:            true,
-			Validators: []validator.String{stringvalidator.RegexMatches(
-				regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`), "must use 24-hour HH:MM format",
-			)},
-		},
-		"time_range_end": schema.StringAttribute{
-			MarkdownDescription: "End time in 24-hour `HH:MM` format.",
-			Optional:            true,
-			Computed:            true,
-			Validators: []validator.String{stringvalidator.RegexMatches(
-				regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`), "must use 24-hour HH:MM format",
-			)},
+			Attributes: map[string]schema.Attribute{
+				"all_day": schema.BoolAttribute{
+					MarkdownDescription: "Whether the policy is active all day.",
+					Optional:            true,
+					Computed:            true,
+				},
+				"range": schema.SingleNestedAttribute{
+					MarkdownDescription: "Time range during which the policy is active when `all_day` is false.",
+					Optional:            true,
+					Computed:            true,
+					Attributes: map[string]schema.Attribute{
+						"start": schema.StringAttribute{
+							MarkdownDescription: "Start time in 24-hour `HH:MM` format.",
+							Optional:            true,
+							Computed:            true,
+							Validators:          []validator.String{validators.TimeOfDay()},
+						},
+						"end": schema.StringAttribute{
+							MarkdownDescription: "End time in 24-hour `HH:MM` format.",
+							Optional:            true,
+							Computed:            true,
+							Validators:          []validator.String{validators.TimeOfDay()},
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -366,7 +465,7 @@ func (r *firewallPolicyResource) Schema(
 	}
 
 	resp.Schema = schema.Schema{
-		Version: 1,
+		Version: 2,
 		MarkdownDescription: "Manages a UniFi zone-based firewall policy (UniFi Network 8.x+). " +
 			"Zone-based firewall policies replace the legacy firewall rules and are displayed " +
 			"under Settings → Security → Firewall Policies in the UniFi UI.",
@@ -481,26 +580,35 @@ func (r *firewallPolicyResource) Schema(
 					listplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"icmp_typename": schema.StringAttribute{
-				MarkdownDescription: "ICMP type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+			"icmp": schema.SingleNestedAttribute{
+				MarkdownDescription: "ICMP type matching modes. Managed by the UniFi controller; the provider round-trips them so updates are accepted.",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-			},
-			"icmp_v6_typename": schema.StringAttribute{
-				MarkdownDescription: "ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
-				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+				Attributes: map[string]schema.Attribute{
+					"typename": schema.StringAttribute{
+						MarkdownDescription: "ICMP type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"v6_typename": schema.StringAttribute{
+						MarkdownDescription: "ICMPv6 type matching mode. Managed by the UniFi controller; the provider round-trips it so updates are accepted.",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
 				},
 			},
 			"schedule": schema.SingleNestedAttribute{
 				MarkdownDescription: "When the policy is active. The complete controller value is " +
 					"round-tripped so updating another policy field does not reset its schedule. " +
 					"Supported modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, " +
-					"and `CUSTOM`. Timed modes require `time_all_day`; when false, both time-range " +
-					"fields are required. `EVERY_WEEK` also requires weekdays, `ONE_TIME_ONLY` " +
+					"and `CUSTOM`. Timed modes require `time.all_day`; when false, both " +
+					"`time.range` boundaries are required. `EVERY_WEEK` also requires weekdays, `ONE_TIME_ONLY` " +
 					"requires `date` and a time range, and `CUSTOM` requires a date range and weekdays. " +
 					"Set `normalize` to clear inherited fields unused by the selected mode.",
 				Optional: true,
@@ -868,125 +976,115 @@ func (r *firewallPolicyResource) ImportState(
 }
 
 // ---------------------------------------------------------------------------
-// State upgrade (schema v0 -> v1: port int64 -> string)
+// State upgrade
 // ---------------------------------------------------------------------------
 
-// firewallPolicyEndpointModelV0 mirrors firewallPolicyEndpointModel but with the
-// pre-v1 integer `port`. It exists only to decode prior state during upgrade.
-type firewallPolicyEndpointModelV0 struct {
-	ZoneID             types.String `tfsdk:"zone_id"`
-	MatchingTarget     types.String `tfsdk:"matching_target"`
-	NetworkIDs         types.List   `tfsdk:"network_ids"`
-	ClientMACs         types.List   `tfsdk:"client_macs"`
-	IPs                types.List   `tfsdk:"ips"`
-	WebDomains         types.List   `tfsdk:"web_domains"`
-	Port               types.Int64  `tfsdk:"port"`
-	PortGroupID        types.String `tfsdk:"port_group_id"`
-	IPGroupID          types.String `tfsdk:"ip_group_id"`
-	PortMatchingType   types.String `tfsdk:"port_matching_type"`
-	MatchingTargetType types.String `tfsdk:"matching_target_type"`
-}
-
+// UpgradeState migrates prior firewall policy state to the current schema
+// version.
+//
+//	v0 -> current: source/destination `port` changed from an integer to a
+//	    string (#286, #288); 0/null become "no port".
+//	v1 -> current: icmp_typename/icmp_v6_typename moved under `icmp`, and
+//	    schedule.time_all_day/time_range_start/time_range_end moved under
+//	    `schedule.time` (see nestFirewallPolicyState).
+//
+// Each upgrader targets the CURRENT schema type, so v0 state picks up the
+// nesting rewrite as well.
 func (r *firewallPolicyResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
-	// Build the prior (v0) schema from the current one and swap the
-	// source/destination `port` back to an integer — that is the only
-	// structural difference. Deriving it from the live schema keeps the
-	// upgrader correct as the rest of the schema evolves.
 	var schemaResp resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
-	priorSchema := schemaResp.Schema
-	priorSchema.Version = 0
-	for _, key := range []string{"source", "destination"} {
-		nested, ok := priorSchema.Attributes[key].(schema.SingleNestedAttribute)
-		if !ok {
-			continue
-		}
-		attrs := make(map[string]schema.Attribute, len(nested.Attributes))
-		for k, v := range nested.Attributes {
-			attrs[k] = v
-		}
-		attrs["port"] = schema.Int64Attribute{Optional: true, Computed: true}
-		nested.Attributes = attrs
-		priorSchema.Attributes[key] = nested
-	}
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
 
-	return map[int64]resource.StateUpgrader{
-		// v0 modeled `port` as an integer, which both dropped multi-port values
-		// (#286) and serialized portless endpoints as the invalid "0" (#288).
-		// v1 models it as a string; convert the stored number, treating 0/null
-		// as "no port".
-		0: {
-			PriorSchema: &priorSchema,
+	upgrader := func(rewrite func(state map[string]any)) resource.StateUpgrader {
+		return resource.StateUpgrader{
 			StateUpgrader: func(
 				ctx context.Context,
 				req resource.UpgradeStateRequest,
 				resp *resource.UpgradeStateResponse,
 			) {
-				var state firewallPolicyModel
-				resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-				if resp.Diagnostics.HasError() {
+				if req.RawState == nil {
 					return
 				}
-
-				state.Source = upgradeFirewallPolicyEndpointV0(
-					ctx, state.Source, &resp.Diagnostics,
+				dv, err := util.UpgradeRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						rewrite(state)
+						nestFirewallPolicyState(state)
+					},
 				)
-				state.Destination = upgradeFirewallPolicyEndpointV0(
-					ctx, state.Destination, &resp.Diagnostics,
-				)
-				if resp.Diagnostics.HasError() {
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Failed to upgrade firewall policy state", err.Error(),
+					)
 					return
 				}
-
-				resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+				resp.DynamicValue = dv
 			},
-		},
+		}
+	}
+
+	return map[int64]resource.StateUpgrader{
+		0: upgrader(func(state map[string]any) {
+			for _, key := range []string{"source", "destination"} {
+				util.WithObject(state, key, upgradeFirewallPolicyPortV0)
+			}
+		}),
+		1: upgrader(func(map[string]any) {}),
 	}
 }
 
-func upgradeFirewallPolicyEndpointV0(
-	ctx context.Context,
-	obj types.Object,
-	diags *diag.Diagnostics,
-) types.Object {
-	newTypes := firewallPolicyEndpointModel{}.AttributeTypes()
-	if obj.IsNull() {
-		return types.ObjectNull(newTypes)
-	}
-	if obj.IsUnknown() {
-		return types.ObjectUnknown(newTypes)
-	}
+// nestFirewallPolicyState rewrites flat v0/v1 firewall policy state into the
+// nested-object layout introduced in schema v2. Keys that are absent are
+// skipped, so it is safe to run on state from any earlier version.
+func nestFirewallPolicyState(state map[string]any) {
+	util.NestFields(state, "icmp", map[string]string{
+		"icmp_typename":    "typename",
+		"icmp_v6_typename": "v6_typename",
+	})
+	util.WithObject(state, "schedule", func(schedule map[string]any) {
+		util.NestFields(schedule, "time", map[string]string{
+			"time_all_day":     "all_day",
+			"time_range_start": "range_start",
+			"time_range_end":   "range_end",
+		})
+		util.WithObject(schedule, "time", func(t map[string]any) {
+			util.NestFields(t, "range", map[string]string{
+				"range_start": "start",
+				"range_end":   "end",
+			})
+		})
+	})
+}
 
-	var v0 firewallPolicyEndpointModelV0
-	diags.Append(obj.As(ctx, &v0, basetypes.ObjectAsOptions{})...)
-	if diags.HasError() {
-		return obj
+// upgradeFirewallPolicyPortV0 converts a v0 endpoint's integer `port` to the
+// v1 string form. v0 both dropped multi-port values (#286) and serialized
+// portless endpoints as the invalid "0" (#288), so 0/null become null.
+func upgradeFirewallPolicyPortV0(endpoint map[string]any) {
+	raw, ok := endpoint["port"]
+	if !ok || raw == nil {
+		return
 	}
-
-	port := types.StringNull()
-	if !v0.Port.IsNull() && !v0.Port.IsUnknown() && v0.Port.ValueInt64() != 0 {
-		port = types.StringValue(strconv.FormatInt(v0.Port.ValueInt64(), 10))
+	port := ""
+	switch v := raw.(type) {
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			port = strconv.FormatInt(i, 10)
+		} else {
+			port = v.String()
+		}
+	case float64:
+		port = strconv.FormatInt(int64(v), 10)
+	case string:
+		port = v
 	}
-
-	upgraded := firewallPolicyEndpointModel{
-		ZoneID:             v0.ZoneID,
-		MatchingTarget:     v0.MatchingTarget,
-		NetworkIDs:         v0.NetworkIDs,
-		ClientMACs:         v0.ClientMACs,
-		IPs:                v0.IPs,
-		WebDomains:         v0.WebDomains,
-		Port:               port,
-		PortGroupID:        v0.PortGroupID,
-		IPGroupID:          v0.IPGroupID,
-		PortMatchingType:   v0.PortMatchingType,
-		MatchingTargetType: v0.MatchingTargetType,
+	if port == "" || port == "0" {
+		endpoint["port"] = nil
+		return
 	}
-
-	newObj, d := types.ObjectValueFrom(ctx, newTypes, upgraded)
-	diags.Append(d...)
-	return newObj
+	endpoint["port"] = port
 }
 
 // portToStringValue maps the API port string to a Terraform value. The API
@@ -1020,9 +1118,16 @@ func modelToFirewallPolicy(
 		CreateAllowRespond:  model.CreateAllowRespond.ValueBool(),
 		Version:             model.IPVersion.ValueString(),
 		ConnectionStateType: model.ConnectionStateType.ValueString(),
-		ICMPTypename:        model.ICMPTypename.ValueString(),
-		ICMPV6Typename:      model.ICMPV6Typename.ValueString(),
 		ConnectionStates:    []string{},
+	}
+
+	// A null/unknown icmp object contributes nothing, as the unset flat
+	// attributes did.
+	icmp, icmpKnown, icmpDiags := util.ObjectAs[firewallPolicyICMPModel](ctx, model.ICMP)
+	diags.Append(icmpDiags...)
+	if icmpKnown {
+		fp.ICMPTypename = icmp.Typename.ValueString()
+		fp.ICMPV6Typename = icmp.V6Typename.ValueString()
 	}
 
 	if model.Schedule.IsNull() || model.Schedule.IsUnknown() {
@@ -1032,9 +1137,10 @@ func modelToFirewallPolicy(
 		diags.Append(model.Schedule.As(ctx, &schedule, basetypes.ObjectAsOptions{})...)
 		if !diags.HasError() {
 			normalizeFirewallPolicyScheduleModel(&schedule)
+			allDay, rangeStart, rangeEnd := firewallPolicyScheduleTimeFields(schedule.Time)
 			var timeAllDay *bool
-			if !schedule.TimeAllDay.IsNull() && !schedule.TimeAllDay.IsUnknown() {
-				timeAllDay = schedule.TimeAllDay.ValueBoolPointer()
+			if !allDay.IsNull() && !allDay.IsUnknown() {
+				timeAllDay = allDay.ValueBoolPointer()
 			}
 			fp.Schedule = &unifi.FirewallPolicySchedule{
 				Date:           schedule.Date.ValueString(),
@@ -1042,8 +1148,8 @@ func modelToFirewallPolicy(
 				DateEnd:        schedule.DateEnd.ValueString(),
 				Mode:           schedule.Mode.ValueString(),
 				TimeAllDay:     timeAllDay,
-				TimeRangeStart: schedule.TimeRangeStart.ValueString(),
-				TimeRangeEnd:   schedule.TimeRangeEnd.ValueString(),
+				TimeRangeStart: rangeStart.ValueString(),
+				TimeRangeEnd:   rangeEnd.ValueString(),
 			}
 			if !schedule.RepeatOnDays.IsNull() && !schedule.RepeatOnDays.IsUnknown() {
 				diags.Append(
@@ -1223,8 +1329,14 @@ func firewallPolicyToModel(
 	connStates, csDiags := types.ListValueFrom(ctx, types.StringType, fp.ConnectionStates)
 	diags.Append(csDiags...)
 	model.ConnectionStates = connStates
-	model.ICMPTypename = types.StringValue(fp.ICMPTypename)
-	model.ICMPV6Typename = types.StringValue(fp.ICMPV6Typename)
+	icmp, icmpDiags := types.ObjectValueFrom(
+		ctx, firewallPolicyICMPModel{}.AttributeTypes(), firewallPolicyICMPModel{
+			Typename:   types.StringValue(fp.ICMPTypename),
+			V6Typename: types.StringValue(fp.ICMPV6Typename),
+		},
+	)
+	diags.Append(icmpDiags...)
+	model.ICMP = icmp
 	if fp.Schedule == nil {
 		model.Schedule = types.ObjectNull(firewallPolicyScheduleModel{}.AttributeTypes())
 	} else {
@@ -1246,15 +1358,17 @@ func firewallPolicyToModel(
 			diags.Append(scheduleDiags...)
 		}
 		schedule := firewallPolicyScheduleModel{
-			Date:           util.StringValueOrNull(fp.Schedule.Date),
-			DateStart:      util.StringValueOrNull(fp.Schedule.DateStart),
-			DateEnd:        util.StringValueOrNull(fp.Schedule.DateEnd),
-			Mode:           util.StringValueOrNull(fp.Schedule.Mode),
-			Normalize:      normalize,
-			RepeatOnDays:   repeatOnDays,
-			TimeAllDay:     types.BoolPointerValue(fp.Schedule.TimeAllDay),
-			TimeRangeStart: util.StringValueOrNull(fp.Schedule.TimeRangeStart),
-			TimeRangeEnd:   util.StringValueOrNull(fp.Schedule.TimeRangeEnd),
+			Date:         util.StringValueOrNull(fp.Schedule.Date),
+			DateStart:    util.StringValueOrNull(fp.Schedule.DateStart),
+			DateEnd:      util.StringValueOrNull(fp.Schedule.DateEnd),
+			Mode:         util.StringValueOrNull(fp.Schedule.Mode),
+			Normalize:    normalize,
+			RepeatOnDays: repeatOnDays,
+			Time: firewallPolicyScheduleTimeValue(
+				types.BoolPointerValue(fp.Schedule.TimeAllDay),
+				util.StringValueOrNull(fp.Schedule.TimeRangeStart),
+				util.StringValueOrNull(fp.Schedule.TimeRangeEnd),
+			),
 		}
 		var scheduleDiags diag.Diagnostics
 		model.Schedule, scheduleDiags = types.ObjectValueFrom(
@@ -1301,8 +1415,10 @@ func normalizeFirewallPolicyScheduleModel(schedule *firewallPolicyScheduleModel)
 	switch schedule.Mode.ValueString() {
 	case "ALWAYS":
 		schedule.Date, schedule.DateStart, schedule.DateEnd = types.StringNull(), types.StringNull(), types.StringNull()
-		schedule.RepeatOnDays, schedule.TimeAllDay = emptyDays, types.BoolNull()
-		schedule.TimeRangeStart, schedule.TimeRangeEnd = types.StringNull(), types.StringNull()
+		schedule.RepeatOnDays = emptyDays
+		schedule.Time = firewallPolicyScheduleTimeValue(
+			types.BoolNull(), types.StringNull(), types.StringNull(),
+		)
 	case "EVERY_DAY":
 		schedule.Date, schedule.DateStart, schedule.DateEnd = types.StringNull(), types.StringNull(), types.StringNull()
 		schedule.RepeatOnDays = emptyDays
@@ -1314,9 +1430,12 @@ func normalizeFirewallPolicyScheduleModel(schedule *firewallPolicyScheduleModel)
 	case "CUSTOM":
 		schedule.Date = types.StringNull()
 	}
-	if !schedule.TimeAllDay.IsNull() && !schedule.TimeAllDay.IsUnknown() &&
-		schedule.TimeAllDay.ValueBool() {
-		schedule.TimeRangeStart, schedule.TimeRangeEnd = types.StringNull(), types.StringNull()
+	// An all-day schedule carries no time range, whatever the plan held.
+	if allDay, _, _ := firewallPolicyScheduleTimeFields(schedule.Time); !allDay.IsNull() &&
+		!allDay.IsUnknown() && allDay.ValueBool() {
+		schedule.Time = firewallPolicyScheduleTimeValue(
+			allDay, types.StringNull(), types.StringNull(),
+		)
 	}
 	return true
 }
