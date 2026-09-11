@@ -232,12 +232,28 @@ type settingIpsModel struct {
 	SuppressionAlerts                   types.List   `tfsdk:"suppression_alerts"`
 }
 
+type settingEtherLightingNetworkOverrideModel struct {
+	Color   types.String `tfsdk:"color"`
+	Network types.String `tfsdk:"network"`
+}
+
+type settingEtherLightingSpeedOverrideModel struct {
+	Color types.String `tfsdk:"color"`
+	Speed types.String `tfsdk:"speed"`
+}
+
+type settingEtherLightingModel struct {
+	NetworkOverrides types.List `tfsdk:"network_overrides"`
+	SpeedOverrides   types.List `tfsdk:"speed_overrides"`
+}
+
 type settingResourceModel struct {
 	ID            types.String   `tfsdk:"id"`
 	Site          types.String   `tfsdk:"site"`
 	AutoSpeedtest types.Object   `tfsdk:"auto_speedtest"`
 	Country       types.Object   `tfsdk:"country"`
 	Dpi           types.Object   `tfsdk:"dpi"`
+	Etherlighting types.Object   `tfsdk:"etherlighting"`
 	Lcm           types.Object   `tfsdk:"lcm"`
 	NetworkOpt    types.Object   `tfsdk:"network_optimization"`
 	Ntp           types.Object   `tfsdk:"ntp"`
@@ -296,6 +312,18 @@ var (
 	dpiAttrTypes = map[string]attr.Type{
 		"enabled":                types.BoolType,
 		"fingerprinting_enabled": types.BoolType,
+	}
+	etherLightingNetworkOverrideAttrTypes = map[string]attr.Type{
+		"color":   types.StringType,
+		"network": types.StringType,
+	}
+	etherLightingSpeedOverrideAttrTypes = map[string]attr.Type{
+		"color": types.StringType,
+		"speed": types.StringType,
+	}
+	etherLightingAttrTypes = map[string]attr.Type{
+		"network_overrides": types.ListType{ElemType: types.ObjectType{AttrTypes: etherLightingNetworkOverrideAttrTypes}},
+		"speed_overrides":   types.ListType{ElemType: types.ObjectType{AttrTypes: etherLightingSpeedOverrideAttrTypes}},
 	}
 	lcmAttrTypes = map[string]attr.Type{
 		"enabled":      types.BoolType,
@@ -492,6 +520,50 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
+					},
+				},
+			},
+			"etherlighting": schema.SingleNestedAttribute{
+				MarkdownDescription: "Etherlighting settings.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"network_overrides": schema.ListNestedAttribute{
+						MarkdownDescription: "Network color overrides.",
+						Optional:            true,
+						Computed:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"color": schema.StringAttribute{
+									MarkdownDescription: "Hex color code without the `#` prefix.",
+									Required:            true,
+								},
+								"network": schema.StringAttribute{
+									MarkdownDescription: "Network ID.",
+									Required:            true,
+								},
+							},
+						},
+					},
+					"speed_overrides": schema.ListNestedAttribute{
+						MarkdownDescription: "Speed color overrides.",
+						Optional:            true,
+						Computed:            true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"color": schema.StringAttribute{
+									MarkdownDescription: "Hex color code without the `#` prefix.",
+									Required:            true,
+								},
+								"speed": schema.StringAttribute{
+									MarkdownDescription: "Speed name (e.g., `FE`, `GbE`, `2.5GbE`, `5GbE`, `10GbE`, `25GbE`, `40GbE`, `100GbE`).",
+									Required:            true,
+								},
+							},
+						},
 					},
 				},
 			},
@@ -1447,6 +1519,23 @@ func (r *settingResource) Create(
 		}
 	}
 
+	if !data.Etherlighting.IsNull() && !data.Etherlighting.IsUnknown() {
+		var m settingEtherLightingModel
+		resp.Diagnostics.Append(data.Etherlighting.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting, d := r.etherLightingModelToSetting(ctx, &m)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating Etherlighting Setting", err.Error())
+			return
+		}
+	}
+
 	if !data.Lcm.IsNull() && !data.Lcm.IsUnknown() {
 		var m settingLcmModel
 		resp.Diagnostics.Append(data.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -1775,6 +1864,23 @@ func (r *settingResource) Update(
 		}
 	}
 
+	if !plan.Etherlighting.IsNull() && !plan.Etherlighting.IsUnknown() {
+		var m settingEtherLightingModel
+		resp.Diagnostics.Append(plan.Etherlighting.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		setting, d := r.etherLightingModelToSetting(ctx, &m)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating Etherlighting Setting", err.Error())
+			return
+		}
+	}
+
 	if !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() {
 		var m settingLcmModel
 		resp.Diagnostics.Append(plan.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -2088,6 +2194,28 @@ func (r *settingResource) readSettings(
 		data.Dpi = objValue
 	} else {
 		data.Dpi = types.ObjectNull(dpiAttrTypes)
+	}
+
+	// Etherlighting settings
+	if !data.Etherlighting.IsNull() && !data.Etherlighting.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.EtherLighting](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Etherlighting Setting", err.Error())
+			return
+		}
+		model, d := r.etherLightingSettingToModel(ctx, s)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		objValue, d := types.ObjectValueFrom(ctx, etherLightingAttrTypes, model)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Etherlighting = objValue
+	} else {
+		data.Etherlighting = types.ObjectNull(etherLightingAttrTypes)
 	}
 
 	// LCM settings
@@ -3232,6 +3360,68 @@ func (r *settingResource) dpiSettingToModel(s *settings.Dpi) settingDpiModel {
 		Enabled:               types.BoolValue(s.Enabled),
 		FingerprintingEnabled: types.BoolValue(s.FingerprintingEnabled),
 	}
+}
+
+func (r *settingResource) etherLightingModelToSetting(ctx context.Context, m *settingEtherLightingModel) (*settings.EtherLighting, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	setting := &settings.EtherLighting{}
+
+	if !m.NetworkOverrides.IsNull() && !m.NetworkOverrides.IsUnknown() {
+		var networkOverrides []settingEtherLightingNetworkOverrideModel
+		diags.Append(m.NetworkOverrides.ElementsAs(ctx, &networkOverrides, false)...)
+		if !diags.HasError() {
+			for _, no := range networkOverrides {
+				setting.NetworkOverrides = append(setting.NetworkOverrides, settings.SettingEtherLightingNetworkOverrides{
+					RawColorHex: no.Color.ValueString(),
+					Key:         no.Network.ValueString(),
+				})
+			}
+		}
+	}
+
+	if !m.SpeedOverrides.IsNull() && !m.SpeedOverrides.IsUnknown() {
+		var speedOverrides []settingEtherLightingSpeedOverrideModel
+		diags.Append(m.SpeedOverrides.ElementsAs(ctx, &speedOverrides, false)...)
+		if !diags.HasError() {
+			for _, so := range speedOverrides {
+				setting.SpeedOverrides = append(setting.SpeedOverrides, settings.SettingEtherLightingSpeedOverrides{
+					RawColorHex: so.Color.ValueString(),
+					Key:         so.Speed.ValueString(),
+				})
+			}
+		}
+	}
+
+	return setting, diags
+}
+
+func (r *settingResource) etherLightingSettingToModel(ctx context.Context, s *settings.EtherLighting) (settingEtherLightingModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	model := settingEtherLightingModel{}
+
+	networkOverrides := make([]settingEtherLightingNetworkOverrideModel, len(s.NetworkOverrides))
+	for i, no := range s.NetworkOverrides {
+		networkOverrides[i] = settingEtherLightingNetworkOverrideModel{
+			Color:   types.StringValue(no.RawColorHex),
+			Network: types.StringValue(no.Key),
+		}
+	}
+	model.NetworkOverrides, diags = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: etherLightingNetworkOverrideAttrTypes}, networkOverrides)
+
+	if !diags.HasError() {
+		speedOverrides := make([]settingEtherLightingSpeedOverrideModel, len(s.SpeedOverrides))
+		for i, so := range s.SpeedOverrides {
+			speedOverrides[i] = settingEtherLightingSpeedOverrideModel{
+				Color: types.StringValue(so.RawColorHex),
+				Speed: types.StringValue(so.Key),
+			}
+		}
+		var soDiags diag.Diagnostics
+		model.SpeedOverrides, soDiags = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: etherLightingSpeedOverrideAttrTypes}, speedOverrides)
+		diags.Append(soDiags...)
+	}
+
+	return model, diags
 }
 
 func (r *settingResource) lcmModelToSetting(m *settingLcmModel) *settings.Lcm {
