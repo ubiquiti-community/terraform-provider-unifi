@@ -96,6 +96,15 @@ type settingRadiusModel struct {
 	Secret                types.String         `tfsdk:"secret"`
 }
 
+// settingSnmpModel is the `snmp` block: v1/v2c community and one v3 user.
+type settingSnmpModel struct {
+	Enabled   types.Bool   `tfsdk:"enabled"`
+	Community types.String `tfsdk:"community"`
+	EnabledV3 types.Bool   `tfsdk:"enabled_v3"`
+	Username  types.String `tfsdk:"username"`
+	Password  types.String `tfsdk:"password"`
+}
+
 type dnsVerificationModel struct {
 	Domain             types.String `tfsdk:"domain"`
 	PrimaryDNSServer   types.String `tfsdk:"primary_dns_server"`
@@ -300,6 +309,7 @@ type settingResourceModel struct {
 	Ips           types.Object   `tfsdk:"ips"`
 	Mgmt          types.Object   `tfsdk:"mgmt"`
 	Radius        types.Object   `tfsdk:"radius"`
+	Snmp          types.Object   `tfsdk:"snmp"`
 	USG           types.Object   `tfsdk:"usg"`
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
@@ -460,6 +470,13 @@ var (
 		"auth_port":               types.Int64Type,
 		"interim_update_interval": timetypes.GoDurationType{},
 		"secret":                  types.StringType,
+	}
+	snmpAttrTypes = map[string]attr.Type{
+		"enabled":    types.BoolType,
+		"community":  types.StringType,
+		"enabled_v3": types.BoolType,
+		"username":   types.StringType,
+		"password":   types.StringType,
 	}
 	usgDNSVerificationAttrTypes = map[string]attr.Type{
 		"domain":               types.StringType,
@@ -1240,6 +1257,57 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"snmp": schema.SingleNestedAttribute{
+				MarkdownDescription: "SNMP agent settings (Settings > System > SNMP): " +
+					"a v1/v2c community and a single SNMPv3 user.",
+				Optional: true,
+				Computed: true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable SNMP v1/v2c.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"community": schema.StringAttribute{
+						MarkdownDescription: "SNMP v1/v2c community string.",
+						Optional:            true,
+						Computed:            true,
+						Sensitive:           true,
+						Validators: []validator.String{
+							stringvalidator.LengthBetween(1, 256),
+						},
+					},
+					"enabled_v3": schema.BoolAttribute{
+						MarkdownDescription: "Enable SNMPv3.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"username": schema.StringAttribute{
+						MarkdownDescription: "SNMPv3 username.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^[a-zA-Z0-9_-]{1,30}$`),
+								"must be 1-30 characters of letters, digits, underscores, or hyphens",
+							),
+						},
+					},
+					"password": schema.StringAttribute{
+						MarkdownDescription: "SNMPv3 password.",
+						Optional:            true,
+						Computed:            true,
+						Sensitive:           true,
+						Validators: []validator.String{
+							stringvalidator.LengthBetween(8, 32),
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^[^'"]+$`),
+								"must not contain single or double quotes",
+							),
+						},
+					},
+				},
+			},
 			"usg": schema.SingleNestedAttribute{
 				MarkdownDescription: "USG settings.",
 				Optional:            true,
@@ -1966,6 +2034,31 @@ func (r *settingResource) Create(
 		}
 	}
 
+	if !data.Snmp.IsNull() && !data.Snmp.IsUnknown() {
+		var snmp settingSnmpModel
+		resp.Diagnostics.Append(data.Snmp.As(ctx, &snmp, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		// Read current remote settings as the base so unset fields keep their remote values
+		_, currentSnmp, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading SNMP Setting", err.Error())
+				return
+			}
+			currentSnmp = &settings.Snmp{}
+		}
+
+		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating SNMP Setting", err.Error())
+			return
+		}
+	}
+
 	if !data.USG.IsNull() && !data.USG.IsUnknown() {
 		var usg settingUSGModel
 		resp.Diagnostics.Append(data.USG.As(ctx, &usg, basetypes.ObjectAsOptions{})...)
@@ -2290,6 +2383,31 @@ func (r *settingResource) Update(
 		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Radius Setting", err.Error())
+			return
+		}
+	}
+
+	if !plan.Snmp.IsNull() && !plan.Snmp.IsUnknown() {
+		var snmp settingSnmpModel
+		resp.Diagnostics.Append(plan.Snmp.As(ctx, &snmp, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		// Read current remote settings as the base so unset fields keep their remote values
+		_, currentSnmp, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading SNMP Setting", err.Error())
+				return
+			}
+			currentSnmp = &settings.Snmp{}
+		}
+
+		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating SNMP Setting", err.Error())
 			return
 		}
 	}
@@ -2664,6 +2782,32 @@ func (r *settingResource) readSettings(
 		data.Radius = types.ObjectNull(radiusAttrTypes)
 	}
 
+	// SNMP settings
+	if !data.Snmp.IsNull() && !data.Snmp.IsUnknown() {
+		var planSnmp settingSnmpModel
+		diags.Append(data.Snmp.As(ctx, &planSnmp, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return
+		}
+
+		_, snmpSetting, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading SNMP Setting", err.Error())
+			return
+		}
+
+		objValue, d := types.ObjectValueFrom(
+			ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting, &planSnmp),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Snmp = objValue
+	} else {
+		data.Snmp = types.ObjectNull(snmpAttrTypes)
+	}
+
 	// USG settings
 	if !data.USG.IsNull() && !data.USG.IsUnknown() {
 		// Get the current plan/state values
@@ -2875,6 +3019,63 @@ func (r *settingResource) mgmtSettingToModel(
 		model.SSH, _ = types.ObjectValueFrom(ctx, mgmtSSHAttrTypes, ssh)
 	} else {
 		model.SSH = types.ObjectNull(mgmtSSHAttrTypes)
+	}
+
+	return model
+}
+
+// SNMP conversion functions.
+
+// snmpModelToSetting overlays the known model values onto base (the current
+// remote setting), so an attribute left unset keeps the controller's value
+// instead of being zeroed; e.g. configuring only the v3 user must not turn
+// v1/v2c off.
+func (r *settingResource) snmpModelToSetting(
+	_ context.Context,
+	model *settingSnmpModel,
+	base *settings.Snmp,
+) *settings.Snmp {
+	setting := base
+
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		setting.Enabled = model.Enabled.ValueBool()
+	}
+	if !model.Community.IsNull() && !model.Community.IsUnknown() {
+		setting.Community = model.Community.ValueString()
+	}
+	if !model.EnabledV3.IsNull() && !model.EnabledV3.IsUnknown() {
+		setting.EnabledV3 = model.EnabledV3.ValueBool()
+	}
+	if !model.Username.IsNull() && !model.Username.IsUnknown() {
+		setting.Username = model.Username.ValueString()
+	}
+	if !model.Password.IsNull() && !model.Password.IsUnknown() {
+		setting.Password = model.Password.ValueString()
+	}
+
+	return setting
+}
+
+// snmpSettingToModel maps the remote setting back to the model. Empty strings
+// read as null. The secrets fall back to the prior (planned/state) value when
+// the controller does not return them.
+func (r *settingResource) snmpSettingToModel(
+	_ context.Context,
+	setting *settings.Snmp,
+	prior *settingSnmpModel,
+) *settingSnmpModel {
+	model := &settingSnmpModel{
+		Enabled:   types.BoolValue(setting.Enabled),
+		Community: util.StringValueOrNull(setting.Community),
+		EnabledV3: types.BoolValue(setting.EnabledV3),
+		Username:  util.StringValueOrNull(setting.Username),
+		Password:  util.StringValueOrNull(setting.Password),
+	}
+	if model.Community.IsNull() && !prior.Community.IsUnknown() {
+		model.Community = prior.Community
+	}
+	if model.Password.IsNull() && !prior.Password.IsUnknown() {
+		model.Password = prior.Password
 	}
 
 	return model

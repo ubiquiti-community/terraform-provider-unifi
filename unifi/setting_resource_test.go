@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"os"
 	"testing"
@@ -451,6 +452,75 @@ resource "unifi_setting" "test" {
   }
 }
 `
+}
+
+func TestAccSettingResource_snmp(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSettingConfig_snmp(true, "monitor"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_setting.test", "snmp.enabled", "true"),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.community",
+						"tf-acc-community",
+					),
+					resource.TestCheckResourceAttr("unifi_setting.test", "snmp.enabled_v3", "true"),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.username",
+						"monitor",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.password",
+						"tf-acc-pass-123",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_snmp(false, "monitor2"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.enabled_v3",
+						"false",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.username",
+						"monitor2",
+					),
+					resource.TestCheckResourceAttr("unifi_setting.test", "snmp.enabled", "true"),
+				),
+			},
+			{
+				// Import reads only the site; configured blocks are not
+				// recoverable from an import ID, as for the sibling blocks.
+				ResourceName:            "unifi_setting.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"snmp", "snmp.%"},
+			},
+		},
+	})
+}
+
+func testAccSettingConfig_snmp(enabledV3 bool, username string) string {
+	return fmt.Sprintf(`
+resource "unifi_setting" "test" {
+  snmp = {
+    enabled    = true
+    community  = "tf-acc-community"
+    enabled_v3 = %t
+    username   = %q
+    password   = "tf-acc-pass-123"
+  }
+}
+`, enabledV3, username)
 }
 
 func testAccSettingConfig_radius() string {
@@ -1760,6 +1830,113 @@ func TestSettingBlocksRoundTrip(t *testing.T) {
 		out.Contents.ElementsAs(ctx, &gotContents, false)
 		if out.IP.ValueString() != "10.0.0.9" || len(gotContents) != 2 {
 			t.Errorf("syslog round-trip mismatch: %+v", out)
+		}
+	})
+
+	t.Run("snmp", func(t *testing.T) {
+		in := &settingSnmpModel{
+			Enabled:   types.BoolValue(true),
+			Community: types.StringValue("public-ro"),
+			EnabledV3: types.BoolValue(true),
+			Username:  types.StringValue("monitor"),
+			Password:  types.StringValue("s3cretpass"),
+		}
+		setting := r.snmpModelToSetting(ctx, in, &settings.Snmp{})
+		out := r.snmpSettingToModel(ctx, setting, in)
+		if *out != *in {
+			t.Errorf("snmp round-trip mismatch:\n got %+v\nwant %+v", out, *in)
+		}
+	})
+}
+
+// Test_settingResource_snmpModelToSetting checks the model -> go-unifi mapping,
+// including the wire names (enabledV3, x_password), and that unset attributes
+// keep the controller's current value (read-base) rather than being zeroed.
+func Test_settingResource_snmpModelToSetting(t *testing.T) {
+	r := &settingResource{}
+
+	t.Run("v3 user maps to wire fields", func(t *testing.T) {
+		model := &settingSnmpModel{
+			Enabled:   types.BoolValue(false),
+			Community: types.StringNull(),
+			EnabledV3: types.BoolValue(true),
+			Username:  types.StringValue("monitor"),
+			Password:  types.StringValue("s3cretpass"),
+		}
+		got := r.snmpModelToSetting(context.Background(), model, &settings.Snmp{})
+		raw, err := json.Marshal(got)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var wire map[string]any
+		if err := json.Unmarshal(raw, &wire); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if wire["enabledV3"] != true || wire["enabled"] != false ||
+			wire["username"] != "monitor" || wire["x_password"] != "s3cretpass" {
+			t.Errorf("unexpected wire payload: %s", raw)
+		}
+		if _, ok := wire["community"]; ok {
+			t.Errorf("unset community must be omitted, got payload: %s", raw)
+		}
+	})
+
+	t.Run("unset attributes keep the remote value", func(t *testing.T) {
+		base := &settings.Snmp{
+			Enabled:   true,
+			Community: "existing",
+			EnabledV3: true,
+			Username:  "keepme",
+		}
+		model := &settingSnmpModel{
+			Enabled:   types.BoolUnknown(),
+			Community: types.StringNull(),
+			EnabledV3: types.BoolValue(false),
+			Username:  types.StringUnknown(),
+			Password:  types.StringNull(),
+		}
+		got := r.snmpModelToSetting(context.Background(), model, base)
+		if !got.Enabled || got.Community != "existing" || got.Username != "keepme" {
+			t.Errorf("read-base fields clobbered: %+v", got)
+		}
+		if got.EnabledV3 {
+			t.Error("enabled_v3=false was not applied")
+		}
+	})
+}
+
+// Test_settingResource_snmpSettingToModel checks the go-unifi -> model mapping.
+func Test_settingResource_snmpSettingToModel(t *testing.T) {
+	r := &settingResource{}
+
+	t.Run("fields map back", func(t *testing.T) {
+		s := &settings.Snmp{
+			Enabled:   true,
+			Community: "public-ro",
+			EnabledV3: true,
+			Username:  "monitor",
+			Password:  "s3cretpass",
+		}
+		prior := &settingSnmpModel{
+			Community: types.StringValue("public-ro"),
+			Password:  types.StringValue("s3cretpass"),
+		}
+		got := r.snmpSettingToModel(context.Background(), s, prior)
+		if !got.Enabled.ValueBool() || !got.EnabledV3.ValueBool() ||
+			got.Username.ValueString() != "monitor" ||
+			got.Community.ValueString() != "public-ro" ||
+			got.Password.ValueString() != "s3cretpass" {
+			t.Errorf("unexpected model: %+v", got)
+		}
+	})
+
+	t.Run("empty strings become null", func(t *testing.T) {
+		got := r.snmpSettingToModel(context.Background(), &settings.Snmp{}, &settingSnmpModel{})
+		if !got.Username.IsNull() || !got.Community.IsNull() || !got.Password.IsNull() {
+			t.Errorf("empty remote strings should be null: %+v", got)
+		}
+		if got.Enabled.ValueBool() || got.EnabledV3.ValueBool() {
+			t.Errorf("bools should read false: %+v", got)
 		}
 	})
 }
