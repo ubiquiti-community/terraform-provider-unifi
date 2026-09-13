@@ -69,6 +69,19 @@ resource "unifi_setting" "combined" {
   }
 }
 
+# Configure only SNMP settings (v1/v2c community plus an SNMPv3 user)
+resource "unifi_setting" "snmp_only" {
+  site = "default"
+
+  snmp = {
+    enabled    = true
+    community  = "my-snmp-community"
+    enabled_v3 = true
+    username   = "monitor"
+    password   = "my-snmpv3-password"
+  }
+}
+
 # Configure only RADIUS settings
 resource "unifi_setting" "radius_only" {
   site = "default"
@@ -97,6 +110,7 @@ resource "unifi_setting" "radius_only" {
 - `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
 - `site` (String) The name of the site to associate the settings with.
+- `snmp` (Attributes) SNMP agent settings (Settings > System > SNMP): a v1/v2c community and a single SNMPv3 user. (see [below for nested schema](#nestedatt--snmp))
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `usg` (Attributes) USG settings. (see [below for nested schema](#nestedatt--usg))
@@ -323,6 +337,18 @@ Optional:
 - `auth_port` (Number) RADIUS authentication port.
 - `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
 - `secret` (String, Sensitive) RADIUS shared secret.
+
+
+<a id="nestedatt--snmp"></a>
+### Nested Schema for `snmp`
+
+Optional:
+
+- `community` (String, Sensitive) SNMP v1/v2c community string.
+- `enabled` (Boolean) Enable SNMP v1/v2c.
+- `enabled_v3` (Boolean) Enable SNMPv3.
+- `password` (String, Sensitive) SNMPv3 password.
+- `username` (String) SNMPv3 username.
 
 
 <a id="nestedatt--syslog"></a>
