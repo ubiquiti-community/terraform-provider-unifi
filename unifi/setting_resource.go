@@ -2784,12 +2784,6 @@ func (r *settingResource) readSettings(
 
 	// SNMP settings
 	if !data.Snmp.IsNull() && !data.Snmp.IsUnknown() {
-		var planSnmp settingSnmpModel
-		diags.Append(data.Snmp.As(ctx, &planSnmp, basetypes.ObjectAsOptions{})...)
-		if diags.HasError() {
-			return
-		}
-
 		_, snmpSetting, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
 		if err != nil {
 			diags.AddError("Error Reading SNMP Setting", err.Error())
@@ -2797,7 +2791,7 @@ func (r *settingResource) readSettings(
 		}
 
 		objValue, d := types.ObjectValueFrom(
-			ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting, &planSnmp),
+			ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting),
 		)
 		diags.Append(d...)
 		if diags.HasError() {
@@ -3056,29 +3050,21 @@ func (r *settingResource) snmpModelToSetting(
 	return setting
 }
 
-// snmpSettingToModel maps the remote setting back to the model. Empty strings
-// read as null. The secrets fall back to the prior (planned/state) value when
-// the controller does not return them.
+// snmpSettingToModel maps the remote setting back to the model exactly as the
+// controller returns it: empty strings read as null. The controller echoes
+// community and x_password, so there is no fallback to prior state; a secret
+// cleared on the controller reads back as null and surfaces as drift.
 func (r *settingResource) snmpSettingToModel(
 	_ context.Context,
 	setting *settings.Snmp,
-	prior *settingSnmpModel,
 ) *settingSnmpModel {
-	model := &settingSnmpModel{
+	return &settingSnmpModel{
 		Enabled:   types.BoolValue(setting.Enabled),
 		Community: util.StringValueOrNull(setting.Community),
 		EnabledV3: types.BoolValue(setting.EnabledV3),
 		Username:  util.StringValueOrNull(setting.Username),
 		Password:  util.StringValueOrNull(setting.Password),
 	}
-	if model.Community.IsNull() && !prior.Community.IsUnknown() {
-		model.Community = prior.Community
-	}
-	if model.Password.IsNull() && !prior.Password.IsUnknown() {
-		model.Password = prior.Password
-	}
-
-	return model
 }
 
 // Radius conversion functions.

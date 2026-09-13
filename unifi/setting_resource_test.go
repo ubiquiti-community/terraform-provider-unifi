@@ -495,15 +495,34 @@ func TestAccSettingResource_snmp(t *testing.T) {
 						"monitor2",
 					),
 					resource.TestCheckResourceAttr("unifi_setting.test", "snmp.enabled", "true"),
+					// Secrets unchanged in config must survive an update that
+					// only touches enabled_v3/username.
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.community",
+						"tf-acc-community",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.password",
+						"tf-acc-pass-123",
+					),
 				),
 			},
 			{
 				// Import reads only the site; configured blocks are not
 				// recoverable from an import ID, as for the sibling blocks.
-				ResourceName:            "unifi_setting.test",
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"snmp", "snmp.%"},
+				ResourceName:      "unifi_setting.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"snmp.%",
+					"snmp.enabled",
+					"snmp.community",
+					"snmp.enabled_v3",
+					"snmp.username",
+					"snmp.password",
+				},
 			},
 		},
 	})
@@ -1842,7 +1861,7 @@ func TestSettingBlocksRoundTrip(t *testing.T) {
 			Password:  types.StringValue("s3cretpass"),
 		}
 		setting := r.snmpModelToSetting(ctx, in, &settings.Snmp{})
-		out := r.snmpSettingToModel(ctx, setting, in)
+		out := r.snmpSettingToModel(ctx, setting)
 		if *out != *in {
 			t.Errorf("snmp round-trip mismatch:\n got %+v\nwant %+v", out, *in)
 		}
@@ -1917,11 +1936,7 @@ func Test_settingResource_snmpSettingToModel(t *testing.T) {
 			Username:  "monitor",
 			Password:  "s3cretpass",
 		}
-		prior := &settingSnmpModel{
-			Community: types.StringValue("public-ro"),
-			Password:  types.StringValue("s3cretpass"),
-		}
-		got := r.snmpSettingToModel(context.Background(), s, prior)
+		got := r.snmpSettingToModel(context.Background(), s)
 		if !got.Enabled.ValueBool() || !got.EnabledV3.ValueBool() ||
 			got.Username.ValueString() != "monitor" ||
 			got.Community.ValueString() != "public-ro" ||
@@ -1931,12 +1946,40 @@ func Test_settingResource_snmpSettingToModel(t *testing.T) {
 	})
 
 	t.Run("empty strings become null", func(t *testing.T) {
-		got := r.snmpSettingToModel(context.Background(), &settings.Snmp{}, &settingSnmpModel{})
+		got := r.snmpSettingToModel(context.Background(), &settings.Snmp{})
 		if !got.Username.IsNull() || !got.Community.IsNull() || !got.Password.IsNull() {
 			t.Errorf("empty remote strings should be null: %+v", got)
 		}
 		if got.Enabled.ValueBool() || got.EnabledV3.ValueBool() {
 			t.Errorf("bools should read false: %+v", got)
+		}
+	})
+
+	// A secret cleared on the controller (e.g. in the UI) must read back as
+	// null, not as the value Terraform last wrote, so the next plan shows the
+	// drift against the configured value instead of hiding it.
+	t.Run("controller-side cleared secrets read as null", func(t *testing.T) {
+		r := &settingResource{}
+		configured := &settingSnmpModel{
+			Enabled:   types.BoolValue(true),
+			Community: types.StringValue("public-ro"),
+			EnabledV3: types.BoolValue(true),
+			Username:  types.StringValue("monitor"),
+			Password:  types.StringValue("s3cretpass"),
+		}
+		written := r.snmpModelToSetting(context.Background(), configured, &settings.Snmp{})
+		written.Community = ""
+		written.Password = ""
+
+		got := r.snmpSettingToModel(context.Background(), written)
+		if !got.Community.IsNull() {
+			t.Errorf("cleared community should read as null, got %s", got.Community)
+		}
+		if !got.Password.IsNull() {
+			t.Errorf("cleared password should read as null, got %s", got.Password)
+		}
+		if got.Community.Equal(configured.Community) || got.Password.Equal(configured.Password) {
+			t.Error("read-back equals the configured secret; drift would be hidden")
 		}
 	})
 }
