@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
@@ -87,11 +88,13 @@ type settingRadiusModel struct {
 
 // settingSnmpModel is the `snmp` block: v1/v2c community and one v3 user.
 type settingSnmpModel struct {
-	Enabled   types.Bool   `tfsdk:"enabled"`
-	Community types.String `tfsdk:"community"`
-	EnabledV3 types.Bool   `tfsdk:"enabled_v3"`
-	Username  types.String `tfsdk:"username"`
-	Password  types.String `tfsdk:"password"`
+	Enabled           types.Bool   `tfsdk:"enabled"`
+	Community         types.String `tfsdk:"community"`
+	EnabledV3         types.Bool   `tfsdk:"enabled_v3"`
+	Username          types.String `tfsdk:"username"`
+	Password          types.String `tfsdk:"password"`
+	PasswordWO        types.String `tfsdk:"password_wo"`
+	PasswordWOVersion types.Int64  `tfsdk:"password_wo_version"`
 }
 
 type dnsVerificationModel struct {
@@ -438,6 +441,7 @@ var (
 		"jumboframe_enabled":     types.BoolType,
 		"dot1x_portctrl_enabled": types.BoolType,
 	}
+
 	connectivityAttrTypes = map[string]attr.Type{
 		"enabled":          types.BoolType,
 		"mlo_mesh_enabled": types.BoolType,
@@ -445,11 +449,13 @@ var (
 		"uplink_host":      types.StringType,
 	}
 	snmpAttrTypes = map[string]attr.Type{
-		"enabled":    types.BoolType,
-		"community":  types.StringType,
-		"enabled_v3": types.BoolType,
-		"username":   types.StringType,
-		"password":   types.StringType,
+		"enabled":             types.BoolType,
+		"community":           types.StringType,
+		"enabled_v3":          types.BoolType,
+		"username":            types.StringType,
+		"password":            types.StringType,
+		"password_wo":         types.StringType,
+		"password_wo_version": types.Int64Type,
 	}
 )
 
@@ -1121,9 +1127,8 @@ func (r *settingResource) Schema(
 			},
 			"snmp": schema.SingleNestedAttribute{
 				MarkdownDescription: "SNMP agent settings (Settings > System > SNMP): " +
-					"a v1/v2c community and a single SNMPv3 user.",
+					"a v1/v2c community and a single SNMPv3 user. Only configured SNMP settings are read; import does not populate this attribute.",
 				Optional: true,
-				Computed: true,
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable SNMP v1/v2c.",
@@ -1156,15 +1161,43 @@ func (r *settingResource) Schema(
 						},
 					},
 					"password": schema.StringAttribute{
-						MarkdownDescription: "SNMPv3 password.",
+						MarkdownDescription: "SNMPv3 password, stored in state. The configured value is preserved on read because controllers may omit or mask the password. External password changes are not detected. Mutually exclusive with `password_wo`.",
 						Optional:            true,
-						Computed:            true,
 						Sensitive:           true,
+						Validators: []validator.String{
+							stringvalidator.ConflictsWith(
+								path.MatchRoot("snmp").AtName("password_wo"),
+							),
+							stringvalidator.LengthBetween(8, 32),
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^[^'"]+$`),
+								"must not contain single or double quotes",
+							),
+						},
+					},
+					"password_wo": schema.StringAttribute{
+						MarkdownDescription: "Write-only SNMPv3 password (Terraform 1.11+), never stored in plan or state; accepts ephemeral values. Mutually exclusive with `password`. Set `password_wo_version` and change it to rotate this password. Changing only this value does not trigger an update. External password changes are not detected.",
+						Optional:            true,
+						Sensitive:           true,
+						WriteOnly:           true,
 						Validators: []validator.String{
 							stringvalidator.LengthBetween(8, 32),
 							stringvalidator.RegexMatches(
 								regexp.MustCompile(`^[^'"]+$`),
 								"must not contain single or double quotes",
+							),
+							stringvalidator.AlsoRequires(
+								path.MatchRoot("snmp").AtName("password_wo_version"),
+							),
+						},
+					},
+					"password_wo_version": schema.Int64Attribute{
+						MarkdownDescription: "Positive version for `password_wo`. Required with `password_wo`; change it whenever the write-only password should be applied. The version is stored in state. An unchanged version preserves the controller password during other updates.",
+						Optional:            true,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AlsoRequires(
+								path.MatchRoot("snmp").AtName("password_wo"),
 							),
 						},
 					},
@@ -1830,6 +1863,13 @@ func (r *settingResource) Create(
 	if !data.Snmp.IsNull() && !data.Snmp.IsUnknown() {
 		var snmp settingSnmpModel
 		resp.Diagnostics.Append(data.Snmp.As(ctx, &snmp, basetypes.ObjectAsOptions{})...)
+		r.readSnmpPasswordWO(
+			ctx,
+			req.Config,
+			&snmp,
+			types.ObjectNull(snmpAttrTypes),
+			&resp.Diagnostics,
+		)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2210,6 +2250,7 @@ func (r *settingResource) Update(
 	if !plan.Snmp.IsNull() && !plan.Snmp.IsUnknown() {
 		var snmp settingSnmpModel
 		resp.Diagnostics.Append(plan.Snmp.As(ctx, &snmp, basetypes.ObjectAsOptions{})...)
+		r.readSnmpPasswordWO(ctx, req.Config, &snmp, state.Snmp, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2630,12 +2671,11 @@ func (r *settingResource) readSettings(
 
 	// SNMP settings
 	if !data.Snmp.IsNull() && !data.Snmp.IsUnknown() {
-		var planSnmp settingSnmpModel
-		diags.Append(data.Snmp.As(ctx, &planSnmp, basetypes.ObjectAsOptions{})...)
+		var prior settingSnmpModel
+		diags.Append(data.Snmp.As(ctx, &prior, basetypes.ObjectAsOptions{})...)
 		if diags.HasError() {
 			return
 		}
-
 		_, snmpSetting, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
 		if err != nil {
 			diags.AddError("Error Reading SNMP Setting", err.Error())
@@ -2643,7 +2683,7 @@ func (r *settingResource) readSettings(
 		}
 
 		objValue, d := types.ObjectValueFrom(
-			ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting, &planSnmp),
+			ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting, &prior),
 		)
 		diags.Append(d...)
 		if diags.HasError() {
@@ -2977,6 +3017,30 @@ func (r *settingResource) mgmtSettingToModel(
 
 // SNMP conversion functions.
 
+// readSnmpPasswordWO reads the secret from configuration, not the plan (where
+// write-only values are always null). Only a new version applies the secret;
+// unrelated updates with the same version leave the controller password alone.
+func (r *settingResource) readSnmpPasswordWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	model *settingSnmpModel,
+	prior types.Object,
+	diags *diag.Diagnostics,
+) {
+	if diags.HasError() || model.PasswordWOVersion.IsNull() || model.PasswordWOVersion.IsUnknown() {
+		return
+	}
+	if !prior.IsNull() && !prior.IsUnknown() {
+		var previous settingSnmpModel
+		diags.Append(prior.As(ctx, &previous, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() || model.PasswordWOVersion.Equal(previous.PasswordWOVersion) {
+			return
+		}
+	}
+	diags.Append(
+		config.GetAttribute(ctx, path.Root("snmp").AtName("password_wo"), &model.PasswordWO)...)
+}
+
 // snmpModelToSetting overlays the known model values onto base (the current
 // remote setting), so an attribute left unset keeps the controller's value
 // instead of being zeroed; e.g. configuring only the v3 user must not turn
@@ -3002,34 +3066,34 @@ func (r *settingResource) snmpModelToSetting(
 	}
 	if !model.Password.IsNull() && !model.Password.IsUnknown() {
 		setting.Password = model.Password.ValueString()
+	} else if !model.PasswordWO.IsNull() && !model.PasswordWO.IsUnknown() {
+		setting.Password = model.PasswordWO.ValueString()
+	} else {
+		// Never replay an echoed/masked password from the read base. The SDK
+		// omits an empty x_password, preserving the remote credential.
+		setting.Password = ""
 	}
 
 	return setting
 }
 
-// snmpSettingToModel maps the remote setting back to the model. Empty strings
-// read as null. The secrets fall back to the prior (planned/state) value when
-// the controller does not return them.
+// snmpSettingToModel reads public fields and community from the controller.
+// Passwords may be omitted or masked: retain only the planned/stored password
+// and rotation version, never the API password or the write-only input.
 func (r *settingResource) snmpSettingToModel(
 	_ context.Context,
 	setting *settings.Snmp,
 	prior *settingSnmpModel,
 ) *settingSnmpModel {
-	model := &settingSnmpModel{
-		Enabled:   types.BoolValue(setting.Enabled),
-		Community: util.StringValueOrNull(setting.Community),
-		EnabledV3: types.BoolValue(setting.EnabledV3),
-		Username:  util.StringValueOrNull(setting.Username),
-		Password:  util.StringValueOrNull(setting.Password),
+	return &settingSnmpModel{
+		Enabled:           types.BoolValue(setting.Enabled),
+		Community:         util.StringValueOrNull(setting.Community),
+		EnabledV3:         types.BoolValue(setting.EnabledV3),
+		Username:          util.StringValueOrNull(setting.Username),
+		Password:          prior.Password,
+		PasswordWO:        types.StringNull(),
+		PasswordWOVersion: prior.PasswordWOVersion,
 	}
-	if model.Community.IsNull() && !prior.Community.IsUnknown() {
-		model.Community = prior.Community
-	}
-	if model.Password.IsNull() && !prior.Password.IsUnknown() {
-		model.Password = prior.Password
-	}
-
-	return model
 }
 
 // Radius conversion functions.

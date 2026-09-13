@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -639,15 +641,34 @@ func TestAccSettingResource_snmp(t *testing.T) {
 						"monitor2",
 					),
 					resource.TestCheckResourceAttr("unifi_setting.test", "snmp.enabled", "true"),
+					// Secrets unchanged in config must survive an update that
+					// only touches enabled_v3/username.
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.community",
+						"tf-acc-community",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.password",
+						"tf-acc-pass-123",
+					),
 				),
 			},
 			{
 				// Import reads only the site; configured blocks are not
 				// recoverable from an import ID, as for the sibling blocks.
-				ResourceName:            "unifi_setting.test",
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"snmp", "snmp.%"},
+				ResourceName:      "unifi_setting.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"snmp.%",
+					"snmp.enabled",
+					"snmp.community",
+					"snmp.enabled_v3",
+					"snmp.username",
+					"snmp.password",
+				},
 			},
 		},
 	})
@@ -1192,6 +1213,7 @@ func Test_settingResource_Schema(t *testing.T) {
 	r := &settingResource{}
 	resp := &fwresource.SchemaResponse{}
 	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	resp.Diagnostics.Append(resp.Schema.ValidateImplementation(context.Background())...)
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
@@ -2447,11 +2469,11 @@ func Test_settingResource_snmpSettingToModel(t *testing.T) {
 			Username:  "monitor",
 			Password:  "s3cretpass",
 		}
-		prior := &settingSnmpModel{
-			Community: types.StringValue("public-ro"),
-			Password:  types.StringValue("s3cretpass"),
-		}
-		got := r.snmpSettingToModel(context.Background(), s, prior)
+		got := r.snmpSettingToModel(
+			context.Background(),
+			s,
+			&settingSnmpModel{Password: types.StringValue("s3cretpass")},
+		)
 		if !got.Enabled.ValueBool() || !got.EnabledV3.ValueBool() ||
 			got.Username.ValueString() != "monitor" ||
 			got.Community.ValueString() != "public-ro" ||
@@ -2469,6 +2491,261 @@ func Test_settingResource_snmpSettingToModel(t *testing.T) {
 			t.Errorf("bools should read false: %+v", got)
 		}
 	})
+
+	// Community cleared on the controller must read back as
+	// null so the next plan shows drift. Password is preserved because
+	// some controllers omit it on read.
+	t.Run("community drift is detected but password is preserved", func(t *testing.T) {
+		r := &settingResource{}
+		configured := &settingSnmpModel{
+			Enabled:   types.BoolValue(true),
+			Community: types.StringValue("public-ro"),
+			EnabledV3: types.BoolValue(true),
+			Username:  types.StringValue("monitor"),
+			Password:  types.StringValue("s3cretpass"),
+		}
+		written := r.snmpModelToSetting(context.Background(), configured, &settings.Snmp{})
+		written.Community = ""
+		written.Password = ""
+
+		got := r.snmpSettingToModel(context.Background(), written, configured)
+		if !got.Community.IsNull() {
+			t.Errorf("cleared community should read as null, got %s", got.Community)
+		}
+		if !got.Password.Equal(configured.Password) {
+			t.Errorf("password should preserve the configured value, got %s", got.Password)
+		}
+		if got.Community.Equal(configured.Community) {
+			t.Error("read-back equals the configured secret; drift would be hidden")
+		}
+	})
+}
+
+func TestAccSettingResource_snmpWriteOnly(t *testing.T) {
+	config := func(password string, version int, username string) string {
+		return fmt.Sprintf(`
+variable "snmp_password" {
+  type = string
+  sensitive = true
+  ephemeral = true
+  default = %q
+}
+resource "unifi_setting" "test" {
+  snmp = {
+    enabled = true
+    community = "tf-acc-community"
+    enabled_v3 = true
+    username = %q
+    password_wo = var.snmp_password
+    password_wo_version = %d
+  }
+}`, password, username, version)
+	}
+	check := func(password string, version string) resource.TestCheckFunc {
+		return resource.ComposeTestCheckFunc(
+			resource.TestCheckNoResourceAttr("unifi_setting.test", "snmp.password"),
+			resource.TestCheckNoResourceAttr("unifi_setting.test", "snmp.password_wo"),
+			resource.TestCheckResourceAttr(
+				"unifi_setting.test",
+				"snmp.password_wo_version",
+				version,
+			),
+			func(_ *terraform.State) error {
+				client, err := unifi.New(context.Background(), &unifi.Config{
+					BaseURL: os.Getenv("UNIFI_API"), Username: os.Getenv("UNIFI_USERNAME"),
+					Password: os.Getenv("UNIFI_PASSWORD"), AllowInsecure: true,
+				})
+				if err != nil {
+					return err
+				}
+				_, got, err := unifi.GetSetting[*settings.Snmp](
+					client,
+					context.Background(),
+					"default",
+				)
+				if err != nil {
+					return err
+				}
+				if got.Password != password {
+					return fmt.Errorf("controller password did not match expected rotation")
+				}
+				return nil
+			},
+		)
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{Config: config("first-password", 1, "monitor"), Check: check("first-password", "1")},
+			// A write-only value alone cannot produce a plan difference.
+			{Config: config("second-password", 1, "monitor"), PlanOnly: true},
+			{Config: config("second-password", 2, "monitor"), Check: check("second-password", "2")},
+			// Unrelated updates must not reapply the write-only input at the same version.
+			{
+				Config: config("ignored-password", 2, "monitor2"),
+				Check:  check("second-password", "2"),
+			},
+			// Switching back to the stateful password clears version state.
+			{
+				Config: testAccSettingConfig_snmp(true, "monitor"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"snmp.password",
+						"tf-acc-pass-123",
+					),
+					resource.TestCheckNoResourceAttr(
+						"unifi_setting.test",
+						"snmp.password_wo_version",
+					),
+				),
+			},
+			// Switching to write-only removes the old stateful password.
+			{Config: config("third-password", 3, "monitor"), Check: check("third-password", "3")},
+			{
+				ResourceName:            "unifi_setting.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"snmp"},
+			},
+		},
+	})
+}
+
+func TestAccSettingResource_snmpPasswordValidation(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      `resource "unifi_setting" "test" { snmp = { password = "password-one", password_wo = "password-two", password_wo_version = 1 } }`,
+				ExpectError: regexp.MustCompile("Invalid Attribute Combination"),
+			},
+			{
+				Config:      `resource "unifi_setting" "test" { snmp = { password_wo = "password-two" } }`,
+				ExpectError: regexp.MustCompile("must be specified when"),
+			},
+			{
+				Config:      `resource "unifi_setting" "test" { snmp = { password_wo_version = 1 } }`,
+				ExpectError: regexp.MustCompile("must be specified when"),
+			},
+			{
+				Config:      `resource "unifi_setting" "test" { snmp = { password_wo = "password-two", password_wo_version = 0 } }`,
+				ExpectError: regexp.MustCompile("Invalid Attribute Value"),
+			},
+		},
+	})
+}
+
+func Test_settingResource_snmpPasswords(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+	for _, echoed := range []string{"", "********", "different-password"} {
+		t.Run("read/"+echoed, func(t *testing.T) {
+			prior := &settingSnmpModel{
+				Password:          types.StringValue("configured-password"),
+				PasswordWO:        types.StringValue("ephemeral-password"),
+				PasswordWOVersion: types.Int64Value(3),
+			}
+			got := r.snmpSettingToModel(ctx, &settings.Snmp{Password: echoed}, prior)
+			if !got.Password.Equal(prior.Password) || !got.PasswordWO.IsNull() ||
+				!got.PasswordWOVersion.Equal(prior.PasswordWOVersion) {
+				t.Fatal(
+					"read must preserve the stored password/version and discard the write-only input",
+				)
+			}
+			prior.Password = types.StringNull()
+			got = r.snmpSettingToModel(ctx, &settings.Snmp{Password: echoed}, prior)
+			if !got.Password.IsNull() || !got.PasswordWO.IsNull() {
+				t.Fatal("controller password must not leak into either password attribute")
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name     string
+		password types.String
+		want     string
+	}{
+		{"write-only", types.StringValue("new-password"), "new-password"},
+		{"unset", types.StringNull(), ""},
+		{"unknown", types.StringUnknown(), ""},
+	} {
+		t.Run("write/"+tc.name, func(t *testing.T) {
+			got := r.snmpModelToSetting(
+				ctx,
+				&settingSnmpModel{PasswordWO: tc.password},
+				&settings.Snmp{Password: "********", Community: "keep", Enabled: true},
+			)
+			if got.Password != tc.want || got.Community != "keep" || !got.Enabled {
+				t.Fatal(
+					"write-only overlay must preserve unrelated settings without replaying masked passwords",
+				)
+			}
+			if tc.want == "" {
+				wire, err := json.Marshal(got)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var payload map[string]any
+				if err := json.Unmarshal(wire, &payload); err != nil {
+					t.Fatal(err)
+				}
+				if _, ok := payload["x_password"]; ok {
+					t.Fatal("unset password must be omitted on the wire")
+				}
+			}
+		})
+	}
+}
+
+func Test_settingResource_snmpPasswordRotation(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+	var sr fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &sr)
+	configured := settingSnmpModel{
+		PasswordWO:        types.StringValue("ephemeral-password"),
+		PasswordWOVersion: types.Int64Value(2),
+	}
+	obj, d := types.ObjectValueFrom(ctx, snmpAttrTypes, &configured)
+	if d.HasError() {
+		t.Fatal(d)
+	}
+	snmpSchema := schema.Schema{
+		Attributes: map[string]schema.Attribute{"snmp": sr.Schema.Attributes["snmp"]},
+	}
+	state := tfsdk.State{Schema: snmpSchema}
+	if d := state.Set(ctx, &struct {
+		Snmp types.Object `tfsdk:"snmp"`
+	}{Snmp: obj}); d.HasError() {
+		t.Fatal(d)
+	}
+	config := tfsdk.Config{Raw: state.Raw, Schema: snmpSchema}
+	for _, tc := range []struct {
+		name  string
+		prior types.Object
+		want  bool
+	}{
+		{"create", types.ObjectNull(snmpAttrTypes), true},
+		{"same version", obj, false},
+		{"new version", types.ObjectValueMust(snmpAttrTypes, map[string]attr.Value{
+			"enabled": types.BoolNull(), "community": types.StringNull(), "enabled_v3": types.BoolNull(), "username": types.StringNull(),
+			"password": types.StringNull(), "password_wo": types.StringNull(), "password_wo_version": types.Int64Value(1),
+		}), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			model := settingSnmpModel{PasswordWOVersion: types.Int64Value(2)}
+			var diags diag.Diagnostics
+			r.readSnmpPasswordWO(ctx, config, &model, tc.prior, &diags)
+			if diags.HasError() {
+				t.Fatal(diags)
+			}
+			if tc.want != model.PasswordWO.Equal(configured.PasswordWO) {
+				t.Fatal("unexpected password rotation decision")
+			}
+		})
+	}
 }
 
 // TestMgmtNewFields guards #274: the new mgmt fields overlay onto the current

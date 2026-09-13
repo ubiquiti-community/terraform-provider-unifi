@@ -46,16 +46,29 @@ resource "unifi_setting" "combined" {
   }
 }
 
-# Configure only SNMP settings (v1/v2c community plus an SNMPv3 user)
+# Configure only SNMP settings (v1/v2c community plus an SNMPv3 user).
+# The write-only password below requires Terraform 1.11+.
+variable "snmp_password" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
 resource "unifi_setting" "snmp_only" {
   site = "default"
 
   snmp = {
-    enabled    = true
-    community  = "my-snmp-community"
-    enabled_v3 = true
-    username   = "monitor"
-    password   = "my-snmpv3-password"
+    enabled             = true
+    community           = "my-snmp-community"
+    enabled_v3          = true
+    username            = "monitor"
+    password_wo         = var.snmp_password
+    password_wo_version = 1 # Change this version whenever the password changes.
+
+    # Alternatively, replace the two password_wo fields with:
+    # password = "my-snmpv3-password"
+    # That value is stored in state and preserved on read. Neither password
+    # path detects controller-side password changes. Community is read back.
   }
 }
 
