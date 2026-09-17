@@ -2381,6 +2381,7 @@ func (r *networkResource) networkToModel(
 		if network.DHCPDNtp2 != nil && *network.DHCPDNtp2 != "" {
 			ntpServers = append(ntpServers, *network.DHCPDNtp2)
 		}
+		ntpServers = uniqueStrings(ntpServers)
 
 		ntpServersList, d := stringListOrNull(ctx, ntpServers, previousDhcpServer.NtpServers)
 		diags.Append(d...)
