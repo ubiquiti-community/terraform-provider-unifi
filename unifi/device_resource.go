@@ -27,6 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -318,11 +319,17 @@ func (r *deviceResource) Schema(
 				Description: "The name of the device.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"disabled": schema.BoolAttribute{
 				Description: "Specifies whether this device should be disabled.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"allow_adoption": schema.BoolAttribute{
 				Description: "Specifies whether this resource should tell the controller to adopt the device on create.",
@@ -393,6 +400,9 @@ func (r *deviceResource) Schema(
 						Computed:    true,
 					},
 				},
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// LED settings
@@ -432,16 +442,25 @@ func (r *deviceResource) Schema(
 				Validators: []validator.String{
 					stringvalidator.OneOf("off", "equal", "prefer_5g"),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"flowctrl_enabled": schema.BoolAttribute{
 				Description: "Enable flow control.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"jumboframe_enabled": schema.BoolAttribute{
 				Description: "Enable jumbo frames.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"stp_version": schema.StringAttribute{
 				Description: "STP version; valid values are `stp`, `rstp`, and `disabled`.",
@@ -449,6 +468,9 @@ func (r *deviceResource) Schema(
 				Computed:    true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("stp", "rstp", "disabled"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"stp_priority": schema.Int64Attribute{
@@ -462,11 +484,17 @@ func (r *deviceResource) Schema(
 						45056, 49152, 53248, 57344, 61440,
 					),
 				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"locked": schema.BoolAttribute{
 				Description: "Specifies whether the device is locked.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// PoE settings
@@ -476,6 +504,9 @@ func (r *deviceResource) Schema(
 				Computed:    true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "pasv24", "passthrough", "off"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 
@@ -507,17 +538,26 @@ func (r *deviceResource) Schema(
 				Validators: []validator.String{
 					stringvalidator.OneOf("default", "on", "off"),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"volume": schema.Int64Attribute{
 				Description: "Volume level (0-100).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"x_baresip_password": schema.StringAttribute{
 				Description: "Baresip password.",
 				Optional:    true,
 				Sensitive:   true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// LCD/LCM settings
@@ -525,11 +565,17 @@ func (r *deviceResource) Schema(
 				Description: "LCM brightness (1-100).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"lcm_brightness_override": schema.BoolAttribute{
 				Description: "Override LCM brightness.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lcm_idle_timeout": schema.StringAttribute{
 				Description: "LCM idle timeout, as a Go duration string (e.g. `10m`, `600s`).",
@@ -540,21 +586,33 @@ func (r *deviceResource) Schema(
 					validators.GoDurationBetween(10*time.Second, 3600*time.Second),
 					validators.GoDurationMultipleOf(time.Second),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lcm_idle_timeout_override": schema.BoolAttribute{
 				Description: "Override LCM idle timeout.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lcm_night_mode_begins": schema.StringAttribute{
 				Description: "LCM night mode begin time (HH:MM format).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lcm_night_mode_ends": schema.StringAttribute{
 				Description: "LCM night mode end time (HH:MM format).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Outlet settings
@@ -562,6 +620,9 @@ func (r *deviceResource) Schema(
 				Description: "Enable outlet control.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Management
@@ -569,24 +630,39 @@ func (r *deviceResource) Schema(
 				Description: "Management network ID. The network this device uses for its own management traffic (the UI's Network Override). When set, the device tags its management onto this network's VLAN, so that VLAN must already be tagged on the device's upstream switch port(s) before this attribute is applied. Otherwise the device loses its management path, drops off, and the apply fails with an inconsistent-result error. Apply in two steps: tag the VLAN on the uplink (a port_override tagged_networkconf_ids entry) first, then set mgmt_network_id. Leave unset to manage on the uplink's native (untagged) network.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Computed attributes
 			"adopted": schema.BoolAttribute{
 				Description: "Whether the device is adopted.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"model": schema.StringAttribute{
 				Description: "Device model.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"type": schema.StringAttribute{
 				Description: "Device type.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"state": schema.Int64Attribute{
 				Description: "Device state.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 
 			// Radio table
