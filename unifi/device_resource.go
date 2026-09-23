@@ -657,12 +657,18 @@ func (r *deviceResource) Schema(
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			// state is live controller-observed status (e.g. connected vs.
+			// provisioning), not a settle-once value: applying an unrelated
+			// change (a port_override, a radio_table update) can genuinely
+			// change it as a side effect while the device reconfigures -
+			// confirmed against a live UDR7, where state flipped 1 -> 5
+			// during exactly that kind of apply. Pinning it to the prior
+			// state would hide that from the plan preview, so it's left
+			// without a plan modifier and shows "(known after apply)" like
+			// any other volatile Computed attribute.
 			"state": schema.Int64Attribute{
 				Description: "Device state.",
 				Computed:    true,
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
 			},
 
 			// Radio table

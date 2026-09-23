@@ -721,6 +721,8 @@ func attributePlanModifierDescriptions(ctx context.Context, a schema.Attribute) 
 // Router 7 and a USW Flex 2.5G 8 PoE: before this fix, adding a
 // port_override block made ~15 unrelated attributes (config_network
 // included) go unknown on every plan; after it, they plan cleanly.
+//
+// state is deliberately excluded - see TestDeviceStateHasNoPlanModifier.
 func TestDeviceComputedAttrsUseStateForUnknown(t *testing.T) {
 	ctx := context.Background()
 	r := &deviceResource{}
@@ -738,7 +740,7 @@ func TestDeviceComputedAttrsUseStateForUnknown(t *testing.T) {
 		"lcm_brightness_override", "lcm_idle_timeout",
 		"lcm_idle_timeout_override", "lcm_night_mode_begins",
 		"lcm_night_mode_ends", "outlet_enabled", "mgmt_network_id",
-		"adopted", "model", "type", "state",
+		"adopted", "model", "type",
 	}
 
 	for _, name := range names {
@@ -763,6 +765,33 @@ func TestDeviceComputedAttrsUseStateForUnknown(t *testing.T) {
 				name,
 			)
 		}
+	}
+}
+
+// TestDeviceStateHasNoPlanModifier guards the opposite regression: state is
+// controller-observed live status (connected/provisioning/etc.), refreshed
+// from device.State after every update and confirmed against a live UDR7 to
+// genuinely change as a side effect of unrelated changes (it went 1 -> 5
+// while applying a port_override). A UseStateForUnknown modifier here would
+// pin the plan preview to a stale value instead of showing that.
+func TestDeviceStateHasNoPlanModifier(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	attribute, ok := schemaResp.Schema.Attributes["state"]
+	if !ok {
+		t.Fatal("schema is missing attribute \"state\"")
+	}
+
+	if descs := attributePlanModifierDescriptions(ctx, attribute); len(descs) != 0 {
+		t.Errorf(
+			"state: expected no plan modifiers, got %v (this pins the plan "+
+				"preview to a possibly-stale prior value for a live status field)",
+			descs,
+		)
 	}
 }
 
