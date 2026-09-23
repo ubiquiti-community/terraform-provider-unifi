@@ -685,6 +685,87 @@ func TestDeviceNetworkconfIDsAreSets(t *testing.T) {
 	}
 }
 
+// attributePlanModifierDescriptions returns the Description() text of every
+// plan modifier attached to a schema attribute, regardless of its concrete
+// String/Bool/Int64/Object type. Attribute types outside this switch aren't
+// used by any of the fields TestDeviceComputedAttrsUseStateForUnknown checks.
+func attributePlanModifierDescriptions(ctx context.Context, a schema.Attribute) []string {
+	var out []string
+	switch v := a.(type) {
+	case schema.StringAttribute:
+		for _, m := range v.PlanModifiers {
+			out = append(out, m.Description(ctx))
+		}
+	case schema.BoolAttribute:
+		for _, m := range v.PlanModifiers {
+			out = append(out, m.Description(ctx))
+		}
+	case schema.Int64Attribute:
+		for _, m := range v.PlanModifiers {
+			out = append(out, m.Description(ctx))
+		}
+	case schema.SingleNestedAttribute:
+		for _, m := range v.PlanModifiers {
+			out = append(out, m.Description(ctx))
+		}
+	}
+	return out
+}
+
+// TestDeviceComputedAttrsUseStateForUnknown guards against a plan-noise
+// regression: these attributes are Computed (or Optional+Computed) with no
+// other plan modifier, so on any unrelated resource change - e.g. a first
+// port_override or a radio_table schema addition - the framework's default
+// behavior planned every one of them as "(known after apply)" even when
+// nothing about them was actually changing. Verified against a live Dream
+// Router 7 and a USW Flex 2.5G 8 PoE: before this fix, adding a
+// port_override block made ~15 unrelated attributes (config_network
+// included) go unknown on every plan; after it, they plan cleanly.
+func TestDeviceComputedAttrsUseStateForUnknown(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	const wantDescription = "Once set, the value of this attribute in state will not change."
+
+	names := []string{
+		"name", "disabled", "config_network", "bandsteering_mode",
+		"flowctrl_enabled", "jumboframe_enabled", "stp_version",
+		"stp_priority", "locked", "poe_mode", "outdoor_mode_override",
+		"volume", "x_baresip_password", "lcm_brightness",
+		"lcm_brightness_override", "lcm_idle_timeout",
+		"lcm_idle_timeout_override", "lcm_night_mode_begins",
+		"lcm_night_mode_ends", "outlet_enabled", "mgmt_network_id",
+		"adopted", "model", "type", "state",
+	}
+
+	for _, name := range names {
+		attribute, ok := schemaResp.Schema.Attributes[name]
+		if !ok {
+			t.Errorf("schema is missing attribute %q", name)
+			continue
+		}
+
+		found := false
+		for _, desc := range attributePlanModifierDescriptions(ctx, attribute) {
+			if desc == wantDescription {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf(
+				"%s: expected a UseStateForUnknown plan modifier, got none "+
+					"(will show as \"(known after apply)\" on any unrelated "+
+					"resource change)",
+				name,
+			)
+		}
+	}
+}
+
 func Test_deviceResource_Configure(t *testing.T) {
 	type args struct {
 		ctx  context.Context
