@@ -385,6 +385,58 @@ var (
 		"enabled":     types.BoolType,
 		"network_ids": types.ListType{ElemType: types.StringType},
 	}
+	radiusAttrTypes = map[string]attr.Type{
+		"accounting_enabled":      types.BoolType,
+		"acct_port":               types.Int64Type,
+		"auth_port":               types.Int64Type,
+		"interim_update_interval": timetypes.GoDurationType{},
+		"secret":                  types.StringType,
+	}
+	usgDNSVerificationAttrTypes = map[string]attr.Type{
+		"domain":               types.StringType,
+		"primary_dns_server":   types.StringType,
+		"secondary_dns_server": types.StringType,
+		"setting_preference":   types.StringType,
+	}
+	usgAttrTypes = map[string]attr.Type{
+		"broadcast_ping":                     types.BoolType,
+		"dns_verification":                   types.ObjectType{AttrTypes: usgDNSVerificationAttrTypes},
+		"ftp_module":                         types.BoolType,
+		"geo_ip_filtering_block":             types.StringType,
+		"geo_ip_filtering_countries":         types.StringType,
+		"geo_ip_filtering_enabled":           types.BoolType,
+		"geo_ip_filtering_traffic_direction": types.StringType,
+		"gre_module":                         types.BoolType,
+		"h323_module":                        types.BoolType,
+		"icmp_timeout":                       timetypes.GoDurationType{},
+		"mss_clamp":                          types.StringType,
+		"offload_accounting":                 types.BoolType,
+		"offload_l2_blocking":                types.BoolType,
+		"offload_sch":                        types.BoolType,
+		"other_timeout":                      timetypes.GoDurationType{},
+		"pptp_module":                        types.BoolType,
+		"receive_redirects":                  types.BoolType,
+		"send_redirects":                     types.BoolType,
+		"sip_module":                         types.BoolType,
+		"syn_cookies":                        types.BoolType,
+		"tcp_close_timeout":                  timetypes.GoDurationType{},
+		"tcp_close_wait_timeout":             timetypes.GoDurationType{},
+		"tcp_established_timeout":            timetypes.GoDurationType{},
+		"tcp_fin_wait_timeout":               timetypes.GoDurationType{},
+		"tcp_last_ack_timeout":               timetypes.GoDurationType{},
+		"tcp_syn_recv_timeout":               timetypes.GoDurationType{},
+		"tcp_syn_sent_timeout":               timetypes.GoDurationType{},
+		"tcp_time_wait_timeout":              timetypes.GoDurationType{},
+		"tftp_module":                        types.BoolType,
+		"timeout_setting_preference":         types.StringType,
+		"udp_other_timeout":                  timetypes.GoDurationType{},
+		"udp_stream_timeout":                 timetypes.GoDurationType{},
+		"unbind_wan_monitors":                types.BoolType,
+		"upnp_enabled":                       types.BoolType,
+		"upnp_nat_pmp_enabled":               types.BoolType,
+		"upnp_secure_mode":                   types.BoolType,
+		"upnp_wan_interface":                 types.StringType,
+	}
 )
 
 func (r *settingResource) Metadata(
@@ -1492,7 +1544,20 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		setting := r.syslogModelToSetting(ctx, &m, &resp.Diagnostics)
+
+		// Read current remote settings as the base so fields the user doesn't
+		// declare keep their remote values instead of resetting to zero.
+		_, currentSyslog, err := ui.GetSetting[*settings.Rsyslogd](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading Syslog Setting", err.Error())
+				return
+			}
+			currentSyslog = &settings.Rsyslogd{}
+		}
+
+		setting := r.syslogModelToSetting(ctx, &m, currentSyslog, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -1599,7 +1664,19 @@ func (r *settingResource) Create(
 			return
 		}
 
-		setting := r.usgModelToSetting(ctx, &usg)
+		// Read current remote settings as the base so fields the user doesn't
+		// declare keep their remote values instead of resetting to zero.
+		_, currentUsg, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading USG Setting", err.Error())
+				return
+			}
+			currentUsg = &settings.Usg{}
+		}
+
+		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating USG Setting", err.Error())
 			return
@@ -1820,7 +1897,20 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		setting := r.syslogModelToSetting(ctx, &m, &resp.Diagnostics)
+
+		// Read current remote settings as the base so fields the user doesn't
+		// declare keep their remote values instead of resetting to zero.
+		_, currentSyslog, err := ui.GetSetting[*settings.Rsyslogd](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading Syslog Setting", err.Error())
+				return
+			}
+			currentSyslog = &settings.Rsyslogd{}
+		}
+
+		setting := r.syslogModelToSetting(ctx, &m, currentSyslog, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -1927,7 +2017,19 @@ func (r *settingResource) Update(
 			return
 		}
 
-		setting := r.usgModelToSetting(ctx, &usg)
+		// Read current remote settings as the base so fields the user doesn't
+		// declare keep their remote values instead of resetting to zero.
+		_, currentUsg, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading USG Setting", err.Error())
+				return
+			}
+			currentUsg = &settings.Usg{}
+		}
+
+		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating USG Setting", err.Error())
 			return
@@ -2750,10 +2852,11 @@ func (r *settingResource) persistUsgGeoFiltering(
 func (r *settingResource) usgModelToSetting(
 	ctx context.Context,
 	model *settingUSGModel,
+	base *settings.Usg,
 ) *settings.Usg {
-	setting := &settings.Usg{}
+	setting := base
 
-	if !model.BroadcastPing.IsNull() {
+	if !model.BroadcastPing.IsNull() && !model.BroadcastPing.IsUnknown() {
 		setting.BroadcastPing = model.BroadcastPing.ValueBool()
 	}
 	if !model.DNSVerification.IsNull() && !model.DNSVerification.IsUnknown() {
@@ -2766,58 +2869,58 @@ func (r *settingResource) usgModelToSetting(
 			SettingPreference:  dnsVerif.SettingPreference.ValueString(),
 		}
 	}
-	if !model.FtpModule.IsNull() {
+	if !model.FtpModule.IsNull() && !model.FtpModule.IsUnknown() {
 		setting.FtpModule = model.FtpModule.ValueBool()
 	}
-	if !model.GeoIPFilteringBlock.IsNull() {
+	if !model.GeoIPFilteringBlock.IsNull() && !model.GeoIPFilteringBlock.IsUnknown() {
 		setting.GeoIPFilteringBlock = model.GeoIPFilteringBlock.ValueString()
 	}
-	if !model.GeoIPFilteringCountries.IsNull() {
+	if !model.GeoIPFilteringCountries.IsNull() && !model.GeoIPFilteringCountries.IsUnknown() {
 		setting.GeoIPFilteringCountries = model.GeoIPFilteringCountries.ValueString()
 	}
-	if !model.GeoIPFilteringEnabled.IsNull() {
+	if !model.GeoIPFilteringEnabled.IsNull() && !model.GeoIPFilteringEnabled.IsUnknown() {
 		setting.GeoIPFilteringEnabled = model.GeoIPFilteringEnabled.ValueBool()
 	}
-	if !model.GeoIPFilteringTrafficDirection.IsNull() {
+	if !model.GeoIPFilteringTrafficDirection.IsNull() && !model.GeoIPFilteringTrafficDirection.IsUnknown() {
 		setting.GeoIPFilteringTrafficDirection = model.GeoIPFilteringTrafficDirection.ValueString()
 	}
-	if !model.GreModule.IsNull() {
+	if !model.GreModule.IsNull() && !model.GreModule.IsUnknown() {
 		setting.GreModule = model.GreModule.ValueBool()
 	}
-	if !model.H323Module.IsNull() {
+	if !model.H323Module.IsNull() && !model.H323Module.IsUnknown() {
 		setting.H323Module = model.H323Module.ValueBool()
 	}
 	if !model.ICMPTimeout.IsNull() && !model.ICMPTimeout.IsUnknown() {
 		setting.ICMPTimeout = util.DurationUnits(model.ICMPTimeout, time.Second)
 	}
-	if !model.MssClamp.IsNull() {
+	if !model.MssClamp.IsNull() && !model.MssClamp.IsUnknown() {
 		setting.MssClamp = model.MssClamp.ValueString()
 	}
-	if !model.OffloadAccounting.IsNull() {
+	if !model.OffloadAccounting.IsNull() && !model.OffloadAccounting.IsUnknown() {
 		setting.OffloadAccounting = model.OffloadAccounting.ValueBool()
 	}
-	if !model.OffloadL2Blocking.IsNull() {
+	if !model.OffloadL2Blocking.IsNull() && !model.OffloadL2Blocking.IsUnknown() {
 		setting.OffloadL2Blocking = model.OffloadL2Blocking.ValueBool()
 	}
-	if !model.OffloadSch.IsNull() {
+	if !model.OffloadSch.IsNull() && !model.OffloadSch.IsUnknown() {
 		setting.OffloadSch = model.OffloadSch.ValueBool()
 	}
 	if !model.OtherTimeout.IsNull() && !model.OtherTimeout.IsUnknown() {
 		setting.OtherTimeout = util.DurationUnits(model.OtherTimeout, time.Second)
 	}
-	if !model.PptpModule.IsNull() {
+	if !model.PptpModule.IsNull() && !model.PptpModule.IsUnknown() {
 		setting.PptpModule = model.PptpModule.ValueBool()
 	}
-	if !model.ReceiveRedirects.IsNull() {
+	if !model.ReceiveRedirects.IsNull() && !model.ReceiveRedirects.IsUnknown() {
 		setting.ReceiveRedirects = model.ReceiveRedirects.ValueBool()
 	}
-	if !model.SendRedirects.IsNull() {
+	if !model.SendRedirects.IsNull() && !model.SendRedirects.IsUnknown() {
 		setting.SendRedirects = model.SendRedirects.ValueBool()
 	}
-	if !model.SipModule.IsNull() {
+	if !model.SipModule.IsNull() && !model.SipModule.IsUnknown() {
 		setting.SipModule = model.SipModule.ValueBool()
 	}
-	if !model.SynCookies.IsNull() {
+	if !model.SynCookies.IsNull() && !model.SynCookies.IsUnknown() {
 		setting.SynCookies = model.SynCookies.ValueBool()
 	}
 	if !model.TCPCloseTimeout.IsNull() && !model.TCPCloseTimeout.IsUnknown() {
@@ -2844,10 +2947,10 @@ func (r *settingResource) usgModelToSetting(
 	if !model.TCPTimeWaitTimeout.IsNull() && !model.TCPTimeWaitTimeout.IsUnknown() {
 		setting.TCPTimeWaitTimeout = util.DurationUnits(model.TCPTimeWaitTimeout, time.Second)
 	}
-	if !model.TFTPModule.IsNull() {
+	if !model.TFTPModule.IsNull() && !model.TFTPModule.IsUnknown() {
 		setting.TFTPModule = model.TFTPModule.ValueBool()
 	}
-	if !model.TimeoutSettingPreference.IsNull() {
+	if !model.TimeoutSettingPreference.IsNull() && !model.TimeoutSettingPreference.IsUnknown() {
 		setting.TimeoutSettingPreference = model.TimeoutSettingPreference.ValueString()
 	}
 	if !model.UDPOtherTimeout.IsNull() && !model.UDPOtherTimeout.IsUnknown() {
@@ -2856,19 +2959,19 @@ func (r *settingResource) usgModelToSetting(
 	if !model.UDPStreamTimeout.IsNull() && !model.UDPStreamTimeout.IsUnknown() {
 		setting.UDPStreamTimeout = util.DurationUnits(model.UDPStreamTimeout, time.Second)
 	}
-	if !model.UnbindWANMonitors.IsNull() {
+	if !model.UnbindWANMonitors.IsNull() && !model.UnbindWANMonitors.IsUnknown() {
 		setting.UnbindWANMonitors = model.UnbindWANMonitors.ValueBool()
 	}
-	if !model.UPnPEnabled.IsNull() {
+	if !model.UPnPEnabled.IsNull() && !model.UPnPEnabled.IsUnknown() {
 		setting.UPnPEnabled = model.UPnPEnabled.ValueBool()
 	}
-	if !model.UPnPNATPmpEnabled.IsNull() {
+	if !model.UPnPNATPmpEnabled.IsNull() && !model.UPnPNATPmpEnabled.IsUnknown() {
 		setting.UPnPNATPmpEnabled = model.UPnPNATPmpEnabled.ValueBool()
 	}
-	if !model.UPnPSecureMode.IsNull() {
+	if !model.UPnPSecureMode.IsNull() && !model.UPnPSecureMode.IsUnknown() {
 		setting.UPnPSecureMode = model.UPnPSecureMode.ValueBool()
 	}
-	if !model.UPnPWANInterface.IsNull() {
+	if !model.UPnPWANInterface.IsNull() && !model.UPnPWANInterface.IsUnknown() {
 		setting.UPnPWANInterface = model.UPnPWANInterface.ValueString()
 	}
 
@@ -3213,6 +3316,8 @@ func (r *settingResource) autoSpeedtestSettingToModel(
 }
 
 func (r *settingResource) countryModelToSetting(m *settingCountryModel) *settings.Country {
+	// Code is a pointer field, so an unknown/null value already yields nil
+	// (omitted, not a false zero value) with no explicit guard needed.
 	return &settings.Country{Code: m.Code.ValueInt64Pointer()}
 }
 
@@ -3221,10 +3326,14 @@ func (r *settingResource) countrySettingToModel(s *settings.Country) settingCoun
 }
 
 func (r *settingResource) dpiModelToSetting(m *settingDpiModel) *settings.Dpi {
-	return &settings.Dpi{
-		Enabled:               m.Enabled.ValueBool(),
-		FingerprintingEnabled: m.FingerprintingEnabled.ValueBool(),
+	setting := &settings.Dpi{}
+	if !m.Enabled.IsNull() && !m.Enabled.IsUnknown() {
+		setting.Enabled = m.Enabled.ValueBool()
 	}
+	if !m.FingerprintingEnabled.IsNull() && !m.FingerprintingEnabled.IsUnknown() {
+		setting.FingerprintingEnabled = m.FingerprintingEnabled.ValueBool()
+	}
+	return setting
 }
 
 func (r *settingResource) dpiSettingToModel(s *settings.Dpi) settingDpiModel {
@@ -3235,10 +3344,15 @@ func (r *settingResource) dpiSettingToModel(s *settings.Dpi) settingDpiModel {
 }
 
 func (r *settingResource) lcmModelToSetting(m *settingLcmModel) *settings.Lcm {
-	setting := &settings.Lcm{
-		Enabled:    m.Enabled.ValueBool(),
-		Sync:       m.Sync.ValueBool(),
-		TouchEvent: m.TouchEvent.ValueBool(),
+	setting := &settings.Lcm{}
+	if !m.Enabled.IsNull() && !m.Enabled.IsUnknown() {
+		setting.Enabled = m.Enabled.ValueBool()
+	}
+	if !m.Sync.IsNull() && !m.Sync.IsUnknown() {
+		setting.Sync = m.Sync.ValueBool()
+	}
+	if !m.TouchEvent.IsNull() && !m.TouchEvent.IsUnknown() {
+		setting.TouchEvent = m.TouchEvent.ValueBool()
 	}
 	// Guard the optional ints: an unknown (unset Optional+Computed) value yields a
 	// 0 pointer, which the controller rejects as out of range (cf. #288/#303).
@@ -3264,7 +3378,11 @@ func (r *settingResource) lcmSettingToModel(s *settings.Lcm) settingLcmModel {
 func (r *settingResource) networkOptimizationModelToSetting(
 	m *settingNetworkOptimizationModel,
 ) *settings.NetworkOptimization {
-	return &settings.NetworkOptimization{Enabled: m.Enabled.ValueBool()}
+	setting := &settings.NetworkOptimization{}
+	if !m.Enabled.IsNull() && !m.Enabled.IsUnknown() {
+		setting.Enabled = m.Enabled.ValueBool()
+	}
+	return setting
 }
 
 func (r *settingResource) networkOptimizationSettingToModel(
@@ -3274,13 +3392,23 @@ func (r *settingResource) networkOptimizationSettingToModel(
 }
 
 func (r *settingResource) ntpModelToSetting(m *settingNtpModel) *settings.Ntp {
-	return &settings.Ntp{
-		NtpServer1:        m.NtpServer1.ValueString(),
-		NtpServer2:        m.NtpServer2.ValueString(),
-		NtpServer3:        m.NtpServer3.ValueString(),
-		NtpServer4:        m.NtpServer4.ValueString(),
-		SettingPreference: m.SettingPreference.ValueString(),
+	setting := &settings.Ntp{}
+	if !m.NtpServer1.IsNull() && !m.NtpServer1.IsUnknown() {
+		setting.NtpServer1 = m.NtpServer1.ValueString()
 	}
+	if !m.NtpServer2.IsNull() && !m.NtpServer2.IsUnknown() {
+		setting.NtpServer2 = m.NtpServer2.ValueString()
+	}
+	if !m.NtpServer3.IsNull() && !m.NtpServer3.IsUnknown() {
+		setting.NtpServer3 = m.NtpServer3.ValueString()
+	}
+	if !m.NtpServer4.IsNull() && !m.NtpServer4.IsUnknown() {
+		setting.NtpServer4 = m.NtpServer4.ValueString()
+	}
+	if !m.SettingPreference.IsNull() && !m.SettingPreference.IsUnknown() {
+		setting.SettingPreference = m.SettingPreference.ValueString()
+	}
+	return setting
 }
 
 func (r *settingResource) ntpSettingToModel(s *settings.Ntp) settingNtpModel {
@@ -3296,17 +3424,41 @@ func (r *settingResource) ntpSettingToModel(s *settings.Ntp) settingNtpModel {
 func (r *settingResource) syslogModelToSetting(
 	ctx context.Context,
 	m *settingSyslogModel,
+	base *settings.Rsyslogd,
 	diags *diag.Diagnostics,
 ) *settings.Rsyslogd {
-	setting := &settings.Rsyslogd{
-		Enabled:                     m.Enabled.ValueBool(),
-		Debug:                       m.Debug.ValueBool(),
-		IP:                          m.IP.ValueString(),
-		LogAllContents:              m.LogAllContents.ValueBool(),
-		NetconsoleEnabled:           m.NetconsoleEnabled.ValueBool(),
-		NetconsoleHost:              m.NetconsoleHost.ValueString(),
-		ThisController:              m.ThisController.ValueBool(),
-		ThisControllerEncryptedOnly: m.ThisControllerEncryptedOnly.ValueBool(),
+	setting := base
+
+	// Every field here used to be assigned unconditionally from a fresh
+	// &settings.Rsyslogd{}: since none of these bool/string fields carry
+	// `omitempty`, any field the user doesn't declare (unknown, not just
+	// null) would resolve to Go's zero value and get sent to the controller
+	// as an explicit false/"" - resetting whatever was actually configured
+	// there. Guarding each one and merging into a live-fetched base (like
+	// mgmt/radius/usg do) keeps undeclared fields at their real remote value.
+	if !m.Enabled.IsNull() && !m.Enabled.IsUnknown() {
+		setting.Enabled = m.Enabled.ValueBool()
+	}
+	if !m.Debug.IsNull() && !m.Debug.IsUnknown() {
+		setting.Debug = m.Debug.ValueBool()
+	}
+	if !m.IP.IsNull() && !m.IP.IsUnknown() {
+		setting.IP = m.IP.ValueString()
+	}
+	if !m.LogAllContents.IsNull() && !m.LogAllContents.IsUnknown() {
+		setting.LogAllContents = m.LogAllContents.ValueBool()
+	}
+	if !m.NetconsoleEnabled.IsNull() && !m.NetconsoleEnabled.IsUnknown() {
+		setting.NetconsoleEnabled = m.NetconsoleEnabled.ValueBool()
+	}
+	if !m.NetconsoleHost.IsNull() && !m.NetconsoleHost.IsUnknown() {
+		setting.NetconsoleHost = m.NetconsoleHost.ValueString()
+	}
+	if !m.ThisController.IsNull() && !m.ThisController.IsUnknown() {
+		setting.ThisController = m.ThisController.ValueBool()
+	}
+	if !m.ThisControllerEncryptedOnly.IsNull() && !m.ThisControllerEncryptedOnly.IsUnknown() {
+		setting.ThisControllerEncryptedOnly = m.ThisControllerEncryptedOnly.ValueBool()
 	}
 	// Guard the optional ports: an unknown (unset Optional+Computed) value yields a
 	// 0 pointer, which the controller rejects as an out-of-range port (#303, cf. #288).
@@ -3317,6 +3469,7 @@ func (r *settingResource) syslogModelToSetting(
 		setting.NetconsolePort = m.NetconsolePort.ValueInt64Pointer()
 	}
 	if !m.Contents.IsNull() && !m.Contents.IsUnknown() {
+		setting.Contents = nil
 		diags.Append(m.Contents.ElementsAs(ctx, &setting.Contents, false)...)
 	}
 	return setting

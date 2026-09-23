@@ -1253,18 +1253,18 @@ func Test_settingResource_usgModelToSetting(t *testing.T) {
 	r := &settingResource{}
 	ctx := context.Background()
 
-	t.Run("null fields produce zero-value setting", func(t *testing.T) {
+	t.Run("null fields keep the base value", func(t *testing.T) {
 		model := &settingUSGModel{
 			FtpModule:       types.BoolNull(),
 			BroadcastPing:   types.BoolNull(),
 			DNSVerification: types.ObjectNull(nil),
 		}
-		got := r.usgModelToSetting(ctx, model)
+		got := r.usgModelToSetting(ctx, model, &settings.Usg{})
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
 		if got.FtpModule {
-			t.Error("FtpModule should be false for null input")
+			t.Error("FtpModule should be false for null input with an empty base")
 		}
 	})
 
@@ -1274,12 +1274,87 @@ func Test_settingResource_usgModelToSetting(t *testing.T) {
 			BroadcastPing:   types.BoolNull(),
 			DNSVerification: types.ObjectNull(nil),
 		}
-		got := r.usgModelToSetting(ctx, model)
+		got := r.usgModelToSetting(ctx, model, &settings.Usg{})
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
 		if !got.FtpModule {
 			t.Error("FtpModule should be true")
+		}
+	})
+
+	// Guards against the regression this function was fixed for: a field the
+	// user's config doesn't set (null OR unknown - unknown is what an
+	// undeclared Optional+Computed field actually plans as) must keep
+	// whatever the live base already had, not silently reset to false. Every
+	// bool field in settings.Usg lacks `omitempty`, so a wrongly-resolved
+	// zero value would have been sent to the controller as an explicit
+	// false, resetting real settings the user never declared.
+	t.Run("unknown and undeclared fields keep the base's live values", func(t *testing.T) {
+		base := &settings.Usg{
+			GreModule:           true,
+			H323Module:          true,
+			OffloadAccounting:   true,
+			ReceiveRedirects:    true,
+			SendRedirects:       true,
+			SipModule:           true,
+			SynCookies:          true,
+			PptpModule:          true,
+			TFTPModule:          true,
+			UnbindWANMonitors:   true,
+			UPnPNATPmpEnabled:   true,
+			UPnPSecureMode:      true,
+			MssClamp:            "custom",
+			GeoIPFilteringBlock: "allow",
+		}
+		model := &settingUSGModel{
+			FtpModule:                      types.BoolUnknown(),
+			BroadcastPing:                  types.BoolValue(true),
+			DNSVerification:                types.ObjectNull(nil),
+			GreModule:                      types.BoolUnknown(),
+			H323Module:                     types.BoolUnknown(),
+			OffloadAccounting:              types.BoolUnknown(),
+			OffloadL2Blocking:              types.BoolUnknown(),
+			OffloadSch:                     types.BoolUnknown(),
+			PptpModule:                     types.BoolUnknown(),
+			ReceiveRedirects:               types.BoolUnknown(),
+			SendRedirects:                  types.BoolUnknown(),
+			SipModule:                      types.BoolUnknown(),
+			SynCookies:                     types.BoolUnknown(),
+			TFTPModule:                     types.BoolUnknown(),
+			TimeoutSettingPreference:       types.StringUnknown(),
+			UnbindWANMonitors:              types.BoolUnknown(),
+			UPnPEnabled:                    types.BoolUnknown(),
+			UPnPNATPmpEnabled:              types.BoolUnknown(),
+			UPnPSecureMode:                 types.BoolUnknown(),
+			UPnPWANInterface:               types.StringUnknown(),
+			MssClamp:                       types.StringUnknown(),
+			GeoIPFilteringBlock:            types.StringUnknown(),
+			GeoIPFilteringCountries:        types.StringUnknown(),
+			GeoIPFilteringEnabled:          types.BoolUnknown(),
+			GeoIPFilteringTrafficDirection: types.StringUnknown(),
+		}
+		got := r.usgModelToSetting(ctx, model, base)
+		if !got.GreModule || !got.H323Module || !got.OffloadAccounting ||
+			!got.ReceiveRedirects || !got.SendRedirects || !got.SipModule ||
+			!got.SynCookies || !got.PptpModule || !got.TFTPModule ||
+			!got.UnbindWANMonitors || !got.UPnPNATPmpEnabled || !got.UPnPSecureMode {
+			t.Errorf(
+				"unknown bool fields must keep the base's true values, got %+v",
+				got,
+			)
+		}
+		if got.MssClamp != "custom" {
+			t.Errorf("MssClamp = %q, want base value \"custom\"", got.MssClamp)
+		}
+		if got.GeoIPFilteringBlock != "allow" {
+			t.Errorf(
+				"GeoIPFilteringBlock = %q, want base value \"allow\"",
+				got.GeoIPFilteringBlock,
+			)
+		}
+		if !got.BroadcastPing {
+			t.Error("BroadcastPing should take the explicitly configured true")
 		}
 	})
 }
@@ -1704,7 +1779,7 @@ func TestSettingBlocksRoundTrip(t *testing.T) {
 			Port:     types.Int64Value(514),
 			Contents: contents,
 		}
-		setting := r.syslogModelToSetting(ctx, in, &diags)
+		setting := r.syslogModelToSetting(ctx, in, &settings.Rsyslogd{}, &diags)
 		if diags.HasError() {
 			t.Fatalf("modelToSetting: %v", diags)
 		}
@@ -1835,7 +1910,7 @@ func TestSyslogOmitsUnsetPorts(t *testing.T) {
 		NetconsolePort: types.Int64Null(), // netconsole disabled / unset
 		Contents:       types.ListNull(types.StringType),
 	}
-	setting := r.syslogModelToSetting(ctx, m, &diags)
+	setting := r.syslogModelToSetting(ctx, m, &settings.Rsyslogd{}, &diags)
 	if diags.HasError() {
 		t.Fatalf("modelToSetting: %v", diags)
 	}
@@ -1848,9 +1923,66 @@ func TestSyslogOmitsUnsetPorts(t *testing.T) {
 
 	// Unknown (Optional+Computed at create) must also omit, not send 0.
 	m.Port = types.Int64Unknown()
-	setting = r.syslogModelToSetting(ctx, m, &diags)
+	setting = r.syslogModelToSetting(ctx, m, &settings.Rsyslogd{}, &diags)
 	if setting.Port != nil {
 		t.Errorf("unknown port must be omitted, got %d", *setting.Port)
+	}
+}
+
+// TestSyslogUnknownFieldsKeepBaseValues guards a real-world safety
+// regression: every bool/string field on settings.Rsyslogd lacks
+// `omitempty`, and syslogModelToSetting used to build a fresh, empty struct
+// with no merge base. A field the user's config doesn't declare plans as
+// unknown, and unknown resolved to false/"" via .ValueBool()/.ValueString()
+// - so applying would have silently reset debug/netconsole/encryption
+// settings that were never in the user's config back to their zero values.
+// Confirmed live against a UDR7 controller before this fix.
+func TestSyslogUnknownFieldsKeepBaseValues(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	r := &settingResource{}
+
+	base := &settings.Rsyslogd{
+		Debug:                       true,
+		LogAllContents:              true,
+		NetconsoleEnabled:           true,
+		NetconsoleHost:              "10.0.0.99",
+		ThisController:              true,
+		ThisControllerEncryptedOnly: true,
+	}
+	m := &settingSyslogModel{
+		Enabled:                     types.BoolValue(true),
+		Debug:                       types.BoolUnknown(),
+		IP:                          types.StringValue("10.0.0.9"),
+		LogAllContents:              types.BoolUnknown(),
+		NetconsoleEnabled:           types.BoolUnknown(),
+		NetconsoleHost:              types.StringUnknown(),
+		ThisController:              types.BoolUnknown(),
+		ThisControllerEncryptedOnly: types.BoolUnknown(),
+		Port:                        types.Int64Null(),
+		NetconsolePort:              types.Int64Null(),
+		Contents:                    types.ListNull(types.StringType),
+	}
+
+	setting := r.syslogModelToSetting(ctx, m, base, &diags)
+	if diags.HasError() {
+		t.Fatalf("modelToSetting: %v", diags)
+	}
+	if !setting.Debug || !setting.LogAllContents || !setting.NetconsoleEnabled ||
+		!setting.ThisController || !setting.ThisControllerEncryptedOnly {
+		t.Errorf(
+			"unknown bool fields must keep the base's true values, got %+v",
+			setting,
+		)
+	}
+	if setting.NetconsoleHost != "10.0.0.99" {
+		t.Errorf(
+			"NetconsoleHost = %q, want base value \"10.0.0.99\"",
+			setting.NetconsoleHost,
+		)
+	}
+	if !setting.Enabled || setting.IP != "10.0.0.9" {
+		t.Error("explicitly configured fields should take the configured value")
 	}
 }
 
