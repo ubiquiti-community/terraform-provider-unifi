@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.56.0] - 2026-09-23
+
 ### ✨ Features
 
 - **`unifi_wlan`: per-SSID band steering via the new `bandsteering_mode` attribute** (`off` | `equal` | `prefer_5g`). Modern controllers expose band steering on the wlanconf record, and on WiFi 6/7 access points this per-SSID control has replaced the legacy device-level one (still available as `unifi_device.bandsteering_mode`), so band steering was previously unmanageable on that hardware. Optional+Computed with value validation; the value is echoed from the controller on read, stays entirely off the wire when unset, and on controllers without per-SSID band steering (which accept and ignore the key) the declared value is kept in state instead of failing the apply with an inconsistent-result error. Requires go-unifi with `WLAN.BandsteeringMode` (go-unifi#72) (#388)
