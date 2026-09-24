@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.56.1] - 2026-09-24
+
+### 🐛 Bug Fixes
+
+- **`unifi_device`: fix `terraform plan` failing after upgrading from v0.55.0 with `failed to decode identity: unsupported attribute "id"`.** v0.56.0 changed the `unifi_device` resource identity key from the controller device `id` to the device `mac` without bumping the identity schema version, so every state holding a `unifi_device` written by v0.55.0 or earlier failed to plan. The identity schema is now at version 1 with an upgrader for version 0 identities, which exist in two shapes: a `{"mac"}` identity written by v0.56.0 is carried over, and an `{"id"}` identity written by earlier versions is rebuilt from the state's `mac` attribute on the next refresh. No configuration or state changes are needed, and states already written by v0.56.0 keep working. Other resources whose identity only gained an optional `site` (or `network_id`) attribute in v0.56.0 were not affected (#502, #504)
+
 ## [v0.56.0] - 2026-09-23
 
 ### ✨ Features
