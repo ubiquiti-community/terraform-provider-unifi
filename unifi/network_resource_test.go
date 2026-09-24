@@ -1701,6 +1701,34 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 			t.Errorf("wins.addresses = %v, want null", gotWins.Addresses)
 		}
 	})
+
+	t.Run("duplicate controller NTP servers collapse to configured single server", func(t *testing.T) {
+		ntpServers := types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("192.168.54.4"),
+		})
+		prev := base()
+		prev.DhcpServer = dhcpServerObj(nullList, nullList, ntpServers)
+
+		// UniFi can store a single configured server in both DHCP NTP fields.
+		duplicateNetwork := *network
+		duplicateNetwork.DHCPDNtp1 = strPtr("192.168.54.4")
+		duplicateNetwork.DHCPDNtp2 = strPtr("192.168.54.4")
+
+		var model networkResourceModel
+		d := r.networkToModel(ctx, &duplicateNetwork, &model, "default", prev)
+		if d.HasError() {
+			t.Fatalf("networkToModel: %v", d)
+		}
+
+		var got dhcpServerModel
+		d = model.DhcpServer.As(ctx, &got, basetypes.ObjectAsOptions{})
+		if d.HasError() {
+			t.Fatalf("extracting dhcp_server: %v", d)
+		}
+		if !got.NtpServers.Equal(ntpServers) {
+			t.Errorf("ntp_servers = %v, want %v", got.NtpServers, ntpServers)
+		}
+	})
 }
 
 // Test_networkResource_networkToModel_normalizesControllerDefaults guards #414:
