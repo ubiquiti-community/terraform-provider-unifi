@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **`unifi_site_to_site_vpn`: carry `ipsec_tunnel_ip` and the dynamic-subnets flag in the update PUT.** A route-based (dynamic-routing) tunnel cannot be managed safely without them — the same class of bug as #363. `Update` builds a fresh `Network` from the model and PUTs it, and `rest/networkconf` is a full replace, but three fields the controller stores for such a tunnel are unmapped: `ipsec_tunnel_ip` (`*string,omitempty`, so a nil is **dropped**), and `ipsec_tunnel_ip_enabled` / `remote_vpn_dynamic_subnets_enabled` (plain `bool` with **no** `omitempty`, so both go out as `false`). Any apply touching such a tunnel therefore strips the inner address the BGP session peers over and disables dynamic remote subnets, taking the session down on an otherwise unrelated edit — no plan diff, no error. This matters more now that `remote_subnets` may legitimately be empty when `dynamic_routing` is set: the schema invites adopting precisely the tunnels that the update path then breaks. Two new `Optional + Computed` attributes, `tunnel_ip` (CIDR, e.g. `169.254.21.2/30`; setting it also sets `ipsec_tunnel_ip_enabled`) and `dynamic_subnets`, are now mapped in both directions. Confirmed against a UniFi Express 7 on Network 10.x, whose live dynamic-routing tunnel carries `ipsec_tunnel_ip: 169.254.21.2/30` with both flags true — none of which survived a provider-issued update.
+
 ## [v0.56.0] - 2026-09-23
 
 ### ✨ Features
