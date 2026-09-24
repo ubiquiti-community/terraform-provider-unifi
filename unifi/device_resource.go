@@ -42,10 +42,11 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                 = &deviceResource{}
-	_ resource.ResourceWithImportState  = &deviceResource{}
-	_ resource.ResourceWithIdentity     = &deviceResource{}
-	_ resource.ResourceWithUpgradeState = &deviceResource{}
+	_ resource.Resource                    = &deviceResource{}
+	_ resource.ResourceWithImportState     = &deviceResource{}
+	_ resource.ResourceWithIdentity        = &deviceResource{}
+	_ resource.ResourceWithUpgradeState    = &deviceResource{}
+	_ resource.ResourceWithUpgradeIdentity = &deviceResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -256,12 +257,17 @@ func (r *deviceResource) Metadata(
 // The natural import key of a device is its MAC address (users import devices
 // by MAC); it uses the same custom hwtypes.MACAddressType as the resource
 // schema's mac attribute so values compare with semantic equality.
+//
+// Version 1: v0.56.0 switched the key from id to mac but kept version 0, so
+// version 0 identities come in both shapes and are sorted out by
+// UpgradeIdentity.
 func (r *deviceResource) IdentitySchema(
 	_ context.Context,
 	_ resource.IdentitySchemaRequest,
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
 		Attributes: map[string]identityschema.Attribute{
 			"mac": identityschema.StringAttribute{
 				CustomType:        hwtypes.MACAddressType{},
@@ -269,6 +275,53 @@ func (r *deviceResource) IdentitySchema(
 			},
 		},
 	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity].
+//
+// Version 0 identities are either {"id": ...} (v0.55.0 and earlier) or
+// {"mac": ...} (v0.56.0). A MAC is carried over; an id-only identity is
+// upgraded to a null MAC, which the framework accepts as "no identity yet" so
+// the next Read derives it from the state's mac attribute.
+func (r *deviceResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return map[int64]resource.IdentityUpgrader{
+		0: {
+			IdentityUpgrader: upgradeDeviceIdentityV0,
+		},
+	}
+}
+
+func upgradeDeviceIdentityV0(
+	ctx context.Context,
+	req resource.UpgradeIdentityRequest,
+	resp *resource.UpgradeIdentityResponse,
+) {
+	var prior struct {
+		MAC *string `json:"mac"`
+	}
+	if req.RawIdentity != nil && len(req.RawIdentity.JSON) > 0 {
+		if err := json.Unmarshal(req.RawIdentity.JSON, &prior); err != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Upgrade Device Identity",
+				fmt.Sprintf("Could not parse the stored version 0 identity: %s", err),
+			)
+			return
+		}
+	}
+
+	identity := deviceIdentityModel{MAC: hwtypes.NewMACAddressNull()}
+	if prior.MAC != nil && *prior.MAC != "" {
+		identity.MAC = hwtypes.NewMACAddressValue(*prior.MAC)
+	}
+	// The response identity has no value yet, so SetAttribute cannot be used.
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+}
+
+// deviceIdentityModel describes the resource identity data model.
+type deviceIdentityModel struct {
+	MAC hwtypes.MACAddress `tfsdk:"mac"`
 }
 
 func (r *deviceResource) Schema(
