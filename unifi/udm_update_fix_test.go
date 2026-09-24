@@ -208,6 +208,48 @@ func TestSanitizeRadioForUpdate_WarnsWhenEnabledAndOutOfRange(t *testing.T) {
 	}
 }
 
+// TestDeviceLockKey guards the key selection deviceResource.updateDevice
+// uses to serialize against unifi_device_port on the same device (both call
+// Client.lockDevice on the shared *Client): MAC must be preferred and
+// cleaned identically to how unifi_device_port derives its own key
+// (cleanMAC(device_mac)), so the two resources actually collide on the same
+// lock instead of silently locking two different keys for the same device.
+func TestDeviceLockKey(t *testing.T) {
+	tests := []struct {
+		name string
+		mac  string
+		id   string
+		want string
+	}{
+		{
+			name: "MAC present is preferred and cleaned",
+			mac:  "AA-BB-CC-DD-EE-FF",
+			id:   "device-id-123",
+			want: "aa:bb:cc:dd:ee:ff",
+		},
+		{
+			name: "already-clean MAC is preferred over ID",
+			mac:  "aa:bb:cc:dd:ee:ff",
+			id:   "device-id-123",
+			want: "aa:bb:cc:dd:ee:ff",
+		},
+		{
+			name: "empty MAC falls back to ID",
+			mac:  "",
+			id:   "device-id-123",
+			want: "device-id-123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := deviceLockKey(tt.mac, tt.id); got != tt.want {
+				t.Errorf("deviceLockKey(%q, %q) = %q, want %q", tt.mac, tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildMinimalUpdateDevice_UsesProvidedPortOverrides(t *testing.T) {
 	// current device has real port overrides; deviceReq declares none.
 	current := &unifi.Device{PortOverrides: []unifi.DevicePortOverrides{{PortIDX: i64(1)}}}

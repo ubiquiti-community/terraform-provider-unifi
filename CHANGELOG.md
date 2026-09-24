@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### ✨ Features
+
+- **`unifi_device_port`: manage a single switch port's overrides as its own resource.** `unifi_device`'s `port_override` is a `SetNestedBlock`, which has no per-element import ID — an existing port's overrides can only be brought under management by importing the whole device and reconstructing every declared block by hand. `unifi_device_port` is keyed by `device_mac` + `index` (id `"<device_mac>/<index>"`) and can be imported directly with a plain `terraform import` or `import` block. Internally it reads the parent device, splices the declared port into its `port_overrides` array, and writes it back (the UniFi API has no per-port endpoint), leaving every other port untouched. A port only appears in the controller's `port_overrides` array once it has been customized at least once, so a never-customized port can't be read or imported here either — same as `port_override`. **Not compatible with `port_override`:** do not declare both for the same `device_mac` + `index` on the same device — the two write to the same controller-side field independently, so whichever applies last wins and the other's plan immediately shows drift; manage a given port through exactly one of the two.
+
 ## [v0.56.0] - 2026-09-23
 
 ### ✨ Features
