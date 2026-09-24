@@ -1165,6 +1165,57 @@ func TestPortOverridesToFramework_TaggedNetworkIDsTypedNull(t *testing.T) {
 	}
 }
 
+// TestPortOverridesToFramework_TaggedNetworkIDsPopulated is the companion to
+// TestPortOverridesToFramework_TaggedNetworkIDsTypedNull: the #235 workaround
+// that forced tagged_networkconf_ids to a typed null unconditionally
+// predates the vendored go-unifi SDK gaining a TaggedNetworkIDs field on
+// DevicePortOverrides. Now that the field exists, a controller response that
+// actually carries tagged network IDs must surface them instead of always
+// being discarded.
+func TestPortOverridesToFramework_TaggedNetworkIDsPopulated(t *testing.T) {
+	r := &deviceResource{}
+
+	set, diags := r.portOverridesToFramework(context.Background(), []unifi.DevicePortOverrides{
+		{Name: "Port 1", TaggedNetworkIDs: []string{"net-a", "net-b"}},
+	})
+	if diags.HasError() {
+		t.Fatalf("portOverridesToFramework returned diagnostics: %v", diags.Errors())
+	}
+
+	elems := set.Elements()
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 port_override element, got %d", len(elems))
+	}
+	obj, ok := elems[0].(types.Object)
+	if !ok {
+		t.Fatalf("expected port_override element to be types.Object, got %T", elems[0])
+	}
+	taggedAttr, ok := obj.Attributes()["tagged_networkconf_ids"]
+	if !ok {
+		t.Fatal("port_override is missing the tagged_networkconf_ids attribute")
+	}
+	taggedSet, ok := taggedAttr.(types.Set)
+	if !ok {
+		t.Fatalf("expected tagged_networkconf_ids to be types.Set, got %T", taggedAttr)
+	}
+	if taggedSet.IsNull() {
+		t.Fatal("expected tagged_networkconf_ids to be non-null")
+	}
+
+	var got []string
+	diags = taggedSet.ElementsAs(context.Background(), &got, false)
+	if diags.HasError() {
+		t.Fatalf("reading back tagged_networkconf_ids: %v", diags)
+	}
+	gotSet := make(map[string]bool, len(got))
+	for _, id := range got {
+		gotSet[id] = true
+	}
+	if !gotSet["net-a"] || !gotSet["net-b"] || len(gotSet) != 2 {
+		t.Errorf("tagged_networkconf_ids = %v, want [net-a net-b]", got)
+	}
+}
+
 func TestAccClientList_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },

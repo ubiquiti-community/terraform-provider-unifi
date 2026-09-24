@@ -751,7 +751,15 @@ func (r *deviceResource) Schema(
 					"ports (by `index`) into the device's current overrides rather than " +
 					"replacing the whole set. Removing a block stops managing that port " +
 					"but does not reset it; clear a port by overriding it back to the " +
-					"defaults instead.",
+					"defaults instead.\n\n" +
+					"**Note:** not compatible with the standalone `unifi_device_port` " +
+					"resource - do not declare a `port_override` block for the same " +
+					"`index` a `unifi_device_port` also manages for this device. The two " +
+					"write to the same controller-side field independently, so whichever " +
+					"applies last wins and the other's plan immediately shows drift. " +
+					"`unifi_device_port`'s advantage over this SetNestedBlock is that it " +
+					"can be imported directly (a SetNestedBlock has no per-element import " +
+					"ID); manage a given port through exactly one of the two.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"index": schema.Int64Attribute{
@@ -1154,8 +1162,9 @@ func (r *deviceResource) Create(
 			return
 		}
 
-		d, err := r.waitForDeviceState(
+		d, err := waitForDeviceState(
 			ctx,
+			r.client,
 			site, mac,
 			unifi.DeviceStateConnected,
 			[]unifi.DeviceState{
@@ -1560,8 +1569,9 @@ func (r *deviceResource) Delete(
 		return
 	}
 
-	_, err = r.waitForDeviceState(
+	_, err = waitForDeviceState(
 		ctx,
+		r.client,
 		site, mac,
 		unifi.DeviceStatePending,
 		[]unifi.DeviceState{unifi.DeviceStateConnected, unifi.DeviceStateDeleting},
@@ -1783,6 +1793,22 @@ func (r *deviceResource) updateDevice(
 
 	deviceReq.ID = model.ID.ValueString()
 
+	// Serialize against any other update to the same device - notably
+	// unifi_device_port, which does the identical unlocked
+	// read-device/merge-port_overrides/PUT-device sequence below and takes
+	// this same lock keyed the same way (cleanMAC(device_mac)). Without this,
+	// a unifi_device managing some ports via port_override and a
+	// unifi_device_port managing other indices on the same device (an
+	// explicitly documented-compatible combination) can race: both read the
+	// device before either writes, and whichever PUT lands second reverts the
+	// other's just-applied port_overrides change. Falls back to locking by ID
+	// when MAC is unset (device imported/managed by ID only), which only
+	// serializes against other unifi_device updates for that device - MAC is
+	// required on unifi_device_port, so that combination has no ID-only
+	// configuration to race with in the first place.
+	unlock := r.client.lockDevice(deviceLockKey(deviceReq.MAC, deviceReq.ID))
+	defer unlock()
+
 	// Fetch the current device once. We need it for two reasons:
 	//   1. 'type' is a computed field the API requires in the PUT body.
 	//   2. UpdateDevice sends a diff against the existing device. The Device
@@ -1874,8 +1900,9 @@ func (r *deviceResource) updateDevice(
 	}
 
 	// Wait for device to be in connected state
-	if d, err := r.waitForDeviceState(
+	if d, err := waitForDeviceState(
 		ctx,
+		r.client,
 		site, device.MAC,
 		unifi.DeviceStateConnected,
 		[]unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning},
@@ -2654,12 +2681,27 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 		model.ExcludedNetworkIDs = setVal
 	}
 
-	// FIX (#235): the pinned go-unifi SDK has no TaggedNetworkIDs field, so
-	// nothing populates it below. Without this assignment the model field
-	// stays an untyped zero-value types.Set, which makes ObjectValueFrom
-	// emit a "types.SetType[!!! MISSING TYPE !!!]" Value Conversion Error
-	// against the schema's SetAttribute{ElementType: types.StringType}.
-	model.TaggedNetworkIDs = types.SetNull(types.StringType)
+	// #235 pinned this to an unconditional typed null because the SDK version
+	// then vendored had no TaggedNetworkIDs field on DevicePortOverrides at
+	// all - the field has since been added (current go-unifi), so populate it
+	// like the sibling Set fields below instead of continuing to discard real
+	// API data. Still needs a *typed* null when empty, not an untyped
+	// zero-value types.Set, or ObjectValueFrom fails with a
+	// "types.SetType[!!! MISSING TYPE !!!]" Value Conversion Error.
+	if len(po.TaggedNetworkIDs) == 0 {
+		model.TaggedNetworkIDs = types.SetNull(types.StringType)
+	} else {
+		taggedValues := make([]attr.Value, 0, len(po.TaggedNetworkIDs))
+		for _, id := range po.TaggedNetworkIDs {
+			taggedValues = append(taggedValues, types.StringValue(id))
+		}
+		setVal, setDiags := types.SetValue(types.StringType, taggedValues)
+		diags.Append(setDiags...)
+		if diags.HasError() {
+			return model, diags
+		}
+		model.TaggedNetworkIDs = setVal
+	}
 
 	if len(po.MulticastRouterNetworkIDs) == 0 {
 		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
@@ -2879,8 +2921,16 @@ func (r *deviceResource) frameworkToPortOverrides(
 	return pos, diags
 }
 
-func (r *deviceResource) waitForDeviceState(
+// waitForDeviceState polls until the device at mac reaches targetState (or
+// timeout). It is a package-level helper, not a deviceResource method,
+// because unifi_device_port also needs it: an UpdateDevice PUT provisions
+// asynchronously, so the immediate response can still show the pre-update
+// port_overrides - callers that read state back from UpdateDevice's response
+// alone risk recording stale data (or a "port missing" false negative if the
+// port briefly drops out mid-provisioning).
+func waitForDeviceState(
 	ctx context.Context,
+	client *Client,
 	site, mac string,
 	targetState unifi.DeviceState,
 	pendingStates []unifi.DeviceState,
@@ -2898,7 +2948,7 @@ func (r *deviceResource) waitForDeviceState(
 		Pending: pending,
 		Target:  []string{targetState.String()},
 		Refresh: func() (any, string, error) {
-			device, err := r.client.GetDeviceByMAC(ctx, site, mac)
+			device, err := client.GetDeviceByMAC(ctx, site, mac)
 
 			if _, ok := err.(*unifi.NotFoundError); ok {
 				err = nil
@@ -2932,6 +2982,17 @@ func (r *deviceResource) waitForDeviceState(
 	}
 
 	return nil, err
+}
+
+// deviceLockKey picks the key used to serialize concurrent updates to a
+// device (see Client.lockDevice). MAC is preferred and cleaned so it matches
+// the key unifi_device_port locks with (cleanMAC(device_mac)); ID is the
+// fallback for a device managed without a known MAC.
+func deviceLockKey(mac, id string) string {
+	if mac != "" {
+		return cleanMAC(mac)
+	}
+	return id
 }
 
 // cleanMAC normalizes MAC address format.
