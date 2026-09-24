@@ -705,7 +705,9 @@ func (d *networkDataSource) setDataSourceData(
 		winsObj, d := types.ObjectValueFrom(ctx, winsValue.AttributeTypes(), winsValue)
 		diags.Append(d...)
 
-		ntpServers := uniqueStrings(collectNonEmptyStringPointers(network.DHCPDNtp1, network.DHCPDNtp2))
+		ntpServers := uniqueStrings(
+			collectNonEmptyStringPointers(network.DHCPDNtp1, network.DHCPDNtp2),
+		)
 		var ntpServersList types.List
 		if len(ntpServers) > 0 {
 			ntpServersList, d = types.ListValueFrom(ctx, types.StringType, ntpServers)

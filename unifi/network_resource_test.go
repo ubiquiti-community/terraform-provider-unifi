@@ -1702,7 +1702,7 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 		}
 	})
 
-	t.Run("duplicate controller NTP servers collapse to configured single server", func(t *testing.T) {
+	t.Run("duplicate NTP servers collapse to one", func(t *testing.T) {
 		ntpServers := types.ListValueMust(types.StringType, []attr.Value{
 			types.StringValue("192.168.54.4"),
 		})
