@@ -82,3 +82,94 @@ func TestSiteIdentityUpgradeV0(t *testing.T) {
 		})
 	}
 }
+
+func TestUpgradeSiteIdentityV0Branches(t *testing.T) {
+	ctx := context.Background()
+
+	upgrade := func(t *testing.T, r fwresource.ResourceWithIdentity, client *Client, raw *tfprotov6.RawState) (map[string]tftypes.Value, fwresource.UpgradeIdentityResponse) {
+		t.Helper()
+		var schemaResp fwresource.IdentitySchemaResponse
+		r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &schemaResp)
+		resp := fwresource.UpgradeIdentityResponse{
+			Identity: &tfsdk.ResourceIdentity{Schema: schemaResp.IdentitySchema},
+		}
+		upgradeSiteIdentityV0(
+			ctx,
+			client,
+			fwresource.UpgradeIdentityRequest{RawIdentity: raw},
+			&resp,
+		)
+		var got map[string]tftypes.Value
+		if !resp.Diagnostics.HasError() {
+			if err := resp.Identity.Raw.As(&got); err != nil {
+				t.Fatalf("upgraded identity is not an object: %s", err)
+			}
+		}
+		return got, resp
+	}
+	str := func(t *testing.T, v tftypes.Value) *string {
+		t.Helper()
+		if v.IsNull() {
+			return nil
+		}
+		var s string
+		if err := v.As(&s); err != nil {
+			t.Fatalf("not a string: %s", err)
+		}
+		return &s
+	}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, resp := upgrade(t, &firewallGroupResource{}, &Client{Site: "default"},
+			&tfprotov6.RawState{JSON: []byte(`{`)})
+		if !resp.Diagnostics.HasError() {
+			t.Fatal("expected an error for unparseable identity")
+		}
+	})
+
+	t.Run("stored site is kept", func(t *testing.T) {
+		got, resp := upgrade(t, &firewallGroupResource{}, &Client{Site: "default"},
+			&tfprotov6.RawState{JSON: []byte(`{"id":"abc","site":"other"}`)})
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+		}
+		if s := str(t, got["site"]); s == nil || *s != "other" {
+			t.Errorf("site = %v, want \"other\"", s)
+		}
+	})
+
+	t.Run("no client leaves site null", func(t *testing.T) {
+		got, resp := upgrade(t, &firewallGroupResource{}, nil,
+			&tfprotov6.RawState{JSON: []byte(`{"id":"abc"}`)})
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+		}
+		if s := str(t, got["site"]); s != nil {
+			t.Errorf("site = %q, want null", *s)
+		}
+		if s := str(t, got["id"]); s == nil || *s != "abc" {
+			t.Errorf("id = %v, want \"abc\"", s)
+		}
+	})
+
+	t.Run("no stored identity", func(t *testing.T) {
+		got, resp := upgrade(t, &firewallGroupResource{}, &Client{Site: "default"}, nil)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+		}
+		if s := str(t, got["id"]); s != nil {
+			t.Errorf("id = %q, want null", *s)
+		}
+	})
+
+	t.Run("wireguard network_id is carried over", func(t *testing.T) {
+		got, resp := upgrade(t, &wireguardPeerResource{}, &Client{Site: "default"},
+			&tfprotov6.RawState{JSON: []byte(`{"id":"abc","network_id":"net1"}`)})
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", resp.Diagnostics)
+		}
+		if s := str(t, got["network_id"]); s == nil || *s != "net1" {
+			t.Errorf("network_id = %v, want \"net1\"", s)
+		}
+	})
+}
