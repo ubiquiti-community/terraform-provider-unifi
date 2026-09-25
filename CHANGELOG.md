@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - **`unifi_network`: collapse duplicate DHCP NTP servers returned by the controller.** UniFi can store a single configured server in both DHCP NTP fields, causing `dhcp_server.ntp_servers` to read back with duplicate entries and produce inconsistent-result errors or persistent drift. Both the resource and data source now return unique servers in their original order; the resource continues to preserve the distinction between an unset list and an explicitly empty list (#477)
+- **`unifi_firewall_policy`: fix `Provider produced inconsistent result after apply` when UniFi renumbers a policy's `index`.** The controller can renumber remaining policies when siblings are deleted during the same apply. The computed, read-only `index` no longer uses `UseStateForUnknown`, allowing an updated policy's post-apply read to refresh the controller-assigned value instead of comparing it against a stale index pinned in the plan (#348, #473)
 
 ## [v0.56.1] - 2026-09-24
 
