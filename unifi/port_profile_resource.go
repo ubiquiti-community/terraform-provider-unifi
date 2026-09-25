@@ -1075,10 +1075,12 @@ func (r *portProfileResource) portProfileToModel(
 
 	model.PortSecurityEnabled = types.BoolValue(portProfile.PortSecurityEnabled)
 
-	// Convert port security MAC addresses
-	if len(portProfile.PortSecurityMACAddress) == 0 {
-		model.PortSecurityMacAddress = types.SetNull(types.StringType)
-	} else {
+	// An empty allowlist with port security on is how the controller stores a disabled port, so an
+	// explicitly empty set is meaningful and nulling it fails the apply as an inconsistent result.
+	macExplicitlyEmpty := !model.PortSecurityMacAddress.IsNull() &&
+		!model.PortSecurityMacAddress.IsUnknown() &&
+		len(model.PortSecurityMacAddress.Elements()) == 0
+	if len(portProfile.PortSecurityMACAddress) > 0 {
 		macAddressList := make([]types.String, len(portProfile.PortSecurityMACAddress))
 		for i, mac := range portProfile.PortSecurityMACAddress {
 			macAddressList[i] = types.StringValue(mac)
@@ -1086,6 +1088,8 @@ func (r *portProfileResource) portProfileToModel(
 		macAddressSet, d := types.SetValueFrom(ctx, types.StringType, macAddressList)
 		diags.Append(d...)
 		model.PortSecurityMacAddress = macAddressSet
+	} else if !macExplicitlyEmpty {
+		model.PortSecurityMacAddress = types.SetNull(types.StringType)
 	}
 
 	// Only set speed if it was in the plan or if it's non-zero
