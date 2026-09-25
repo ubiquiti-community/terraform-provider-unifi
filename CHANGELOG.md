@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **`unifi_network`: collapse duplicate DHCP NTP servers returned by the controller.** UniFi can store a single configured server in both DHCP NTP fields, causing `dhcp_server.ntp_servers` to read back with duplicate entries and produce inconsistent-result errors or persistent drift. Both the resource and data source now return unique servers in their original order; the resource continues to preserve the distinction between an unset list and an explicitly empty list (#477)
+
 ## [v0.56.1] - 2026-09-24
 
 ### 🐛 Bug Fixes
