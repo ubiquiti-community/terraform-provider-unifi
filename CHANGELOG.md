@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **`unifi_device`: apply per-device management IP and DNS changes from `config_network`.** The Terraform configuration was converted into `DeviceConfigNetwork` but dropped when assembling the minimal update payload, so the controller kept its previous values and the post-apply read could fail with `Provider produced inconsistent result after apply`. The update payload now includes the configured management network settings, including `dns1` and `dns2`; an unset block stays omitted (#482)
+
 ## [v0.56.1] - 2026-09-24
 
 ### 🐛 Bug Fixes

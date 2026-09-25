@@ -854,7 +854,8 @@ func Test_buildMinimalUpdateDevice(t *testing.T) {
 			len(got.PortOverrides),
 		)
 	}
-	if got.ConfigNetwork == nil || got.ConfigNetwork.DNS1 != "10.0.200.2" || got.ConfigNetwork.DNS2 != "10.0.200.3" {
+	if got.ConfigNetwork == nil || got.ConfigNetwork.DNS1 != "10.0.200.2" ||
+		got.ConfigNetwork.DNS2 != "10.0.200.3" {
 		t.Errorf("ConfigNetwork DNS = %#v, want dns1/dns2 preserved", got.ConfigNetwork)
 	}
 
