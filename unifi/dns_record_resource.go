@@ -105,8 +105,8 @@ func (r *dnsRecordFrameworkResource) IdentitySchema(
 		Version: 1,
 		// The optional "site" attribute defaults to the provider site on
 		// import. Identities stored by older provider versions ({id} only)
-		// decode under this schema with site as null; they are passed
-		// through unchanged on refresh.
+		// are version 0 and go through siteIdentityUpgraders, which fills
+		// site from the provider's configured site.
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
