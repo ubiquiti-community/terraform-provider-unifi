@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **Fix every plan failing under OpenTofu after upgrading from v0.55.0 with `attribute "site" is required`.** v0.56.0 added `site` (and `network_id` on `unifi_wireguard_peer`) to the resource identity of 21 resources without bumping the identity schema version. Terraform decodes the old `{"id"}` identity with the new attributes null, but OpenTofu requires every attribute of the current identity schema to be present, so `unifi_dns_record`, `unifi_firewall_group`, `unifi_network`, `unifi_port_forward` and `unifi_wan` failed directly and their dependents were skipped. The identity schema of `ap_group`, `client_qos_rate`, `dns_record`, `firewall_group`, `firewall_policy`, `firewall_rule`, `firewall_zone`, `network`, `port_forward`, `port_profile`, `power_supervisor`, `radius_profile`, `radius_user`, `site_to_site_vpn`, `static_route`, `traffic_route`, `vpn_client`, `vpn_server`, `wan`, `wireguard_peer` and `wlan` is now at version 1, with a shared upgrader that carries stored values over and fills a missing `site` from the provider's configured site. No configuration or state changes are needed. A resource whose `site` differs from the provider's site gets the provider's site in its upgraded identity (#506)
+
 ## [v0.56.1] - 2026-09-24
 
 ### 🐛 Bug Fixes
