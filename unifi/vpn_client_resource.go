@@ -160,10 +160,11 @@ func (r *vpnClientResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
 		// The optional "site" attribute defaults to the provider site on
 		// import. Identities stored by older provider versions ({id} only)
-		// decode under this schema with site as null; they are passed
-		// through unchanged on refresh.
+		// are version 0 and go through siteIdentityUpgraders, which fills
+		// site from the provider's configured site.
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -173,6 +174,14 @@ func (r *vpnClientResource) IdentitySchema(
 			},
 		},
 	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *vpnClientResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *vpnClientResource) Schema(
