@@ -33,7 +33,13 @@ func TestPortProfileEmptyMacAllowlistIsPreserved(t *testing.T) {
 	}{
 		{"explicit empty is kept", emptySet, nil, false, 0},
 		{"unset stays null", types.SetNull(types.StringType), nil, true, 0},
-		{"api addresses are adopted", types.SetNull(types.StringType), []string{"aa:bb:cc:dd:ee:ff"}, false, 1},
+		{
+			"api addresses are adopted",
+			types.SetNull(types.StringType),
+			[]string{"aa:bb:cc:dd:ee:ff"},
+			false,
+			1,
+		},
 	}
 
 	for _, tc := range tests {
@@ -55,7 +61,11 @@ func TestPortProfileEmptyMacAllowlistIsPreserved(t *testing.T) {
 				t.Fatalf("port_security_mac_address null = %v, want %v", got.IsNull(), tc.wantNull)
 			}
 			if !tc.wantNull && len(got.Elements()) != tc.wantLen {
-				t.Errorf("port_security_mac_address has %d elements, want %d", len(got.Elements()), tc.wantLen)
+				t.Errorf(
+					"port_security_mac_address has %d elements, want %d",
+					len(got.Elements()),
+					tc.wantLen,
+				)
 			}
 		})
 	}
