@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### ✨ Features
 
-- **`unifi_setting`: manage Global Switch Settings via the new `global_switch` block** (`stp_version`, `dhcp_snoop`, `jumboframe_enabled`, `dot1x_portctrl_enabled`). Current controllers only honor jumbo frames at the site level: setting `unifi_device.jumboframe_enabled = true` is accepted and then read back as `false`, failing apply with `Provider produced inconsistent result after apply`, so jumbo frames were previously unmanageable. The block is opt-in like the others on `unifi_setting`, all fields are Optional+Computed with `UseStateForUnknown`, and only the fields you set are sent to the controller, so Global Switch options the provider doesn't model (ACL isolation, switch exclusions, link debounce, PoE staging) are left untouched
+- **`unifi_setting`: manage Global Switch Settings via the new `global_switch` block** (`stp_version`, `dhcp_snoop`, `jumboframe_enabled`, `dot1x_portctrl_enabled`). Current controllers only honor jumbo frames at the site level: setting `unifi_device.jumboframe_enabled = true` is accepted and then read back as `false`, failing apply with `Provider produced inconsistent result after apply`, so jumbo frames were previously unmanageable. The block is opt-in like the others on `unifi_setting`, all fields are Optional+Computed with `UseStateForUnknown`, and only the fields you set are sent to the controller, so Global Switch options the provider doesn't model (ACL isolation, switch exclusions, link debounce, PoE staging) are left untouched (#513)
 
 ### 🐛 Bug Fixes
 
