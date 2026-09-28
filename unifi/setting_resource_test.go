@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 )
@@ -269,6 +271,128 @@ resource "unifi_setting" "test" {
   }
 }
 `
+}
+
+// TestAccSettingResource_globalSwitch guards the partial-write contract of the
+// global_switch block: fields the provider does not model must survive an
+// apply, and fields omitted from a later config must keep their prior values
+// without drift. The post-apply empty-plan check of each step covers drift.
+func TestAccSettingResource_globalSwitch(t *testing.T) {
+	ctx := context.Background()
+	var client *unifi.ApiClient
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			preCheck(t)
+			client = testAccSettingProbeClient(t, ctx)
+			original, found := testAccGlobalSwitchRaw(t, ctx, client)
+			if !found {
+				t.Skip("controller has no global_switch setting")
+			}
+			t.Cleanup(func() {
+				restore := &settings.RawSetting{
+					BaseSetting: settings.BaseSetting{Key: globalSwitchSettingKey},
+					Data:        original,
+				}
+				if err := client.UpdateSetting(ctx, "default", restore); err != nil {
+					t.Errorf("restoring global_switch setting: %s", err)
+				}
+			})
+			// flood_known_protocols is not exposed by the block, so it must
+			// never be touched by the provider.
+			seed := &settings.RawSetting{
+				BaseSetting: settings.BaseSetting{Key: globalSwitchSettingKey},
+				Data:        map[string]any{"flood_known_protocols": true},
+			}
+			if err := client.UpdateSetting(ctx, "default", seed); err != nil {
+				t.Fatalf("seeding global_switch setting: %s", err)
+			}
+		},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "unifi_setting" "test" {
+  global_switch = {
+    stp_version            = "stp"
+    dhcp_snoop             = true
+    jumboframe_enabled     = true
+    dot1x_portctrl_enabled = false
+  }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.stp_version", "stp"),
+					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dhcp_snoop", "true"),
+					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.jumboframe_enabled", "true"),
+					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dot1x_portctrl_enabled", "false"),
+					testAccCheckGlobalSwitchRaw(t, ctx, &client, map[string]any{
+						"stp_version":           "stp",
+						"jumboframe_enabled":    true,
+						"flood_known_protocols": true,
+					}),
+				),
+			},
+			{
+				Config: `
+resource "unifi_setting" "test" {
+  global_switch = {
+    jumboframe_enabled = false
+  }
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.jumboframe_enabled", "false"),
+					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.stp_version", "stp"),
+					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dhcp_snoop", "true"),
+					testAccCheckGlobalSwitchRaw(t, ctx, &client, map[string]any{
+						"stp_version":           "stp",
+						"dhcp_snoop":            true,
+						"jumboframe_enabled":    false,
+						"flood_known_protocols": true,
+					}),
+				),
+			},
+		},
+	})
+}
+
+func testAccGlobalSwitchRaw(
+	t *testing.T,
+	ctx context.Context,
+	client *unifi.ApiClient,
+) (map[string]any, bool) {
+	t.Helper()
+	all, err := client.ListSettings(ctx, "default")
+	if err != nil {
+		t.Fatalf("listing settings: %s", err)
+	}
+	for _, s := range all {
+		if s.Key == globalSwitchSettingKey {
+			return s.Data, true
+		}
+	}
+	return nil, false
+}
+
+func testAccCheckGlobalSwitchRaw(
+	t *testing.T,
+	ctx context.Context,
+	client **unifi.ApiClient,
+	want map[string]any,
+) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		got, found := testAccGlobalSwitchRaw(t, ctx, *client)
+		if !found {
+			return fmt.Errorf("global_switch setting not found on controller")
+		}
+		for k, v := range want {
+			if got[k] != v {
+				return fmt.Errorf("controller global_switch.%s = %v, want %v", k, got[k], v)
+			}
+		}
+		return nil
+	}
 }
 
 // TestAccSettingResource_import exercises both import paths: the classic
@@ -1451,25 +1575,66 @@ func Test_settingResource_globalSwitchSettingToModel(t *testing.T) {
 // Omitted global_switch fields must keep their prior values rather than
 // planning as "known after apply" on every run (same failure mode as #382).
 func TestSettingGlobalSwitchUseStateForUnknown(t *testing.T) {
+	ctx := context.Background()
 	resp := &fwresource.SchemaResponse{}
-	(&settingResource{}).Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	(&settingResource{}).Schema(ctx, fwresource.SchemaRequest{}, resp)
 
 	gs, ok := resp.Schema.Attributes["global_switch"].(schema.SingleNestedAttribute)
 	if !ok {
 		t.Fatal("global_switch is not a SingleNestedAttribute")
 	}
+	if len(gs.Attributes) != len(globalSwitchAttrTypes) {
+		t.Fatalf("global_switch has %d attributes, want %d", len(gs.Attributes), len(globalSwitchAttrTypes))
+	}
+
 	for key, a := range gs.Attributes {
 		if !a.IsOptional() || !a.IsComputed() {
 			t.Errorf("global_switch.%s must be Optional+Computed", key)
 		}
 		switch v := a.(type) {
-		case schema.BoolAttribute:
-			if len(v.PlanModifiers) == 0 {
-				t.Errorf("global_switch.%s must use UseStateForUnknown", key)
-			}
 		case schema.StringAttribute:
 			if len(v.PlanModifiers) == 0 {
 				t.Errorf("global_switch.%s must use UseStateForUnknown", key)
+				continue
+			}
+			req := planmodifier.StringRequest{
+				ConfigValue: types.StringNull(),
+				PlanValue:   types.StringUnknown(),
+				State:       tfsdk.State{Raw: tftypes.NewValue(tftypes.String, "rstp")},
+				StateValue:  types.StringValue("rstp"),
+			}
+			modified := &planmodifier.StringResponse{PlanValue: req.PlanValue}
+			for _, m := range v.PlanModifiers {
+				m.PlanModifyString(ctx, req, modified)
+				req.PlanValue = modified.PlanValue
+			}
+			if modified.Diagnostics.HasError() {
+				t.Errorf("global_switch.%s plan modifier returned errors: %v", key, modified.Diagnostics)
+			}
+			if modified.PlanValue.IsUnknown() || modified.PlanValue.ValueString() != "rstp" {
+				t.Errorf("global_switch.%s plan = %v, want prior state \"rstp\"", key, modified.PlanValue)
+			}
+		case schema.BoolAttribute:
+			if len(v.PlanModifiers) == 0 {
+				t.Errorf("global_switch.%s must use UseStateForUnknown", key)
+				continue
+			}
+			req := planmodifier.BoolRequest{
+				ConfigValue: types.BoolNull(),
+				PlanValue:   types.BoolUnknown(),
+				State:       tfsdk.State{Raw: tftypes.NewValue(tftypes.Bool, true)},
+				StateValue:  types.BoolValue(true),
+			}
+			modified := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+			for _, m := range v.PlanModifiers {
+				m.PlanModifyBool(ctx, req, modified)
+				req.PlanValue = modified.PlanValue
+			}
+			if modified.Diagnostics.HasError() {
+				t.Errorf("global_switch.%s plan modifier returned errors: %v", key, modified.Diagnostics)
+			}
+			if modified.PlanValue.IsUnknown() || !modified.PlanValue.ValueBool() {
+				t.Errorf("global_switch.%s plan = %v, want prior state true", key, modified.PlanValue)
 			}
 		default:
 			t.Errorf("global_switch.%s has unexpected type %T", key, a)
