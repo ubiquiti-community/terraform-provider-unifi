@@ -255,9 +255,10 @@ type settingResourceModel struct {
 
 // settingGlobalSwitchModel is the nested global_switch block (Settings > Networks
 // > Global Switch Settings). Current controllers ignore the per-device
-// jumboframe_enabled flag and honor only this site setting. Fields not exposed
-// here (ACL isolation, switch exclusions, PoE staging, ...) are preserved across
-// updates via a read-modify-write merge.
+// jumboframe_enabled flag and honor only this site setting. Writes send only
+// the fields present in config and rely on the controller merging the partial
+// payload, which keeps fields not exposed here (ACL isolation, switch
+// exclusions, PoE staging, ...) intact.
 type settingGlobalSwitchModel struct {
 	StpVersion           types.String `tfsdk:"stp_version"`
 	DHCPSnoop            types.Bool   `tfsdk:"dhcp_snoop"`
@@ -1704,7 +1705,10 @@ func (r *settingResource) Create(
 		}
 	}
 
-	r.persistGlobalSwitch(ctx, site, data.GlobalSwitch, &resp.Diagnostics)
+	var globalSwitchConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
+	r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2035,7 +2039,10 @@ func (r *settingResource) Update(
 		}
 	}
 
-	r.persistGlobalSwitch(ctx, site, plan.GlobalSwitch, &resp.Diagnostics)
+	var globalSwitchConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
+	r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -3285,9 +3292,12 @@ func (r *settingResource) igmpSnoopingSettingToModel(
 
 // Global switch conversion functions.
 
-// persistGlobalSwitch writes the configured global_switch fields, if any. Only
-// those fields are sent, so options the pinned go-unifi struct doesn't know
-// about (link debounce, PoE staging, ...) are left untouched on the controller.
+// persistGlobalSwitch writes the global_switch fields set in config, if any.
+// obj must come from config, not the plan: UseStateForUnknown fills omitted
+// fields in the plan from state, and those must not be re-sent. The
+// controller merges this partial PUT into the stored setting, so fields the
+// pinned go-unifi struct doesn't know about (link debounce, PoE staging, ...)
+// are left untouched.
 func (r *settingResource) persistGlobalSwitch(
 	ctx context.Context,
 	site string,

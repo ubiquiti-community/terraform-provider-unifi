@@ -280,12 +280,16 @@ resource "unifi_setting" "test" {
 func TestAccSettingResource_globalSwitch(t *testing.T) {
 	ctx := context.Background()
 	var client *unifi.ApiClient
+	site := os.Getenv("UNIFI_SITE")
+	if site == "" {
+		site = "default"
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			preCheck(t)
 			client = testAccSettingProbeClient(t, ctx)
-			original, found := testAccGlobalSwitchRaw(t, ctx, client)
+			original, found := testAccGlobalSwitchRaw(t, ctx, client, site)
 			if !found {
 				t.Skip("controller has no global_switch setting")
 			}
@@ -294,7 +298,7 @@ func TestAccSettingResource_globalSwitch(t *testing.T) {
 					BaseSetting: settings.BaseSetting{Key: globalSwitchSettingKey},
 					Data:        original,
 				}
-				if err := client.UpdateSetting(ctx, "default", restore); err != nil {
+				if err := client.UpdateSetting(ctx, site, restore); err != nil {
 					t.Errorf("restoring global_switch setting: %s", err)
 				}
 			})
@@ -304,7 +308,7 @@ func TestAccSettingResource_globalSwitch(t *testing.T) {
 				BaseSetting: settings.BaseSetting{Key: globalSwitchSettingKey},
 				Data:        map[string]any{"flood_known_protocols": true},
 			}
-			if err := client.UpdateSetting(ctx, "default", seed); err != nil {
+			if err := client.UpdateSetting(ctx, site, seed); err != nil {
 				t.Fatalf("seeding global_switch setting: %s", err)
 			}
 		},
@@ -326,7 +330,7 @@ resource "unifi_setting" "test" {
 					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dhcp_snoop", "true"),
 					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.jumboframe_enabled", "true"),
 					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dot1x_portctrl_enabled", "false"),
-					testAccCheckGlobalSwitchRaw(t, ctx, &client, map[string]any{
+					testAccCheckGlobalSwitchRaw(t, ctx, &client, site, map[string]any{
 						"stp_version":           "stp",
 						"jumboframe_enabled":    true,
 						"flood_known_protocols": true,
@@ -345,7 +349,7 @@ resource "unifi_setting" "test" {
 					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.jumboframe_enabled", "false"),
 					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.stp_version", "stp"),
 					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dhcp_snoop", "true"),
-					testAccCheckGlobalSwitchRaw(t, ctx, &client, map[string]any{
+					testAccCheckGlobalSwitchRaw(t, ctx, &client, site, map[string]any{
 						"stp_version":           "stp",
 						"dhcp_snoop":            true,
 						"jumboframe_enabled":    false,
@@ -361,9 +365,10 @@ func testAccGlobalSwitchRaw(
 	t *testing.T,
 	ctx context.Context,
 	client *unifi.ApiClient,
+	site string,
 ) (map[string]any, bool) {
 	t.Helper()
-	all, err := client.ListSettings(ctx, "default")
+	all, err := client.ListSettings(ctx, site)
 	if err != nil {
 		t.Fatalf("listing settings: %s", err)
 	}
@@ -379,10 +384,11 @@ func testAccCheckGlobalSwitchRaw(
 	t *testing.T,
 	ctx context.Context,
 	client **unifi.ApiClient,
+	site string,
 	want map[string]any,
 ) resource.TestCheckFunc {
 	return func(*terraform.State) error {
-		got, found := testAccGlobalSwitchRaw(t, ctx, *client)
+		got, found := testAccGlobalSwitchRaw(t, ctx, *client, site)
 		if !found {
 			return fmt.Errorf("global_switch setting not found on controller")
 		}
