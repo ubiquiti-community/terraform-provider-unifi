@@ -968,7 +968,7 @@ func Test_settingResource_Schema(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	for _, attr := range []string{"id", "site", "mgmt", "radius", "usg", "igmp_snooping", "doh", "ips"} {
+	for _, attr := range []string{"id", "site", "mgmt", "radius", "usg", "igmp_snooping", "global_switch", "doh", "ips"} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
 			t.Errorf("missing attribute %q", attr)
 		}
@@ -1362,6 +1362,119 @@ func Test_settingResource_igmpSnoopingModelToSetting(t *testing.T) {
 			t.Errorf("NetworkIDs = %v, want [net-1 net-2]", got.NetworkIDs)
 		}
 	})
+}
+
+func Test_globalSwitchRawSetting(t *testing.T) {
+	t.Run("only set fields are sent", func(t *testing.T) {
+		got := globalSwitchRawSetting(&settingGlobalSwitchModel{
+			StpVersion:           types.StringNull(),
+			DHCPSnoop:            types.BoolUnknown(),
+			JumboframeEnabled:    types.BoolValue(true),
+			Dot1XPortctrlEnabled: types.BoolNull(),
+		})
+		if got.Key != "global_switch" {
+			t.Errorf("Key = %q, want global_switch", got.Key)
+		}
+		if len(got.Data) != 1 || got.Data["jumboframe_enabled"] != true {
+			t.Errorf("Data = %v, want only jumboframe_enabled=true", got.Data)
+		}
+	})
+
+	t.Run("false values are sent", func(t *testing.T) {
+		got := globalSwitchRawSetting(&settingGlobalSwitchModel{
+			StpVersion:           types.StringValue("disabled"),
+			DHCPSnoop:            types.BoolValue(false),
+			JumboframeEnabled:    types.BoolNull(),
+			Dot1XPortctrlEnabled: types.BoolValue(false),
+		})
+		want := map[string]any{
+			"stp_version":            "disabled",
+			"dhcp_snoop":             false,
+			"dot1x_portctrl_enabled": false,
+		}
+		if len(got.Data) != len(want) {
+			t.Fatalf("Data = %v, want %v", got.Data, want)
+		}
+		for k, v := range want {
+			if got.Data[k] != v {
+				t.Errorf("Data[%q] = %v, want %v", k, got.Data[k], v)
+			}
+		}
+	})
+
+	t.Run("marshals with key and fields", func(t *testing.T) {
+		got := globalSwitchRawSetting(&settingGlobalSwitchModel{
+			StpVersion:           types.StringNull(),
+			DHCPSnoop:            types.BoolNull(),
+			JumboframeEnabled:    types.BoolValue(false),
+			Dot1XPortctrlEnabled: types.BoolNull(),
+		})
+		b, err := json.Marshal(got)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if m["key"] != "global_switch" || m["jumboframe_enabled"] != false {
+			t.Errorf("payload = %s", b)
+		}
+		if _, ok := m["stp_version"]; ok {
+			t.Errorf("unset stp_version must not be sent: %s", b)
+		}
+	})
+}
+
+func Test_settingResource_globalSwitchSettingToModel(t *testing.T) {
+	r := &settingResource{}
+	got := r.globalSwitchSettingToModel(&settings.GlobalSwitch{
+		StpVersion:           "stp",
+		DHCPSnoop:            true,
+		JumboframeEnabled:    true,
+		Dot1XPortctrlEnabled: false,
+	})
+	if got.StpVersion.ValueString() != "stp" {
+		t.Errorf("StpVersion = %q, want stp", got.StpVersion.ValueString())
+	}
+	if !got.DHCPSnoop.ValueBool() || !got.JumboframeEnabled.ValueBool() {
+		t.Error("DHCPSnoop and JumboframeEnabled should be true")
+	}
+	if got.Dot1XPortctrlEnabled.IsNull() || got.Dot1XPortctrlEnabled.ValueBool() {
+		t.Error("Dot1XPortctrlEnabled should be a known false")
+	}
+	if _, d := types.ObjectValueFrom(context.Background(), globalSwitchAttrTypes, got); d.HasError() {
+		t.Fatalf("model does not match globalSwitchAttrTypes: %v", d)
+	}
+}
+
+// Omitted global_switch fields must keep their prior values rather than
+// planning as "known after apply" on every run (same failure mode as #382).
+func TestSettingGlobalSwitchUseStateForUnknown(t *testing.T) {
+	resp := &fwresource.SchemaResponse{}
+	(&settingResource{}).Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	gs, ok := resp.Schema.Attributes["global_switch"].(schema.SingleNestedAttribute)
+	if !ok {
+		t.Fatal("global_switch is not a SingleNestedAttribute")
+	}
+	for key, a := range gs.Attributes {
+		if !a.IsOptional() || !a.IsComputed() {
+			t.Errorf("global_switch.%s must be Optional+Computed", key)
+		}
+		switch v := a.(type) {
+		case schema.BoolAttribute:
+			if len(v.PlanModifiers) == 0 {
+				t.Errorf("global_switch.%s must use UseStateForUnknown", key)
+			}
+		case schema.StringAttribute:
+			if len(v.PlanModifiers) == 0 {
+				t.Errorf("global_switch.%s must use UseStateForUnknown", key)
+			}
+		default:
+			t.Errorf("global_switch.%s has unexpected type %T", key, a)
+		}
+	}
 }
 
 func Test_settingResource_igmpSnoopingSettingToModel(t *testing.T) {

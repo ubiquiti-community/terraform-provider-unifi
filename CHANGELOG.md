@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### ✨ Features
+
+- **`unifi_setting`: manage Global Switch Settings via the new `global_switch` block** (`stp_version`, `dhcp_snoop`, `jumboframe_enabled`, `dot1x_portctrl_enabled`). Current controllers only honor jumbo frames at the site level: setting `unifi_device.jumboframe_enabled = true` is accepted and then read back as `false`, failing apply with `Provider produced inconsistent result after apply`, so jumbo frames were previously unmanageable. The block is opt-in like the others on `unifi_setting`, all fields are Optional+Computed with `UseStateForUnknown`, and only the fields you set are sent to the controller, so Global Switch options the provider doesn't model (ACL isolation, switch exclusions, link debounce, PoE staging) are left untouched
+
 ### 🐛 Bug Fixes
 
 - **`unifi_network`: collapse duplicate DHCP NTP servers returned by the controller.** UniFi can store a single configured server in both DHCP NTP fields, causing `dhcp_server.ntp_servers` to read back with duplicate entries and produce inconsistent-result errors or persistent drift. Both the resource and data source now return unique servers in their original order; the resource continues to preserve the distinction between an unset list and an explicitly empty list (#477)
