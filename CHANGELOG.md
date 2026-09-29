@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.57.0] - 2026-09-29
+
 ### ✨ Features
 
 - **`unifi_firewall_policy`: expose the "Match Opposite" (invert) toggles.** New `match_opposite_ips`, `match_opposite_networks` and `match_opposite_ports` attributes on the `source` and `destination` blocks, plus a top-level `match_opposite_protocol`, map 1:1 to the controller's `match_opposite_*` flags — the "Match Opposite" switches in the UI that make an endpoint match everything *except* the listed networks/IPs/ports (or protocol). Previously the provider neither read nor wrote these flags, so a policy inverted in the UI could not be expressed in Terraform and any update through the provider silently reset the inversion to `false`. All four are Optional+Computed with a `false` default and are round-tripped from the controller on read, so existing configurations plan clean; policies inverted outside Terraform now show a diff until the attribute is declared. The v0→v1 endpoint state upgrader seeds the new fields as `false` (refresh overwrites them with the live values)
