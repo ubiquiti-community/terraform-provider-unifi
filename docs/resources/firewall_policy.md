@@ -187,6 +187,7 @@ resource "unifi_firewall_policy" "block_web_domains" {
 - `enabled` (Boolean) Whether the policy is enabled. Defaults to `true`.
 - `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.
 - `logging` (Boolean) Whether to log packets matching this policy. Defaults to `false`.
+- `match_opposite_protocol` (Boolean) Invert the protocol match: when `true`, the policy matches every protocol **except** `protocol`. Corresponds to the "Match Opposite" toggle next to the protocol selector in the UniFi UI. Defaults to `false`.
 - `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, `icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` policies the controller rejects `create_allow_respond = true` (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy if you need the reply.
 - `schedule` (Attributes) When the policy is active. The complete controller value is round-tripped so updating another policy field does not reset its schedule. Supported modes are `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, `ONE_TIME_ONLY`, and `CUSTOM`. Timed modes require `time_all_day`; when false, both time-range fields are required. `EVERY_WEEK` also requires weekdays, `ONE_TIME_ONLY` requires `date` and a time range, and `CUSTOM` requires a date range and weekdays. Set `normalize` to clear inherited fields unused by the selected mode. (see [below for nested schema](#nestedatt--schedule))
 - `site` (String) The name of the UniFi site. Defaults to the site configured in the provider.
@@ -212,6 +213,9 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ip_group_id` (String) ID of a `unifi_firewall_group` (address-group type) to match. Used when `matching_target` is `IP` with `matching_target_type = OBJECT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
+- `match_opposite_ips` (Boolean) Invert the IP match: when `true`, the endpoint matches every address **except** those in `ips` / `ip_group_id`. Corresponds to the "Match Opposite" toggle on an `IP` matching target in the UniFi UI. Defaults to `false`.
+- `match_opposite_networks` (Boolean) Invert the network match: when `true`, the endpoint matches every network **except** those in `network_ids`. Corresponds to the "Match Opposite" toggle on a `NETWORK` matching target in the UniFi UI. Defaults to `false`.
+- `match_opposite_ports` (Boolean) Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. Corresponds to the "Match Opposite" toggle on the port selector in the UniFi UI. Defaults to `false`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
 - `port` (String) Port(s) to match when `port_matching_type` is `SPECIFIC`. A single port (`161`) or a comma-separated list of ports/ranges (`80,443`, `8000-8100`). Leave unset for no port match.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
@@ -236,6 +240,9 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ip_group_id` (String) ID of a `unifi_firewall_group` (address-group type) to match. Used when `matching_target` is `IP` with `matching_target_type = OBJECT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
+- `match_opposite_ips` (Boolean) Invert the IP match: when `true`, the endpoint matches every address **except** those in `ips` / `ip_group_id`. Corresponds to the "Match Opposite" toggle on an `IP` matching target in the UniFi UI. Defaults to `false`.
+- `match_opposite_networks` (Boolean) Invert the network match: when `true`, the endpoint matches every network **except** those in `network_ids`. Corresponds to the "Match Opposite" toggle on a `NETWORK` matching target in the UniFi UI. Defaults to `false`.
+- `match_opposite_ports` (Boolean) Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. Corresponds to the "Match Opposite" toggle on the port selector in the UniFi UI. Defaults to `false`.
 - `network_ids` (List of String) List of UniFi network IDs to match. Used when `matching_target` is `NETWORK`.
 - `port` (String) Port(s) to match when `port_matching_type` is `SPECIFIC`. A single port (`161`) or a comma-separated list of ports/ranges (`80,443`, `8000-8100`). Leave unset for no port match.
 - `port_group_id` (String) ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.
