@@ -236,6 +236,7 @@ func (r *portProfileResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -245,6 +246,14 @@ func (r *portProfileResource) IdentitySchema(
 			},
 		},
 	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *portProfileResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *portProfileResource) Schema(
@@ -1196,10 +1205,23 @@ func (r *portProfileResource) portProfileToModel(
 		model.PoeMode = types.StringValue(portProfile.PoeMode)
 	}
 
-	// Convert port security MAC addresses
+	// Convert port security MAC addresses.
+	// An empty allowlist with port security on is how the controller stores a disabled port, so an
+	// explicitly empty set is meaningful and nulling it fails the apply as an inconsistent result.
+	macExplicitlyEmpty := false
+	if prior, ok, _ := util.ObjectAs[portProfilePortSecurityModel](ctx, model.PortSecurity); ok {
+		macExplicitlyEmpty = !prior.MACAddress.IsNull() &&
+			!prior.MACAddress.IsUnknown() &&
+			len(prior.MACAddress.Elements()) == 0
+	}
+
 	macAddressSet := types.SetNull(types.StringType)
 	if len(portProfile.PortSecurityMACAddress) > 0 {
 		set, d := types.SetValueFrom(ctx, types.StringType, portProfile.PortSecurityMACAddress)
+		diags.Append(d...)
+		macAddressSet = set
+	} else if macExplicitlyEmpty {
+		set, d := types.SetValueFrom(ctx, types.StringType, []string{})
 		diags.Append(d...)
 		macAddressSet = set
 	}

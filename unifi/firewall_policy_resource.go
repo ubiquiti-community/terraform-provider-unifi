@@ -22,7 +22,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -82,17 +81,18 @@ type firewallPolicyIdentityModel struct {
 
 // firewallPolicyModel is the Terraform resource model.
 type firewallPolicyModel struct {
-	ID                 types.String `tfsdk:"id"`
-	Site               types.String `tfsdk:"site"`
-	Name               types.String `tfsdk:"name"`
-	Action             types.String `tfsdk:"action"`
-	Enabled            types.Bool   `tfsdk:"enabled"`
-	Protocol           types.String `tfsdk:"protocol"`
-	Description        types.String `tfsdk:"description"`
-	Logging            types.Bool   `tfsdk:"logging"`
-	Index              types.Int64  `tfsdk:"index"`
-	CreateAllowRespond types.Bool   `tfsdk:"create_allow_respond"`
-	IPVersion          types.String `tfsdk:"ip_version"`
+	ID                    types.String `tfsdk:"id"`
+	Site                  types.String `tfsdk:"site"`
+	Name                  types.String `tfsdk:"name"`
+	Action                types.String `tfsdk:"action"`
+	Enabled               types.Bool   `tfsdk:"enabled"`
+	Protocol              types.String `tfsdk:"protocol"`
+	Description           types.String `tfsdk:"description"`
+	Logging               types.Bool   `tfsdk:"logging"`
+	MatchOppositeProtocol types.Bool   `tfsdk:"match_opposite_protocol"`
+	Index                 types.Int64  `tfsdk:"index"`
+	CreateAllowRespond    types.Bool   `tfsdk:"create_allow_respond"`
+	IPVersion             types.String `tfsdk:"ip_version"`
 	// Firmware-managed fields the controller requires back on every PUT. They are
 	// not user-settable; the provider round-trips them so updates don't drop them
 	// (an omitted connection_state_type/icmp.typename makes the PUT fail HTTP 400).
@@ -320,21 +320,29 @@ type firewallPolicyEndpointModel struct {
 	// Firmware-managed; round-tripped so updates keep it (a PUT that omits
 	// source/destination matching_target_type is rejected with HTTP 400).
 	MatchingTargetType types.String `tfsdk:"matching_target_type"`
+	// "Match Opposite" toggles (the "Invert"/"Except" switches in the UI):
+	// when true the endpoint matches everything EXCEPT the listed value.
+	MatchOppositeIPs      types.Bool `tfsdk:"match_opposite_ips"`
+	MatchOppositeNetworks types.Bool `tfsdk:"match_opposite_networks"`
+	MatchOppositePorts    types.Bool `tfsdk:"match_opposite_ports"`
 }
 
 func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"zone_id":              types.StringType,
-		"matching_target":      types.StringType,
-		"network_ids":          types.ListType{ElemType: types.StringType},
-		"client_macs":          types.ListType{ElemType: types.StringType},
-		"ips":                  types.ListType{ElemType: types.StringType},
-		"web_domains":          types.ListType{ElemType: types.StringType},
-		"port":                 types.StringType,
-		"port_group_id":        types.StringType,
-		"ip_group_id":          types.StringType,
-		"port_matching_type":   types.StringType,
-		"matching_target_type": types.StringType,
+		"zone_id":                 types.StringType,
+		"matching_target":         types.StringType,
+		"network_ids":             types.ListType{ElemType: types.StringType},
+		"client_macs":             types.ListType{ElemType: types.StringType},
+		"ips":                     types.ListType{ElemType: types.StringType},
+		"web_domains":             types.ListType{ElemType: types.StringType},
+		"port":                    types.StringType,
+		"port_group_id":           types.StringType,
+		"ip_group_id":             types.StringType,
+		"port_matching_type":      types.StringType,
+		"matching_target_type":    types.StringType,
+		"match_opposite_ips":      types.BoolType,
+		"match_opposite_networks": types.BoolType,
+		"match_opposite_ports":    types.BoolType,
 	}
 }
 
@@ -353,6 +361,7 @@ func (r *firewallPolicyResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -362,6 +371,14 @@ func (r *firewallPolicyResource) IdentitySchema(
 			},
 		},
 	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *firewallPolicyResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *firewallPolicyResource) Schema(
@@ -462,6 +479,27 @@ func (r *firewallPolicyResource) Schema(
 				stringplanmodifier.UseStateForUnknown(),
 			},
 		},
+		"match_opposite_ips": schema.BoolAttribute{
+			MarkdownDescription: "Invert the IP match: when `true`, the endpoint matches every address **except** those in `ips` / `ip_group_id`. " +
+				"Corresponds to the \"Match Opposite\" toggle on an `IP` matching target in the UniFi UI. Defaults to `false`.",
+			Optional: true,
+			Computed: true,
+			Default:  booldefault.StaticBool(false),
+		},
+		"match_opposite_networks": schema.BoolAttribute{
+			MarkdownDescription: "Invert the network match: when `true`, the endpoint matches every network **except** those in `network_ids`. " +
+				"Corresponds to the \"Match Opposite\" toggle on a `NETWORK` matching target in the UniFi UI. Defaults to `false`.",
+			Optional: true,
+			Computed: true,
+			Default:  booldefault.StaticBool(false),
+		},
+		"match_opposite_ports": schema.BoolAttribute{
+			MarkdownDescription: "Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. " +
+				"Corresponds to the \"Match Opposite\" toggle on the port selector in the UniFi UI. Defaults to `false`.",
+			Optional: true,
+			Computed: true,
+			Default:  booldefault.StaticBool(false),
+		},
 	}
 
 	resp.Schema = schema.Schema{
@@ -528,6 +566,13 @@ func (r *firewallPolicyResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
+			"match_opposite_protocol": schema.BoolAttribute{
+				MarkdownDescription: "Invert the protocol match: when `true`, the policy matches every protocol **except** `protocol`. " +
+					"Corresponds to the \"Match Opposite\" toggle next to the protocol selector in the UniFi UI. Defaults to `false`.",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
+			},
 			"index": schema.Int64Attribute{
 				MarkdownDescription: "The ordering index of the policy within its zone-pair, " +
 					"assigned by the controller. **Read-only:** UniFi does not accept a " +
@@ -536,9 +581,6 @@ func (r *firewallPolicyResource) Schema(
 					"exposes no reorder operation, so policy ordering cannot be managed through " +
 					"this provider. Reorder policies in the UniFi UI if needed.",
 				Computed: true,
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
 			},
 			"create_allow_respond": schema.BoolAttribute{
 				MarkdownDescription: "When `true`, UniFi automatically creates a matching rule to allow established/related return traffic. Recommended for `ALLOW` policies. Defaults to `false`.",
@@ -1108,17 +1150,18 @@ func modelToFirewallPolicy(
 	var diags diag.Diagnostics
 
 	fp := &unifi.FirewallPolicy{
-		ID:                  model.ID.ValueString(),
-		Name:                model.Name.ValueString(),
-		Action:              model.Action.ValueString(),
-		Enabled:             model.Enabled.ValueBool(),
-		Protocol:            model.Protocol.ValueString(),
-		Description:         model.Description.ValueString(),
-		Logging:             model.Logging.ValueBool(),
-		CreateAllowRespond:  model.CreateAllowRespond.ValueBool(),
-		Version:             model.IPVersion.ValueString(),
-		ConnectionStateType: model.ConnectionStateType.ValueString(),
-		ConnectionStates:    []string{},
+		ID:                    model.ID.ValueString(),
+		Name:                  model.Name.ValueString(),
+		Action:                model.Action.ValueString(),
+		Enabled:               model.Enabled.ValueBool(),
+		Protocol:              model.Protocol.ValueString(),
+		Description:           model.Description.ValueString(),
+		Logging:               model.Logging.ValueBool(),
+		MatchOppositeProtocol: model.MatchOppositeProtocol.ValueBool(),
+		CreateAllowRespond:    model.CreateAllowRespond.ValueBool(),
+		Version:               model.IPVersion.ValueString(),
+		ConnectionStateType:   model.ConnectionStateType.ValueString(),
+		ConnectionStates:      []string{},
 	}
 
 	// A null/unknown icmp object contributes nothing, as the unset flat
@@ -1219,10 +1262,13 @@ func endpointModelToSource(
 			m.MatchingTarget.ValueString(), m.MatchingTargetType.ValueString(),
 			m.IPGroupID.ValueString(),
 		),
-		Port:             m.Port.ValueString(),
-		PortGroupID:      m.PortGroupID.ValueString(),
-		IPGroupID:        m.IPGroupID.ValueString(),
-		PortMatchingType: m.PortMatchingType.ValueString(),
+		Port:                  m.Port.ValueString(),
+		PortGroupID:           m.PortGroupID.ValueString(),
+		IPGroupID:             m.IPGroupID.ValueString(),
+		PortMatchingType:      m.PortMatchingType.ValueString(),
+		MatchOppositeIPs:      m.MatchOppositeIPs.ValueBool(),
+		MatchOppositeNetworks: m.MatchOppositeNetworks.ValueBool(),
+		MatchOppositePorts:    m.MatchOppositePorts.ValueBool(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -1251,10 +1297,13 @@ func endpointModelToDestination(
 			m.MatchingTarget.ValueString(), m.MatchingTargetType.ValueString(),
 			m.IPGroupID.ValueString(),
 		),
-		Port:             m.Port.ValueString(),
-		PortGroupID:      m.PortGroupID.ValueString(),
-		IPGroupID:        m.IPGroupID.ValueString(),
-		PortMatchingType: m.PortMatchingType.ValueString(),
+		Port:                  m.Port.ValueString(),
+		PortGroupID:           m.PortGroupID.ValueString(),
+		IPGroupID:             m.IPGroupID.ValueString(),
+		PortMatchingType:      m.PortMatchingType.ValueString(),
+		MatchOppositeIPs:      m.MatchOppositeIPs.ValueBool(),
+		MatchOppositeNetworks: m.MatchOppositeNetworks.ValueBool(),
+		MatchOppositePorts:    m.MatchOppositePorts.ValueBool(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -1323,6 +1372,7 @@ func firewallPolicyToModel(
 	model.Protocol = types.StringValue(fp.Protocol)
 	model.Description = types.StringValue(fp.Description)
 	model.Logging = types.BoolValue(fp.Logging)
+	model.MatchOppositeProtocol = types.BoolValue(fp.MatchOppositeProtocol)
 	model.CreateAllowRespond = types.BoolValue(fp.CreateAllowRespond)
 	model.IPVersion = types.StringValue(fp.Version)
 	model.ConnectionStateType = types.StringValue(fp.ConnectionStateType)
@@ -1446,13 +1496,16 @@ func apiSourceToEndpointModel(
 	diags *diag.Diagnostics,
 ) firewallPolicyEndpointModel {
 	m := firewallPolicyEndpointModel{
-		ZoneID:             types.StringValue(src.ZoneID),
-		MatchingTarget:     types.StringValue(src.MatchingTarget),
-		MatchingTargetType: types.StringValue(src.MatchingTargetType),
-		Port:               portToStringValue(src.Port),
-		PortGroupID:        types.StringValue(src.PortGroupID),
-		IPGroupID:          types.StringValue(src.IPGroupID),
-		PortMatchingType:   types.StringValue(src.PortMatchingType),
+		ZoneID:                types.StringValue(src.ZoneID),
+		MatchingTarget:        types.StringValue(src.MatchingTarget),
+		MatchingTargetType:    types.StringValue(src.MatchingTargetType),
+		Port:                  portToStringValue(src.Port),
+		PortGroupID:           types.StringValue(src.PortGroupID),
+		IPGroupID:             types.StringValue(src.IPGroupID),
+		PortMatchingType:      types.StringValue(src.PortMatchingType),
+		MatchOppositeIPs:      types.BoolValue(src.MatchOppositeIPs),
+		MatchOppositeNetworks: types.BoolValue(src.MatchOppositeNetworks),
+		MatchOppositePorts:    types.BoolValue(src.MatchOppositePorts),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, src.NetworkIDs)
 	diags.Append(nd...)
@@ -1479,13 +1532,16 @@ func apiDestinationToEndpointModel(
 	diags *diag.Diagnostics,
 ) firewallPolicyEndpointModel {
 	m := firewallPolicyEndpointModel{
-		ZoneID:             types.StringValue(dst.ZoneID),
-		MatchingTarget:     types.StringValue(dst.MatchingTarget),
-		MatchingTargetType: types.StringValue(dst.MatchingTargetType),
-		Port:               portToStringValue(dst.Port),
-		PortGroupID:        types.StringValue(dst.PortGroupID),
-		IPGroupID:          types.StringValue(dst.IPGroupID),
-		PortMatchingType:   types.StringValue(dst.PortMatchingType),
+		ZoneID:                types.StringValue(dst.ZoneID),
+		MatchingTarget:        types.StringValue(dst.MatchingTarget),
+		MatchingTargetType:    types.StringValue(dst.MatchingTargetType),
+		Port:                  portToStringValue(dst.Port),
+		PortGroupID:           types.StringValue(dst.PortGroupID),
+		IPGroupID:             types.StringValue(dst.IPGroupID),
+		PortMatchingType:      types.StringValue(dst.PortMatchingType),
+		MatchOppositeIPs:      types.BoolValue(dst.MatchOppositeIPs),
+		MatchOppositeNetworks: types.BoolValue(dst.MatchOppositeNetworks),
+		MatchOppositePorts:    types.BoolValue(dst.MatchOppositePorts),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, dst.NetworkIDs)
 	diags.Append(nd...)

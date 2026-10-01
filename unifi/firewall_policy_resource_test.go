@@ -568,17 +568,20 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 			name: "returns expected attribute types",
 			m:    firewallPolicyEndpointModel{},
 			want: map[string]attr.Type{
-				"zone_id":              types.StringType,
-				"matching_target":      types.StringType,
-				"network_ids":          types.ListType{ElemType: types.StringType},
-				"client_macs":          types.ListType{ElemType: types.StringType},
-				"ips":                  types.ListType{ElemType: types.StringType},
-				"web_domains":          types.ListType{ElemType: types.StringType},
-				"port":                 types.StringType,
-				"port_group_id":        types.StringType,
-				"ip_group_id":          types.StringType,
-				"port_matching_type":   types.StringType,
-				"matching_target_type": types.StringType,
+				"zone_id":                 types.StringType,
+				"matching_target":         types.StringType,
+				"network_ids":             types.ListType{ElemType: types.StringType},
+				"client_macs":             types.ListType{ElemType: types.StringType},
+				"ips":                     types.ListType{ElemType: types.StringType},
+				"web_domains":             types.ListType{ElemType: types.StringType},
+				"port":                    types.StringType,
+				"port_group_id":           types.StringType,
+				"ip_group_id":             types.StringType,
+				"port_matching_type":      types.StringType,
+				"matching_target_type":    types.StringType,
+				"match_opposite_ips":      types.BoolType,
+				"match_opposite_networks": types.BoolType,
+				"match_opposite_ports":    types.BoolType,
 			},
 		},
 	}
@@ -708,6 +711,34 @@ func TestFirewallPolicyConnectionStatesSettable(t *testing.T) {
 		if !attr.IsComputed() {
 			t.Errorf("%q must stay Computed (round-trip), got Computed=false", key)
 		}
+	}
+}
+
+// TestFirewallPolicyIndexDoesNotUseStateForUnknown guards the case where UniFi
+// renumbers sibling firewall policies during the same apply. The index is
+// controller-assigned, so an update plan must not preserve the prior index and
+// then reject the controller's refreshed value after apply.
+func TestFirewallPolicyIndexDoesNotUseStateForUnknown(t *testing.T) {
+	r := &firewallPolicyResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	attr, ok := resp.Schema.Attributes["index"]
+	if !ok {
+		t.Fatal("Schema missing index attribute")
+	}
+	indexAttr, ok := attr.(schema.Int64Attribute)
+	if !ok {
+		t.Fatalf("index attribute type = %T, want schema.Int64Attribute", attr)
+	}
+	if !indexAttr.IsComputed() {
+		t.Error("index must stay Computed")
+	}
+	if indexAttr.IsOptional() {
+		t.Error("index must stay read-only")
+	}
+	if len(indexAttr.PlanModifiers) != 0 {
+		t.Fatalf("index PlanModifiers = %d, want 0", len(indexAttr.PlanModifiers))
 	}
 }
 
@@ -1366,17 +1397,20 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 				clientMACs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				webDomains, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				return firewallPolicyEndpointModel{
-					ZoneID:             types.StringValue("z1"),
-					MatchingTarget:     types.StringValue("IP"),
-					MatchingTargetType: types.StringValue("OBJECT"),
-					IPs:                ips,
-					NetworkIDs:         networkIDs,
-					ClientMACs:         clientMACs,
-					WebDomains:         webDomains,
-					Port:               types.StringValue("443"),
-					PortGroupID:        types.StringValue(""),
-					IPGroupID:          types.StringValue(""),
-					PortMatchingType:   types.StringValue("SPECIFIC"),
+					ZoneID:                types.StringValue("z1"),
+					MatchingTarget:        types.StringValue("IP"),
+					MatchingTargetType:    types.StringValue("OBJECT"),
+					IPs:                   ips,
+					NetworkIDs:            networkIDs,
+					ClientMACs:            clientMACs,
+					WebDomains:            webDomains,
+					Port:                  types.StringValue("443"),
+					PortGroupID:           types.StringValue(""),
+					IPGroupID:             types.StringValue(""),
+					PortMatchingType:      types.StringValue("SPECIFIC"),
+					MatchOppositeIPs:      types.BoolValue(false),
+					MatchOppositeNetworks: types.BoolValue(false),
+					MatchOppositePorts:    types.BoolValue(false),
 				}
 			}(),
 		},
@@ -1428,17 +1462,20 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 				clientMACs, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				webDomains, _ := types.ListValueFrom(ctx, types.StringType, ([]string)(nil))
 				return firewallPolicyEndpointModel{
-					ZoneID:             types.StringValue("z2"),
-					MatchingTarget:     types.StringValue("ANY"),
-					MatchingTargetType: types.StringValue("OBJECT"),
-					IPs:                ips,
-					NetworkIDs:         networkIDs,
-					ClientMACs:         clientMACs,
-					WebDomains:         webDomains,
-					Port:               types.StringValue("8080"),
-					PortGroupID:        types.StringValue(""),
-					IPGroupID:          types.StringValue(""),
-					PortMatchingType:   types.StringValue("SPECIFIC"),
+					ZoneID:                types.StringValue("z2"),
+					MatchingTarget:        types.StringValue("ANY"),
+					MatchingTargetType:    types.StringValue("OBJECT"),
+					IPs:                   ips,
+					NetworkIDs:            networkIDs,
+					ClientMACs:            clientMACs,
+					WebDomains:            webDomains,
+					Port:                  types.StringValue("8080"),
+					PortGroupID:           types.StringValue(""),
+					IPGroupID:             types.StringValue(""),
+					PortMatchingType:      types.StringValue("SPECIFIC"),
+					MatchOppositeIPs:      types.BoolValue(false),
+					MatchOppositeNetworks: types.BoolValue(false),
+					MatchOppositePorts:    types.BoolValue(false),
 				}
 			}(),
 		},
@@ -1754,3 +1791,10 @@ func TestFirewallPolicyEndpointListsUseStateForUnknown(t *testing.T) {
 		}
 	}
 }
+
+// Coverage for the v0 -> v1 integer-port upgrade and match_opposite_* defaults
+// lives in TestFirewallPolicyUpgradeState_nestsPrefixedGroups
+// (firewall_policy_nested_groups_test.go) and
+// TestFirewallPolicyMatchOppositeSchema / TestFirewallPolicyMatchOppositeRoundTrip
+// (firewall_policy_match_opposite_test.go), which exercise the current
+// util.UpgradeRawState-based upgrader rather than the retired PriorSchema design.

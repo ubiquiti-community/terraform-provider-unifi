@@ -101,6 +101,7 @@ func (r *wireguardPeerResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -115,6 +116,17 @@ func (r *wireguardPeerResource) IdentitySchema(
 			},
 		},
 	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders. A version 0 identity written before v0.56.0 is {id}
+// only, and an identity upgrader sees the stored identity but not state, so
+// network_id stays null for those peers. Read still locates the peer, because
+// it takes network_id from state first.
+func (r *wireguardPeerResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *wireguardPeerResource) Schema(

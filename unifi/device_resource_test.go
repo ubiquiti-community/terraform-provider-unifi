@@ -596,9 +596,11 @@ func Test_deviceResource_IdentitySchema(t *testing.T) {
 	}
 }
 
-// The v0 identity keyed on the controller's internal "id"; v1 keys on "mac".
-// State written under v0 must have an upgrader or Terraform refuses to decode
-// it ("unsupported attribute \"id\"").
+// The v0 identity keyed on the controller's internal "id" (v0.55.0 and
+// earlier) or already carried "mac" (v0.56.0). State written under v0 must
+// have an upgrader or Terraform refuses to decode it. The upgrader parses
+// the stored identity as raw JSON rather than a typed PriorSchema, since a
+// `{"id": ...}` identity has no "mac" attribute to decode into.
 func Test_deviceResource_IdentityUpgradePath(t *testing.T) {
 	ctx := context.Background()
 	r := &deviceResource{}
@@ -620,12 +622,6 @@ func Test_deviceResource_IdentityUpgradePath(t *testing.T) {
 		up, ok := upgraders[v]
 		if !ok {
 			t.Fatalf("no identity upgrader for version %d", v)
-		}
-		if up.PriorSchema == nil {
-			t.Fatalf("identity upgrader %d has no PriorSchema", v)
-		}
-		if _, ok := up.PriorSchema.Attributes["id"]; !ok {
-			t.Fatalf("identity upgrader %d prior schema missing \"id\"", v)
 		}
 		if up.IdentityUpgrader == nil {
 			t.Fatalf("identity upgrader %d has no IdentityUpgrader func", v)
