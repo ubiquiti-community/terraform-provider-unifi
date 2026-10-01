@@ -3,12 +3,16 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"os"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -70,10 +74,10 @@ func TestAccRadiusUser_basic(t *testing.T) {
 						"password",
 						"test-password",
 					),
-					resource.TestCheckResourceAttr("unifi_radius_user.test", "tunnel_type", "3"),
+					resource.TestCheckResourceAttr("unifi_radius_user.test", "tunnel.type", "3"),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_user.test",
-						"tunnel_medium_type",
+						"tunnel.medium_type",
 						"6",
 					),
 				),
@@ -114,7 +118,7 @@ func TestAccRadiusUser_vlan(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_radius_user.vlan", "vlan", "100"),
 					resource.TestCheckResourceAttr(
 						"unifi_radius_user.vlan",
-						"tunnel_config_type",
+						"tunnel.config_type",
 						"802.1x",
 					),
 				),
@@ -132,15 +136,18 @@ func TestAccRadiusUser_vlan(t *testing.T) {
 func testAccRadiusUserConfig_vlan() string {
 	return `
 resource "unifi_radius_user" "vlan" {
-	name               = "test-account-vlan"
-	password           = "test-password"
-	vlan               = 100
-	tunnel_config_type = "802.1x"
+	name     = "test-account-vlan"
+	password = "test-password"
+	vlan     = 100
+
+	tunnel = {
+		config_type = "802.1x"
+	}
 }
 `
 }
 
-// TestAccRadiusUser_tunnelType13 verifies that tunnel_type accepts 13 (VLAN),
+// TestAccRadiusUser_tunnelType13 verifies that tunnel.type accepts 13 (VLAN),
 // which the controller allows (1-13) but the provider previously capped at 12.
 func TestAccRadiusUser_tunnelType13(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -150,7 +157,7 @@ func TestAccRadiusUser_tunnelType13(t *testing.T) {
 			{
 				Config: testAccRadiusUserConfig_tunnelType13(),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_radius_user.tt13", "tunnel_type", "13"),
+					resource.TestCheckResourceAttr("unifi_radius_user.tt13", "tunnel.type", "13"),
 				),
 			},
 			{
@@ -166,9 +173,12 @@ func TestAccRadiusUser_tunnelType13(t *testing.T) {
 func testAccRadiusUserConfig_tunnelType13() string {
 	return `
 resource "unifi_radius_user" "tt13" {
-	name        = "test-account-tt13"
-	password    = "test-password"
-	tunnel_type = 13
+	name     = "test-account-tt13"
+	password = "test-password"
+
+	tunnel = {
+		type = 13
+	}
 }
 `
 }
@@ -255,6 +265,9 @@ func TestNewRadiusUserResource(t *testing.T) {
 	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
 		t.Error("expected ResourceWithImportState interface")
 	}
+	if _, ok := r.(fwresource.ResourceWithUpgradeState); !ok {
+		t.Error("expected ResourceWithUpgradeState interface")
+	}
 }
 
 func TestNewRadiusUserListResource(t *testing.T) {
@@ -306,13 +319,20 @@ func Test_radiusUserResource_Schema(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	for _, attr := range []string{
-		"id", "site", "name", "password", "tunnel_type",
-		"tunnel_medium_type", "network_id", "vlan", "tunnel_config_type", "timeouts",
+	for _, name := range []string{
+		"id", "site", "name", "password", "tunnel", "network_id", "vlan", "timeouts",
 	} {
-		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("missing attribute %q", attr)
+		if _, ok := resp.Schema.Attributes[name]; !ok {
+			t.Errorf("missing attribute %q", name)
 		}
+	}
+	for _, flat := range []string{"tunnel_type", "tunnel_medium_type", "tunnel_config_type"} {
+		if _, ok := resp.Schema.Attributes[flat]; ok {
+			t.Errorf("flat attribute %q should have been nested", flat)
+		}
+	}
+	if resp.Schema.Version != radiusUserSchemaVersion {
+		t.Errorf("Schema.Version = %d, want %d", resp.Schema.Version, radiusUserSchemaVersion)
 	}
 }
 
@@ -348,36 +368,45 @@ func Test_radiusUserResource_IdentitySchemaStub(t *testing.T) {
 	// Already covered by Test_radiusUserResource_IdentitySchema above.
 }
 
+// testRadiusUserTunnel builds a `tunnel` object for unit tests.
+func testRadiusUserTunnel(typ, medium types.Int64, config types.String) types.Object {
+	return types.ObjectValueMust(radiusUserTunnelAttrTypes(), map[string]attr.Value{
+		"type":        typ,
+		"medium_type": medium,
+		"config_type": config,
+	})
+}
+
 func Test_radiusUserResource_applyPlanToState(t *testing.T) {
 	ctx := context.Background()
 	r := &radiusUserResource{}
 
 	t.Run("plan values override state", func(t *testing.T) {
 		plan := &radiusUserResourceModel{
-			Name:             types.StringValue("new-name"),
-			Password:         types.StringValue("new-pass"),
-			TunnelType:       types.Int64Value(13),
-			TunnelMediumType: types.Int64Value(6),
-			NetworkID:        types.StringValue("net-xyz"),
-			VLAN:             types.Int64Value(200),
-			TunnelConfigType: types.StringValue("802.1x"),
+			Name:     types.StringValue("new-name"),
+			Password: types.StringValue("new-pass"),
+			Tunnel: testRadiusUserTunnel(
+				types.Int64Value(13),
+				types.Int64Value(6),
+				types.StringValue("802.1x"),
+			),
+			NetworkID: types.StringValue("net-xyz"),
+			VLAN:      types.Int64Value(200),
 		}
 		state := &radiusUserResourceModel{
-			ID:               types.StringValue("existing-id"),
-			Name:             types.StringValue("old-name"),
-			Password:         types.StringValue("old-pass"),
-			TunnelType:       types.Int64Value(3),
-			TunnelMediumType: types.Int64Value(6),
-			NetworkID:        types.StringNull(),
-			VLAN:             types.Int64Null(),
-			TunnelConfigType: types.StringNull(),
+			ID:        types.StringValue("existing-id"),
+			Name:      types.StringValue("old-name"),
+			Password:  types.StringValue("old-pass"),
+			Tunnel:    radiusUserTunnelDefault(),
+			NetworkID: types.StringNull(),
+			VLAN:      types.Int64Null(),
 		}
 		r.applyPlanToState(ctx, plan, state)
 		if state.Name.ValueString() != "new-name" {
 			t.Errorf("Name = %q, want new-name", state.Name.ValueString())
 		}
-		if state.TunnelType.ValueInt64() != 13 {
-			t.Errorf("TunnelType = %d, want 13", state.TunnelType.ValueInt64())
+		if !state.Tunnel.Equal(plan.Tunnel) {
+			t.Errorf("tunnel = %v, want %v", state.Tunnel, plan.Tunnel)
 		}
 		if state.VLAN.ValueInt64() != 200 {
 			t.Errorf("VLAN = %d, want 200", state.VLAN.ValueInt64())
@@ -390,25 +419,48 @@ func Test_radiusUserResource_applyPlanToState(t *testing.T) {
 
 	t.Run("null plan values leave state unchanged", func(t *testing.T) {
 		plan := &radiusUserResourceModel{
-			Name:             types.StringNull(),
-			Password:         types.StringNull(),
-			TunnelType:       types.Int64Null(),
-			TunnelMediumType: types.Int64Null(),
-			NetworkID:        types.StringNull(),
-			VLAN:             types.Int64Null(),
-			TunnelConfigType: types.StringNull(),
+			Name:      types.StringNull(),
+			Password:  types.StringNull(),
+			Tunnel:    types.ObjectNull(radiusUserTunnelAttrTypes()),
+			NetworkID: types.StringNull(),
+			VLAN:      types.Int64Null(),
 		}
 		state := &radiusUserResourceModel{
-			Name:             types.StringValue("keep-name"),
-			TunnelType:       types.Int64Value(3),
-			TunnelMediumType: types.Int64Value(6),
+			Name:   types.StringValue("keep-name"),
+			Tunnel: radiusUserTunnelDefault(),
 		}
 		r.applyPlanToState(ctx, plan, state)
 		if state.Name.ValueString() != "keep-name" {
 			t.Errorf("Name should be preserved, got %q", state.Name.ValueString())
 		}
-		if state.TunnelType.ValueInt64() != 3 {
-			t.Errorf("TunnelType should be preserved, got %d", state.TunnelType.ValueInt64())
+		if !state.Tunnel.Equal(radiusUserTunnelDefault()) {
+			t.Errorf("tunnel should be preserved, got %v", state.Tunnel)
+		}
+	})
+
+	t.Run("unset tunnel leaves keep their state value", func(t *testing.T) {
+		plan := &radiusUserResourceModel{
+			Tunnel: testRadiusUserTunnel(
+				types.Int64Value(13),
+				types.Int64Null(),
+				types.StringNull(),
+			),
+		}
+		state := &radiusUserResourceModel{
+			Tunnel: testRadiusUserTunnel(
+				types.Int64Value(3),
+				types.Int64Value(6),
+				types.StringValue("802.1x"),
+			),
+		}
+		r.applyPlanToState(ctx, plan, state)
+		want := testRadiusUserTunnel(
+			types.Int64Value(13),
+			types.Int64Value(6),
+			types.StringValue("802.1x"),
+		)
+		if !state.Tunnel.Equal(want) {
+			t.Errorf("tunnel = %v, want %v", state.Tunnel, want)
 		}
 	})
 }
@@ -418,18 +470,17 @@ func Test_radiusUserResource_modelToRadiusUser(t *testing.T) {
 	r := &radiusUserResource{}
 
 	t.Run("basic fields are set", func(t *testing.T) {
-		tt3 := int64(3)
-		tt6 := int64(6)
 		model := &radiusUserResourceModel{
-			Name:             types.StringValue("alice"),
-			Password:         types.StringValue("secret"),
-			TunnelType:       types.Int64Value(tt3),
-			TunnelMediumType: types.Int64Value(tt6),
-			NetworkID:        types.StringNull(),
-			VLAN:             types.Int64Null(),
-			TunnelConfigType: types.StringNull(),
+			Name:      types.StringValue("alice"),
+			Password:  types.StringValue("secret"),
+			Tunnel:    radiusUserTunnelDefault(),
+			NetworkID: types.StringNull(),
+			VLAN:      types.Int64Null(),
 		}
-		got := r.modelToRadiusUser(ctx, model)
+		got, diags := r.modelToRadiusUser(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToRadiusUser() diagnostics: %v", diags)
+		}
 		if got == nil {
 			t.Fatal("modelToRadiusUser() returned nil")
 		}
@@ -448,19 +499,30 @@ func Test_radiusUserResource_modelToRadiusUser(t *testing.T) {
 		if got.NetworkID != "" {
 			t.Errorf("NetworkID = %q, want empty", got.NetworkID)
 		}
+		if got.TunnelConfigType != "" {
+			t.Errorf("TunnelConfigType = %q, want empty", got.TunnelConfigType)
+		}
 	})
 
 	t.Run("optional fields are populated when set", func(t *testing.T) {
 		model := &radiusUserResourceModel{
-			Name:             types.StringValue("bob"),
-			Password:         types.StringValue("pass"),
-			TunnelType:       types.Int64Value(13),
-			TunnelMediumType: types.Int64Value(6),
-			NetworkID:        types.StringValue("net-abc"),
-			VLAN:             types.Int64Value(100),
-			TunnelConfigType: types.StringValue("802.1x"),
+			Name:     types.StringValue("bob"),
+			Password: types.StringValue("pass"),
+			Tunnel: testRadiusUserTunnel(
+				types.Int64Value(13),
+				types.Int64Value(6),
+				types.StringValue("802.1x"),
+			),
+			NetworkID: types.StringValue("net-abc"),
+			VLAN:      types.Int64Value(100),
 		}
-		got := r.modelToRadiusUser(ctx, model)
+		got, diags := r.modelToRadiusUser(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToRadiusUser() diagnostics: %v", diags)
+		}
+		if got.TunnelType == nil || *got.TunnelType != 13 {
+			t.Errorf("TunnelType = %v, want 13", got.TunnelType)
+		}
 		if got.NetworkID != "net-abc" {
 			t.Errorf("NetworkID = %q, want net-abc", got.NetworkID)
 		}
@@ -540,7 +602,9 @@ func Test_radiusUserResource_radiusUserToModel(t *testing.T) {
 			TunnelConfigType: "802.1x",
 		}
 		model := &radiusUserResourceModel{}
-		r.radiusUserToModel(ctx, account, model, "default")
+		if d := r.radiusUserToModel(ctx, account, model, "default"); d.HasError() {
+			t.Fatalf("radiusUserToModel() diagnostics: %v", d)
+		}
 
 		if model.ID.ValueString() != "acc-1" {
 			t.Errorf("ID = %q, want acc-1", model.ID.ValueString())
@@ -551,17 +615,19 @@ func Test_radiusUserResource_radiusUserToModel(t *testing.T) {
 		if model.Name.ValueString() != "alice" {
 			t.Errorf("Name = %q, want alice", model.Name.ValueString())
 		}
-		if model.TunnelType.ValueInt64() != 3 {
-			t.Errorf("TunnelType = %d, want 3", model.TunnelType.ValueInt64())
+		want := testRadiusUserTunnel(
+			types.Int64Value(3),
+			types.Int64Value(6),
+			types.StringValue("802.1x"),
+		)
+		if !model.Tunnel.Equal(want) {
+			t.Errorf("tunnel = %v, want %v", model.Tunnel, want)
 		}
 		if model.NetworkID.ValueString() != "net-abc" {
 			t.Errorf("NetworkID = %q, want net-abc", model.NetworkID.ValueString())
 		}
 		if model.VLAN.ValueInt64() != 100 {
 			t.Errorf("VLAN = %d, want 100", model.VLAN.ValueInt64())
-		}
-		if model.TunnelConfigType.ValueString() != "802.1x" {
-			t.Errorf("TunnelConfigType = %q, want 802.1x", model.TunnelConfigType.ValueString())
 		}
 	})
 
@@ -572,7 +638,9 @@ func Test_radiusUserResource_radiusUserToModel(t *testing.T) {
 			TunnelConfigType: "",
 		}
 		model := &radiusUserResourceModel{}
-		r.radiusUserToModel(ctx, account, model, "site1")
+		if d := r.radiusUserToModel(ctx, account, model, "site1"); d.HasError() {
+			t.Fatalf("radiusUserToModel() diagnostics: %v", d)
+		}
 
 		if !model.NetworkID.IsNull() {
 			t.Errorf(
@@ -580,11 +648,8 @@ func Test_radiusUserResource_radiusUserToModel(t *testing.T) {
 				model.NetworkID.ValueString(),
 			)
 		}
-		if !model.TunnelConfigType.IsNull() {
-			t.Errorf(
-				"TunnelConfigType should be null for empty string, got %q",
-				model.TunnelConfigType.ValueString(),
-			)
+		if got := model.Tunnel.Attributes()["config_type"]; !got.IsNull() {
+			t.Errorf("tunnel.config_type should be null for empty string, got %v", got)
 		}
 	})
 }
@@ -684,4 +749,180 @@ func TestResolveVLAN_DeterministicBranches(t *testing.T) {
 			t.Fatalf("vlan = %v, want nil", *vlan)
 		}
 	})
+}
+
+// TestRadiusUserUpgradeState_v0NestsTunnel guards the v0 -> v1 schema upgrade:
+// the flat tunnel_type, tunnel_medium_type and tunnel_config_type attributes
+// move into the nested tunnel object. unifi_account shares this schema and
+// upgrader.
+func TestRadiusUserUpgradeState_v0NestsTunnel(t *testing.T) {
+	ctx := context.Background()
+	r := &radiusUserResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Schema.Version != 1 {
+		t.Fatalf("radius user schema Version = %d, want 1", schemaResp.Schema.Version)
+	}
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	ups := r.UpgradeState(ctx)
+	if _, ok := ups[0]; !ok {
+		t.Fatal("no upgrader registered for schema version 0")
+	}
+
+	upgrade := func(t *testing.T, prior string) map[string]tftypes.Value {
+		t.Helper()
+		resp := &fwresource.UpgradeStateResponse{}
+		ups[0].StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+			RawState: &tfprotov6.RawState{JSON: []byte(prior)},
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+		}
+		val, err := resp.DynamicValue.Unmarshal(schemaType)
+		if err != nil {
+			t.Fatalf("unmarshal upgraded value: %v", err)
+		}
+		var root map[string]tftypes.Value
+		if err := val.As(&root); err != nil {
+			t.Fatalf("as object: %v", err)
+		}
+		return root
+	}
+	num := func(t *testing.T, v tftypes.Value, name string, want int64) {
+		t.Helper()
+		var f big.Float
+		if err := v.As(&f); err != nil {
+			t.Errorf("%s = %v: %v", name, v, err)
+			return
+		}
+		if got, _ := f.Int64(); got != want {
+			t.Errorf("%s = %d, want %d", name, got, want)
+		}
+	}
+
+	t.Run("flat tunnel attributes move under tunnel", func(t *testing.T) {
+		root := upgrade(t, `{
+			"id": "acc-1", "site": "default", "name": "alice", "password": "secret",
+			"tunnel_type": 13, "tunnel_medium_type": 6, "tunnel_config_type": "802.1x",
+			"network_id": "net-1", "vlan": 100,
+			"timeouts": null
+		}`)
+		for _, flat := range []string{"tunnel_type", "tunnel_medium_type", "tunnel_config_type"} {
+			if _, exists := root[flat]; exists {
+				t.Errorf("flat attribute %q survived the upgrade", flat)
+			}
+		}
+		var tunnel map[string]tftypes.Value
+		if err := root["tunnel"].As(&tunnel); err != nil {
+			t.Fatalf("tunnel: as object: %v (value %v)", err, root["tunnel"])
+		}
+		num(t, tunnel["type"], "tunnel.type", 13)
+		num(t, tunnel["medium_type"], "tunnel.medium_type", 6)
+		var cfg string
+		if err := tunnel["config_type"].As(&cfg); err != nil || cfg != "802.1x" {
+			t.Errorf("tunnel.config_type = %v (%v), want 802.1x", tunnel["config_type"], err)
+		}
+		// Attributes that were not nested survive untouched.
+		num(t, root["vlan"], "vlan", 100)
+	})
+
+	t.Run("null config_type stays null inside tunnel", func(t *testing.T) {
+		root := upgrade(t, `{
+			"id": "acc-2", "site": "default", "name": "bob", "password": "secret",
+			"tunnel_type": 3, "tunnel_medium_type": 6, "tunnel_config_type": null
+		}`)
+		var tunnel map[string]tftypes.Value
+		if err := root["tunnel"].As(&tunnel); err != nil {
+			t.Fatalf("tunnel: as object: %v (value %v)", err, root["tunnel"])
+		}
+		num(t, tunnel["type"], "tunnel.type", 3)
+		if !tunnel["config_type"].IsNull() {
+			t.Errorf("tunnel.config_type = %v, want null", tunnel["config_type"])
+		}
+	})
+
+	t.Run("state without tunnel attributes leaves tunnel null", func(t *testing.T) {
+		root := upgrade(t, `{"id": "acc-3", "site": "default", "name": "bare", "password": "x"}`)
+		if !root["tunnel"].IsNull() {
+			t.Errorf("tunnel = %v, want null", root["tunnel"])
+		}
+	})
+}
+
+// TestRadiusUserNestedTunnel_wireAndReadBack checks that the nested tunnel
+// group is written to and read back from the API struct, that the object
+// default reproduces what the flat defaults sent when omitted, and that a
+// null/unknown group contributes nothing.
+func TestRadiusUserNestedTunnel_wireAndReadBack(t *testing.T) {
+	ctx := context.Background()
+	r := &radiusUserResource{}
+
+	model := &radiusUserResourceModel{
+		Name:     types.StringValue("alice"),
+		Password: types.StringValue("secret"),
+		Tunnel: testRadiusUserTunnel(
+			types.Int64Value(13),
+			types.Int64Value(6),
+			types.StringValue("802.1x"),
+		),
+	}
+	api, diags := r.modelToRadiusUser(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToRadiusUser: %v", diags)
+	}
+	if api.TunnelType == nil || *api.TunnelType != 13 ||
+		api.TunnelMediumType == nil || *api.TunnelMediumType != 6 ||
+		api.TunnelConfigType != "802.1x" {
+		t.Errorf("tunnel: %v %v %q", api.TunnelType, api.TunnelMediumType, api.TunnelConfigType)
+	}
+
+	// Read back: the group is rebuilt from the API response.
+	var back radiusUserResourceModel
+	if d := r.radiusUserToModel(ctx, api, &back, "default"); d.HasError() {
+		t.Fatalf("radiusUserToModel: %v", d)
+	}
+	if !back.Tunnel.Equal(model.Tunnel) {
+		t.Errorf("tunnel read back = %v, want %v", back.Tunnel, model.Tunnel)
+	}
+
+	// The object default reproduces what the flat defaults used to send:
+	// tunnel_type 3, tunnel_medium_type 6 and no tunnel_config_type.
+	api, diags = r.modelToRadiusUser(ctx, &radiusUserResourceModel{
+		Name:     types.StringValue("plain"),
+		Password: types.StringValue("secret"),
+		Tunnel:   radiusUserTunnelDefault(),
+	})
+	if diags.HasError() {
+		t.Fatalf("modelToRadiusUser (default): %v", diags)
+	}
+	if api.TunnelType == nil || *api.TunnelType != 3 ||
+		api.TunnelMediumType == nil || *api.TunnelMediumType != 6 ||
+		api.TunnelConfigType != "" {
+		t.Errorf(
+			"default tunnel: %v %v %q",
+			api.TunnelType,
+			api.TunnelMediumType,
+			api.TunnelConfigType,
+		)
+	}
+
+	// A null or unknown group contributes nothing, as unset flat attributes did.
+	for name, obj := range map[string]types.Object{
+		"null":    types.ObjectNull(radiusUserTunnelAttrTypes()),
+		"unknown": types.ObjectUnknown(radiusUserTunnelAttrTypes()),
+	} {
+		api, diags = r.modelToRadiusUser(ctx, &radiusUserResourceModel{
+			Name:     types.StringValue("bare"),
+			Password: types.StringValue("secret"),
+			Tunnel:   obj,
+		})
+		if diags.HasError() {
+			t.Fatalf("modelToRadiusUser (%s): %v", name, diags)
+		}
+		if api.TunnelType != nil || api.TunnelMediumType != nil || api.TunnelConfigType != "" {
+			t.Errorf("%s tunnel leaked into the request: %+v", name, api)
+		}
+	}
 }

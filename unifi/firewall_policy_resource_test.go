@@ -2,7 +2,6 @@ package unifi
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -127,7 +125,7 @@ func TestFirewallPolicyPortStringHandling(t *testing.T) {
 }
 
 // TestFirewallPolicyPreservesFirmwareFields guards #220: the UCG Max firmware
-// rejects a PUT that omits connection_state_type, icmp_typename, icmp_v6_typename
+// rejects a PUT that omits connection_state_type, icmp.typename, icmp.v6_typename
 // or the source/destination matching_target_type. These fields are not
 // user-settable, so the provider round-trips them through state. This test reads
 // an API object into the model and converts it back, asserting nothing is dropped.
@@ -167,11 +165,12 @@ func TestFirewallPolicyPreservesFirmwareFields(t *testing.T) {
 	if model.ConnectionStateType.ValueString() != "ALL" {
 		t.Errorf("ConnectionStateType = %q, want ALL", model.ConnectionStateType.ValueString())
 	}
-	if model.ICMPTypename.ValueString() != "ANY" {
-		t.Errorf("ICMPTypename = %q, want ANY", model.ICMPTypename.ValueString())
+	icmp := model.ICMP.Attributes()
+	if got := attrAs[types.String](t, icmp["typename"]).ValueString(); got != "ANY" {
+		t.Errorf("icmp.typename = %q, want ANY", got)
 	}
-	if model.ICMPV6Typename.ValueString() != "ANY" {
-		t.Errorf("ICMPV6Typename = %q, want ANY", model.ICMPV6Typename.ValueString())
+	if got := attrAs[types.String](t, icmp["v6_typename"]).ValueString(); got != "ANY" {
+		t.Errorf("icmp.v6_typename = %q, want ANY", got)
 	}
 
 	// Convert model -> API (Update PUT path) and assert the fields survive.
@@ -869,12 +868,13 @@ func Test_modelToFirewallPolicy(t *testing.T) {
 						IPVersion:           types.StringNull(),
 						ConnectionStateType: types.StringNull(),
 						ConnectionStates:    types.ListNull(types.StringType),
-						ICMPTypename:        types.StringNull(),
-						ICMPV6Typename:      types.StringNull(),
-						Source:              srcObj,
-						Destination:         dstObj,
-						ID:                  types.StringNull(),
-						Site:                types.StringNull(),
+						ICMP: types.ObjectNull(
+							firewallPolicyICMPModel{}.AttributeTypes(),
+						),
+						Source:      srcObj,
+						Destination: dstObj,
+						ID:          types.StringNull(),
+						Site:        types.StringNull(),
 					}
 				}(),
 			},
@@ -945,8 +945,7 @@ func TestFirewallPolicyIndexNotSent(t *testing.T) {
 		IPVersion:           types.StringNull(),
 		ConnectionStateType: types.StringNull(),
 		ConnectionStates:    types.ListNull(types.StringType),
-		ICMPTypename:        types.StringNull(),
-		ICMPV6Typename:      types.StringNull(),
+		ICMP:                types.ObjectNull(firewallPolicyICMPModel{}.AttributeTypes()),
 		Source:              endpoint("z1"),
 		Destination:         endpoint("z2"),
 		ID:                  types.StringNull(),
@@ -1793,143 +1792,9 @@ func TestFirewallPolicyEndpointListsUseStateForUnknown(t *testing.T) {
 	}
 }
 
-// TestFirewallPolicyEndpointModelV0MatchesPriorSchema guards the invariant that
-// makes UpgradeState's schema derivation work: the v0 prior schema is built from
-// the *live* schema (only `port` is swapped back to an integer), so every
-// endpoint attribute added to the live schema also appears in the prior schema's
-// source/destination object type. firewallPolicyEndpointModelV0 is the decode
-// target for that object and is hand-maintained, and the framework requires an
-// exact 1:1 match between object attributes and `tfsdk` struct tags — so adding
-// an endpoint attribute without adding it here breaks the v0 -> v1 upgrade for
-// every practitioner still on schema v0 (provider < v0.50.0).
-func TestFirewallPolicyEndpointModelV0MatchesPriorSchema(t *testing.T) {
-	ctx := context.Background()
-
-	u, ok := (&firewallPolicyResource{}).UpgradeState(ctx)[0]
-	if !ok {
-		t.Fatal("no v0 state upgrader registered")
-	}
-
-	nested, ok := u.PriorSchema.Attributes["source"].(schema.SingleNestedAttribute)
-	if !ok {
-		t.Fatal("prior schema source is not a SingleNestedAttribute")
-	}
-
-	tags := map[string]bool{}
-	v0 := reflect.TypeOf(firewallPolicyEndpointModelV0{})
-	for i := range v0.NumField() {
-		if tag, ok := v0.Field(i).Tag.Lookup("tfsdk"); ok {
-			tags[tag] = true
-		}
-	}
-
-	for name := range nested.Attributes {
-		if !tags[name] {
-			t.Errorf(
-				"prior schema attribute %q has no `tfsdk:%q` field on firewallPolicyEndpointModelV0; "+
-					"add it or the v0 -> v1 state upgrade fails",
-				name,
-				name,
-			)
-		}
-	}
-	for tag := range tags {
-		if _, ok := nested.Attributes[tag]; !ok {
-			t.Errorf(
-				"firewallPolicyEndpointModelV0 has `tfsdk:%q` with no matching prior schema attribute",
-				tag,
-			)
-		}
-	}
-}
-
-// TestFirewallPolicyUpgradeStateV0 drives the real v0 -> v1 upgrader with a
-// state document as Terraform stores it: an integer `port`, and none of the
-// attributes added to the endpoint since v1 shipped. It covers both the
-// upgrader's original purpose (port 443 -> "443", port 0 -> no port) and the
-// regression above, which the model/API round-trip tests cannot see because
-// they never build a value from the prior schema.
-func TestFirewallPolicyUpgradeStateV0(t *testing.T) {
-	ctx := context.Background()
-	r := &firewallPolicyResource{}
-
-	u, ok := r.UpgradeState(ctx)[0]
-	if !ok {
-		t.Fatal("no v0 state upgrader registered")
-	}
-
-	endpointV0 := func(zone string, port int) map[string]any {
-		return map[string]any{
-			"zone_id": zone, "matching_target": "ANY", "matching_target_type": "ANY",
-			"network_ids": nil, "client_macs": nil, "ips": nil, "web_domains": nil,
-			"port": port, "port_group_id": "", "ip_group_id": "",
-			"port_matching_type": "ANY",
-		}
-	}
-	rawState, err := json.Marshal(map[string]any{
-		"id": "policy-1", "site": "default", "name": "v0 policy", "action": "ALLOW",
-		"enabled": true, "protocol": "all", "description": "", "logging": false,
-		"index": 2000, "create_allow_respond": false, "ip_version": "IPV4",
-		"connection_state_type": "ALL", "connection_states": []any{},
-		"icmp_typename": "", "icmp_v6_typename": "",
-		"schedule": nil, "timeouts": nil,
-		"source":      endpointV0("zone-src", 443),
-		"destination": endpointV0("zone-dst", 0),
-	})
-	if err != nil {
-		t.Fatalf("marshaling v0 state: %v", err)
-	}
-
-	priorValue, err := (&tfprotov6.RawState{JSON: rawState}).
-		Unmarshal(u.PriorSchema.Type().TerraformType(ctx))
-	if err != nil {
-		t.Fatalf("decoding v0 state against the prior schema: %v", err)
-	}
-
-	schemaResp := &fwresource.SchemaResponse{}
-	r.Schema(ctx, fwresource.SchemaRequest{}, schemaResp)
-
-	resp := &fwresource.UpgradeStateResponse{
-		State: tfsdk.State{
-			Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
-			Schema: schemaResp.Schema,
-		},
-	}
-	u.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
-		State: &tfsdk.State{Raw: priorValue, Schema: *u.PriorSchema},
-	}, resp)
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("v0 -> v1 upgrade failed: %v", resp.Diagnostics)
-	}
-
-	var upgraded firewallPolicyModel
-	if diags := resp.State.Get(ctx, &upgraded); diags.HasError() {
-		t.Fatalf("reading upgraded state: %v", diags)
-	}
-
-	for _, tc := range []struct {
-		name     string
-		obj      types.Object
-		wantPort types.String
-	}{
-		// 443 becomes "443"; 0 means "no port" and must not serialize as "0" (#288).
-		{"source", upgraded.Source, types.StringValue("443")},
-		{"destination", upgraded.Destination, types.StringNull()},
-	} {
-		var m firewallPolicyEndpointModel
-		var diags diag.Diagnostics
-		diags.Append(tc.obj.As(ctx, &m, basetypes.ObjectAsOptions{})...)
-		if diags.HasError() {
-			t.Fatalf("decoding upgraded %s: %v", tc.name, diags)
-		}
-		if !m.Port.Equal(tc.wantPort) {
-			t.Errorf("%s port = %v, want %v", tc.name, m.Port, tc.wantPort)
-		}
-		// v0 state carries no inversion flags; the upgrader seeds them false and
-		// the Read that follows the upgrade replaces them with the live values.
-		if m.MatchOppositeIPs.ValueBool() || m.MatchOppositeNetworks.ValueBool() ||
-			m.MatchOppositePorts.ValueBool() {
-			t.Errorf("%s match_opposite_* must default to false, got %+v", tc.name, m)
-		}
-	}
-}
+// Coverage for the v0 -> v1 integer-port upgrade and match_opposite_* defaults
+// lives in TestFirewallPolicyUpgradeState_nestsPrefixedGroups
+// (firewall_policy_nested_groups_test.go) and
+// TestFirewallPolicyMatchOppositeSchema / TestFirewallPolicyMatchOppositeRoundTrip
+// (firewall_policy_match_opposite_test.go), which exercise the current
+// util.UpgradeRawState-based upgrader rather than the retired PriorSchema design.

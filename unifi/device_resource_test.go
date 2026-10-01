@@ -596,6 +596,39 @@ func Test_deviceResource_IdentitySchema(t *testing.T) {
 	}
 }
 
+// The v0 identity keyed on the controller's internal "id" (v0.55.0 and
+// earlier) or already carried "mac" (v0.56.0). State written under v0 must
+// have an upgrader or Terraform refuses to decode it. The upgrader parses
+// the stored identity as raw JSON rather than a typed PriorSchema, since a
+// `{"id": ...}` identity has no "mac" attribute to decode into.
+func Test_deviceResource_IdentityUpgradePath(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	var schemaResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &schemaResp)
+	if got := schemaResp.IdentitySchema.GetVersion(); got != 1 {
+		t.Fatalf("identity schema version = %d, want 1", got)
+	}
+	if _, ok := schemaResp.IdentitySchema.Attributes["mac"]; !ok {
+		t.Fatal("identity schema missing \"mac\"")
+	}
+	if _, ok := schemaResp.IdentitySchema.Attributes["id"]; ok {
+		t.Fatal("identity schema still declares \"id\"")
+	}
+
+	upgraders := r.UpgradeIdentity(ctx)
+	for v := int64(0); v < schemaResp.IdentitySchema.GetVersion(); v++ {
+		up, ok := upgraders[v]
+		if !ok {
+			t.Fatalf("no identity upgrader for version %d", v)
+		}
+		if up.IdentityUpgrader == nil {
+			t.Fatalf("identity upgrader %d has no IdentityUpgrader func", v)
+		}
+	}
+}
+
 func Test_deviceResource_Schema(t *testing.T) {
 	type args struct {
 		ctx  context.Context
@@ -653,8 +686,8 @@ func TestDeviceNetworkconfIDsAreSets(t *testing.T) {
 	var schemaResp fwresource.SchemaResponse
 	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
 
-	if schemaResp.Schema.Version != 2 {
-		t.Errorf("device schema Version = %d, want 2", schemaResp.Schema.Version)
+	if schemaResp.Schema.Version != 3 {
+		t.Errorf("device schema Version = %d, want 3", schemaResp.Schema.Version)
 	}
 
 	block, ok := schemaResp.Schema.Blocks["port_override"].(schema.SetNestedBlock)
@@ -678,7 +711,7 @@ func TestDeviceNetworkconfIDsAreSets(t *testing.T) {
 	}
 
 	ups := r.UpgradeState(ctx)
-	for _, v := range []int64{0, 1} {
+	for _, v := range []int64{0, 1, 2} {
 		if _, ok := ups[v]; !ok {
 			t.Errorf("UpgradeState is missing an upgrader for schema version %d", v)
 		}
@@ -816,6 +849,8 @@ func Test_buildMinimalUpdateDevice(t *testing.T) {
 		LedOverride:                "on",
 		LedOverrideColor:           "#00ff00",
 		LedOverrideColorBrightness: ptrInt64(20),
+		StpVersion:                 "rstp",
+		StpPriority:                ptrInt64(4096),
 	}
 	current := &unifi.Device{State: 1, Adopted: true}
 	overrides := []unifi.DevicePortOverrides{{PortIDX: ptrInt64(1)}}
@@ -830,6 +865,11 @@ func Test_buildMinimalUpdateDevice(t *testing.T) {
 	}
 	if got.LedOverrideColorBrightness == nil || *got.LedOverrideColorBrightness != 20 {
 		t.Errorf("LedOverrideColorBrightness = %v, want 20", got.LedOverrideColorBrightness)
+	}
+	// #476: stp.version / stp.priority must reach the PUT body too.
+	if got.StpVersion != "rstp" || got.StpPriority == nil || *got.StpPriority != 4096 {
+		t.Errorf("StpVersion/StpPriority = %q/%v, want rstp/4096 (dropped from PUT, #476)",
+			got.StpVersion, got.StpPriority)
 	}
 	// State/Adopted carried over from the current device; other fields preserved.
 	if got.State != 1 || !got.Adopted {
@@ -849,9 +889,10 @@ func Test_buildMinimalUpdateDevice(t *testing.T) {
 
 	// Unset LED fields stay zero-valued (omitempty drops them from the PUT body).
 	bare := buildMinimalUpdateDevice(&unifi.Device{ID: "d2"}, nil, nil)
-	if bare.LedOverride != "" || bare.LedOverrideColorBrightness != nil {
-		t.Errorf("unset LED fields should be zero: %q %v",
-			bare.LedOverride, bare.LedOverrideColorBrightness)
+	if bare.LedOverride != "" || bare.LedOverrideColorBrightness != nil ||
+		bare.StpVersion != "" || bare.StpPriority != nil {
+		t.Errorf("unset LED/STP fields should be zero: %q %v %q %v",
+			bare.LedOverride, bare.LedOverrideColorBrightness, bare.StpVersion, bare.StpPriority)
 	}
 }
 
@@ -1028,8 +1069,12 @@ func TestReconcilePortOverrides_NativeNetworkClearedRoundTrips(t *testing.T) {
 		AggregateMembers:          types.ListNull(types.Int64Type),
 		ExcludedNetworkIDs:        types.SetNull(types.StringType),
 		MulticastRouterNetworkIDs: types.SetNull(types.StringType),
-		PortSecurityMACAddress:    types.ListNull(types.StringType),
 		TaggedNetworkIDs:          types.SetNull(types.StringType),
+		Dot1X:                     types.ObjectNull(portDot1xAttrTypes()),
+		EgressRateLimit:           types.ObjectNull(portEgressRateLimitAttrTypes()),
+		Lldpmed:                   types.ObjectNull(portLldpmedAttrTypes()),
+		PortSecurity:              types.ObjectNull(devicePortSecurityAttrTypes()),
+		Stormctrl:                 types.ObjectNull(portStormctrlAttrTypes()),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {
@@ -1081,8 +1126,12 @@ func TestReconcilePortOverrides_NativeNetworkAssignedKept(t *testing.T) {
 		AggregateMembers:          types.ListNull(types.Int64Type),
 		ExcludedNetworkIDs:        types.SetNull(types.StringType),
 		MulticastRouterNetworkIDs: types.SetNull(types.StringType),
-		PortSecurityMACAddress:    types.ListNull(types.StringType),
 		TaggedNetworkIDs:          types.SetNull(types.StringType),
+		Dot1X:                     types.ObjectNull(portDot1xAttrTypes()),
+		EgressRateLimit:           types.ObjectNull(portEgressRateLimitAttrTypes()),
+		Lldpmed:                   types.ObjectNull(portLldpmedAttrTypes()),
+		PortSecurity:              types.ObjectNull(devicePortSecurityAttrTypes()),
+		Stormctrl:                 types.ObjectNull(portStormctrlAttrTypes()),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {

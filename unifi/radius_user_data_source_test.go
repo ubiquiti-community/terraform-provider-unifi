@@ -24,12 +24,12 @@ func TestAccRadiusUserDataSource_basic(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_user.test",
-						"tunnel_type",
+						"tunnel.type",
 						"3",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_user.test",
-						"tunnel_medium_type",
+						"tunnel.medium_type",
 						"6",
 					),
 					resource.TestCheckResourceAttrSet("data.unifi_radius_user.test", "site"),
@@ -55,12 +55,12 @@ func TestAccRadiusUserDataSource_withNetworkID(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_user.test",
-						"tunnel_type",
+						"tunnel.type",
 						"12",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_user.test",
-						"tunnel_medium_type",
+						"tunnel.medium_type",
 						"6",
 					),
 				),
@@ -110,10 +110,13 @@ data "unifi_radius_user" "test" {
 func testAccRadiusUserDataSourceConfig_withTunnelParams() string {
 	return `
 resource "unifi_radius_user" "test" {
-  name               = "tfacc-radius-user-ds-tunnel"
-  password           = "test-password"
-  tunnel_type        = 12
-  tunnel_medium_type = 6
+  name     = "tfacc-radius-user-ds-tunnel"
+  password = "test-password"
+
+  tunnel = {
+    type        = 12
+    medium_type = 6
+  }
 }
 
 data "unifi_radius_user" "test" {
@@ -165,9 +168,14 @@ func Test_radiusUserDataSource_Schema(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	for _, attr := range []string{"id", "site", "name", "password"} {
-		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("missing attribute %q", attr)
+	for _, name := range []string{"id", "site", "name", "password", "tunnel", "network_id"} {
+		if _, ok := resp.Schema.Attributes[name]; !ok {
+			t.Errorf("missing attribute %q", name)
+		}
+	}
+	for _, flat := range []string{"tunnel_type", "tunnel_medium_type"} {
+		if _, ok := resp.Schema.Attributes[flat]; ok {
+			t.Errorf("flat attribute %q should have been nested", flat)
 		}
 	}
 }

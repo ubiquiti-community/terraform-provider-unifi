@@ -26,13 +26,17 @@ resource "unifi_wlan" "wifi" {
   security   = "wpapsk"
 
   # enable WPA2/WPA3 support
-  wpa3_support    = true
-  wpa3_transition = true
-  pmf_mode        = "optional"
+  wpa3 = {
+    support    = true
+    transition = true
+  }
+  pmf_mode = "optional"
 
   network_id    = unifi_network.vlan.id
-  ap_group_ids  = [data.unifi_ap_group.default.id]
   user_group_id = data.unifi_client_qos_rate.default.id
+  ap_group = {
+    ids = [data.unifi_ap_group.default.id]
+  }
 
   # Per-key (PPSK) passphrases, each optionally bound to its own network/VLAN
   private_preshared_keys_enabled = true

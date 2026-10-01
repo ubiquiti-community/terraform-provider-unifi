@@ -2,9 +2,12 @@ package unifi
 
 import (
 	"context"
+	"math/big"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
@@ -12,6 +15,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -43,9 +47,13 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 		PreSharedKey:  types.StringValue("s3cret-psk"),
 		RemoteSubnets: subnets,
 		Profile:       types.StringValue("customized"),
-		IKEEncryption: types.StringValue("aes256"),
-		IKEDhGroup:    types.Int64Value(14),
-		PFS:           types.BoolValue(true),
+		IKE: types.ObjectValueMust(siteToSiteVPNProposalAttrTypes(), map[string]attr.Value{
+			"encryption": types.StringValue("aes256"),
+			"hash":       types.StringNull(),
+			"dh_group":   types.Int64Value(14),
+			"lifetime":   timetypes.NewGoDurationNull(),
+		}),
+		PFS: types.BoolValue(true),
 	}
 
 	network, diags := r.modelToNetwork(ctx, model)
@@ -389,7 +397,7 @@ func Test_siteToSiteVPNResource_Schema(t *testing.T) {
 	}
 	for _, attr := range []string{
 		"id", "site", "name", "enabled", "interface", "peer_ip",
-		"pre_shared_key", "remote_subnets", "profile", "timeouts",
+		"pre_shared_key", "remote_subnets", "profile", "ike", "esp", "timeouts",
 	} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
 			t.Errorf("missing attribute %q", attr)
@@ -400,8 +408,241 @@ func Test_siteToSiteVPNResource_Schema(t *testing.T) {
 func Test_siteToSiteVPNResource_UpgradeState(t *testing.T) {
 	r := &siteToSiteVPNResource{}
 	upgraders := r.UpgradeState(context.Background())
-	if _, ok := upgraders[0]; !ok {
-		t.Error("expected state upgrader for version 0")
+	for _, v := range []int64{0, 1} {
+		if _, ok := upgraders[v]; !ok {
+			t.Errorf("expected state upgrader for version %d", v)
+		}
+	}
+}
+
+// TestSiteToSiteVPNUpgradeState_nestsProposals guards the v2 schema upgrade:
+// the flat ike_*/esp_* attributes move into the nested `ike`/`esp` objects.
+// v1 state already stores lifetimes as duration strings; v0 state stores
+// integer seconds, which must be rewritten before nesting.
+func TestSiteToSiteVPNUpgradeState_nestsProposals(t *testing.T) {
+	ctx := context.Background()
+	r := &siteToSiteVPNResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Schema.Version != 2 {
+		t.Fatalf("site-to-site VPN schema Version = %d, want 2", schemaResp.Schema.Version)
+	}
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	upgrade := func(t *testing.T, version int64, prior []byte) map[string]tftypes.Value {
+		t.Helper()
+		up, ok := r.UpgradeState(ctx)[version]
+		if !ok {
+			t.Fatalf("no upgrader registered for schema version %d", version)
+		}
+		resp := &fwresource.UpgradeStateResponse{}
+		up.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+			RawState: &tfprotov6.RawState{JSON: prior},
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+		}
+		val, err := resp.DynamicValue.Unmarshal(schemaType)
+		if err != nil {
+			t.Fatalf("unmarshal upgraded value: %v", err)
+		}
+		var root map[string]tftypes.Value
+		if err := val.As(&root); err != nil {
+			t.Fatalf("as object: %v", err)
+		}
+		for _, flat := range []string{
+			"ike_encryption", "ike_hash", "ike_dh_group", "ike_lifetime",
+			"esp_encryption", "esp_hash", "esp_dh_group", "esp_lifetime",
+		} {
+			if _, exists := root[flat]; exists {
+				t.Errorf("flat attribute %q survived the upgrade", flat)
+			}
+		}
+		return root
+	}
+	obj := func(t *testing.T, v tftypes.Value, name string) map[string]tftypes.Value {
+		t.Helper()
+		var m map[string]tftypes.Value
+		if err := v.As(&m); err != nil {
+			t.Fatalf("%s: as object: %v (value %v)", name, err, v)
+		}
+		return m
+	}
+	str := func(t *testing.T, v tftypes.Value, name, want string) {
+		t.Helper()
+		var s string
+		if err := v.As(&s); err != nil || s != want {
+			t.Errorf("%s = %v (%v), want %q", name, v, err, want)
+		}
+	}
+	num := func(t *testing.T, v tftypes.Value, name string, want int64) {
+		t.Helper()
+		var f big.Float
+		if err := v.As(&f); err != nil {
+			t.Errorf("%s = %v (%v), want %d", name, v, err, want)
+			return
+		}
+		if n, _ := f.Int64(); n != want {
+			t.Errorf("%s = %d, want %d", name, n, want)
+		}
+	}
+
+	t.Run("v1 duration strings", func(t *testing.T) {
+		root := upgrade(t, 1, []byte(`{
+			"id": "net-1", "site": "default", "name": "hq", "enabled": true,
+			"peer_ip": "203.0.113.9", "remote_subnets": ["192.0.2.0/24"],
+			"profile": "customized", "pfs": true,
+			"ike_encryption": "aes256", "ike_hash": "sha256", "ike_dh_group": 14,
+			"ike_lifetime": "8h0m0s",
+			"esp_encryption": "aes128", "esp_hash": null, "esp_dh_group": null,
+			"esp_lifetime": "1h0m0s"
+		}`))
+		str(t, root["name"], "name", "hq")
+		str(t, root["profile"], "profile", "customized")
+		ike := obj(t, root["ike"], "ike")
+		str(t, ike["encryption"], "ike.encryption", "aes256")
+		str(t, ike["hash"], "ike.hash", "sha256")
+		num(t, ike["dh_group"], "ike.dh_group", 14)
+		str(t, ike["lifetime"], "ike.lifetime", "8h0m0s")
+		esp := obj(t, root["esp"], "esp")
+		str(t, esp["encryption"], "esp.encryption", "aes128")
+		if !esp["hash"].IsNull() {
+			t.Errorf("esp.hash = %v, want null", esp["hash"])
+		}
+		if !esp["dh_group"].IsNull() {
+			t.Errorf("esp.dh_group = %v, want null", esp["dh_group"])
+		}
+		str(t, esp["lifetime"], "esp.lifetime", "1h0m0s")
+	})
+
+	t.Run("v0 integer seconds", func(t *testing.T) {
+		root := upgrade(t, 0, []byte(`{
+			"id": "net-1", "site": "default", "name": "hq",
+			"peer_ip": "203.0.113.9", "remote_subnets": ["192.0.2.0/24"],
+			"ike_encryption": "aes256", "ike_lifetime": 28800,
+			"esp_encryption": "aes128", "esp_lifetime": 3600
+		}`))
+		ike := obj(t, root["ike"], "ike")
+		str(t, ike["encryption"], "ike.encryption", "aes256")
+		str(t, ike["lifetime"], "ike.lifetime", "8h0m0s")
+		esp := obj(t, root["esp"], "esp")
+		str(t, esp["encryption"], "esp.encryption", "aes128")
+		str(t, esp["lifetime"], "esp.lifetime", "1h0m0s")
+	})
+
+	t.Run("state without proposals yields null objects", func(t *testing.T) {
+		root := upgrade(t, 1, []byte(`{
+			"id": "net-1", "site": "default", "name": "hq",
+			"peer_ip": "203.0.113.9", "remote_subnets": ["192.0.2.0/24"]
+		}`))
+		if !root["ike"].IsNull() || !root["esp"].IsNull() {
+			t.Errorf("ike/esp = %v / %v, want null", root["ike"], root["esp"])
+		}
+	})
+}
+
+// TestSiteToSiteVPNProposals_wireAndReadBack checks that the nested ike/esp
+// objects are written to and read back from the API network, and that a null
+// or unknown group contributes nothing (as the unset flat attributes did).
+func TestSiteToSiteVPNProposals_wireAndReadBack(t *testing.T) {
+	ctx := context.Background()
+	r := &siteToSiteVPNResource{}
+	noSubnets := types.ListValueMust(types.StringType, nil)
+
+	model := &siteToSiteVPNResourceModel{
+		Name:          types.StringValue("proposals"),
+		RemoteSubnets: noSubnets,
+		Profile:       types.StringValue("customized"),
+		IKE: types.ObjectValueMust(siteToSiteVPNProposalAttrTypes(), map[string]attr.Value{
+			"encryption": types.StringValue("aes256"),
+			"hash":       types.StringValue("sha256"),
+			"dh_group":   types.Int64Value(14),
+			"lifetime":   timetypes.NewGoDurationValue(8 * time.Hour),
+		}),
+		ESP: types.ObjectValueMust(siteToSiteVPNProposalAttrTypes(), map[string]attr.Value{
+			"encryption": types.StringValue("aes128"),
+			"hash":       types.StringNull(),
+			"dh_group":   types.Int64Unknown(),
+			"lifetime":   timetypes.NewGoDurationValue(time.Hour),
+		}),
+	}
+
+	network, diags := r.modelToNetwork(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToNetwork: %v", diags)
+	}
+	if network.IPSecEncryption == nil || *network.IPSecEncryption != "aes256" ||
+		network.IPSecHash == nil || *network.IPSecHash != "sha256" ||
+		network.IPSecDhGroup == nil || *network.IPSecDhGroup != 14 ||
+		network.IPSecIkeLifetime == nil || *network.IPSecIkeLifetime != 28800 {
+		t.Errorf(
+			"ike wired as %v %v %v %v",
+			network.IPSecEncryption,
+			network.IPSecHash,
+			network.IPSecDhGroup,
+			network.IPSecIkeLifetime,
+		)
+	}
+	// Null and unknown leaves are omitted from the request, as before.
+	if network.IPSecEspEncryption == nil || *network.IPSecEspEncryption != "aes128" ||
+		network.IPSecEspHash != nil || network.IPSecEspDhGroup != nil ||
+		network.IPSecEspLifetime == nil || *network.IPSecEspLifetime != 3600 {
+		t.Errorf(
+			"esp wired as %v %v %v %v",
+			network.IPSecEspEncryption,
+			network.IPSecEspHash,
+			network.IPSecEspDhGroup,
+			network.IPSecEspLifetime,
+		)
+	}
+
+	// Read back: both groups are rebuilt from the API response.
+	var back siteToSiteVPNResourceModel
+	if d := r.networkToModel(ctx, network, &back, "default"); d.HasError() {
+		t.Fatalf("networkToModel: %v", d)
+	}
+	ike := back.IKE.Attributes()
+	if attrAs[types.String](t, ike["encryption"]).ValueString() != "aes256" ||
+		attrAs[types.String](t, ike["hash"]).ValueString() != "sha256" ||
+		attrAs[types.Int64](t, ike["dh_group"]).ValueInt64() != 14 {
+		t.Errorf("ike read back = %v", back.IKE)
+	}
+	lifetime, d := attrAs[timetypes.GoDuration](t, ike["lifetime"]).ValueGoDuration()
+	if d.HasError() || lifetime != 8*time.Hour {
+		t.Errorf("ike.lifetime read back = %v (%v), want 8h", ike["lifetime"], d)
+	}
+	esp := back.ESP.Attributes()
+	if attrAs[types.String](t, esp["encryption"]).ValueString() != "aes128" ||
+		!esp["hash"].IsNull() || !esp["dh_group"].IsNull() {
+		t.Errorf("esp read back = %v", back.ESP)
+	}
+	lifetime, d = attrAs[timetypes.GoDuration](t, esp["lifetime"]).ValueGoDuration()
+	if d.HasError() || lifetime != time.Hour {
+		t.Errorf("esp.lifetime read back = %v (%v), want 1h", esp["lifetime"], d)
+	}
+
+	for name, group := range map[string]types.Object{
+		"null":    types.ObjectNull(siteToSiteVPNProposalAttrTypes()),
+		"unknown": types.ObjectUnknown(siteToSiteVPNProposalAttrTypes()),
+	} {
+		t.Run(name+" group contributes nothing", func(t *testing.T) {
+			network, diags := r.modelToNetwork(ctx, &siteToSiteVPNResourceModel{
+				Name:          types.StringValue("bare"),
+				RemoteSubnets: noSubnets,
+				IKE:           group,
+				ESP:           group,
+			})
+			if diags.HasError() {
+				t.Fatalf("modelToNetwork: %v", diags)
+			}
+			if network.IPSecEncryption != nil || network.IPSecHash != nil ||
+				network.IPSecDhGroup != nil || network.IPSecIkeLifetime != nil ||
+				network.IPSecEspEncryption != nil || network.IPSecEspHash != nil ||
+				network.IPSecEspDhGroup != nil || network.IPSecEspLifetime != nil {
+				t.Errorf("%s group leaked into the request: %+v", name, network)
+			}
+		})
 	}
 }
 
@@ -574,7 +815,7 @@ func Test_siteToSiteVPNResource_modelToNetwork(t *testing.T) {
 			Name:          types.StringValue("vpn"),
 			Interface:     types.StringNull(),
 			PeerIP:        iptypes.NewIPv4AddressNull(),
-			IKEEncryption: types.StringNull(),
+			IKE:           types.ObjectNull(siteToSiteVPNProposalAttrTypes()),
 			RemoteSubnets: subnets,
 		}
 		network, diags := r.modelToNetwork(ctx, model)
@@ -649,11 +890,8 @@ func Test_siteToSiteVPNResource_networkToModel(t *testing.T) {
 				model.Interface.ValueString(),
 			)
 		}
-		if !model.IKEEncryption.IsNull() {
-			t.Errorf(
-				"IKEEncryption should be null for nil pointer, got %q",
-				model.IKEEncryption.ValueString(),
-			)
+		if enc := model.IKE.Attributes()["encryption"]; enc == nil || !enc.IsNull() {
+			t.Errorf("ike.encryption should be null for nil pointer, got %v", enc)
 		}
 	})
 }

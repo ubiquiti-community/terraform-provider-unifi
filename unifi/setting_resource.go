@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -36,6 +37,7 @@ var (
 	_ resource.Resource                 = &settingResource{}
 	_ resource.ResourceWithImportState  = &settingResource{}
 	_ resource.ResourceWithUpgradeState = &settingResource{}
+	_ resource.ResourceWithModifyPlan   = &settingResource{}
 	_ resource.ResourceWithIdentity     = &settingResource{}
 )
 
@@ -61,19 +63,29 @@ type sshKeyModel struct {
 	Comment types.String `tfsdk:"comment"`
 }
 
+// settingMgmtSSHModel is the `mgmt.ssh` nested object.
+type settingMgmtSSHModel struct {
+	Enabled             types.Bool   `tfsdk:"enabled"`
+	Keys                types.List   `tfsdk:"keys"`
+	Username            types.String `tfsdk:"username"`
+	Password            types.String `tfsdk:"password"`
+	AuthPasswordEnabled types.Bool   `tfsdk:"auth_password_enabled"`
+}
+
+// settingMgmtAutoUpgradeModel is the `mgmt.auto_upgrade` nested object.
+type settingMgmtAutoUpgradeModel struct {
+	Enabled types.Bool  `tfsdk:"enabled"`
+	Hour    types.Int64 `tfsdk:"hour"`
+}
+
 type settingMgmtModel struct {
-	AutoUpgrade            types.Bool   `tfsdk:"auto_upgrade"`
-	AutoUpgradeHour        types.Int64  `tfsdk:"auto_upgrade_hour"`
-	SSHEnabled             types.Bool   `tfsdk:"ssh_enabled"`
-	SSHKeys                types.List   `tfsdk:"ssh_keys"`
+	AutoUpgrade            types.Object `tfsdk:"auto_upgrade"`
+	SSH                    types.Object `tfsdk:"ssh"`
 	AdvancedFeatureEnabled types.Bool   `tfsdk:"advanced_feature_enabled"`
 	DebugToolsEnabled      types.Bool   `tfsdk:"debug_tools_enabled"`
 	DirectConnectEnabled   types.Bool   `tfsdk:"direct_connect_enabled"`
 	UnifiIdpEnabled        types.Bool   `tfsdk:"unifi_idp_enabled"`
 	WifimanEnabled         types.Bool   `tfsdk:"wifiman_enabled"`
-	SSHUsername            types.String `tfsdk:"ssh_username"`
-	SSHPassword            types.String `tfsdk:"ssh_password"`
-	SSHAuthPasswordEnabled types.Bool   `tfsdk:"ssh_auth_password_enabled"`
 }
 
 type settingRadiusModel struct {
@@ -91,44 +103,70 @@ type dnsVerificationModel struct {
 	SettingPreference  types.String `tfsdk:"setting_preference"`
 }
 
+// settingUsgTCPModel is the `usg.tcp` nested object (conntrack timeouts).
+type settingUsgTCPModel struct {
+	CloseTimeout       timetypes.GoDuration `tfsdk:"close_timeout"`
+	CloseWaitTimeout   timetypes.GoDuration `tfsdk:"close_wait_timeout"`
+	EstablishedTimeout timetypes.GoDuration `tfsdk:"established_timeout"`
+	FinWaitTimeout     timetypes.GoDuration `tfsdk:"fin_wait_timeout"`
+	LastAckTimeout     timetypes.GoDuration `tfsdk:"last_ack_timeout"`
+	SynRecvTimeout     timetypes.GoDuration `tfsdk:"syn_recv_timeout"`
+	SynSentTimeout     timetypes.GoDuration `tfsdk:"syn_sent_timeout"`
+	TimeWaitTimeout    timetypes.GoDuration `tfsdk:"time_wait_timeout"`
+}
+
+// settingUsgUDPModel is the `usg.udp` nested object (conntrack timeouts).
+type settingUsgUDPModel struct {
+	OtherTimeout  timetypes.GoDuration `tfsdk:"other_timeout"`
+	StreamTimeout timetypes.GoDuration `tfsdk:"stream_timeout"`
+}
+
+// settingUsgUPnPModel is the `usg.upnp` nested object.
+type settingUsgUPnPModel struct {
+	Enabled       types.Bool   `tfsdk:"enabled"`
+	NATPmpEnabled types.Bool   `tfsdk:"nat_pmp_enabled"`
+	SecureMode    types.Bool   `tfsdk:"secure_mode"`
+	WANInterface  types.String `tfsdk:"wan_interface"`
+}
+
+// settingUsgGeoIPFilteringModel is the `usg.geo_ip_filtering` nested object
+// (Region Blocking).
+type settingUsgGeoIPFilteringModel struct {
+	Block            types.String `tfsdk:"block"`
+	Countries        types.String `tfsdk:"countries"`
+	Enabled          types.Bool   `tfsdk:"enabled"`
+	TrafficDirection types.String `tfsdk:"traffic_direction"`
+}
+
+// settingUsgOffloadModel is the `usg.offload` nested object.
+type settingUsgOffloadModel struct {
+	Accounting types.Bool `tfsdk:"accounting"`
+	L2Blocking types.Bool `tfsdk:"l2_blocking"`
+	Sch        types.Bool `tfsdk:"sch"`
+}
+
 type settingUSGModel struct {
-	BroadcastPing                  types.Bool           `tfsdk:"broadcast_ping"`
-	DNSVerification                types.Object         `tfsdk:"dns_verification"`
-	FtpModule                      types.Bool           `tfsdk:"ftp_module"`
-	GeoIPFilteringBlock            types.String         `tfsdk:"geo_ip_filtering_block"`
-	GeoIPFilteringCountries        types.String         `tfsdk:"geo_ip_filtering_countries"`
-	GeoIPFilteringEnabled          types.Bool           `tfsdk:"geo_ip_filtering_enabled"`
-	GeoIPFilteringTrafficDirection types.String         `tfsdk:"geo_ip_filtering_traffic_direction"`
-	GreModule                      types.Bool           `tfsdk:"gre_module"`
-	H323Module                     types.Bool           `tfsdk:"h323_module"`
-	ICMPTimeout                    timetypes.GoDuration `tfsdk:"icmp_timeout"`
-	MssClamp                       types.String         `tfsdk:"mss_clamp"`
-	OffloadAccounting              types.Bool           `tfsdk:"offload_accounting"`
-	OffloadL2Blocking              types.Bool           `tfsdk:"offload_l2_blocking"`
-	OffloadSch                     types.Bool           `tfsdk:"offload_sch"`
-	OtherTimeout                   timetypes.GoDuration `tfsdk:"other_timeout"`
-	PptpModule                     types.Bool           `tfsdk:"pptp_module"`
-	ReceiveRedirects               types.Bool           `tfsdk:"receive_redirects"`
-	SendRedirects                  types.Bool           `tfsdk:"send_redirects"`
-	SipModule                      types.Bool           `tfsdk:"sip_module"`
-	SynCookies                     types.Bool           `tfsdk:"syn_cookies"`
-	TCPCloseTimeout                timetypes.GoDuration `tfsdk:"tcp_close_timeout"`
-	TCPCloseWaitTimeout            timetypes.GoDuration `tfsdk:"tcp_close_wait_timeout"`
-	TCPEstablishedTimeout          timetypes.GoDuration `tfsdk:"tcp_established_timeout"`
-	TCPFinWaitTimeout              timetypes.GoDuration `tfsdk:"tcp_fin_wait_timeout"`
-	TCPLastAckTimeout              timetypes.GoDuration `tfsdk:"tcp_last_ack_timeout"`
-	TCPSynRecvTimeout              timetypes.GoDuration `tfsdk:"tcp_syn_recv_timeout"`
-	TCPSynSentTimeout              timetypes.GoDuration `tfsdk:"tcp_syn_sent_timeout"`
-	TCPTimeWaitTimeout             timetypes.GoDuration `tfsdk:"tcp_time_wait_timeout"`
-	TFTPModule                     types.Bool           `tfsdk:"tftp_module"`
-	TimeoutSettingPreference       types.String         `tfsdk:"timeout_setting_preference"`
-	UDPOtherTimeout                timetypes.GoDuration `tfsdk:"udp_other_timeout"`
-	UDPStreamTimeout               timetypes.GoDuration `tfsdk:"udp_stream_timeout"`
-	UnbindWANMonitors              types.Bool           `tfsdk:"unbind_wan_monitors"`
-	UPnPEnabled                    types.Bool           `tfsdk:"upnp_enabled"`
-	UPnPNATPmpEnabled              types.Bool           `tfsdk:"upnp_nat_pmp_enabled"`
-	UPnPSecureMode                 types.Bool           `tfsdk:"upnp_secure_mode"`
-	UPnPWANInterface               types.String         `tfsdk:"upnp_wan_interface"`
+	BroadcastPing            types.Bool           `tfsdk:"broadcast_ping"`
+	DNSVerification          types.Object         `tfsdk:"dns_verification"`
+	FtpModule                types.Bool           `tfsdk:"ftp_module"`
+	GeoIPFiltering           types.Object         `tfsdk:"geo_ip_filtering"`
+	GreModule                types.Bool           `tfsdk:"gre_module"`
+	H323Module               types.Bool           `tfsdk:"h323_module"`
+	ICMPTimeout              timetypes.GoDuration `tfsdk:"icmp_timeout"`
+	MssClamp                 types.String         `tfsdk:"mss_clamp"`
+	Offload                  types.Object         `tfsdk:"offload"`
+	OtherTimeout             timetypes.GoDuration `tfsdk:"other_timeout"`
+	PptpModule               types.Bool           `tfsdk:"pptp_module"`
+	ReceiveRedirects         types.Bool           `tfsdk:"receive_redirects"`
+	SendRedirects            types.Bool           `tfsdk:"send_redirects"`
+	SipModule                types.Bool           `tfsdk:"sip_module"`
+	SynCookies               types.Bool           `tfsdk:"syn_cookies"`
+	TCP                      types.Object         `tfsdk:"tcp"`
+	TFTPModule               types.Bool           `tfsdk:"tftp_module"`
+	TimeoutSettingPreference types.String         `tfsdk:"timeout_setting_preference"`
+	UDP                      types.Object         `tfsdk:"udp"`
+	UnbindWANMonitors        types.Bool           `tfsdk:"unbind_wan_monitors"`
+	UPnP                     types.Object         `tfsdk:"upnp"`
 }
 
 type settingDohCustomServerModel struct {
@@ -171,18 +209,29 @@ type settingNtpModel struct {
 	SettingPreference types.String `tfsdk:"setting_preference"`
 }
 
+// settingSyslogNetconsoleModel is the `syslog.netconsole` nested object.
+type settingSyslogNetconsoleModel struct {
+	Enabled types.Bool   `tfsdk:"enabled"`
+	Host    types.String `tfsdk:"host"`
+	Port    types.Int64  `tfsdk:"port"`
+}
+
+// settingSyslogThisControllerModel is the `syslog.this_controller` nested
+// object.
+type settingSyslogThisControllerModel struct {
+	Enabled       types.Bool `tfsdk:"enabled"`
+	EncryptedOnly types.Bool `tfsdk:"encrypted_only"`
+}
+
 type settingSyslogModel struct {
-	Enabled                     types.Bool   `tfsdk:"enabled"`
-	Contents                    types.List   `tfsdk:"contents"`
-	Debug                       types.Bool   `tfsdk:"debug"`
-	IP                          types.String `tfsdk:"ip"`
-	Port                        types.Int64  `tfsdk:"port"`
-	LogAllContents              types.Bool   `tfsdk:"log_all_contents"`
-	NetconsoleEnabled           types.Bool   `tfsdk:"netconsole_enabled"`
-	NetconsoleHost              types.String `tfsdk:"netconsole_host"`
-	NetconsolePort              types.Int64  `tfsdk:"netconsole_port"`
-	ThisController              types.Bool   `tfsdk:"this_controller"`
-	ThisControllerEncryptedOnly types.Bool   `tfsdk:"this_controller_encrypted_only"`
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	Contents       types.List   `tfsdk:"contents"`
+	Debug          types.Bool   `tfsdk:"debug"`
+	IP             types.String `tfsdk:"ip"`
+	Port           types.Int64  `tfsdk:"port"`
+	LogAllContents types.Bool   `tfsdk:"log_all_contents"`
+	Netconsole     types.Object `tfsdk:"netconsole"`
+	ThisController types.Object `tfsdk:"this_controller"`
 }
 
 type settingDohModel struct {
@@ -218,6 +267,12 @@ type settingIpsAlertModel struct {
 	Tracking  types.List   `tfsdk:"tracking"`
 }
 
+// settingIpsSuppressionModel is the `ips.suppression` nested object.
+type settingIpsSuppressionModel struct {
+	Whitelist types.List `tfsdk:"whitelist"`
+	Alerts    types.List `tfsdk:"alerts"`
+}
+
 type settingIpsModel struct {
 	AdvancedFilteringPreference         types.String `tfsdk:"advanced_filtering_preference"`
 	ContentFilteringBlockingPageEnabled types.Bool   `tfsdk:"content_filtering_blocking_page_enabled"`
@@ -228,8 +283,7 @@ type settingIpsModel struct {
 	IPSMode                             types.String `tfsdk:"ips_mode"`
 	MemoryOptimized                     types.Bool   `tfsdk:"memory_optimized"`
 	RestrictTorrents                    types.Bool   `tfsdk:"restrict_torrents"`
-	SuppressionWhitelist                types.List   `tfsdk:"suppression_whitelist"`
-	SuppressionAlerts                   types.List   `tfsdk:"suppression_alerts"`
+	Suppression                         types.Object `tfsdk:"suppression"`
 }
 
 type settingResourceModel struct {
@@ -274,21 +328,27 @@ var (
 		"key":     types.StringType,
 		"comment": types.StringType,
 	}
-	mgmtAttrTypes = map[string]attr.Type{
-		"auto_upgrade":      types.BoolType,
-		"auto_upgrade_hour": types.Int64Type,
-		"ssh_enabled":       types.BoolType,
-		"ssh_keys": types.ListType{
+	mgmtSSHAttrTypes = map[string]attr.Type{
+		"enabled": types.BoolType,
+		"keys": types.ListType{
 			ElemType: types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes},
 		},
-		"advanced_feature_enabled":  types.BoolType,
-		"debug_tools_enabled":       types.BoolType,
-		"direct_connect_enabled":    types.BoolType,
-		"unifi_idp_enabled":         types.BoolType,
-		"wifiman_enabled":           types.BoolType,
-		"ssh_username":              types.StringType,
-		"ssh_password":              types.StringType,
-		"ssh_auth_password_enabled": types.BoolType,
+		"username":              types.StringType,
+		"password":              types.StringType,
+		"auth_password_enabled": types.BoolType,
+	}
+	mgmtAutoUpgradeAttrTypes = map[string]attr.Type{
+		"enabled": types.BoolType,
+		"hour":    types.Int64Type,
+	}
+	mgmtAttrTypes = map[string]attr.Type{
+		"auto_upgrade":             types.ObjectType{AttrTypes: mgmtAutoUpgradeAttrTypes},
+		"ssh":                      types.ObjectType{AttrTypes: mgmtSSHAttrTypes},
+		"advanced_feature_enabled": types.BoolType,
+		"debug_tools_enabled":      types.BoolType,
+		"direct_connect_enabled":   types.BoolType,
+		"unifi_idp_enabled":        types.BoolType,
+		"wifiman_enabled":          types.BoolType,
 	}
 	countryAttrTypes = map[string]attr.Type{
 		"code": types.Int64Type,
@@ -314,18 +374,24 @@ var (
 		"ntp_server_4":       types.StringType,
 		"setting_preference": types.StringType,
 	}
+	syslogNetconsoleAttrTypes = map[string]attr.Type{
+		"enabled": types.BoolType,
+		"host":    types.StringType,
+		"port":    types.Int64Type,
+	}
+	syslogThisControllerAttrTypes = map[string]attr.Type{
+		"enabled":        types.BoolType,
+		"encrypted_only": types.BoolType,
+	}
 	syslogAttrTypes = map[string]attr.Type{
-		"enabled":                        types.BoolType,
-		"contents":                       types.ListType{ElemType: types.StringType},
-		"debug":                          types.BoolType,
-		"ip":                             types.StringType,
-		"port":                           types.Int64Type,
-		"log_all_contents":               types.BoolType,
-		"netconsole_enabled":             types.BoolType,
-		"netconsole_host":                types.StringType,
-		"netconsole_port":                types.Int64Type,
-		"this_controller":                types.BoolType,
-		"this_controller_encrypted_only": types.BoolType,
+		"enabled":          types.BoolType,
+		"contents":         types.ListType{ElemType: types.StringType},
+		"debug":            types.BoolType,
+		"ip":               types.StringType,
+		"port":             types.Int64Type,
+		"log_all_contents": types.BoolType,
+		"netconsole":       types.ObjectType{AttrTypes: syslogNetconsoleAttrTypes},
+		"this_controller":  types.ObjectType{AttrTypes: syslogThisControllerAttrTypes},
 	}
 	dohCustomServerAttrTypes = map[string]attr.Type{
 		"enabled":     types.BoolType,
@@ -362,6 +428,14 @@ var (
 		"type":      types.StringType,
 		"tracking":  types.ListType{ElemType: types.ObjectType{AttrTypes: ipsTrackingAttrTypes}},
 	}
+	ipsSuppressionAttrTypes = map[string]attr.Type{
+		"whitelist": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
+		},
+		"alerts": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: ipsAlertAttrTypes},
+		},
+	}
 	ipsAttrTypes = map[string]attr.Type{
 		"advanced_filtering_preference":           types.StringType,
 		"content_filtering_blocking_page_enabled": types.BoolType,
@@ -374,16 +448,78 @@ var (
 		"ips_mode":          types.StringType,
 		"memory_optimized":  types.BoolType,
 		"restrict_torrents": types.BoolType,
-		"suppression_whitelist": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
-		},
-		"suppression_alerts": types.ListType{
-			ElemType: types.ObjectType{AttrTypes: ipsAlertAttrTypes},
-		},
+		"suppression":       types.ObjectType{AttrTypes: ipsSuppressionAttrTypes},
 	}
 	igmpSnoopingAttrTypes = map[string]attr.Type{
 		"enabled":     types.BoolType,
 		"network_ids": types.ListType{ElemType: types.StringType},
+	}
+	radiusAttrTypes = map[string]attr.Type{
+		"accounting_enabled":      types.BoolType,
+		"acct_port":               types.Int64Type,
+		"auth_port":               types.Int64Type,
+		"interim_update_interval": timetypes.GoDurationType{},
+		"secret":                  types.StringType,
+	}
+	usgDNSVerificationAttrTypes = map[string]attr.Type{
+		"domain":               types.StringType,
+		"primary_dns_server":   types.StringType,
+		"secondary_dns_server": types.StringType,
+		"setting_preference":   types.StringType,
+	}
+	usgTCPAttrTypes = map[string]attr.Type{
+		"close_timeout":       timetypes.GoDurationType{},
+		"close_wait_timeout":  timetypes.GoDurationType{},
+		"established_timeout": timetypes.GoDurationType{},
+		"fin_wait_timeout":    timetypes.GoDurationType{},
+		"last_ack_timeout":    timetypes.GoDurationType{},
+		"syn_recv_timeout":    timetypes.GoDurationType{},
+		"syn_sent_timeout":    timetypes.GoDurationType{},
+		"time_wait_timeout":   timetypes.GoDurationType{},
+	}
+	usgUDPAttrTypes = map[string]attr.Type{
+		"other_timeout":  timetypes.GoDurationType{},
+		"stream_timeout": timetypes.GoDurationType{},
+	}
+	usgUPnPAttrTypes = map[string]attr.Type{
+		"enabled":         types.BoolType,
+		"nat_pmp_enabled": types.BoolType,
+		"secure_mode":     types.BoolType,
+		"wan_interface":   types.StringType,
+	}
+	usgGeoIPFilteringAttrTypes = map[string]attr.Type{
+		"block":             types.StringType,
+		"countries":         types.StringType,
+		"enabled":           types.BoolType,
+		"traffic_direction": types.StringType,
+	}
+	usgOffloadAttrTypes = map[string]attr.Type{
+		"accounting":  types.BoolType,
+		"l2_blocking": types.BoolType,
+		"sch":         types.BoolType,
+	}
+	usgAttrTypes = map[string]attr.Type{
+		"broadcast_ping":             types.BoolType,
+		"dns_verification":           types.ObjectType{AttrTypes: usgDNSVerificationAttrTypes},
+		"ftp_module":                 types.BoolType,
+		"geo_ip_filtering":           types.ObjectType{AttrTypes: usgGeoIPFilteringAttrTypes},
+		"gre_module":                 types.BoolType,
+		"h323_module":                types.BoolType,
+		"icmp_timeout":               timetypes.GoDurationType{},
+		"mss_clamp":                  types.StringType,
+		"offload":                    types.ObjectType{AttrTypes: usgOffloadAttrTypes},
+		"other_timeout":              timetypes.GoDurationType{},
+		"pptp_module":                types.BoolType,
+		"receive_redirects":          types.BoolType,
+		"send_redirects":             types.BoolType,
+		"sip_module":                 types.BoolType,
+		"syn_cookies":                types.BoolType,
+		"tcp":                        types.ObjectType{AttrTypes: usgTCPAttrTypes},
+		"tftp_module":                types.BoolType,
+		"timeout_setting_preference": types.StringType,
+		"udp":                        types.ObjectType{AttrTypes: usgUDPAttrTypes},
+		"unbind_wan_monitors":        types.BoolType,
+		"upnp":                       types.ObjectType{AttrTypes: usgUPnPAttrTypes},
 	}
 )
 
@@ -417,8 +553,11 @@ func (r *settingResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		// v1: radius.interim_update_interval and the usg conntrack timeouts
-		// changed from Int64 (seconds) to GoDuration strings. See UpgradeState.
-		Version:             1,
+		// changed from Int64 (seconds) to GoDuration strings.
+		// v2: prefixed usg/mgmt/syslog/ips attributes moved into nested
+		// objects (usg.tcp, mgmt.ssh, syslog.netconsole, ips.suppression, ...).
+		// See UpgradeState.
+		Version:             2,
 		MarkdownDescription: "Manages settings for a UniFi site. Configure only the settings you need by providing the corresponding nested object.",
 
 		Attributes: map[string]schema.Attribute{
@@ -647,34 +786,55 @@ func (r *settingResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
-					"this_controller": schema.BoolAttribute{
-						MarkdownDescription: "Also log this controller's events.",
+					"this_controller": schema.SingleNestedAttribute{
+						MarkdownDescription: "Forwarding of this controller's own events to the remote syslog server.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						Default: objectdefault.StaticValue(
+							settingSyslogThisControllerDefault(),
+						),
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Also log this controller's events.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"encrypted_only": schema.BoolAttribute{
+								MarkdownDescription: "Only send this controller's logs over an encrypted channel.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+						},
 					},
-					"this_controller_encrypted_only": schema.BoolAttribute{
-						MarkdownDescription: "Only send this controller's logs over an encrypted channel.",
+					"netconsole": schema.SingleNestedAttribute{
+						MarkdownDescription: "Netconsole logging settings.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-					},
-					"netconsole_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether netconsole logging is enabled.",
-						Optional:            true,
-						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-					},
-					"netconsole_host": schema.StringAttribute{
-						MarkdownDescription: "Netconsole host.",
-						Optional:            true,
-						Computed:            true,
-					},
-					"netconsole_port": schema.Int64Attribute{
-						MarkdownDescription: "Netconsole port (1-65535).",
-						Optional:            true,
-						Computed:            true,
-						Validators:          []validator.Int64{int64validator.Between(1, 65535)},
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseStateForUnknown(),
+						},
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Whether netconsole logging is enabled. Defaults to `false` when `syslog` is configured and this is not set.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"host": schema.StringAttribute{
+								MarkdownDescription: "Netconsole host.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"port": schema.Int64Attribute{
+								MarkdownDescription: "Netconsole port (1-65535).",
+								Optional:            true,
+								Computed:            true,
+								Validators: []validator.Int64{
+									int64validator.Between(1, 65535),
+								},
+							},
+						},
 					},
 				},
 			},
@@ -814,97 +974,108 @@ func (r *settingResource) Schema(
 							stringvalidator.OneOf("manual", "disabled"),
 						},
 					},
-					"suppression_alerts": schema.ListNestedAttribute{
-						MarkdownDescription: "IPS signature alert suppression entries — silence specific signatures or categories.",
+					"suppression": schema.SingleNestedAttribute{
+						MarkdownDescription: "IPS suppression: signature alert suppression entries and whitelisted sources/destinations.",
 						Optional:            true,
 						Computed:            true,
-						NestedObject: schema.NestedAttributeObject{
-							Attributes: map[string]schema.Attribute{
-								"category": schema.StringAttribute{
-									MarkdownDescription: "Alert suppression signature category.",
-									Optional:            true,
-									Computed:            true,
-								},
-								"gid": schema.Int64Attribute{
-									MarkdownDescription: "Signature Generator ID (GID).",
-									Optional:            true,
-									Computed:            true,
-								},
-								"id": schema.Int64Attribute{
-									MarkdownDescription: "Signature ID.",
-									Optional:            true,
-									Computed:            true,
-								},
-								"signature": schema.StringAttribute{
-									MarkdownDescription: "Suppression signature name.",
-									Optional:            true,
-									Computed:            true,
-								},
-								"type": schema.StringAttribute{
-									MarkdownDescription: "Suppression type: `all` (everywhere) or `track` (only the tracked sources/destinations).",
-									Optional:            true,
-									Computed:            true,
-									Validators: []validator.String{
-										stringvalidator.OneOf("all", "track"),
-									},
-								},
-								"tracking": schema.ListNestedAttribute{
-									MarkdownDescription: "Tracking specifications (used when `type` is `track`).",
-									Optional:            true,
-									Computed:            true,
-									NestedObject: schema.NestedAttributeObject{
-										Attributes: map[string]schema.Attribute{
-											"direction": schema.StringAttribute{
-												MarkdownDescription: "Match direction: both, src, or dest.",
-												Required:            true,
-												Validators: []validator.String{
-													stringvalidator.OneOf("both", "src", "dest"),
-												},
+						Attributes: map[string]schema.Attribute{
+							"alerts": schema.ListNestedAttribute{
+								MarkdownDescription: "IPS signature alert suppression entries — silence specific signatures or categories.",
+								Optional:            true,
+								Computed:            true,
+								NestedObject: schema.NestedAttributeObject{
+									Attributes: map[string]schema.Attribute{
+										"category": schema.StringAttribute{
+											MarkdownDescription: "Alert suppression signature category.",
+											Optional:            true,
+											Computed:            true,
+										},
+										"gid": schema.Int64Attribute{
+											MarkdownDescription: "Signature Generator ID (GID).",
+											Optional:            true,
+											Computed:            true,
+										},
+										"id": schema.Int64Attribute{
+											MarkdownDescription: "Signature ID.",
+											Optional:            true,
+											Computed:            true,
+										},
+										"signature": schema.StringAttribute{
+											MarkdownDescription: "Suppression signature name.",
+											Optional:            true,
+											Computed:            true,
+										},
+										"type": schema.StringAttribute{
+											MarkdownDescription: "Suppression type: `all` (everywhere) or `track` (only the tracked sources/destinations).",
+											Optional:            true,
+											Computed:            true,
+											Validators: []validator.String{
+												stringvalidator.OneOf("all", "track"),
 											},
-											"mode": schema.StringAttribute{
-												MarkdownDescription: "Match mode: ip, subnet, or network.",
-												Required:            true,
-												Validators: []validator.String{
-													stringvalidator.OneOf(
-														"ip",
-														"subnet",
-														"network",
-													),
+										},
+										"tracking": schema.ListNestedAttribute{
+											MarkdownDescription: "Tracking specifications (used when `type` is `track`).",
+											Optional:            true,
+											Computed:            true,
+											NestedObject: schema.NestedAttributeObject{
+												Attributes: map[string]schema.Attribute{
+													"direction": schema.StringAttribute{
+														MarkdownDescription: "Match direction: both, src, or dest.",
+														Required:            true,
+														Validators: []validator.String{
+															stringvalidator.OneOf(
+																"both",
+																"src",
+																"dest",
+															),
+														},
+													},
+													"mode": schema.StringAttribute{
+														MarkdownDescription: "Match mode: ip, subnet, or network.",
+														Required:            true,
+														Validators: []validator.String{
+															stringvalidator.OneOf(
+																"ip",
+																"subnet",
+																"network",
+															),
+														},
+													},
+													"value": schema.StringAttribute{
+														MarkdownDescription: "IP address, CIDR subnet, or network ID to match.",
+														Required:            true,
+													},
 												},
-											},
-											"value": schema.StringAttribute{
-												MarkdownDescription: "IP address, CIDR subnet, or network ID to match.",
-												Required:            true,
 											},
 										},
 									},
 								},
 							},
-						},
-					},
-					"suppression_whitelist": schema.ListNestedAttribute{
-						MarkdownDescription: "IPS suppression whitelist entries — sources/destinations to exclude from inspection.",
-						Optional:            true,
-						Computed:            true,
-						NestedObject: schema.NestedAttributeObject{
-							Attributes: map[string]schema.Attribute{
-								"direction": schema.StringAttribute{
-									MarkdownDescription: "Match direction: both, src, or dest.",
-									Required:            true,
-									Validators: []validator.String{
-										stringvalidator.OneOf("both", "src", "dest"),
+							"whitelist": schema.ListNestedAttribute{
+								MarkdownDescription: "IPS suppression whitelist entries — sources/destinations to exclude from inspection.",
+								Optional:            true,
+								Computed:            true,
+								NestedObject: schema.NestedAttributeObject{
+									Attributes: map[string]schema.Attribute{
+										"direction": schema.StringAttribute{
+											MarkdownDescription: "Match direction: both, src, or dest.",
+											Required:            true,
+											Validators: []validator.String{
+												stringvalidator.OneOf("both", "src", "dest"),
+											},
+										},
+										"mode": schema.StringAttribute{
+											MarkdownDescription: "Match mode: ip, subnet, or network.",
+											Required:            true,
+											Validators: []validator.String{
+												stringvalidator.OneOf("ip", "subnet", "network"),
+											},
+										},
+										"value": schema.StringAttribute{
+											MarkdownDescription: "IP address, CIDR subnet, or network ID to whitelist.",
+											Required:            true,
+										},
 									},
-								},
-								"mode": schema.StringAttribute{
-									MarkdownDescription: "Match mode: ip, subnet, or network.",
-									Required:            true,
-									Validators: []validator.String{
-										stringvalidator.OneOf("ip", "subnet", "network"),
-									},
-								},
-								"value": schema.StringAttribute{
-									MarkdownDescription: "IP address, CIDR subnet, or network ID to whitelist.",
-									Required:            true,
 								},
 							},
 						},
@@ -919,21 +1090,25 @@ func (r *settingResource) Schema(
 					objectplanmodifier.UseStateForUnknown(),
 				},
 				Attributes: map[string]schema.Attribute{
-					"auto_upgrade": schema.BoolAttribute{
-						MarkdownDescription: "Automatically upgrade device firmware.",
+					"auto_upgrade": schema.SingleNestedAttribute{
+						MarkdownDescription: "Automatic device firmware upgrade settings.",
 						Optional:            true,
 						Computed:            true,
-					},
-					"ssh_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Enable SSH authentication.",
-						Optional:            true,
-						Computed:            true,
-					},
-					"auto_upgrade_hour": schema.Int64Attribute{
-						MarkdownDescription: "Hour of day (0-23) for automatic firmware upgrades.",
-						Optional:            true,
-						Computed:            true,
-						Validators:          []validator.Int64{int64validator.Between(0, 23)},
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Automatically upgrade device firmware.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"hour": schema.Int64Attribute{
+								MarkdownDescription: "Hour of day (0-23) for automatic firmware upgrades.",
+								Optional:            true,
+								Computed:            true,
+								Validators: []validator.Int64{
+									int64validator.Between(0, 23),
+								},
+							},
+						},
 					},
 					"advanced_feature_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable advanced features.",
@@ -960,45 +1135,57 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"ssh_username": schema.StringAttribute{
-						MarkdownDescription: "SSH username for device access.",
+					"ssh": schema.SingleNestedAttribute{
+						MarkdownDescription: "Device SSH access settings.",
 						Optional:            true,
 						Computed:            true,
-					},
-					"ssh_password": schema.StringAttribute{
-						MarkdownDescription: "SSH password for device access. Sensitive — the controller " +
-							"stores only a hash, so this value is kept from configuration and not read back.",
-						Optional:  true,
-						Sensitive: true,
-					},
-					"ssh_auth_password_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Allow SSH password authentication (in addition to keys).",
-						Optional:            true,
-						Computed:            true,
-					},
-					"ssh_keys": schema.ListNestedAttribute{
-						MarkdownDescription: "SSH keys.",
-						Optional:            true,
-						Computed:            true,
-						NestedObject: schema.NestedAttributeObject{
-							Attributes: map[string]schema.Attribute{
-								"name": schema.StringAttribute{
-									MarkdownDescription: "Name of SSH key.",
-									Required:            true,
-								},
-								"type": schema.StringAttribute{
-									MarkdownDescription: "Type of SSH key, e.g. ssh-rsa.",
-									Required:            true,
-								},
-								"key": schema.StringAttribute{
-									MarkdownDescription: "Public SSH key.",
-									Optional:            true,
-									Computed:            true,
-								},
-								"comment": schema.StringAttribute{
-									MarkdownDescription: "Comment.",
-									Optional:            true,
-									Computed:            true,
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Enable SSH authentication.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"username": schema.StringAttribute{
+								MarkdownDescription: "SSH username for device access.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"password": schema.StringAttribute{
+								MarkdownDescription: "SSH password for device access. Sensitive — the controller " +
+									"stores only a hash, so this value is kept from configuration and not read back.",
+								Optional:  true,
+								Sensitive: true,
+							},
+							"auth_password_enabled": schema.BoolAttribute{
+								MarkdownDescription: "Allow SSH password authentication (in addition to keys).",
+								Optional:            true,
+								Computed:            true,
+							},
+							"keys": schema.ListNestedAttribute{
+								MarkdownDescription: "SSH keys.",
+								Optional:            true,
+								Computed:            true,
+								NestedObject: schema.NestedAttributeObject{
+									Attributes: map[string]schema.Attribute{
+										"name": schema.StringAttribute{
+											MarkdownDescription: "Name of SSH key.",
+											Required:            true,
+										},
+										"type": schema.StringAttribute{
+											MarkdownDescription: "Type of SSH key, e.g. ssh-rsa.",
+											Required:            true,
+										},
+										"key": schema.StringAttribute{
+											MarkdownDescription: "Public SSH key.",
+											Optional:            true,
+											Computed:            true,
+										},
+										"comment": schema.StringAttribute{
+											MarkdownDescription: "Comment.",
+											Optional:            true,
+											Computed:            true,
+										},
+									},
 								},
 							},
 						},
@@ -1095,25 +1282,32 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"geo_ip_filtering_block": schema.StringAttribute{
-						MarkdownDescription: "Geo IP filtering action: block or allow.",
+					"geo_ip_filtering": schema.SingleNestedAttribute{
+						MarkdownDescription: "Geo IP filtering (Region Blocking) settings.",
 						Optional:            true,
 						Computed:            true,
-					},
-					"geo_ip_filtering_countries": schema.StringAttribute{
-						MarkdownDescription: "Comma-separated list of country codes for geo IP filtering.",
-						Optional:            true,
-						Computed:            true,
-					},
-					"geo_ip_filtering_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Enable geo IP filtering.",
-						Optional:            true,
-						Computed:            true,
-					},
-					"geo_ip_filtering_traffic_direction": schema.StringAttribute{
-						MarkdownDescription: "Geo IP filtering traffic direction: both, ingress, or egress.",
-						Optional:            true,
-						Computed:            true,
+						Attributes: map[string]schema.Attribute{
+							"block": schema.StringAttribute{
+								MarkdownDescription: "Geo IP filtering action: block or allow.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"countries": schema.StringAttribute{
+								MarkdownDescription: "Comma-separated list of country codes for geo IP filtering.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Enable geo IP filtering.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"traffic_direction": schema.StringAttribute{
+								MarkdownDescription: "Geo IP filtering traffic direction: both, ingress, or egress.",
+								Optional:            true,
+								Computed:            true,
+							},
+						},
 					},
 					"gre_module": schema.BoolAttribute{
 						MarkdownDescription: "Enable GRE module.",
@@ -1136,20 +1330,27 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"offload_accounting": schema.BoolAttribute{
-						MarkdownDescription: "Enable hardware offload for accounting.",
+					"offload": schema.SingleNestedAttribute{
+						MarkdownDescription: "Hardware offload settings.",
 						Optional:            true,
 						Computed:            true,
-					},
-					"offload_l2_blocking": schema.BoolAttribute{
-						MarkdownDescription: "Enable hardware offload for L2 blocking.",
-						Optional:            true,
-						Computed:            true,
-					},
-					"offload_sch": schema.BoolAttribute{
-						MarkdownDescription: "Enable hardware offload for scheduling.",
-						Optional:            true,
-						Computed:            true,
+						Attributes: map[string]schema.Attribute{
+							"accounting": schema.BoolAttribute{
+								MarkdownDescription: "Enable hardware offload for accounting.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"l2_blocking": schema.BoolAttribute{
+								MarkdownDescription: "Enable hardware offload for L2 blocking.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"sch": schema.BoolAttribute{
+								MarkdownDescription: "Enable hardware offload for scheduling.",
+								Optional:            true,
+								Computed:            true,
+							},
+						},
 					},
 					"other_timeout": schema.StringAttribute{
 						MarkdownDescription: "Other connections timeout, as a Go duration string (e.g. `600s`, `10m`).",
@@ -1182,53 +1383,60 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"tcp_close_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP close timeout, as a Go duration string (e.g. `10s`).",
-						CustomType:          timetypes.GoDurationType{},
+					"tcp": schema.SingleNestedAttribute{
+						MarkdownDescription: "TCP connection tracking timeouts.",
 						Optional:            true,
 						Computed:            true,
-					},
-					"tcp_close_wait_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP close wait timeout, as a Go duration string (e.g. `60s`, `1m`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
-					},
-					"tcp_established_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP established connection timeout, as a Go duration string (e.g. `7440s`, `2h4m`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
-					},
-					"tcp_fin_wait_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP fin wait timeout, as a Go duration string (e.g. `120s`, `2m`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
-					},
-					"tcp_last_ack_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP last ACK timeout, as a Go duration string (e.g. `30s`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
-					},
-					"tcp_syn_recv_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP SYN received timeout, as a Go duration string (e.g. `60s`, `1m`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
-					},
-					"tcp_syn_sent_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP SYN sent timeout, as a Go duration string (e.g. `120s`, `2m`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
-					},
-					"tcp_time_wait_timeout": schema.StringAttribute{
-						MarkdownDescription: "TCP time wait timeout, as a Go duration string (e.g. `120s`, `2m`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
+						Attributes: map[string]schema.Attribute{
+							"close_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP close timeout, as a Go duration string (e.g. `10s`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"close_wait_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP close wait timeout, as a Go duration string (e.g. `60s`, `1m`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"established_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP established connection timeout, as a Go duration string (e.g. `7440s`, `2h4m`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"fin_wait_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP fin wait timeout, as a Go duration string (e.g. `120s`, `2m`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"last_ack_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP last ACK timeout, as a Go duration string (e.g. `30s`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"syn_recv_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP SYN received timeout, as a Go duration string (e.g. `60s`, `1m`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"syn_sent_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP SYN sent timeout, as a Go duration string (e.g. `120s`, `2m`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"time_wait_timeout": schema.StringAttribute{
+								MarkdownDescription: "TCP time wait timeout, as a Go duration string (e.g. `120s`, `2m`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+						},
 					},
 					"tftp_module": schema.BoolAttribute{
 						MarkdownDescription: "Enable TFTP module.",
@@ -1240,42 +1448,56 @@ func (r *settingResource) Schema(
 						Optional:            true,
 						Computed:            true,
 					},
-					"udp_other_timeout": schema.StringAttribute{
-						MarkdownDescription: "UDP other timeout, as a Go duration string (e.g. `30s`).",
-						CustomType:          timetypes.GoDurationType{},
+					"udp": schema.SingleNestedAttribute{
+						MarkdownDescription: "UDP connection tracking timeouts.",
 						Optional:            true,
 						Computed:            true,
-					},
-					"udp_stream_timeout": schema.StringAttribute{
-						MarkdownDescription: "UDP stream timeout, as a Go duration string (e.g. `180s`, `3m`).",
-						CustomType:          timetypes.GoDurationType{},
-						Optional:            true,
-						Computed:            true,
+						Attributes: map[string]schema.Attribute{
+							"other_timeout": schema.StringAttribute{
+								MarkdownDescription: "UDP other timeout, as a Go duration string (e.g. `30s`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+							"stream_timeout": schema.StringAttribute{
+								MarkdownDescription: "UDP stream timeout, as a Go duration string (e.g. `180s`, `3m`).",
+								CustomType:          timetypes.GoDurationType{},
+								Optional:            true,
+								Computed:            true,
+							},
+						},
 					},
 					"unbind_wan_monitors": schema.BoolAttribute{
 						MarkdownDescription: "Unbind WAN monitors.",
 						Optional:            true,
 						Computed:            true,
 					},
-					"upnp_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Enable UPnP.",
+					"upnp": schema.SingleNestedAttribute{
+						MarkdownDescription: "UPnP settings.",
 						Optional:            true,
 						Computed:            true,
-					},
-					"upnp_nat_pmp_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Enable UPnP NAT-PMP.",
-						Optional:            true,
-						Computed:            true,
-					},
-					"upnp_secure_mode": schema.BoolAttribute{
-						MarkdownDescription: "Enable UPnP secure mode.",
-						Optional:            true,
-						Computed:            true,
-					},
-					"upnp_wan_interface": schema.StringAttribute{
-						MarkdownDescription: "UPnP WAN interface (e.g., WAN, WAN2).",
-						Optional:            true,
-						Computed:            true,
+						Attributes: map[string]schema.Attribute{
+							"enabled": schema.BoolAttribute{
+								MarkdownDescription: "Enable UPnP.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"nat_pmp_enabled": schema.BoolAttribute{
+								MarkdownDescription: "Enable UPnP NAT-PMP.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"secure_mode": schema.BoolAttribute{
+								MarkdownDescription: "Enable UPnP secure mode.",
+								Optional:            true,
+								Computed:            true,
+							},
+							"wan_interface": schema.StringAttribute{
+								MarkdownDescription: "UPnP WAN interface (e.g., WAN, WAN2).",
+								Optional:            true,
+								Computed:            true,
+							},
+						},
 					},
 				},
 			},
@@ -1307,14 +1529,57 @@ func (r *settingResource) Schema(
 	}
 }
 
-// UpgradeState migrates v0 state to v1: radius.interim_update_interval and the
-// usg conntrack timeouts changed from integer seconds to GoDuration strings.
+// settingSyslogThisControllerDefault reproduces the defaults the flat
+// syslog.this_controller / this_controller_encrypted_only leaves had, so an
+// omitted block still sends the same request body.
+func settingSyslogThisControllerDefault() types.Object {
+	return types.ObjectValueMust(syslogThisControllerAttrTypes, map[string]attr.Value{
+		"enabled":        types.BoolValue(false),
+		"encrypted_only": types.BoolValue(false),
+	})
+}
+
+// UpgradeState migrates prior schema versions to the current one:
+//
+//   - v0 -> radius.interim_update_interval and the usg conntrack timeouts
+//     changed from integer seconds to GoDuration strings.
+//   - v1 -> prefixed usg/mgmt/syslog/ips attributes moved into nested objects.
+//
+// Every upgrader targets the current schema, so each one also applies the
+// nesting rewrite.
 func (r *settingResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
 	var schemaResp resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
 	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	upgrader := func(rewrite func(state map[string]any)) resource.StateUpgrader {
+		return resource.StateUpgrader{
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						rewrite(state)
+						nestSettingState(state)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade settings state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
+		}
+	}
 
 	conntrack := []string{
 		"icmp_timeout", "other_timeout",
@@ -1325,37 +1590,146 @@ func (r *settingResource) UpgradeState(
 	}
 
 	return map[int64]resource.StateUpgrader{
-		0: {
-			StateUpgrader: func(
-				ctx context.Context,
-				req resource.UpgradeStateRequest,
-				resp *resource.UpgradeStateResponse,
-			) {
-				if req.RawState == nil {
-					return
+		0: upgrader(func(state map[string]any) {
+			util.WithObject(state, "radius", func(radius map[string]any) {
+				util.SetDurationField(radius, "interim_update_interval", time.Second)
+			})
+			util.WithObject(state, "usg", func(usg map[string]any) {
+				for _, n := range conntrack {
+					util.SetDurationField(usg, n, time.Second)
 				}
-				dv, err := util.UpgradeDurationRawState(
-					schemaType,
-					req.RawState.JSON,
-					func(state map[string]any) {
-						if radius, ok := state["radius"].(map[string]any); ok {
-							util.SetDurationField(radius, "interim_update_interval", time.Second)
-						}
-						if usg, ok := state["usg"].(map[string]any); ok {
-							for _, n := range conntrack {
-								util.SetDurationField(usg, n, time.Second)
-							}
-						}
-					},
-				)
-				if err != nil {
-					resp.Diagnostics.AddError("Failed to upgrade settings state", err.Error())
-					return
-				}
-				resp.DynamicValue = dv
-			},
-		},
+			})
+		}),
+		// v1 already stores durations as strings; only the nesting applies.
+		1: upgrader(func(map[string]any) {}),
 	}
+}
+
+// nestSettingState rewrites flat v0/v1 setting state into the nested-object
+// layout introduced in schema v2. Keys that are absent are skipped, so it is
+// safe to run on state from any earlier version.
+func nestSettingState(state map[string]any) {
+	util.WithObject(state, "usg", func(usg map[string]any) {
+		util.NestFields(usg, "tcp", map[string]string{
+			"tcp_close_timeout":       "close_timeout",
+			"tcp_close_wait_timeout":  "close_wait_timeout",
+			"tcp_established_timeout": "established_timeout",
+			"tcp_fin_wait_timeout":    "fin_wait_timeout",
+			"tcp_last_ack_timeout":    "last_ack_timeout",
+			"tcp_syn_recv_timeout":    "syn_recv_timeout",
+			"tcp_syn_sent_timeout":    "syn_sent_timeout",
+			"tcp_time_wait_timeout":   "time_wait_timeout",
+		})
+		util.NestFields(usg, "udp", map[string]string{
+			"udp_other_timeout":  "other_timeout",
+			"udp_stream_timeout": "stream_timeout",
+		})
+		util.NestFields(usg, "upnp", map[string]string{
+			"upnp_enabled":         "enabled",
+			"upnp_nat_pmp_enabled": "nat_pmp_enabled",
+			"upnp_secure_mode":     "secure_mode",
+			"upnp_wan_interface":   "wan_interface",
+		})
+		util.NestFields(usg, "geo_ip_filtering", map[string]string{
+			"geo_ip_filtering_block":             "block",
+			"geo_ip_filtering_countries":         "countries",
+			"geo_ip_filtering_enabled":           "enabled",
+			"geo_ip_filtering_traffic_direction": "traffic_direction",
+		})
+		util.NestFields(usg, "offload", map[string]string{
+			"offload_accounting":  "accounting",
+			"offload_l2_blocking": "l2_blocking",
+			"offload_sch":         "sch",
+		})
+	})
+	util.WithObject(state, "mgmt", func(mgmt map[string]any) {
+		util.NestFields(mgmt, "ssh", map[string]string{
+			"ssh_enabled":               "enabled",
+			"ssh_keys":                  "keys",
+			"ssh_username":              "username",
+			"ssh_password":              "password",
+			"ssh_auth_password_enabled": "auth_password_enabled",
+		})
+		util.NestFields(mgmt, "auto_upgrade", map[string]string{
+			"auto_upgrade":      "enabled",
+			"auto_upgrade_hour": "hour",
+		})
+	})
+	util.WithObject(state, "syslog", func(syslog map[string]any) {
+		util.NestFields(syslog, "netconsole", map[string]string{
+			"netconsole_enabled": "enabled",
+			"netconsole_host":    "host",
+			"netconsole_port":    "port",
+		})
+		util.NestFields(syslog, "this_controller", map[string]string{
+			"this_controller":                "enabled",
+			"this_controller_encrypted_only": "encrypted_only",
+		})
+	})
+	util.WithObject(state, "ips", func(ips map[string]any) {
+		util.NestFields(ips, "suppression", map[string]string{
+			"suppression_whitelist": "whitelist",
+			"suppression_alerts":    "alerts",
+		})
+	})
+}
+
+// ModifyPlan reproduces the flat syslog.netconsole_enabled default for the
+// nested netconsole object without a schema Default: the framework applies a
+// leaf Default even when its parent object is null in configuration and then
+// re-plans the default-less Computed parent as unknown, so a Default there
+// would both trip the framework's plan-change gate whenever the controller
+// has netconsole enabled and be discarded by UseStateForUnknown anyway. As
+// with the flat attribute, the default only applies when the syslog block is
+// configured; an omitted syslog block keeps the controller's values.
+func (r *settingResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var configSyslog types.Object
+	var configEnabled types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("syslog"), &configSyslog)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(
+		ctx, path.Root("syslog").AtName("netconsole").AtName("enabled"), &configEnabled)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if configSyslog.IsNull() || configSyslog.IsUnknown() || !configEnabled.IsNull() {
+		return
+	}
+
+	ncPath := path.Root("syslog").AtName("netconsole")
+	var planNC types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, ncPath, &planNC)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var attrs map[string]attr.Value
+	if planNC.IsNull() || planNC.IsUnknown() {
+		attrs = map[string]attr.Value{
+			"enabled": types.BoolValue(false),
+			"host":    types.StringUnknown(),
+			"port":    types.Int64Unknown(),
+		}
+	} else {
+		attrs = planNC.Attributes()
+		if v, ok := attrs["enabled"].(types.Bool); ok && !v.IsNull() && !v.IsUnknown() &&
+			!v.ValueBool() {
+			return
+		}
+		attrs["enabled"] = types.BoolValue(false)
+	}
+	obj, d := types.ObjectValue(syslogNetconsoleAttrTypes, attrs)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, ncPath, obj)...)
 }
 
 func (r *settingResource) Configure(
@@ -1530,7 +1904,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.client.UpdateSetting(ctx, site, setting.Ips); err != nil {
 			resp.Diagnostics.AddError("Error Creating IPS Setting", err.Error())
 			return
 		}
@@ -1600,7 +1974,7 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.usgModelToSetting(ctx, &usg)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.client.UpdateSetting(ctx, site, setting.Usg); err != nil {
 			resp.Diagnostics.AddError("Error Creating USG Setting", err.Error())
 			return
 		}
@@ -1858,7 +2232,7 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.client.UpdateSetting(ctx, site, setting.Ips); err != nil {
 			resp.Diagnostics.AddError("Error Updating IPS Setting", err.Error())
 			return
 		}
@@ -1928,7 +2302,7 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.usgModelToSetting(ctx, &usg)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.client.UpdateSetting(ctx, site, setting.Usg); err != nil {
 			resp.Diagnostics.AddError("Error Updating USG Setting", err.Error())
 			return
 		}
@@ -2195,17 +2569,23 @@ func (r *settingResource) readSettings(
 			return
 		}
 
-		_, ipsSetting, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
+		_, typedIps, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
 		if err != nil {
 			diags.AddError("Error Reading IPS Setting", err.Error())
 			return
 		}
+		ipsSetting := &ipsWithSuppression{Ips: typedIps}
 
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting instead of nested in ips: graft it so
 		// configured entries refresh from where the controller actually
 		// keeps them (#381).
-		if ipsSetting.Suppression == nil && ipsSuppressionConfigured(&planIps) {
+		planSupp, suppOK, d := util.ObjectAs[settingIpsSuppressionModel](ctx, planIps.Suppression)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		if ipsSetting.Suppression == nil && suppOK && ipsSuppressionConfigured(&planSupp) {
 			rawData, found, err := r.readRawSettingData(ctx, site, ipsSuppressionSettingKey)
 			if err != nil {
 				diags.AddError("Error Reading IPS Suppression Setting", err.Error())
@@ -2274,26 +2654,14 @@ func (r *settingResource) readSettings(
 		}
 
 		radiusModel := r.radiusSettingToModel(ctx, radiusSetting, &planRadius)
-		objValue, d := types.ObjectValueFrom(ctx, map[string]attr.Type{
-			"accounting_enabled":      types.BoolType,
-			"acct_port":               types.Int64Type,
-			"auth_port":               types.Int64Type,
-			"interim_update_interval": timetypes.GoDurationType{},
-			"secret":                  types.StringType,
-		}, radiusModel)
+		objValue, d := types.ObjectValueFrom(ctx, radiusAttrTypes, radiusModel)
 		diags.Append(d...)
 		if diags.HasError() {
 			return
 		}
 		data.Radius = objValue
 	} else {
-		data.Radius = types.ObjectNull(map[string]attr.Type{
-			"accounting_enabled":      types.BoolType,
-			"acct_port":               types.Int64Type,
-			"auth_port":               types.Int64Type,
-			"interim_update_interval": timetypes.GoDurationType{},
-			"secret":                  types.StringType,
-		})
+		data.Radius = types.ObjectNull(radiusAttrTypes)
 	}
 
 	// USG settings
@@ -2305,17 +2673,28 @@ func (r *settingResource) readSettings(
 			return
 		}
 
-		_, usgSetting, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
+		_, typedUsg, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
 		if err != nil {
 			diags.AddError("Error Reading USG Setting", err.Error())
 			return
 		}
 
+		usgSetting := &usgWithGeo{Usg: typedUsg}
+
 		// Newer controllers store Region Blocking under the standalone
 		// usg_geo setting: when the controller has one it is authoritative
 		// for the geo fields, so mirror it into the usg struct before
-		// conversion (#374).
-		if usgGeoConfigured(&planUSG) {
+		// conversion (#374). Older controllers keep them on usg itself,
+		// where only the raw payload still carries them.
+		planGeo, geoOK, d := util.ObjectAs[settingUsgGeoIPFilteringModel](
+			ctx,
+			planUSG.GeoIPFiltering,
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		if geoOK && usgGeoConfigured(&planGeo) {
 			rawData, found, err := r.readRawSettingData(ctx, site, usgGeoSettingKey)
 			if err != nil {
 				diags.AddError("Error Reading USG GeoIP Filtering Setting", err.Error())
@@ -2323,108 +2702,22 @@ func (r *settingResource) readSettings(
 			}
 			if found {
 				applyUsgGeoIPFiltering(usgSetting, rawData)
+			} else if legacy, legacyFound, legacyErr := r.readRawSettingData(
+				ctx, site, usgSettingKey,
+			); legacyErr == nil && legacyFound {
+				applyLegacyUsgGeoIPFiltering(usgSetting, legacy)
 			}
 		}
 
 		usgModel := r.usgSettingToModel(ctx, usgSetting, &planUSG)
-		objValue, d := types.ObjectValueFrom(ctx, map[string]attr.Type{
-			"broadcast_ping": types.BoolType,
-			"dns_verification": types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"domain":               types.StringType,
-					"primary_dns_server":   types.StringType,
-					"secondary_dns_server": types.StringType,
-					"setting_preference":   types.StringType,
-				},
-			},
-			"ftp_module":                         types.BoolType,
-			"geo_ip_filtering_block":             types.StringType,
-			"geo_ip_filtering_countries":         types.StringType,
-			"geo_ip_filtering_enabled":           types.BoolType,
-			"geo_ip_filtering_traffic_direction": types.StringType,
-			"gre_module":                         types.BoolType,
-			"h323_module":                        types.BoolType,
-			"icmp_timeout":                       timetypes.GoDurationType{},
-			"mss_clamp":                          types.StringType,
-			"offload_accounting":                 types.BoolType,
-			"offload_l2_blocking":                types.BoolType,
-			"offload_sch":                        types.BoolType,
-			"other_timeout":                      timetypes.GoDurationType{},
-			"pptp_module":                        types.BoolType,
-			"receive_redirects":                  types.BoolType,
-			"send_redirects":                     types.BoolType,
-			"sip_module":                         types.BoolType,
-			"syn_cookies":                        types.BoolType,
-			"tcp_close_timeout":                  timetypes.GoDurationType{},
-			"tcp_close_wait_timeout":             timetypes.GoDurationType{},
-			"tcp_established_timeout":            timetypes.GoDurationType{},
-			"tcp_fin_wait_timeout":               timetypes.GoDurationType{},
-			"tcp_last_ack_timeout":               timetypes.GoDurationType{},
-			"tcp_syn_recv_timeout":               timetypes.GoDurationType{},
-			"tcp_syn_sent_timeout":               timetypes.GoDurationType{},
-			"tcp_time_wait_timeout":              timetypes.GoDurationType{},
-			"tftp_module":                        types.BoolType,
-			"timeout_setting_preference":         types.StringType,
-			"udp_other_timeout":                  timetypes.GoDurationType{},
-			"udp_stream_timeout":                 timetypes.GoDurationType{},
-			"unbind_wan_monitors":                types.BoolType,
-			"upnp_enabled":                       types.BoolType,
-			"upnp_nat_pmp_enabled":               types.BoolType,
-			"upnp_secure_mode":                   types.BoolType,
-			"upnp_wan_interface":                 types.StringType,
-		}, usgModel)
+		objValue, d := types.ObjectValueFrom(ctx, usgAttrTypes, usgModel)
 		diags.Append(d...)
 		if diags.HasError() {
 			return
 		}
 		data.USG = objValue
 	} else {
-		data.USG = types.ObjectNull(map[string]attr.Type{
-			"broadcast_ping": types.BoolType,
-			"dns_verification": types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"domain":               types.StringType,
-					"primary_dns_server":   types.StringType,
-					"secondary_dns_server": types.StringType,
-					"setting_preference":   types.StringType,
-				},
-			},
-			"ftp_module":                         types.BoolType,
-			"geo_ip_filtering_block":             types.StringType,
-			"geo_ip_filtering_countries":         types.StringType,
-			"geo_ip_filtering_enabled":           types.BoolType,
-			"geo_ip_filtering_traffic_direction": types.StringType,
-			"gre_module":                         types.BoolType,
-			"h323_module":                        types.BoolType,
-			"icmp_timeout":                       timetypes.GoDurationType{},
-			"mss_clamp":                          types.StringType,
-			"offload_accounting":                 types.BoolType,
-			"offload_l2_blocking":                types.BoolType,
-			"offload_sch":                        types.BoolType,
-			"other_timeout":                      timetypes.GoDurationType{},
-			"pptp_module":                        types.BoolType,
-			"receive_redirects":                  types.BoolType,
-			"send_redirects":                     types.BoolType,
-			"sip_module":                         types.BoolType,
-			"syn_cookies":                        types.BoolType,
-			"tcp_close_timeout":                  timetypes.GoDurationType{},
-			"tcp_close_wait_timeout":             timetypes.GoDurationType{},
-			"tcp_established_timeout":            timetypes.GoDurationType{},
-			"tcp_fin_wait_timeout":               timetypes.GoDurationType{},
-			"tcp_last_ack_timeout":               timetypes.GoDurationType{},
-			"tcp_syn_recv_timeout":               timetypes.GoDurationType{},
-			"tcp_syn_sent_timeout":               timetypes.GoDurationType{},
-			"tcp_time_wait_timeout":              timetypes.GoDurationType{},
-			"tftp_module":                        types.BoolType,
-			"timeout_setting_preference":         types.StringType,
-			"udp_other_timeout":                  timetypes.GoDurationType{},
-			"udp_stream_timeout":                 timetypes.GoDurationType{},
-			"unbind_wan_monitors":                types.BoolType,
-			"upnp_enabled":                       types.BoolType,
-			"upnp_nat_pmp_enabled":               types.BoolType,
-			"upnp_secure_mode":                   types.BoolType,
-			"upnp_wan_interface":                 types.StringType,
-		})
+		data.USG = types.ObjectNull(usgAttrTypes)
 	}
 
 	// IGMP snooping (site-level)
@@ -2454,14 +2747,13 @@ func (r *settingResource) mgmtModelToSetting(
 ) *settings.Mgmt {
 	setting := base
 
-	if !model.AutoUpgrade.IsNull() && !model.AutoUpgrade.IsUnknown() {
-		setting.AutoUpgrade = model.AutoUpgrade.ValueBool()
-	}
-	if !model.AutoUpgradeHour.IsNull() && !model.AutoUpgradeHour.IsUnknown() {
-		setting.AutoUpgradeHour = model.AutoUpgradeHour.ValueInt64Pointer()
-	}
-	if !model.SSHEnabled.IsNull() && !model.SSHEnabled.IsUnknown() {
-		setting.SSHEnabled = model.SSHEnabled.ValueBool()
+	if au, ok, _ := util.ObjectAs[settingMgmtAutoUpgradeModel](ctx, model.AutoUpgrade); ok {
+		if !au.Enabled.IsNull() && !au.Enabled.IsUnknown() {
+			setting.AutoUpgrade = au.Enabled.ValueBool()
+		}
+		if !au.Hour.IsNull() && !au.Hour.IsUnknown() {
+			setting.AutoUpgradeHour = au.Hour.ValueInt64Pointer()
+		}
 	}
 	if !model.AdvancedFeatureEnabled.IsNull() && !model.AdvancedFeatureEnabled.IsUnknown() {
 		setting.AdvancedFeatureEnabled = model.AdvancedFeatureEnabled.ValueBool()
@@ -2478,27 +2770,32 @@ func (r *settingResource) mgmtModelToSetting(
 	if !model.WifimanEnabled.IsNull() && !model.WifimanEnabled.IsUnknown() {
 		setting.WifimanEnabled = model.WifimanEnabled.ValueBool()
 	}
-	if !model.SSHUsername.IsNull() && !model.SSHUsername.IsUnknown() {
-		setting.SSHUsername = model.SSHUsername.ValueString()
-	}
-	if !model.SSHPassword.IsNull() && !model.SSHPassword.IsUnknown() {
-		setting.SSHPassword = model.SSHPassword.ValueString()
-	}
-	if !model.SSHAuthPasswordEnabled.IsNull() && !model.SSHAuthPasswordEnabled.IsUnknown() {
-		setting.SSHAuthPasswordEnabled = model.SSHAuthPasswordEnabled.ValueBool()
-	}
 
-	if !model.SSHKeys.IsNull() && !model.SSHKeys.IsUnknown() {
-		setting.SSHKeys = nil
-		var sshKeys []sshKeyModel
-		model.SSHKeys.ElementsAs(ctx, &sshKeys, false)
-		for _, sshKey := range sshKeys {
-			setting.SSHKeys = append(setting.SSHKeys, settings.SettingMgmtSSHKeys{
-				Name:    sshKey.Name.ValueString(),
-				KeyType: sshKey.Type.ValueString(),
-				Key:     sshKey.Key.ValueString(),
-				Comment: sshKey.Comment.ValueString(),
-			})
+	if ssh, ok, _ := util.ObjectAs[settingMgmtSSHModel](ctx, model.SSH); ok {
+		if !ssh.Enabled.IsNull() && !ssh.Enabled.IsUnknown() {
+			setting.SSHEnabled = ssh.Enabled.ValueBool()
+		}
+		if !ssh.Username.IsNull() && !ssh.Username.IsUnknown() {
+			setting.SSHUsername = ssh.Username.ValueString()
+		}
+		if !ssh.Password.IsNull() && !ssh.Password.IsUnknown() {
+			setting.SSHPassword = ssh.Password.ValueString()
+		}
+		if !ssh.AuthPasswordEnabled.IsNull() && !ssh.AuthPasswordEnabled.IsUnknown() {
+			setting.SSHAuthPasswordEnabled = ssh.AuthPasswordEnabled.ValueBool()
+		}
+		if !ssh.Keys.IsNull() && !ssh.Keys.IsUnknown() {
+			setting.SSHKeys = nil
+			var sshKeys []sshKeyModel
+			ssh.Keys.ElementsAs(ctx, &sshKeys, false)
+			for _, sshKey := range sshKeys {
+				setting.SSHKeys = append(setting.SSHKeys, settings.SettingMgmtSSHKeys{
+					Name:    sshKey.Name.ValueString(),
+					KeyType: sshKey.Type.ValueString(),
+					Key:     sshKey.Key.ValueString(),
+					Comment: sshKey.Comment.ValueString(),
+				})
+			}
 		}
 	}
 
@@ -2521,8 +2818,6 @@ func (r *settingResource) mgmtSettingToModel(
 		return types.BoolNull()
 	}
 
-	model.AutoUpgrade = boolOrNull(plan.AutoUpgrade, setting.AutoUpgrade)
-	model.SSHEnabled = boolOrNull(plan.SSHEnabled, setting.SSHEnabled)
 	model.AdvancedFeatureEnabled = boolOrNull(
 		plan.AdvancedFeatureEnabled, setting.AdvancedFeatureEnabled,
 	)
@@ -2530,28 +2825,42 @@ func (r *settingResource) mgmtSettingToModel(
 	model.DirectConnectEnabled = boolOrNull(plan.DirectConnectEnabled, setting.DirectConnectEnabled)
 	model.UnifiIdpEnabled = boolOrNull(plan.UnifiIdpEnabled, setting.UniFiIdentityProviderEnabled)
 	model.WifimanEnabled = boolOrNull(plan.WifimanEnabled, setting.WifimanEnabled)
-	model.SSHAuthPasswordEnabled = boolOrNull(
-		plan.SSHAuthPasswordEnabled, setting.SSHAuthPasswordEnabled,
-	)
 
-	if !plan.AutoUpgradeHour.IsNull() && !plan.AutoUpgradeHour.IsUnknown() {
-		model.AutoUpgradeHour = types.Int64PointerValue(setting.AutoUpgradeHour)
+	// auto_upgrade: an unconfigured (null/unknown) group stays null, exactly
+	// as the flat leaves did.
+	if planAU, ok, _ := util.ObjectAs[settingMgmtAutoUpgradeModel](ctx, plan.AutoUpgrade); ok {
+		au := settingMgmtAutoUpgradeModel{
+			Enabled: boolOrNull(planAU.Enabled, setting.AutoUpgrade),
+			Hour:    types.Int64Null(),
+		}
+		if !planAU.Hour.IsNull() && !planAU.Hour.IsUnknown() {
+			au.Hour = types.Int64PointerValue(setting.AutoUpgradeHour)
+		}
+		model.AutoUpgrade, _ = types.ObjectValueFrom(ctx, mgmtAutoUpgradeAttrTypes, au)
 	} else {
-		model.AutoUpgradeHour = types.Int64Null()
+		model.AutoUpgrade = types.ObjectNull(mgmtAutoUpgradeAttrTypes)
 	}
 
-	if !plan.SSHUsername.IsNull() && !plan.SSHUsername.IsUnknown() {
-		model.SSHUsername = util.StringValueOrNull(setting.SSHUsername)
-	} else {
-		model.SSHUsername = types.StringNull()
-	}
+	sshKeyType := types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes}
+	if planSSH, ok, _ := util.ObjectAs[settingMgmtSSHModel](ctx, plan.SSH); ok {
+		ssh := settingMgmtSSHModel{
+			Enabled: boolOrNull(planSSH.Enabled, setting.SSHEnabled),
+			AuthPasswordEnabled: boolOrNull(
+				planSSH.AuthPasswordEnabled,
+				setting.SSHAuthPasswordEnabled,
+			),
+			Username: types.StringNull(),
+			Keys:     types.ListNull(sshKeyType),
+		}
+		if !planSSH.Username.IsNull() && !planSSH.Username.IsUnknown() {
+			ssh.Username = util.StringValueOrNull(setting.SSHUsername)
+		}
 
-	// The controller never returns the plaintext SSH password (only hashes), so
-	// preserve the configured value to avoid a perpetual diff.
-	model.SSHPassword = plan.SSHPassword
+		// The controller never returns the plaintext SSH password (only
+		// hashes), so preserve the configured value to avoid a perpetual diff.
+		ssh.Password = planSSH.Password
 
-	if !plan.SSHKeys.IsNull() && !plan.SSHKeys.IsUnknown() {
-		if len(setting.SSHKeys) > 0 {
+		if !planSSH.Keys.IsNull() && !planSSH.Keys.IsUnknown() && len(setting.SSHKeys) > 0 {
 			var sshKeys []sshKeyModel
 			for _, sshKey := range setting.SSHKeys {
 				sshKeys = append(sshKeys, sshKeyModel{
@@ -2561,15 +2870,11 @@ func (r *settingResource) mgmtSettingToModel(
 					Comment: types.StringValue(sshKey.Comment),
 				})
 			}
-			listValue, _ := types.ListValueFrom(
-				ctx, types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes}, sshKeys,
-			)
-			model.SSHKeys = listValue
-		} else {
-			model.SSHKeys = types.ListNull(types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes})
+			ssh.Keys, _ = types.ListValueFrom(ctx, sshKeyType, sshKeys)
 		}
+		model.SSH, _ = types.ObjectValueFrom(ctx, mgmtSSHAttrTypes, ssh)
 	} else {
-		model.SSHKeys = types.ListNull(types.ObjectType{AttrTypes: mgmtSSHKeyAttrTypes})
+		model.SSH = types.ObjectNull(mgmtSSHAttrTypes)
 	}
 
 	return model
@@ -2642,35 +2947,37 @@ func (r *settingResource) radiusSettingToModel(
 // with api.err.Invalid (#374).
 const usgGeoSettingKey = "usg_geo"
 
-// usgGeoConfigured reports whether the plan manages any Region Blocking
-// field.
-func usgGeoConfigured(plan *settingUSGModel) bool {
-	return (!plan.GeoIPFilteringEnabled.IsNull() && !plan.GeoIPFilteringEnabled.IsUnknown()) ||
-		(!plan.GeoIPFilteringBlock.IsNull() && !plan.GeoIPFilteringBlock.IsUnknown()) ||
-		(!plan.GeoIPFilteringCountries.IsNull() && !plan.GeoIPFilteringCountries.IsUnknown()) ||
-		(!plan.GeoIPFilteringTrafficDirection.IsNull() &&
-			!plan.GeoIPFilteringTrafficDirection.IsUnknown())
+// usgSettingKey is the usg setting itself, read and written raw for the
+// legacy geo_ip_filtering_* fields the v10 models no longer carry.
+const usgSettingKey = "usg"
+
+// usgGeoConfigured reports whether the planned usg.geo_ip_filtering object
+// manages any Region Blocking field.
+func usgGeoConfigured(plan *settingUsgGeoIPFilteringModel) bool {
+	return (!plan.Enabled.IsNull() && !plan.Enabled.IsUnknown()) ||
+		(!plan.Block.IsNull() && !plan.Block.IsUnknown()) ||
+		(!plan.Countries.IsNull() && !plan.Countries.IsUnknown()) ||
+		(!plan.TrafficDirection.IsNull() && !plan.TrafficDirection.IsUnknown())
 }
 
 // usgGeoRawSetting builds the standalone usg_geo setting payload from the
-// usg geo fields. The legacy field names map onto usg_geo.ip_filtering:
-// geo_ip_filtering_block becomes action; countries, enabled and
+// usg.geo_ip_filtering object. The legacy usg field names map onto
+// usg_geo.ip_filtering: block becomes action; countries, enabled and
 // traffic_direction keep their names and shapes.
-func usgGeoRawSetting(model *settingUSGModel) *settings.RawSetting {
+func usgGeoRawSetting(model *settingUsgGeoIPFilteringModel) *settings.RawSetting {
 	ipFiltering := map[string]any{
 		// Always sent: the legacy usg field is likewise always serialized,
 		// so an unconfigured enabled reads as false on both paths.
-		"enabled": model.GeoIPFilteringEnabled.ValueBool(),
+		"enabled": model.Enabled.ValueBool(),
 	}
-	if !model.GeoIPFilteringBlock.IsNull() && !model.GeoIPFilteringBlock.IsUnknown() {
-		ipFiltering["action"] = model.GeoIPFilteringBlock.ValueString()
+	if !model.Block.IsNull() && !model.Block.IsUnknown() {
+		ipFiltering["action"] = model.Block.ValueString()
 	}
-	if !model.GeoIPFilteringCountries.IsNull() && !model.GeoIPFilteringCountries.IsUnknown() {
-		ipFiltering["countries"] = model.GeoIPFilteringCountries.ValueString()
+	if !model.Countries.IsNull() && !model.Countries.IsUnknown() {
+		ipFiltering["countries"] = model.Countries.ValueString()
 	}
-	if !model.GeoIPFilteringTrafficDirection.IsNull() &&
-		!model.GeoIPFilteringTrafficDirection.IsUnknown() {
-		ipFiltering["traffic_direction"] = model.GeoIPFilteringTrafficDirection.ValueString()
+	if !model.TrafficDirection.IsNull() && !model.TrafficDirection.IsUnknown() {
+		ipFiltering["traffic_direction"] = model.TrafficDirection.ValueString()
 	}
 	return &settings.RawSetting{
 		BaseSetting: settings.BaseSetting{Key: usgGeoSettingKey},
@@ -2678,10 +2985,51 @@ func usgGeoRawSetting(model *settingUSGModel) *settings.RawSetting {
 	}
 }
 
+// usgWithGeo pairs the typed usg setting with its Region Blocking fields.
+// Controller v10 moved geo_ip_filtering_* off the usg setting into the
+// standalone usg_geo setting, so settings.Usg no longer carries them; older
+// controllers still store them on usg itself and are served through
+// applyLegacyUsgGeoIPFiltering / the raw write in persistUsgGeoFiltering.
+type usgWithGeo struct {
+	*settings.Usg
+	GeoIPFilteringEnabled          bool
+	GeoIPFilteringBlock            string
+	GeoIPFilteringCountries        string
+	GeoIPFilteringTrafficDirection string
+}
+
+// usgGeoRawFields renders the carrier's Region Blocking fields in the legacy
+// geo_ip_filtering_* shape older controllers persist on the usg setting.
+func (u *usgWithGeo) usgGeoRawFields() map[string]any {
+	return map[string]any{
+		"geo_ip_filtering_enabled":           u.GeoIPFilteringEnabled,
+		"geo_ip_filtering_block":             u.GeoIPFilteringBlock,
+		"geo_ip_filtering_countries":         u.GeoIPFilteringCountries,
+		"geo_ip_filtering_traffic_direction": u.GeoIPFilteringTrafficDirection,
+	}
+}
+
+// applyLegacyUsgGeoIPFiltering fills the carrier from the geo_ip_filtering_*
+// fields of a raw usg setting, the shape older controllers store.
+func applyLegacyUsgGeoIPFiltering(setting *usgWithGeo, data map[string]any) {
+	if v, ok := data["geo_ip_filtering_enabled"].(bool); ok {
+		setting.GeoIPFilteringEnabled = v
+	}
+	if v, ok := data["geo_ip_filtering_block"].(string); ok {
+		setting.GeoIPFilteringBlock = v
+	}
+	if v, ok := data["geo_ip_filtering_countries"].(string); ok {
+		setting.GeoIPFilteringCountries = v
+	}
+	if v, ok := data["geo_ip_filtering_traffic_direction"].(string); ok {
+		setting.GeoIPFilteringTrafficDirection = v
+	}
+}
+
 // applyUsgGeoIPFiltering overrides the usg setting's geo fields with the
 // values from a usg_geo setting's ip_filtering payload, which is
 // authoritative whenever the controller stores one.
-func applyUsgGeoIPFiltering(setting *settings.Usg, data map[string]any) {
+func applyUsgGeoIPFiltering(setting *usgWithGeo, data map[string]any) {
 	ipf, ok := data["ip_filtering"].(map[string]any)
 	if !ok {
 		return
@@ -2722,24 +3070,45 @@ func (r *settingResource) persistUsgGeoFiltering(
 	model *settingUSGModel,
 	diags *diag.Diagnostics,
 ) {
-	if !usgGeoConfigured(model) {
+	geo, ok, d := util.ObjectAs[settingUsgGeoIPFilteringModel](ctx, model.GeoIPFiltering)
+	diags.Append(d...)
+	if !ok || !usgGeoConfigured(&geo) {
 		return
 	}
+	carrier := &usgWithGeo{
+		GeoIPFilteringEnabled:          geo.Enabled.ValueBool(),
+		GeoIPFilteringBlock:            geo.Block.ValueString(),
+		GeoIPFilteringCountries:        geo.Countries.ValueString(),
+		GeoIPFilteringTrafficDirection: geo.TrafficDirection.ValueString(),
+	}
 
-	err := r.client.UpdateSetting(ctx, site, usgGeoRawSetting(model))
+	err := r.client.UpdateSetting(ctx, site, usgGeoRawSetting(&geo))
 	if err == nil {
 		return
 	}
 
-	// Older controllers reject the usg_geo key with api.err.Invalid; they
-	// persist the geo_ip_filtering_* fields on the usg setting itself, which
-	// the preceding usg update already wrote. Confirm that before treating
-	// the rejection as benign.
+	// Older controllers reject the usg_geo key with api.err.Invalid and
+	// persist the geo_ip_filtering_* fields on the usg setting itself. The
+	// v10 models dropped those fields, so the preceding typed usg update no
+	// longer carries them: merge them into the raw usg setting instead.
 	var apiErr *ui.APIError
 	if errors.As(err, &apiErr) && apiErr.Message == "api.err.Invalid" {
-		usgData, found, readErr := r.readRawSettingData(ctx, site, "usg")
+		usgData, found, readErr := r.readRawSettingData(ctx, site, usgSettingKey)
 		if readErr == nil && found {
 			if _, ok := usgData["geo_ip_filtering_enabled"]; ok {
+				for k, v := range carrier.usgGeoRawFields() {
+					usgData[k] = v
+				}
+				raw := &settings.RawSetting{
+					BaseSetting: settings.BaseSetting{Key: usgSettingKey},
+					Data:        usgData,
+				}
+				if writeErr := r.client.UpdateSetting(ctx, site, raw); writeErr != nil {
+					diags.AddError(
+						"Error Updating USG GeoIP Filtering Setting",
+						writeErr.Error(),
+					)
+				}
 				return
 			}
 		}
@@ -2750,8 +3119,8 @@ func (r *settingResource) persistUsgGeoFiltering(
 func (r *settingResource) usgModelToSetting(
 	ctx context.Context,
 	model *settingUSGModel,
-) *settings.Usg {
-	setting := &settings.Usg{}
+) *usgWithGeo {
+	setting := &usgWithGeo{Usg: &settings.Usg{}}
 
 	if !model.BroadcastPing.IsNull() {
 		setting.BroadcastPing = model.BroadcastPing.ValueBool()
@@ -2769,17 +3138,21 @@ func (r *settingResource) usgModelToSetting(
 	if !model.FtpModule.IsNull() {
 		setting.FtpModule = model.FtpModule.ValueBool()
 	}
-	if !model.GeoIPFilteringBlock.IsNull() {
-		setting.GeoIPFilteringBlock = model.GeoIPFilteringBlock.ValueString()
-	}
-	if !model.GeoIPFilteringCountries.IsNull() {
-		setting.GeoIPFilteringCountries = model.GeoIPFilteringCountries.ValueString()
-	}
-	if !model.GeoIPFilteringEnabled.IsNull() {
-		setting.GeoIPFilteringEnabled = model.GeoIPFilteringEnabled.ValueBool()
-	}
-	if !model.GeoIPFilteringTrafficDirection.IsNull() {
-		setting.GeoIPFilteringTrafficDirection = model.GeoIPFilteringTrafficDirection.ValueString()
+	// Nested groups: an unset (null/unknown) object contributes nothing,
+	// which serializes the same zero values the unset flat leaves did.
+	if geo, ok, _ := util.ObjectAs[settingUsgGeoIPFilteringModel](ctx, model.GeoIPFiltering); ok {
+		if !geo.Block.IsNull() {
+			setting.GeoIPFilteringBlock = geo.Block.ValueString()
+		}
+		if !geo.Countries.IsNull() {
+			setting.GeoIPFilteringCountries = geo.Countries.ValueString()
+		}
+		if !geo.Enabled.IsNull() {
+			setting.GeoIPFilteringEnabled = geo.Enabled.ValueBool()
+		}
+		if !geo.TrafficDirection.IsNull() {
+			setting.GeoIPFilteringTrafficDirection = geo.TrafficDirection.ValueString()
+		}
 	}
 	if !model.GreModule.IsNull() {
 		setting.GreModule = model.GreModule.ValueBool()
@@ -2793,14 +3166,16 @@ func (r *settingResource) usgModelToSetting(
 	if !model.MssClamp.IsNull() {
 		setting.MssClamp = model.MssClamp.ValueString()
 	}
-	if !model.OffloadAccounting.IsNull() {
-		setting.OffloadAccounting = model.OffloadAccounting.ValueBool()
-	}
-	if !model.OffloadL2Blocking.IsNull() {
-		setting.OffloadL2Blocking = model.OffloadL2Blocking.ValueBool()
-	}
-	if !model.OffloadSch.IsNull() {
-		setting.OffloadSch = model.OffloadSch.ValueBool()
+	if off, ok, _ := util.ObjectAs[settingUsgOffloadModel](ctx, model.Offload); ok {
+		if !off.Accounting.IsNull() {
+			setting.OffloadAccounting = off.Accounting.ValueBool()
+		}
+		if !off.L2Blocking.IsNull() {
+			setting.OffloadL2Blocking = off.L2Blocking.ValueBool()
+		}
+		if !off.Sch.IsNull() {
+			setting.OffloadSch = off.Sch.ValueBool()
+		}
 	}
 	if !model.OtherTimeout.IsNull() && !model.OtherTimeout.IsUnknown() {
 		setting.OtherTimeout = util.DurationUnits(model.OtherTimeout, time.Second)
@@ -2820,29 +3195,20 @@ func (r *settingResource) usgModelToSetting(
 	if !model.SynCookies.IsNull() {
 		setting.SynCookies = model.SynCookies.ValueBool()
 	}
-	if !model.TCPCloseTimeout.IsNull() && !model.TCPCloseTimeout.IsUnknown() {
-		setting.TCPCloseTimeout = util.DurationUnits(model.TCPCloseTimeout, time.Second)
-	}
-	if !model.TCPCloseWaitTimeout.IsNull() && !model.TCPCloseWaitTimeout.IsUnknown() {
-		setting.TCPCloseWaitTimeout = util.DurationUnits(model.TCPCloseWaitTimeout, time.Second)
-	}
-	if !model.TCPEstablishedTimeout.IsNull() && !model.TCPEstablishedTimeout.IsUnknown() {
-		setting.TCPEstablishedTimeout = util.DurationUnits(model.TCPEstablishedTimeout, time.Second)
-	}
-	if !model.TCPFinWaitTimeout.IsNull() && !model.TCPFinWaitTimeout.IsUnknown() {
-		setting.TCPFinWaitTimeout = util.DurationUnits(model.TCPFinWaitTimeout, time.Second)
-	}
-	if !model.TCPLastAckTimeout.IsNull() && !model.TCPLastAckTimeout.IsUnknown() {
-		setting.TCPLastAckTimeout = util.DurationUnits(model.TCPLastAckTimeout, time.Second)
-	}
-	if !model.TCPSynRecvTimeout.IsNull() && !model.TCPSynRecvTimeout.IsUnknown() {
-		setting.TCPSynRecvTimeout = util.DurationUnits(model.TCPSynRecvTimeout, time.Second)
-	}
-	if !model.TCPSynSentTimeout.IsNull() && !model.TCPSynSentTimeout.IsUnknown() {
-		setting.TCPSynSentTimeout = util.DurationUnits(model.TCPSynSentTimeout, time.Second)
-	}
-	if !model.TCPTimeWaitTimeout.IsNull() && !model.TCPTimeWaitTimeout.IsUnknown() {
-		setting.TCPTimeWaitTimeout = util.DurationUnits(model.TCPTimeWaitTimeout, time.Second)
+	if tcp, ok, _ := util.ObjectAs[settingUsgTCPModel](ctx, model.TCP); ok {
+		setDur := func(dst *int64, v timetypes.GoDuration) {
+			if !v.IsNull() && !v.IsUnknown() {
+				*dst = util.DurationUnits(v, time.Second)
+			}
+		}
+		setDur(&setting.TCPCloseTimeout, tcp.CloseTimeout)
+		setDur(&setting.TCPCloseWaitTimeout, tcp.CloseWaitTimeout)
+		setDur(&setting.TCPEstablishedTimeout, tcp.EstablishedTimeout)
+		setDur(&setting.TCPFinWaitTimeout, tcp.FinWaitTimeout)
+		setDur(&setting.TCPLastAckTimeout, tcp.LastAckTimeout)
+		setDur(&setting.TCPSynRecvTimeout, tcp.SynRecvTimeout)
+		setDur(&setting.TCPSynSentTimeout, tcp.SynSentTimeout)
+		setDur(&setting.TCPTimeWaitTimeout, tcp.TimeWaitTimeout)
 	}
 	if !model.TFTPModule.IsNull() {
 		setting.TFTPModule = model.TFTPModule.ValueBool()
@@ -2850,26 +3216,30 @@ func (r *settingResource) usgModelToSetting(
 	if !model.TimeoutSettingPreference.IsNull() {
 		setting.TimeoutSettingPreference = model.TimeoutSettingPreference.ValueString()
 	}
-	if !model.UDPOtherTimeout.IsNull() && !model.UDPOtherTimeout.IsUnknown() {
-		setting.UDPOtherTimeout = util.DurationUnits(model.UDPOtherTimeout, time.Second)
-	}
-	if !model.UDPStreamTimeout.IsNull() && !model.UDPStreamTimeout.IsUnknown() {
-		setting.UDPStreamTimeout = util.DurationUnits(model.UDPStreamTimeout, time.Second)
+	if udp, ok, _ := util.ObjectAs[settingUsgUDPModel](ctx, model.UDP); ok {
+		if !udp.OtherTimeout.IsNull() && !udp.OtherTimeout.IsUnknown() {
+			setting.UDPOtherTimeout = util.DurationUnits(udp.OtherTimeout, time.Second)
+		}
+		if !udp.StreamTimeout.IsNull() && !udp.StreamTimeout.IsUnknown() {
+			setting.UDPStreamTimeout = util.DurationUnits(udp.StreamTimeout, time.Second)
+		}
 	}
 	if !model.UnbindWANMonitors.IsNull() {
 		setting.UnbindWANMonitors = model.UnbindWANMonitors.ValueBool()
 	}
-	if !model.UPnPEnabled.IsNull() {
-		setting.UPnPEnabled = model.UPnPEnabled.ValueBool()
-	}
-	if !model.UPnPNATPmpEnabled.IsNull() {
-		setting.UPnPNATPmpEnabled = model.UPnPNATPmpEnabled.ValueBool()
-	}
-	if !model.UPnPSecureMode.IsNull() {
-		setting.UPnPSecureMode = model.UPnPSecureMode.ValueBool()
-	}
-	if !model.UPnPWANInterface.IsNull() {
-		setting.UPnPWANInterface = model.UPnPWANInterface.ValueString()
+	if upnp, ok, _ := util.ObjectAs[settingUsgUPnPModel](ctx, model.UPnP); ok {
+		if !upnp.Enabled.IsNull() {
+			setting.UPnPEnabled = upnp.Enabled.ValueBool()
+		}
+		if !upnp.NATPmpEnabled.IsNull() {
+			setting.UPnPNATPmpEnabled = upnp.NATPmpEnabled.ValueBool()
+		}
+		if !upnp.SecureMode.IsNull() {
+			setting.UPnPSecureMode = upnp.SecureMode.ValueBool()
+		}
+		if !upnp.WANInterface.IsNull() {
+			setting.UPnPWANInterface = upnp.WANInterface.ValueString()
+		}
 	}
 
 	return setting
@@ -2877,7 +3247,7 @@ func (r *settingResource) usgModelToSetting(
 
 func (r *settingResource) usgSettingToModel(
 	ctx context.Context,
-	setting *settings.Usg,
+	setting *usgWithGeo,
 	plan *settingUSGModel,
 ) *settingUSGModel {
 	model := &settingUSGModel{}
@@ -2896,20 +3266,10 @@ func (r *settingResource) usgSettingToModel(
 			SecondaryDNSServer: types.StringValue(setting.DNSVerification.SecondaryDNSServer),
 			SettingPreference:  types.StringValue(setting.DNSVerification.SettingPreference),
 		}
-		objValue, _ := types.ObjectValueFrom(ctx, map[string]attr.Type{
-			"domain":               types.StringType,
-			"primary_dns_server":   types.StringType,
-			"secondary_dns_server": types.StringType,
-			"setting_preference":   types.StringType,
-		}, dnsVerif)
+		objValue, _ := types.ObjectValueFrom(ctx, usgDNSVerificationAttrTypes, dnsVerif)
 		model.DNSVerification = objValue
 	} else {
-		model.DNSVerification = types.ObjectNull(map[string]attr.Type{
-			"domain":               types.StringType,
-			"primary_dns_server":   types.StringType,
-			"secondary_dns_server": types.StringType,
-			"setting_preference":   types.StringType,
-		})
+		model.DNSVerification = types.ObjectNull(usgDNSVerificationAttrTypes)
 	}
 
 	if !plan.FtpModule.IsNull() && !plan.FtpModule.IsUnknown() {
@@ -2918,43 +3278,47 @@ func (r *settingResource) usgSettingToModel(
 		model.FtpModule = types.BoolNull()
 	}
 
-	if !plan.GeoIPFilteringBlock.IsNull() && !plan.GeoIPFilteringBlock.IsUnknown() {
-		if setting.GeoIPFilteringBlock != "" {
-			model.GeoIPFilteringBlock = types.StringValue(setting.GeoIPFilteringBlock)
-		} else {
-			model.GeoIPFilteringBlock = types.StringNull()
+	// Nested groups: only populate a group the plan configured, and within
+	// it only the leaves the plan configured (exactly as the flat leaves did).
+	boolIfPlanned := func(planVal types.Bool, apiVal bool) types.Bool {
+		if !planVal.IsNull() && !planVal.IsUnknown() {
+			return types.BoolValue(apiVal)
 		}
-	} else {
-		model.GeoIPFilteringBlock = types.StringNull()
+		return types.BoolNull()
+	}
+	stringIfPlanned := func(planVal types.String, apiVal string) types.String {
+		if !planVal.IsNull() && !planVal.IsUnknown() {
+			return util.StringValueOrNull(apiVal)
+		}
+		return types.StringNull()
+	}
+	durIfPlanned := func(planVal timetypes.GoDuration, apiVal int64) timetypes.GoDuration {
+		if !planVal.IsNull() && !planVal.IsUnknown() {
+			return util.DurationValue(apiVal, time.Second)
+		}
+		return timetypes.NewGoDurationNull()
 	}
 
-	if !plan.GeoIPFilteringCountries.IsNull() && !plan.GeoIPFilteringCountries.IsUnknown() {
-		if setting.GeoIPFilteringCountries != "" {
-			model.GeoIPFilteringCountries = types.StringValue(setting.GeoIPFilteringCountries)
-		} else {
-			model.GeoIPFilteringCountries = types.StringNull()
-		}
+	if planGeo, ok, _ := util.ObjectAs[settingUsgGeoIPFilteringModel](
+		ctx,
+		plan.GeoIPFiltering,
+	); ok {
+		model.GeoIPFiltering, _ = types.ObjectValueFrom(
+			ctx, usgGeoIPFilteringAttrTypes, settingUsgGeoIPFilteringModel{
+				Block: stringIfPlanned(planGeo.Block, setting.GeoIPFilteringBlock),
+				Countries: stringIfPlanned(
+					planGeo.Countries,
+					setting.GeoIPFilteringCountries,
+				),
+				Enabled: boolIfPlanned(planGeo.Enabled, setting.GeoIPFilteringEnabled),
+				TrafficDirection: stringIfPlanned(
+					planGeo.TrafficDirection,
+					setting.GeoIPFilteringTrafficDirection,
+				),
+			},
+		)
 	} else {
-		model.GeoIPFilteringCountries = types.StringNull()
-	}
-
-	if !plan.GeoIPFilteringEnabled.IsNull() && !plan.GeoIPFilteringEnabled.IsUnknown() {
-		model.GeoIPFilteringEnabled = types.BoolValue(setting.GeoIPFilteringEnabled)
-	} else {
-		model.GeoIPFilteringEnabled = types.BoolNull()
-	}
-
-	if !plan.GeoIPFilteringTrafficDirection.IsNull() &&
-		!plan.GeoIPFilteringTrafficDirection.IsUnknown() {
-		if setting.GeoIPFilteringTrafficDirection != "" {
-			model.GeoIPFilteringTrafficDirection = types.StringValue(
-				setting.GeoIPFilteringTrafficDirection,
-			)
-		} else {
-			model.GeoIPFilteringTrafficDirection = types.StringNull()
-		}
-	} else {
-		model.GeoIPFilteringTrafficDirection = types.StringNull()
+		model.GeoIPFiltering = types.ObjectNull(usgGeoIPFilteringAttrTypes)
 	}
 
 	if !plan.GreModule.IsNull() && !plan.GreModule.IsUnknown() {
@@ -2985,22 +3349,14 @@ func (r *settingResource) usgSettingToModel(
 		model.MssClamp = types.StringNull()
 	}
 
-	if !plan.OffloadAccounting.IsNull() && !plan.OffloadAccounting.IsUnknown() {
-		model.OffloadAccounting = types.BoolValue(setting.OffloadAccounting)
+	if planOff, ok, _ := util.ObjectAs[settingUsgOffloadModel](ctx, plan.Offload); ok {
+		model.Offload, _ = types.ObjectValueFrom(ctx, usgOffloadAttrTypes, settingUsgOffloadModel{
+			Accounting: boolIfPlanned(planOff.Accounting, setting.OffloadAccounting),
+			L2Blocking: boolIfPlanned(planOff.L2Blocking, setting.OffloadL2Blocking),
+			Sch:        boolIfPlanned(planOff.Sch, setting.OffloadSch),
+		})
 	} else {
-		model.OffloadAccounting = types.BoolNull()
-	}
-
-	if !plan.OffloadL2Blocking.IsNull() && !plan.OffloadL2Blocking.IsUnknown() {
-		model.OffloadL2Blocking = types.BoolValue(setting.OffloadL2Blocking)
-	} else {
-		model.OffloadL2Blocking = types.BoolNull()
-	}
-
-	if !plan.OffloadSch.IsNull() && !plan.OffloadSch.IsUnknown() {
-		model.OffloadSch = types.BoolValue(setting.OffloadSch)
-	} else {
-		model.OffloadSch = types.BoolNull()
+		model.Offload = types.ObjectNull(usgOffloadAttrTypes)
 	}
 
 	if !plan.OtherTimeout.IsNull() && !plan.OtherTimeout.IsUnknown() {
@@ -3039,52 +3395,22 @@ func (r *settingResource) usgSettingToModel(
 		model.SynCookies = types.BoolNull()
 	}
 
-	if !plan.TCPCloseTimeout.IsNull() && !plan.TCPCloseTimeout.IsUnknown() {
-		model.TCPCloseTimeout = util.DurationValue(setting.TCPCloseTimeout, time.Second)
+	if planTCP, ok, _ := util.ObjectAs[settingUsgTCPModel](ctx, plan.TCP); ok {
+		model.TCP, _ = types.ObjectValueFrom(ctx, usgTCPAttrTypes, settingUsgTCPModel{
+			CloseTimeout:     durIfPlanned(planTCP.CloseTimeout, setting.TCPCloseTimeout),
+			CloseWaitTimeout: durIfPlanned(planTCP.CloseWaitTimeout, setting.TCPCloseWaitTimeout),
+			EstablishedTimeout: durIfPlanned(
+				planTCP.EstablishedTimeout,
+				setting.TCPEstablishedTimeout,
+			),
+			FinWaitTimeout:  durIfPlanned(planTCP.FinWaitTimeout, setting.TCPFinWaitTimeout),
+			LastAckTimeout:  durIfPlanned(planTCP.LastAckTimeout, setting.TCPLastAckTimeout),
+			SynRecvTimeout:  durIfPlanned(planTCP.SynRecvTimeout, setting.TCPSynRecvTimeout),
+			SynSentTimeout:  durIfPlanned(planTCP.SynSentTimeout, setting.TCPSynSentTimeout),
+			TimeWaitTimeout: durIfPlanned(planTCP.TimeWaitTimeout, setting.TCPTimeWaitTimeout),
+		})
 	} else {
-		model.TCPCloseTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.TCPCloseWaitTimeout.IsNull() && !plan.TCPCloseWaitTimeout.IsUnknown() {
-		model.TCPCloseWaitTimeout = util.DurationValue(setting.TCPCloseWaitTimeout, time.Second)
-	} else {
-		model.TCPCloseWaitTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.TCPEstablishedTimeout.IsNull() && !plan.TCPEstablishedTimeout.IsUnknown() {
-		model.TCPEstablishedTimeout = util.DurationValue(setting.TCPEstablishedTimeout, time.Second)
-	} else {
-		model.TCPEstablishedTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.TCPFinWaitTimeout.IsNull() && !plan.TCPFinWaitTimeout.IsUnknown() {
-		model.TCPFinWaitTimeout = util.DurationValue(setting.TCPFinWaitTimeout, time.Second)
-	} else {
-		model.TCPFinWaitTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.TCPLastAckTimeout.IsNull() && !plan.TCPLastAckTimeout.IsUnknown() {
-		model.TCPLastAckTimeout = util.DurationValue(setting.TCPLastAckTimeout, time.Second)
-	} else {
-		model.TCPLastAckTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.TCPSynRecvTimeout.IsNull() && !plan.TCPSynRecvTimeout.IsUnknown() {
-		model.TCPSynRecvTimeout = util.DurationValue(setting.TCPSynRecvTimeout, time.Second)
-	} else {
-		model.TCPSynRecvTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.TCPSynSentTimeout.IsNull() && !plan.TCPSynSentTimeout.IsUnknown() {
-		model.TCPSynSentTimeout = util.DurationValue(setting.TCPSynSentTimeout, time.Second)
-	} else {
-		model.TCPSynSentTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.TCPTimeWaitTimeout.IsNull() && !plan.TCPTimeWaitTimeout.IsUnknown() {
-		model.TCPTimeWaitTimeout = util.DurationValue(setting.TCPTimeWaitTimeout, time.Second)
-	} else {
-		model.TCPTimeWaitTimeout = timetypes.NewGoDurationNull()
+		model.TCP = types.ObjectNull(usgTCPAttrTypes)
 	}
 
 	if !plan.TFTPModule.IsNull() && !plan.TFTPModule.IsUnknown() {
@@ -3103,16 +3429,13 @@ func (r *settingResource) usgSettingToModel(
 		model.TimeoutSettingPreference = types.StringNull()
 	}
 
-	if !plan.UDPOtherTimeout.IsNull() && !plan.UDPOtherTimeout.IsUnknown() {
-		model.UDPOtherTimeout = util.DurationValue(setting.UDPOtherTimeout, time.Second)
+	if planUDP, ok, _ := util.ObjectAs[settingUsgUDPModel](ctx, plan.UDP); ok {
+		model.UDP, _ = types.ObjectValueFrom(ctx, usgUDPAttrTypes, settingUsgUDPModel{
+			OtherTimeout:  durIfPlanned(planUDP.OtherTimeout, setting.UDPOtherTimeout),
+			StreamTimeout: durIfPlanned(planUDP.StreamTimeout, setting.UDPStreamTimeout),
+		})
 	} else {
-		model.UDPOtherTimeout = timetypes.NewGoDurationNull()
-	}
-
-	if !plan.UDPStreamTimeout.IsNull() && !plan.UDPStreamTimeout.IsUnknown() {
-		model.UDPStreamTimeout = util.DurationValue(setting.UDPStreamTimeout, time.Second)
-	} else {
-		model.UDPStreamTimeout = timetypes.NewGoDurationNull()
+		model.UDP = types.ObjectNull(usgUDPAttrTypes)
 	}
 
 	if !plan.UnbindWANMonitors.IsNull() && !plan.UnbindWANMonitors.IsUnknown() {
@@ -3121,32 +3444,15 @@ func (r *settingResource) usgSettingToModel(
 		model.UnbindWANMonitors = types.BoolNull()
 	}
 
-	if !plan.UPnPEnabled.IsNull() && !plan.UPnPEnabled.IsUnknown() {
-		model.UPnPEnabled = types.BoolValue(setting.UPnPEnabled)
+	if planUPnP, ok, _ := util.ObjectAs[settingUsgUPnPModel](ctx, plan.UPnP); ok {
+		model.UPnP, _ = types.ObjectValueFrom(ctx, usgUPnPAttrTypes, settingUsgUPnPModel{
+			Enabled:       boolIfPlanned(planUPnP.Enabled, setting.UPnPEnabled),
+			NATPmpEnabled: boolIfPlanned(planUPnP.NATPmpEnabled, setting.UPnPNATPmpEnabled),
+			SecureMode:    boolIfPlanned(planUPnP.SecureMode, setting.UPnPSecureMode),
+			WANInterface:  stringIfPlanned(planUPnP.WANInterface, setting.UPnPWANInterface),
+		})
 	} else {
-		model.UPnPEnabled = types.BoolNull()
-	}
-
-	if !plan.UPnPNATPmpEnabled.IsNull() && !plan.UPnPNATPmpEnabled.IsUnknown() {
-		model.UPnPNATPmpEnabled = types.BoolValue(setting.UPnPNATPmpEnabled)
-	} else {
-		model.UPnPNATPmpEnabled = types.BoolNull()
-	}
-
-	if !plan.UPnPSecureMode.IsNull() && !plan.UPnPSecureMode.IsUnknown() {
-		model.UPnPSecureMode = types.BoolValue(setting.UPnPSecureMode)
-	} else {
-		model.UPnPSecureMode = types.BoolNull()
-	}
-
-	if !plan.UPnPWANInterface.IsNull() && !plan.UPnPWANInterface.IsUnknown() {
-		if setting.UPnPWANInterface != "" {
-			model.UPnPWANInterface = types.StringValue(setting.UPnPWANInterface)
-		} else {
-			model.UPnPWANInterface = types.StringNull()
-		}
-	} else {
-		model.UPnPWANInterface = types.StringNull()
+		model.UPnP = types.ObjectNull(usgUPnPAttrTypes)
 	}
 
 	return model
@@ -3299,22 +3605,32 @@ func (r *settingResource) syslogModelToSetting(
 	diags *diag.Diagnostics,
 ) *settings.Rsyslogd {
 	setting := &settings.Rsyslogd{
-		Enabled:                     m.Enabled.ValueBool(),
-		Debug:                       m.Debug.ValueBool(),
-		IP:                          m.IP.ValueString(),
-		LogAllContents:              m.LogAllContents.ValueBool(),
-		NetconsoleEnabled:           m.NetconsoleEnabled.ValueBool(),
-		NetconsoleHost:              m.NetconsoleHost.ValueString(),
-		ThisController:              m.ThisController.ValueBool(),
-		ThisControllerEncryptedOnly: m.ThisControllerEncryptedOnly.ValueBool(),
+		Enabled:        m.Enabled.ValueBool(),
+		Debug:          m.Debug.ValueBool(),
+		IP:             m.IP.ValueString(),
+		LogAllContents: m.LogAllContents.ValueBool(),
 	}
 	// Guard the optional ports: an unknown (unset Optional+Computed) value yields a
 	// 0 pointer, which the controller rejects as an out-of-range port (#303, cf. #288).
 	if !m.Port.IsNull() && !m.Port.IsUnknown() {
 		setting.Port = m.Port.ValueInt64Pointer()
 	}
-	if !m.NetconsolePort.IsNull() && !m.NetconsolePort.IsUnknown() {
-		setting.NetconsolePort = m.NetconsolePort.ValueInt64Pointer()
+	// An unset (null/unknown) group contributes nothing, which serializes the
+	// same zero values the unset flat leaves did.
+	if nc, ok, d := util.ObjectAs[settingSyslogNetconsoleModel](ctx, m.Netconsole); ok {
+		setting.NetconsoleEnabled = nc.Enabled.ValueBool()
+		setting.NetconsoleHost = nc.Host.ValueString()
+		if !nc.Port.IsNull() && !nc.Port.IsUnknown() {
+			setting.NetconsolePort = nc.Port.ValueInt64Pointer()
+		}
+	} else {
+		diags.Append(d...)
+	}
+	if tc, ok, d := util.ObjectAs[settingSyslogThisControllerModel](ctx, m.ThisController); ok {
+		setting.ThisController = tc.Enabled.ValueBool()
+		setting.ThisControllerEncryptedOnly = tc.EncryptedOnly.ValueBool()
+	} else {
+		diags.Append(d...)
 	}
 	if !m.Contents.IsNull() && !m.Contents.IsUnknown() {
 		diags.Append(m.Contents.ElementsAs(ctx, &setting.Contents, false)...)
@@ -3329,18 +3645,32 @@ func (r *settingResource) syslogSettingToModel(
 ) settingSyslogModel {
 	contents, d := types.ListValueFrom(ctx, types.StringType, s.Contents)
 	diags.Append(d...)
+	netconsole, d := types.ObjectValueFrom(
+		ctx,
+		syslogNetconsoleAttrTypes,
+		settingSyslogNetconsoleModel{
+			Enabled: types.BoolValue(s.NetconsoleEnabled),
+			Host:    util.StringValueOrNull(s.NetconsoleHost),
+			Port:    types.Int64PointerValue(s.NetconsolePort),
+		},
+	)
+	diags.Append(d...)
+	thisController, d := types.ObjectValueFrom(
+		ctx, syslogThisControllerAttrTypes, settingSyslogThisControllerModel{
+			Enabled:       types.BoolValue(s.ThisController),
+			EncryptedOnly: types.BoolValue(s.ThisControllerEncryptedOnly),
+		},
+	)
+	diags.Append(d...)
 	return settingSyslogModel{
-		Enabled:                     types.BoolValue(s.Enabled),
-		Contents:                    contents,
-		Debug:                       types.BoolValue(s.Debug),
-		IP:                          util.StringValueOrNull(s.IP),
-		Port:                        types.Int64PointerValue(s.Port),
-		LogAllContents:              types.BoolValue(s.LogAllContents),
-		NetconsoleEnabled:           types.BoolValue(s.NetconsoleEnabled),
-		NetconsoleHost:              util.StringValueOrNull(s.NetconsoleHost),
-		NetconsolePort:              types.Int64PointerValue(s.NetconsolePort),
-		ThisController:              types.BoolValue(s.ThisController),
-		ThisControllerEncryptedOnly: types.BoolValue(s.ThisControllerEncryptedOnly),
+		Enabled:        types.BoolValue(s.Enabled),
+		Contents:       contents,
+		Debug:          types.BoolValue(s.Debug),
+		IP:             util.StringValueOrNull(s.IP),
+		Port:           types.Int64PointerValue(s.Port),
+		LogAllContents: types.BoolValue(s.LogAllContents),
+		Netconsole:     netconsole,
+		ThisController: thisController,
 	}
 }
 
@@ -3440,6 +3770,10 @@ func (r *settingResource) dohSettingToModel(
 // ips setting's "suppression" field and reject this key with api.err.Invalid.
 const ipsSuppressionSettingKey = "ips_suppression"
 
+// ipsSettingKey is the ips setting itself, read raw to detect controllers that
+// still nest suppression inside it.
+const ipsSettingKey = "ips"
+
 // readRawSettingData fetches a site setting by its raw key, for setting keys
 // the go-unifi client has no typed struct for. found is false when the
 // controller has no setting stored under that key.
@@ -3460,15 +3794,23 @@ func (r *settingResource) readRawSettingData(
 	return nil, false, nil
 }
 
+// ipsWithSuppression pairs the typed ips setting with its suppression
+// entries. Controller v10 moved suppression out of the ips setting into the
+// standalone ips_suppression setting, so settings.Ips no longer carries it.
+type ipsWithSuppression struct {
+	*settings.Ips
+	Suppression *settings.IpsSuppression
+}
+
 // ipsSuppressionFromRaw decodes the alerts/whitelist payload of a raw
 // ips_suppression setting into the nested suppression struct the ips
 // conversion functions already understand.
-func ipsSuppressionFromRaw(data map[string]any) (*settings.SettingIpsSuppression, error) {
+func ipsSuppressionFromRaw(data map[string]any) (*settings.IpsSuppression, error) {
 	buf, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
 	}
-	supp := &settings.SettingIpsSuppression{}
+	supp := &settings.IpsSuppression{}
 	if err := json.Unmarshal(buf, supp); err != nil {
 		return nil, err
 	}
@@ -3478,14 +3820,14 @@ func ipsSuppressionFromRaw(data map[string]any) (*settings.SettingIpsSuppression
 // ipsSuppressionRawSetting builds the standalone ips_suppression setting
 // payload from the suppression entries of an ips setting. Nil slices are sent
 // as empty arrays so clearing the last entry actually clears the controller.
-func ipsSuppressionRawSetting(suppression *settings.SettingIpsSuppression) *settings.RawSetting {
+func ipsSuppressionRawSetting(suppression *settings.IpsSuppression) *settings.RawSetting {
 	alerts := suppression.Alerts
 	if alerts == nil {
-		alerts = []settings.SettingIpsAlerts{}
+		alerts = []settings.SettingIpsSuppressionAlerts{}
 	}
 	whitelist := suppression.Whitelist
 	if whitelist == nil {
-		whitelist = []settings.SettingIpsWhitelist{}
+		whitelist = []settings.SettingIpsSuppressionWhitelist{}
 	}
 	return &settings.RawSetting{
 		BaseSetting: settings.BaseSetting{Key: ipsSuppressionSettingKey},
@@ -3496,11 +3838,11 @@ func ipsSuppressionRawSetting(suppression *settings.SettingIpsSuppression) *sett
 	}
 }
 
-// ipsSuppressionConfigured reports whether the plan manages either
-// suppression list.
-func ipsSuppressionConfigured(plan *settingIpsModel) bool {
-	return (!plan.SuppressionAlerts.IsNull() && !plan.SuppressionAlerts.IsUnknown()) ||
-		(!plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown())
+// ipsSuppressionConfigured reports whether the planned ips.suppression
+// object manages either suppression list.
+func ipsSuppressionConfigured(plan *settingIpsSuppressionModel) bool {
+	return (!plan.Alerts.IsNull() && !plan.Alerts.IsUnknown()) ||
+		(!plan.Whitelist.IsNull() && !plan.Whitelist.IsUnknown())
 }
 
 // persistIpsSuppression makes sure configured suppression entries actually
@@ -3512,7 +3854,7 @@ func ipsSuppressionConfigured(plan *settingIpsModel) bool {
 func (r *settingResource) persistIpsSuppression(
 	ctx context.Context,
 	site string,
-	sent *settings.Ips,
+	sent *ipsWithSuppression,
 	diags *diag.Diagnostics,
 ) {
 	if sent.Suppression == nil {
@@ -3520,13 +3862,14 @@ func (r *settingResource) persistIpsSuppression(
 	}
 
 	// Controllers that store suppression nested in ips echo it back: nothing
-	// more to do.
-	_, current, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
+	// more to do. The nested field has no home on settings.Ips as of the v10
+	// models, so read the raw setting to detect it.
+	rawIps, found, err := r.readRawSettingData(ctx, site, ipsSettingKey)
 	if err != nil {
 		diags.AddError("Error Reading IPS Setting", err.Error())
 		return
 	}
-	if current.Suppression != nil {
+	if found && rawIps["suppression"] != nil {
 		return
 	}
 
@@ -3548,8 +3891,8 @@ func (r *settingResource) ipsModelToSetting(
 	ctx context.Context,
 	model *settingIpsModel,
 	diags *diag.Diagnostics,
-) *settings.Ips {
-	setting := &settings.Ips{}
+) *ipsWithSuppression {
+	setting := &ipsWithSuppression{Ips: &settings.Ips{}}
 
 	if !model.IPSMode.IsNull() && !model.IPSMode.IsUnknown() {
 		setting.IPsMode = model.IPSMode.ValueString()
@@ -3597,19 +3940,24 @@ func (r *settingResource) ipsModelToSetting(
 			})
 		}
 	}
-	if !model.SuppressionWhitelist.IsNull() && !model.SuppressionWhitelist.IsUnknown() {
+	supp, suppOK, d := util.ObjectAs[settingIpsSuppressionModel](ctx, model.Suppression)
+	diags.Append(d...)
+	if diags.HasError() {
+		return setting
+	}
+	if suppOK && !supp.Whitelist.IsNull() && !supp.Whitelist.IsUnknown() {
 		var whitelist []settingIpsWhitelistModel
-		diags.Append(model.SuppressionWhitelist.ElementsAs(ctx, &whitelist, false)...)
+		diags.Append(supp.Whitelist.ElementsAs(ctx, &whitelist, false)...)
 		if diags.HasError() {
 			return setting
 		}
 		if setting.Suppression == nil {
-			setting.Suppression = &settings.SettingIpsSuppression{}
+			setting.Suppression = &settings.IpsSuppression{}
 		}
 		for _, w := range whitelist {
 			setting.Suppression.Whitelist = append(
 				setting.Suppression.Whitelist,
-				settings.SettingIpsWhitelist{
+				settings.SettingIpsSuppressionWhitelist{
 					Direction: w.Direction.ValueString(),
 					Mode:      w.Mode.ValueString(),
 					Value:     w.Value.ValueString(),
@@ -3617,17 +3965,17 @@ func (r *settingResource) ipsModelToSetting(
 			)
 		}
 	}
-	if !model.SuppressionAlerts.IsNull() && !model.SuppressionAlerts.IsUnknown() {
+	if suppOK && !supp.Alerts.IsNull() && !supp.Alerts.IsUnknown() {
 		var alerts []settingIpsAlertModel
-		diags.Append(model.SuppressionAlerts.ElementsAs(ctx, &alerts, false)...)
+		diags.Append(supp.Alerts.ElementsAs(ctx, &alerts, false)...)
 		if diags.HasError() {
 			return setting
 		}
 		if setting.Suppression == nil {
-			setting.Suppression = &settings.SettingIpsSuppression{}
+			setting.Suppression = &settings.IpsSuppression{}
 		}
 		for _, a := range alerts {
-			alert := settings.SettingIpsAlerts{
+			alert := settings.SettingIpsSuppressionAlerts{
 				Category:  a.Category.ValueString(),
 				Signature: a.Signature.ValueString(),
 				Type:      a.Type.ValueString(),
@@ -3643,7 +3991,7 @@ func (r *settingResource) ipsModelToSetting(
 				var tracking []settingIpsTrackingModel
 				diags.Append(a.Tracking.ElementsAs(ctx, &tracking, false)...)
 				for _, t := range tracking {
-					alert.Tracking = append(alert.Tracking, settings.SettingIpsTracking{
+					alert.Tracking = append(alert.Tracking, settings.SettingIpsSuppressionTracking{
 						Direction: t.Direction.ValueString(),
 						Mode:      t.Mode.ValueString(),
 						Value:     t.Value.ValueString(),
@@ -3659,7 +4007,7 @@ func (r *settingResource) ipsModelToSetting(
 
 func (r *settingResource) ipsSettingToModel(
 	ctx context.Context,
-	setting *settings.Ips,
+	setting *ipsWithSuppression,
 	plan *settingIpsModel,
 	diags *diag.Diagnostics,
 ) *settingIpsModel {
@@ -3750,9 +4098,20 @@ func (r *settingResource) ipsSettingToModel(
 		model.Honeypot = types.ListNull(honeypotType)
 	}
 
+	// suppression: an unconfigured (null/unknown) group stays null; inside a
+	// configured group each list mirrors the remote value only when the plan
+	// manages it, exactly as the flat lists did.
+	planSupp, suppOK, d := util.ObjectAs[settingIpsSuppressionModel](ctx, plan.Suppression)
+	diags.Append(d...)
+	if !suppOK {
+		model.Suppression = types.ObjectNull(ipsSuppressionAttrTypes)
+		return model
+	}
+	supp := settingIpsSuppressionModel{}
+
 	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
-	if !plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown() {
-		var whitelist []settings.SettingIpsWhitelist
+	if !planSupp.Whitelist.IsNull() && !planSupp.Whitelist.IsUnknown() {
+		var whitelist []settings.SettingIpsSuppressionWhitelist
 		if setting.Suppression != nil {
 			whitelist = setting.Suppression.Whitelist
 		}
@@ -3766,15 +4125,15 @@ func (r *settingResource) ipsSettingToModel(
 		}
 		listVal, d := types.ListValueFrom(ctx, whitelistType, entries)
 		diags.Append(d...)
-		model.SuppressionWhitelist = listVal
+		supp.Whitelist = listVal
 	} else {
-		model.SuppressionWhitelist = types.ListNull(whitelistType)
+		supp.Whitelist = types.ListNull(whitelistType)
 	}
 
 	trackingType := types.ObjectType{AttrTypes: ipsTrackingAttrTypes}
 	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
-	if !plan.SuppressionAlerts.IsNull() && !plan.SuppressionAlerts.IsUnknown() {
-		var alerts []settings.SettingIpsAlerts
+	if !planSupp.Alerts.IsNull() && !planSupp.Alerts.IsUnknown() {
+		var alerts []settings.SettingIpsSuppressionAlerts
 		if setting.Suppression != nil {
 			alerts = setting.Suppression.Alerts
 		}
@@ -3801,10 +4160,14 @@ func (r *settingResource) ipsSettingToModel(
 		}
 		listVal, d := types.ListValueFrom(ctx, alertType, entries)
 		diags.Append(d...)
-		model.SuppressionAlerts = listVal
+		supp.Alerts = listVal
 	} else {
-		model.SuppressionAlerts = types.ListNull(alertType)
+		supp.Alerts = types.ListNull(alertType)
 	}
+
+	suppObj, d := types.ObjectValueFrom(ctx, ipsSuppressionAttrTypes, supp)
+	diags.Append(d...)
+	model.Suppression = suppObj
 
 	return model
 }

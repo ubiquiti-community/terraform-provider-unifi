@@ -91,6 +91,7 @@ resource "unifi_wan" "secondary" {
 - `dhcp` (Attributes) DHCP configuration (see [below for nested schema](#nestedatt--dhcp))
 - `dhcpv6` (Attributes) DHCPv6 configuration (see [below for nested schema](#nestedatt--dhcpv6))
 - `dns` (Attributes) DNS configuration (see [below for nested schema](#nestedatt--dns))
+- `dslite` (Attributes) DS-Lite (AFTR) configuration. (see [below for nested schema](#nestedatt--dslite))
 - `egress_qos` (Attributes) Egress QoS configuration (see [below for nested schema](#nestedatt--egress_qos))
 - `enabled` (Boolean) Whether the WAN network is enabled
 - `igmp_proxy` (Attributes) IGMP proxy configuration (see [below for nested schema](#nestedatt--igmp_proxy))
@@ -110,8 +111,6 @@ resource "unifi_wan" "secondary" {
 - `type_v6` (String) The IPv6 WAN type. One of `dhcpv6`, `slaac`, `static`, or `disabled`. Note: the controller requires `slaac` when the IPv6 delegation type is `single_network` (`api.err.SingleNetworkMustBeSLAAC` otherwise) — common with ISPs that deliver IPv6 by Router Advertisement, e.g. Free/Freebox in bridge mode.
 - `upnp` (Attributes) UPnP configuration (see [below for nested schema](#nestedatt--upnp))
 - `vlan` (Attributes) VLAN configuration (see [below for nested schema](#nestedatt--vlan))
-- `wan_dslite_remote_host` (String) The DS-Lite AFTR remote host. Only used when `wan_dslite_remote_host_auto` is disabled.
-- `wan_dslite_remote_host_auto` (Boolean) Whether the DS-Lite AFTR remote host is detected automatically.
 
 ### Read-Only
 
@@ -142,8 +141,7 @@ Optional:
 
 - `cos` (Number) DHCPv6 Class of Service
 - `options` (Attributes List) DHCPv6 options (see [below for nested schema](#nestedatt--dhcpv6--options))
-- `pd_size` (Number) DHCPv6 prefix delegation size
-- `pd_size_auto` (Boolean) Whether DHCPv6 PD size is automatic
+- `pd` (Attributes) DHCPv6 prefix delegation configuration (see [below for nested schema](#nestedatt--dhcpv6--pd))
 - `wan_delegation_type` (String) IPv6 WAN delegation type (pd, single_network, none)
 
 <a id="nestedatt--dhcpv6--options"></a>
@@ -155,18 +153,44 @@ Required:
 - `value` (String) DHCPv6 option value
 
 
+<a id="nestedatt--dhcpv6--pd"></a>
+### Nested Schema for `dhcpv6.pd`
+
+Optional:
+
+- `size` (Number) DHCPv6 prefix delegation size
+- `size_auto` (Boolean) Whether DHCPv6 PD size is automatic
+
+
 
 <a id="nestedatt--dns"></a>
 ### Nested Schema for `dns`
 
 Optional:
 
-- `ipv6_preference` (String) IPv6 DNS preference (auto, manual)
-- `ipv6_primary` (String) Primary IPv6 DNS server
-- `ipv6_secondary` (String) Secondary IPv6 DNS server
+- `ipv6` (Attributes) IPv6 DNS configuration (see [below for nested schema](#nestedatt--dns--ipv6))
 - `preference` (String) DNS preference (auto, manual)
 - `primary` (String) Primary DNS server
 - `secondary` (String) Secondary DNS server
+
+<a id="nestedatt--dns--ipv6"></a>
+### Nested Schema for `dns.ipv6`
+
+Optional:
+
+- `preference` (String) IPv6 DNS preference (auto, manual)
+- `primary` (String) Primary IPv6 DNS server
+- `secondary` (String) Secondary IPv6 DNS server
+
+
+
+<a id="nestedatt--dslite"></a>
+### Nested Schema for `dslite`
+
+Optional:
+
+- `remote_host` (String) The DS-Lite AFTR remote host. Only used when `remote_host_auto` is disabled.
+- `remote_host_auto` (Boolean) Whether the DS-Lite AFTR remote host is detected automatically.
 
 
 <a id="nestedatt--egress_qos"></a>

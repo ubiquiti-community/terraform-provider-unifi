@@ -60,29 +60,23 @@ data "unifi_client_info" "site_specific" {
 - `ip` (String) The IP address of the client.
 - `is_guest` (Boolean) Whether the client is a guest.
 - `is_wired` (Boolean) Whether the client is connected via wired connection.
-- `last_connection_network_id` (String) The network ID of the last connection.
-- `last_connection_network_name` (String) The network name of the last connection.
+- `last_connection_network` (Attributes) The network of the client's last connection. (see [below for nested schema](#nestedatt--last_connection_network))
 - `last_seen` (Number) Unix timestamp when the client was last seen.
-- `last_uplink_mac` (String) The MAC address of the last uplink device.
-- `last_uplink_name` (String) The name of the last uplink device.
-- `last_uplink_remote_port` (Number) The remote port of the last uplink device.
+- `last_uplink` (Attributes) The last uplink device the client was seen on. (see [below for nested schema](#nestedatt--last_uplink))
 - `local_dns_record` (String) The local DNS record for this client.
 - `local_dns_record_enabled` (Boolean) Whether local DNS record is enabled for this client.
 - `name` (String) The name of the client.
-- `network_id` (String) The network ID for this client.
-- `network_name` (String) The network name for this client.
+- `network` (Attributes) The network this client is on. (see [below for nested schema](#nestedatt--network))
 - `noise` (Number) The noise level in dBm.
 - `oui` (String) The OUI (vendor) of the client's MAC address.
 - `radio` (String) The radio type (e.g., na, ng).
 - `radio_name` (String) The radio name (e.g., wifi0, wifi1).
 - `rssi` (Number) The RSSI value.
-- `rx_bytes` (Number) Total bytes received.
-- `rx_rate` (Number) The receive rate in kbps.
+- `rx` (Attributes) Receive statistics for the client. (see [below for nested schema](#nestedatt--rx))
 - `signal` (Number) The signal strength in dBm.
 - `status` (String) The status of the client.
 - `sw_port` (Number) The switch port number the client is connected to.
-- `tx_bytes` (Number) Total bytes transmitted.
-- `tx_rate` (Number) The transmit rate in kbps.
+- `tx` (Attributes) Transmit statistics for the client. (see [below for nested schema](#nestedatt--tx))
 - `uptime` (String) The uptime of the client, as a Go duration string.
 - `use_fixedip` (Boolean) Whether this client uses a fixed IP.
 - `usergroup_id` (String) The user group ID for the client.
@@ -94,3 +88,49 @@ data "unifi_client_info" "site_specific" {
 Optional:
 
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+
+<a id="nestedatt--last_connection_network"></a>
+### Nested Schema for `last_connection_network`
+
+Read-Only:
+
+- `id` (String) The network ID of the last connection.
+- `name` (String) The network name of the last connection.
+
+
+<a id="nestedatt--last_uplink"></a>
+### Nested Schema for `last_uplink`
+
+Read-Only:
+
+- `mac` (String) The MAC address of the last uplink device.
+- `name` (String) The name of the last uplink device.
+- `remote_port` (Number) The remote port of the last uplink device.
+
+
+<a id="nestedatt--network"></a>
+### Nested Schema for `network`
+
+Read-Only:
+
+- `id` (String) The network ID for this client.
+- `name` (String) The network name for this client.
+
+
+<a id="nestedatt--rx"></a>
+### Nested Schema for `rx`
+
+Read-Only:
+
+- `bytes` (Number) Total bytes received.
+- `rate` (Number) The receive rate in kbps.
+
+
+<a id="nestedatt--tx"></a>
+### Nested Schema for `tx`
+
+Read-Only:
+
+- `bytes` (Number) Total bytes transmitted.
+- `rate` (Number) The transmit rate in kbps.

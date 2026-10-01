@@ -16,7 +16,6 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/ubiquiti-community/go-unifi/unifi"
-	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var providerFactories = map[string]func() (tfprotov6.ProviderServer, error){
@@ -211,7 +210,7 @@ func waitForUniFiAPI(
 			Username:       user,
 			Password:       password,
 			AllowInsecure:  true,
-			TimeoutSeconds: util.Ptr(30),
+			TimeoutSeconds: new(30),
 			CloudConnector: false,
 		})
 		if err != nil {
@@ -424,10 +423,10 @@ func waitForUniFiAPI(
 		if !hasWAN {
 			logger.Printf("No default WAN network found, creating \"Internet 1\"...")
 			_, createErr := client.CreateNetwork(ctx, "default", &unifi.Network{
-				Name:            util.Ptr("Internet 1"),
+				Name:            new("Internet 1"),
 				Purpose:         unifi.PurposeWAN,
-				WANNetworkGroup: util.Ptr("WAN"),
-				WANType:         util.Ptr("dhcp"),
+				WANNetworkGroup: new("WAN"),
+				WANType:         new("dhcp"),
 			})
 			if createErr != nil {
 				logger.Printf("Failed to create default WAN network: %v", createErr)
