@@ -208,12 +208,16 @@ func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
 
 // firewallPolicyEndpointModel is the nested source/destination block model.
 type firewallPolicyEndpointModel struct {
-	ZoneID           types.String `tfsdk:"zone_id"`
-	MatchingTarget   types.String `tfsdk:"matching_target"`
-	NetworkIDs       types.List   `tfsdk:"network_ids"`
-	ClientMACs       types.List   `tfsdk:"client_macs"`
-	IPs              types.List   `tfsdk:"ips"`
-	WebDomains       types.List   `tfsdk:"web_domains"`
+	ZoneID         types.String `tfsdk:"zone_id"`
+	MatchingTarget types.String `tfsdk:"matching_target"`
+	NetworkIDs     types.List   `tfsdk:"network_ids"`
+	ClientMACs     types.List   `tfsdk:"client_macs"`
+	IPs            types.List   `tfsdk:"ips"`
+	WebDomains     types.List   `tfsdk:"web_domains"`
+	// Two-letter country codes, used when matching_target is REGION. The
+	// controller only accepts REGION on an external zone, and rejects a write
+	// that leaves the list empty (api.err.EmptyFirewallSourceRegions).
+	Regions          types.List   `tfsdk:"regions"`
 	Port             types.String `tfsdk:"port"`
 	PortGroupID      types.String `tfsdk:"port_group_id"`
 	IPGroupID        types.String `tfsdk:"ip_group_id"`
@@ -240,6 +244,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"client_macs":             types.ListType{ElemType: types.StringType},
 		"ips":                     types.ListType{ElemType: types.StringType},
 		"web_domains":             types.ListType{ElemType: types.StringType},
+		"regions":                 types.ListType{ElemType: types.StringType},
 		"port":                    types.StringType,
 		"port_group_id":           types.StringType,
 		"ip_group_id":             types.StringType,
@@ -298,10 +303,15 @@ func (r *firewallPolicyResource) Schema(
 			Required:            true,
 		},
 		"matching_target": schema.StringAttribute{
-			MarkdownDescription: "What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, `DEVICE`, `MAC`, or `WEB` (domains/FQDN).",
-			Required:            true,
+			MarkdownDescription: "What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, " +
+				"`DEVICE`, `MAC`, `WEB` (domains/FQDN), or `REGION` (country codes, " +
+				"set `regions`). The controller only accepts `REGION` on an external " +
+				"zone.",
+			Required: true,
 			Validators: []validator.String{
-				stringvalidator.OneOf("ANY", "NETWORK", "CLIENT", "IP", "DEVICE", "MAC", "WEB"),
+				stringvalidator.OneOf(
+					"ANY", "NETWORK", "CLIENT", "IP", "DEVICE", "MAC", "WEB", "REGION",
+				),
 			},
 		},
 		"network_ids": schema.ListAttribute{
@@ -336,6 +346,19 @@ func (r *firewallPolicyResource) Schema(
 			Optional:            true,
 			Computed:            true,
 			ElementType:         types.StringType,
+			PlanModifiers: []planmodifier.List{
+				listplanmodifier.UseStateForUnknown(),
+			},
+		},
+		"regions": schema.ListAttribute{
+			MarkdownDescription: "Two-letter ISO country codes to match (for example " +
+				"`[\"DE\", \"US\"]`). Used when `matching_target` is `REGION`, which " +
+				"the controller only accepts on an external zone. The controller " +
+				"rejects an update that leaves the list empty, so a policy matching " +
+				"on region must always carry at least one code.",
+			Optional:    true,
+			Computed:    true,
+			ElementType: types.StringType,
 			PlanModifiers: []planmodifier.List{
 				listplanmodifier.UseStateForUnknown(),
 			},
@@ -945,6 +968,7 @@ type firewallPolicyEndpointModelV0 struct {
 	MatchOppositeNetworks types.Bool `tfsdk:"match_opposite_networks"`
 	MatchOppositePorts    types.Bool `tfsdk:"match_opposite_ports"`
 	MatchMAC              types.Bool `tfsdk:"match_mac"`
+	Regions               types.List `tfsdk:"regions"`
 }
 
 func (r *firewallPolicyResource) UpgradeState(
@@ -1048,6 +1072,10 @@ func upgradeFirewallPolicyEndpointV0(
 		MatchOppositeNetworks: types.BoolValue(false),
 		MatchOppositePorts:    types.BoolValue(false),
 		MatchMAC:              types.BoolValue(false),
+		// Likewise for regions: v0 state predates the attribute, and a null
+		// (rather than an empty list) is what an unmanaged endpoint should
+		// carry - Read then fills in whatever the controller holds.
+		Regions: types.ListNull(types.StringType),
 	}
 
 	newObj, d := types.ObjectValueFrom(ctx, newTypes, upgraded)
@@ -1201,6 +1229,9 @@ func endpointModelToSource(
 	if !m.WebDomains.IsNull() && !m.WebDomains.IsUnknown() {
 		diags.Append(m.WebDomains.ElementsAs(ctx, &ep.WebDomains, false)...)
 	}
+	if !m.Regions.IsNull() && !m.Regions.IsUnknown() {
+		diags.Append(m.Regions.ElementsAs(ctx, &ep.Regions, false)...)
+	}
 	return ep
 }
 
@@ -1236,6 +1267,9 @@ func endpointModelToDestination(
 	}
 	if !m.WebDomains.IsNull() && !m.WebDomains.IsUnknown() {
 		diags.Append(m.WebDomains.ElementsAs(ctx, &ep.WebDomains, false)...)
+	}
+	if !m.Regions.IsNull() && !m.Regions.IsUnknown() {
+		diags.Append(m.Regions.ElementsAs(ctx, &ep.Regions, false)...)
 	}
 	return ep
 }
@@ -1431,6 +1465,10 @@ func apiSourceToEndpointModel(
 	diags.Append(wd...)
 	m.WebDomains = webDomains
 
+	regions, rd := types.ListValueFrom(ctx, types.StringType, src.Regions)
+	diags.Append(rd...)
+	m.Regions = regions
+
 	return m
 }
 
@@ -1467,6 +1505,10 @@ func apiDestinationToEndpointModel(
 	webDomains, wd := types.ListValueFrom(ctx, types.StringType, dst.WebDomains)
 	diags.Append(wd...)
 	m.WebDomains = webDomains
+
+	regions, rd := types.ListValueFrom(ctx, types.StringType, dst.Regions)
+	diags.Append(rd...)
+	m.Regions = regions
 
 	return m
 }

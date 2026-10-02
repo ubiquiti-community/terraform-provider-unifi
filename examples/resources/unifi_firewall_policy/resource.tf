@@ -152,3 +152,23 @@ resource "unifi_firewall_policy" "block_web_domains" {
     web_domains     = ["facebook.com", "tiktok.com"]
   }
 }
+
+# Block inbound traffic from specific countries. The controller only accepts
+# matching_target = "REGION" on an external zone, and rejects an update that
+# leaves the list empty, so a region policy must always carry at least one code.
+resource "unifi_firewall_policy" "block_regions" {
+  name     = "block-high-risk-regions"
+  action   = "BLOCK"
+  protocol = "all"
+
+  source = {
+    zone_id         = data.unifi_firewall_zone.external.id
+    matching_target = "REGION"
+    regions         = ["KP", "RU"]
+  }
+
+  destination = {
+    zone_id         = data.unifi_firewall_zone.internal.id
+    matching_target = "ANY"
+  }
+}

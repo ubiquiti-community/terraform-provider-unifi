@@ -63,6 +63,7 @@ func TestFirewallPolicyMatchOppositeRoundTrip(t *testing.T) {
 			ClientMACs:            types.ListNull(types.StringType),
 			IPs:                   types.ListNull(types.StringType),
 			WebDomains:            types.ListNull(types.StringType),
+			Regions:               types.ListNull(types.StringType),
 			Port:                  types.StringNull(),
 			PortGroupID:           types.StringValue(""),
 			IPGroupID:             types.StringValue(""),
