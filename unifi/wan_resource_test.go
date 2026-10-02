@@ -727,6 +727,112 @@ func Test_wanResource_ImportState(t *testing.T) {
 	t.Skip("requires terraform state machinery")
 }
 
+// Test_wanResource_pppoeCredentials covers #515. The credentials were absent
+// from go-unifi's WAN payload entirely, so a PPPoE login could not be managed.
+// Now that they travel, the important guarantee is the other direction: an
+// update that manages only other WAN settings must leave the stored ISP login
+// alone, or it takes the uplink down.
+func Test_wanResource_pppoeCredentials(t *testing.T) {
+	r := &wanResource{}
+	ctx := context.Background()
+
+	base := func() *wanResourceModel {
+		return &wanResourceModel{
+			Name:                  types.StringValue("wan"),
+			Type:                  types.StringValue("pppoe"),
+			TypeV6:                types.StringNull(),
+			Enabled:               types.BoolValue(true),
+			Vlan:                  types.ObjectNull(vlanModel{}.AttributeTypes()),
+			EgressQoS:             types.ObjectNull(egressQosModel{}.AttributeTypes()),
+			DNS:                   types.ObjectNull(dnsModel{}.AttributeTypes()),
+			DHCP:                  types.ObjectNull(dhcpWanModel{}.AttributeTypes()),
+			DHCPv6:                types.ObjectNull(dhcpv6WanModel{}.AttributeTypes()),
+			SmartQ:                types.ObjectNull(smartqModel{}.AttributeTypes()),
+			UPnP:                  types.ObjectNull(upnpModel{}.AttributeTypes()),
+			LoadBalance:           types.ObjectNull(loadBalanceModel{}.AttributeTypes()),
+			IGMPProxy:             types.ObjectNull(igmpProxyModel{}.AttributeTypes()),
+			ProviderCapabilities:  types.ObjectNull(providerCapabilitiesModel{}.AttributeTypes()),
+			ReportWANEvent:        types.BoolNull(),
+			IPAliases:             types.ListNull(types.StringType),
+			SettingPreference:     types.StringNull(),
+			IPv6SettingPreference: types.StringNull(),
+			SingleNetworkLAN:      types.StringNull(),
+			MACOverrideEnabled:    types.BoolNull(),
+			DsliteRemoteHost:      types.StringNull(),
+			DsliteRemoteHostAuto:  types.BoolNull(),
+			Username:              types.StringNull(),
+			Password:              types.StringNull(),
+			PasswordWO:            types.StringNull(),
+		}
+	}
+
+	t.Run("unmanaged credentials stay off the wire", func(t *testing.T) {
+		got, diags := r.modelToNetwork(ctx, base())
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if got.WANUsername != nil {
+			t.Errorf("WANUsername = %v, want nil so the login is preserved", *got.WANUsername)
+		}
+		if got.WANPassword != nil {
+			t.Errorf("WANPassword = %v, want nil so the login is preserved", *got.WANPassword)
+		}
+	})
+
+	t.Run("configured credentials travel", func(t *testing.T) {
+		model := base()
+		model.Username = types.StringValue("isp-user")
+		model.Password = types.StringValue("isp-secret")
+
+		got, diags := r.modelToNetwork(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if got.WANUsername == nil || *got.WANUsername != "isp-user" {
+			t.Errorf("WANUsername = %v, want isp-user", got.WANUsername)
+		}
+		if got.WANPassword == nil || *got.WANPassword != "isp-secret" {
+			t.Errorf("WANPassword = %v, want isp-secret", got.WANPassword)
+		}
+	})
+
+	t.Run("write-only password is used when set", func(t *testing.T) {
+		model := base()
+		model.Username = types.StringValue("isp-user")
+		model.PasswordWO = types.StringValue("ephemeral-secret")
+
+		got, diags := r.modelToNetwork(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if got.WANPassword == nil || *got.WANPassword != "ephemeral-secret" {
+			t.Errorf("WANPassword = %v, want ephemeral-secret", got.WANPassword)
+		}
+	})
+
+	t.Run("read never surfaces a password", func(t *testing.T) {
+		model := base()
+		model.Password = types.StringValue("configured")
+		network := &unifi.Network{
+			ID:          "n1",
+			Purpose:     unifi.PurposeWAN,
+			WANType:     strPtr("pppoe"),
+			WANUsername: strPtr("isp-user"),
+		}
+		if diags := r.networkToModel(ctx, network, model, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+		if model.Username.ValueString() != "isp-user" {
+			t.Errorf("username = %v, want isp-user round-tripped", model.Username)
+		}
+		// The controller never returns the password; the configured value must
+		// survive the read untouched rather than being cleared.
+		if model.Password.ValueString() != "configured" {
+			t.Errorf("password = %v, want the configured value kept", model.Password)
+		}
+	})
+}
+
 func Test_wanResource_modelToNetwork(t *testing.T) {
 	t.Run("minimal model converts correctly", func(t *testing.T) {
 		r := &wanResource{}

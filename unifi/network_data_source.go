@@ -841,10 +841,12 @@ func (d *networkDataSource) setDataSourceData(
 	model.WanNetworkGroup = types.StringPointerValue(network.WANNetworkGroup)
 	model.WanType = types.StringPointerValue(network.WANType)
 	model.WanTypeV6 = types.StringPointerValue(network.WANTypeV6)
-	if network.WANUsername == "" {
+	// *string now: an absent key and an explicitly empty one both mean no
+	// PPPoE username configured.
+	if network.WANUsername == nil || *network.WANUsername == "" {
 		model.WanUsername = types.StringNull()
 	} else {
-		model.WanUsername = types.StringValue(network.WANUsername)
+		model.WanUsername = types.StringValue(*network.WANUsername)
 	}
 }
 
