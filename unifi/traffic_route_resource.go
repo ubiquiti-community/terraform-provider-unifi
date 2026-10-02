@@ -710,6 +710,8 @@ func (r *trafficRouteResource) modelToAPI(
 				}
 				if ipAddr, err := netip.ParseAddr(address); err == nil && ipAddr.Is6() {
 					entry.Version = unifi.TrafficRouteIPVersionV6
+				} else if prefix, err := netip.ParsePrefix(address); err == nil && prefix.Addr().Is6() {
+					entry.Version = unifi.TrafficRouteIPVersionV6
 				}
 
 				// Parse ports
