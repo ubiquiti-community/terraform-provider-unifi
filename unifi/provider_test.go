@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -173,6 +175,65 @@ func preCheck(t *testing.T) {
 		value := os.Getenv(variable)
 		if value == "" {
 			t.Fatalf("`%s` must be set for acceptance tests!", variable)
+		}
+	}
+}
+
+// requireRadios skips the test unless the device at mac exposes every radio
+// band named in radios.
+//
+// The simulated devices the compose controller ships are not interchangeable:
+// 00:15:6d:00:00:01 is a U2O, whose radio_table holds a single `ng` entry, so a
+// configuration declaring an `na` radio sends an entry the hardware does not
+// have. mergeRadioTableFromDevice then finds nothing to echo the
+// controller-required radio name from, and the PUT fails with a bare
+// api.err.Invalid (400). The radio_table is also populated asynchronously after
+// adoption, which is why the same commit passed and failed on consecutive
+// nightly runs.
+//
+// Checking the band up front turns both failure modes into an explicit skip
+// instead of an opaque 400 attributed to whatever merged last.
+func requireRadios(t *testing.T, mac string, radios ...string) {
+	t.Helper()
+
+	ctx := context.Background()
+	client, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:        os.Getenv("UNIFI_API"),
+		Username:       os.Getenv("UNIFI_USERNAME"),
+		Password:       os.Getenv("UNIFI_PASSWORD"),
+		APIKey:         os.Getenv("UNIFI_API_KEY"),
+		AllowInsecure:  true,
+		TimeoutSeconds: util.Ptr(30),
+	})
+	if err != nil {
+		t.Fatalf("connecting to the controller: %v", err)
+	}
+
+	device, err := client.GetDeviceByMAC(ctx, "default", mac)
+	if err != nil {
+		t.Skipf("device %s is not present on this controller: %v", mac, err)
+	}
+
+	present := make(map[string]bool, len(device.RadioTable))
+	for _, radio := range device.RadioTable {
+		present[radio.Radio] = true
+	}
+
+	if len(present) == 0 {
+		t.Skipf(
+			"device %s (%s) reports an empty radio_table; the simulated APs the "+
+				"compose controller ships never populate one, so radio tests need "+
+				"a real AP (UNIFI_SKIP_CONTAINER=1)",
+			mac, device.Model,
+		)
+	}
+
+	for _, radio := range radios {
+		if !present[radio] {
+			t.Skipf(
+				"device %s (%s) has no %q radio; it exposes %v",
+				mac, device.Model, radio, slices.Sorted(maps.Keys(present)),
+			)
 		}
 	}
 }

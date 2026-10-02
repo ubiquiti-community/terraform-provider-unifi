@@ -2111,12 +2111,17 @@ func (m radioTableModel) IsUnknownAny() bool {
 // name). Both halves are exercised: unknowns stay off the wire, and the
 // controller-required name is echoed from the device.
 func TestAccDeviceFramework_radioTable(t *testing.T) {
+	const radioTableAPMAC = "00:15:6d:00:00:02"
+
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
+		PreCheck: func() {
+			preCheck(t)
+			requireRadios(t, radioTableAPMAC, "ng", "na")
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDeviceFrameworkConfig_radioTable("6", "36"),
+				Config: testAccDeviceFrameworkConfig_radioTable(radioTableAPMAC, "6", "36"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("unifi_device.test_ap", "adopted", "true"),
 					resource.TestCheckResourceAttr("unifi_device.test_ap", "radio_table.#", "2"),
@@ -2147,7 +2152,7 @@ func TestAccDeviceFramework_radioTable(t *testing.T) {
 			},
 			{
 				// In-place channel change on the declared entries.
-				Config: testAccDeviceFrameworkConfig_radioTable("11", "40"),
+				Config: testAccDeviceFrameworkConfig_radioTable(radioTableAPMAC, "11", "40"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"unifi_device.test_ap",
@@ -2165,10 +2170,10 @@ func TestAccDeviceFramework_radioTable(t *testing.T) {
 	})
 }
 
-func testAccDeviceFrameworkConfig_radioTable(ngChannel, naChannel string) string {
+func testAccDeviceFrameworkConfig_radioTable(mac, ngChannel, naChannel string) string {
 	return fmt.Sprintf(`
 resource "unifi_device" "test_ap" {
-	mac  = "00:15:6d:00:00:01"
+	mac  = %q
 	name = "Test AP Radio"
 	allow_adoption    = true
 	forget_on_destroy = false
@@ -2188,7 +2193,7 @@ resource "unifi_device" "test_ap" {
 		},
 	]
 }
-`, ngChannel, naChannel)
+`, mac, ngChannel, naChannel)
 }
 
 // Test_buildMinimalUpdateDevice_carriesConfigurableFields guards the recurring
