@@ -1,0 +1,81 @@
+# Merges bot PRs that dependabot.yml labelled `automerge`, once CI/CD has
+# succeeded on the PR's current head commit and it is not a
+# semver-major update (#486).
+#
+# workflow_run runs in the base repository with a write token: never check out
+# or run PR code here. This workflow only reads the event and calls the API.
+
+name: Bot PR Auto-Merge
+on:
+  workflow_run:
+    workflows: ["CI/CD"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# One merge attempt per commit at a time; a queued run re-checks live state.
+concurrency:
+  group: bot-automerge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'pull_request'
+      }}
+    steps:
+      - name: Merge if eligible and still at the green commit
+        run: |
+          set -euo pipefail
+          pr="$PR_FROM_EVENT"
+          if [ -z "$pr" ]; then
+            pr="$(gh api "repos/$GH_REPO/commits/$HEAD_SHA/pulls" \
+              --jq '[.[] | select(.state == "open")][0].number // empty')"
+          fi
+          if [ -z "$pr" ]; then
+            echo "No open PR for $HEAD_SHA: nothing to merge."
+            exit 0
+          fi
+
+          gh api "repos/$GH_REPO/pulls/$pr" > pr.json
+          author="$(jq -r '.user.login' pr.json)"
+          author_type="$(jq -r '.user.type' pr.json)"
+          state="$(jq -r '.state' pr.json)"
+          current_sha="$(jq -r '.head.sha' pr.json)"
+          head_repo="$(jq -r '.head.repo.full_name' pr.json)"
+          labelled="$(jq -r '[.labels[].name] | index("automerge") != null' pr.json)"
+          echo "PR #$pr: author=$author ($author_type) state=$state head=$current_sha labelled=$labelled; CI/CD ran on $HEAD_SHA"
+
+          case "$author" in
+            'dependabot[bot]'|'copilot[bot]') ;;
+            *) echo "Skip: author $author is not an auto-merge bot."; exit 0 ;;
+          esac
+          if [ "$author_type" != "Bot" ]; then echo "Skip: author is not a Bot account."; exit 0; fi
+          if [ "$head_repo" != "$GH_REPO" ]; then echo "Skip: head branch is not in $GH_REPO."; exit 0; fi
+          if [ "$state" != "open" ]; then echo "Skip: PR is $state."; exit 0; fi
+          if [ "$labelled" != "true" ]; then echo "Skip: no automerge label."; exit 0; fi
+          if [ "$current_sha" != "$HEAD_SHA" ]; then
+            echo "Skip: PR head moved to $current_sha after CI/CD ran on $HEAD_SHA; the run for the new head decides."
+            exit 0
+          fi
+          # Re-derive major-ness from the commit rather than trusting the label:
+          # Dependabot writes `update-type: version-update:semver-major` into it.
+          message="$(gh api "repos/$GH_REPO/commits/$HEAD_SHA" --jq '.commit.message')"
+          if [[ "$message" == *"version-update:semver-major"* ]]; then
+            echo "Skip: $HEAD_SHA is a semver-major update; majors are never auto-merged."
+            exit 0
+          fi
+
+          # --match-head-commit makes the API refuse the merge if the head
+          # moves between the check above and this call.
+          gh pr merge "$pr" --repo "$GH_REPO" --rebase --match-head-commit "$HEAD_SHA"
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_FROM_EVENT: ${{ github.event.workflow_run.pull_requests[0].number }}
