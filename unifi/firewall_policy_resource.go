@@ -226,6 +226,10 @@ type firewallPolicyEndpointModel struct {
 	MatchOppositeIPs      types.Bool `tfsdk:"match_opposite_ips"`
 	MatchOppositeNetworks types.Bool `tfsdk:"match_opposite_networks"`
 	MatchOppositePorts    types.Bool `tfsdk:"match_opposite_ports"`
+	// Match the listed clients by MAC address rather than by their current IP.
+	// The controller stores it without `omitempty`, so it must round-trip or an
+	// update resets it to false.
+	MatchMAC types.Bool `tfsdk:"match_mac"`
 }
 
 func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
@@ -244,6 +248,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"match_opposite_ips":      types.BoolType,
 		"match_opposite_networks": types.BoolType,
 		"match_opposite_ports":    types.BoolType,
+		"match_mac":               types.BoolType,
 	}
 }
 
@@ -397,6 +402,13 @@ func (r *firewallPolicyResource) Schema(
 		"match_opposite_ports": schema.BoolAttribute{
 			MarkdownDescription: "Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. " +
 				"Corresponds to the \"Match Opposite\" toggle on the port selector in the UniFi UI. Defaults to `false`.",
+			Optional: true,
+			Computed: true,
+			Default:  booldefault.StaticBool(false),
+		},
+		"match_mac": schema.BoolAttribute{
+			MarkdownDescription: "Match the clients in `client_macs` by MAC address rather than by their current IP address. " +
+				"Corresponds to the controller's `match_mac` flag on a `CLIENT` matching target. Defaults to `false`.",
 			Optional: true,
 			Computed: true,
 			Default:  booldefault.StaticBool(false),
@@ -932,6 +944,7 @@ type firewallPolicyEndpointModelV0 struct {
 	MatchOppositeIPs      types.Bool `tfsdk:"match_opposite_ips"`
 	MatchOppositeNetworks types.Bool `tfsdk:"match_opposite_networks"`
 	MatchOppositePorts    types.Bool `tfsdk:"match_opposite_ports"`
+	MatchMAC              types.Bool `tfsdk:"match_mac"`
 }
 
 func (r *firewallPolicyResource) UpgradeState(
@@ -1034,6 +1047,7 @@ func upgradeFirewallPolicyEndpointV0(
 		MatchOppositeIPs:      types.BoolValue(false),
 		MatchOppositeNetworks: types.BoolValue(false),
 		MatchOppositePorts:    types.BoolValue(false),
+		MatchMAC:              types.BoolValue(false),
 	}
 
 	newObj, d := types.ObjectValueFrom(ctx, newTypes, upgraded)
@@ -1173,6 +1187,7 @@ func endpointModelToSource(
 		MatchOppositeIPs:      m.MatchOppositeIPs.ValueBool(),
 		MatchOppositeNetworks: m.MatchOppositeNetworks.ValueBool(),
 		MatchOppositePorts:    m.MatchOppositePorts.ValueBool(),
+		MatchMAC:              m.MatchMAC.ValueBool(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -1208,6 +1223,7 @@ func endpointModelToDestination(
 		MatchOppositeIPs:      m.MatchOppositeIPs.ValueBool(),
 		MatchOppositeNetworks: m.MatchOppositeNetworks.ValueBool(),
 		MatchOppositePorts:    m.MatchOppositePorts.ValueBool(),
+		MatchMAC:              m.MatchMAC.ValueBool(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -1397,6 +1413,7 @@ func apiSourceToEndpointModel(
 		MatchOppositeIPs:      types.BoolValue(src.MatchOppositeIPs),
 		MatchOppositeNetworks: types.BoolValue(src.MatchOppositeNetworks),
 		MatchOppositePorts:    types.BoolValue(src.MatchOppositePorts),
+		MatchMAC:              types.BoolValue(src.MatchMAC),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, src.NetworkIDs)
 	diags.Append(nd...)
@@ -1433,6 +1450,7 @@ func apiDestinationToEndpointModel(
 		MatchOppositeIPs:      types.BoolValue(dst.MatchOppositeIPs),
 		MatchOppositeNetworks: types.BoolValue(dst.MatchOppositeNetworks),
 		MatchOppositePorts:    types.BoolValue(dst.MatchOppositePorts),
+		MatchMAC:              types.BoolValue(dst.MatchMAC),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, dst.NetworkIDs)
 	diags.Append(nd...)
