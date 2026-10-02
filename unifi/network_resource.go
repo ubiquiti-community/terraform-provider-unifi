@@ -1875,41 +1875,35 @@ func (r *networkResource) modelToNetwork(
 				d := dhcpServer.DnsServers.ElementsAs(ctx, &dnsServers, false)
 				diags.Append(d...)
 				if !diags.HasError() {
+					// go-unifi models the four slots as *string with
+					// omitempty: nil omits the key (preserving whatever the
+					// controller holds), a pointer to "" clears the slot, and a
+					// pointer to a value sets it. dns_servers is a single list
+					// owned entirely by the configuration, so every slot it does
+					// not fill must be explicitly cleared - leaving it nil would
+					// strand DNS servers configured out of band.
+					slots := [4]*string{}
 					for i, dns := range dnsServers {
 						if i >= 4 {
 							break
 						}
-						switch i {
-						case 0:
-							network.DHCPDDNS1 = dns
-						case 1:
-							network.DHCPDDNS2 = dns
-						case 2:
-							network.DHCPDDNS3 = dns
-						case 3:
-							network.DHCPDDNS4 = dns
-						}
+						slots[i] = util.Ptr(dns)
 					}
-					// Set remaining DNS servers to empty string
 					for i := len(dnsServers); i < 4; i++ {
-						switch i {
-						case 0:
-							network.DHCPDDNS1 = ""
-						case 1:
-							network.DHCPDDNS2 = ""
-						case 2:
-							network.DHCPDDNS3 = ""
-						case 3:
-							network.DHCPDDNS4 = ""
-						}
+						slots[i] = util.Ptr("")
 					}
+					network.DHCPDDNS1 = slots[0]
+					network.DHCPDDNS2 = slots[1]
+					network.DHCPDDNS3 = slots[2]
+					network.DHCPDDNS4 = slots[3]
 				}
 			} else {
-				// Set all DNS servers to empty string when not configured
-				network.DHCPDDNS1 = ""
-				network.DHCPDDNS2 = ""
-				network.DHCPDDNS3 = ""
-				network.DHCPDDNS4 = ""
+				// Clear all four slots explicitly: these are tri-state
+				// pointers now, so nil would preserve the controller's value.
+				network.DHCPDDNS1 = util.Ptr("")
+				network.DHCPDDNS2 = util.Ptr("")
+				network.DHCPDDNS3 = util.Ptr("")
+				network.DHCPDDNS4 = util.Ptr("")
 			}
 		}
 	} else if !relayEnabled {
@@ -1932,10 +1926,10 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPDWPAdUrl = util.Ptr("")
 		network.DHCPDTFTPServer = util.Ptr("")
 		network.DHCPDUnifiController = util.Ptr("")
-		network.DHCPDDNS1 = ""
-		network.DHCPDDNS2 = ""
-		network.DHCPDDNS3 = ""
-		network.DHCPDDNS4 = ""
+		network.DHCPDDNS1 = util.Ptr("")
+		network.DHCPDDNS2 = util.Ptr("")
+		network.DHCPDDNS3 = util.Ptr("")
+		network.DHCPDDNS4 = util.Ptr("")
 	}
 
 	// Handle DHCPv6 server configuration
@@ -2400,19 +2394,15 @@ func (r *networkResource) networkToModel(
 		)
 		diags.Append(d...)
 
-		// Build DNS servers list from DHCPDDNS1-4
+		// Build DNS servers list from DHCPDDNS1-4. The slots are *string, and
+		// an absent key and an explicitly empty one both mean "no server here".
 		var dnsServers []string
-		if network.DHCPDDNS1 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS1)
-		}
-		if network.DHCPDDNS2 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS2)
-		}
-		if network.DHCPDDNS3 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS3)
-		}
-		if network.DHCPDDNS4 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS4)
+		for _, slot := range []*string{
+			network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4,
+		} {
+			if slot != nil && *slot != "" {
+				dnsServers = append(dnsServers, *slot)
+			}
 		}
 
 		dnsServersList, d := stringListOrNull(ctx, dnsServers, previousDhcpServer.DnsServers)

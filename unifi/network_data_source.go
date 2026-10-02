@@ -678,7 +678,9 @@ func (d *networkDataSource) setDataSourceData(
 		dhcpBootObj, d := types.ObjectValueFrom(ctx, dhcpBootValue.AttributeTypes(), dhcpBootValue)
 		diags.Append(d...)
 
-		dnsServers := collectNonEmptyStrings(
+		// The four DHCP DNS slots are *string in go-unifi; nil and "" both
+		// mean no server configured in that slot.
+		dnsServers := collectNonEmptyStringPointers(
 			network.DHCPDDNS1, network.DHCPDDNS2, network.DHCPDDNS3, network.DHCPDDNS4,
 		)
 		var dnsServersList types.List

@@ -1452,7 +1452,7 @@ func Test_settingResource_usgSettingToModel(t *testing.T) {
 			FtpModule: types.BoolNull(),
 			SipModule: types.BoolNull(),
 		}
-		got := r.usgSettingToModel(ctx, setting, plan)
+		got := r.usgSettingToModel(ctx, setting, plan, &usgGeoIPFiltering{})
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
@@ -1467,7 +1467,7 @@ func Test_settingResource_usgSettingToModel(t *testing.T) {
 			FtpModule: types.BoolValue(false),
 			GreModule: types.BoolValue(true),
 		}
-		got := r.usgSettingToModel(ctx, setting, plan)
+		got := r.usgSettingToModel(ctx, setting, plan, &usgGeoIPFiltering{})
 		if !got.FtpModule.ValueBool() {
 			t.Error("FtpModule should be true (remote value)")
 		}
@@ -1835,7 +1835,7 @@ func Test_settingResource_ipsModelToSetting(t *testing.T) {
 			RestrictTorrents: types.BoolNull(),
 		}
 		var diags diag.Diagnostics
-		got := r.ipsModelToSetting(ctx, model, &diags)
+		got, _ := r.ipsModelToSetting(ctx, model, &diags)
 		if diags.HasError() {
 			t.Fatalf("unexpected diags: %v", diags)
 		}
@@ -1854,7 +1854,7 @@ func Test_settingResource_ipsModelToSetting(t *testing.T) {
 			HoneypotEnabled:  types.BoolNull(),
 		}
 		var diags diag.Diagnostics
-		got := r.ipsModelToSetting(ctx, model, &diags)
+		got, _ := r.ipsModelToSetting(ctx, model, &diags)
 		if diags.HasError() {
 			t.Fatalf("unexpected diags: %v", diags)
 		}
@@ -1877,7 +1877,7 @@ func Test_settingResource_ipsSettingToModel(t *testing.T) {
 			IPSMode: types.StringNull(),
 		}
 		var diags diag.Diagnostics
-		got := r.ipsSettingToModel(ctx, setting, plan, &diags)
+		got := r.ipsSettingToModel(ctx, setting, plan, &diags, nil)
 		if diags.HasError() {
 			t.Fatalf("unexpected diags: %v", diags)
 		}
@@ -1896,7 +1896,7 @@ func Test_settingResource_ipsSettingToModel(t *testing.T) {
 			RestrictTorrents: types.BoolValue(false),
 		}
 		var diags diag.Diagnostics
-		got := r.ipsSettingToModel(ctx, setting, plan, &diags)
+		got := r.ipsSettingToModel(ctx, setting, plan, &diags, nil)
 		if diags.HasError() {
 			t.Fatalf("unexpected diags: %v", diags)
 		}
@@ -2132,20 +2132,20 @@ func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
 		SuppressionWhitelist: types.ListNull(types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}),
 		SuppressionAlerts:    alerts,
 	}
-	setting := r.ipsModelToSetting(ctx, model, &diags)
+	setting, suppression := r.ipsModelToSetting(ctx, model, &diags)
 	if diags.HasError() {
 		t.Fatalf("modelToSetting: %v", diags)
 	}
-	if setting.Suppression == nil || len(setting.Suppression.Alerts) != 1 {
-		t.Fatalf("alerts not built: %+v", setting.Suppression)
+	if suppression == nil || len(suppression.Alerts) != 1 {
+		t.Fatalf("alerts not built: %+v", suppression)
 	}
-	a := setting.Suppression.Alerts[0]
+	a := suppression.Alerts[0]
 	if a.Category != "malware" || a.Gid == nil || *a.Gid != 1 || a.ID == nil || *a.ID != 2001 ||
 		a.Type != "track" || len(a.Tracking) != 1 || a.Tracking[0].Value != "10.0.0.5" {
 		t.Fatalf("alert mismatch: %+v", a)
 	}
 
-	out := r.ipsSettingToModel(ctx, setting, model, &diags)
+	out := r.ipsSettingToModel(ctx, setting, model, &diags, suppression)
 	if diags.HasError() {
 		t.Fatalf("settingToModel: %v", diags)
 	}
@@ -2264,8 +2264,8 @@ func TestIpsSuppressionFromRaw(t *testing.T) {
 func TestIpsSuppressionRawSetting(t *testing.T) {
 	gid := int64(1)
 	id := int64(2003068)
-	raw := ipsSuppressionRawSetting(&settings.SettingIpsSuppression{
-		Alerts: []settings.SettingIpsAlerts{{
+	raw := ipsSuppressionRawSetting(&settings.IpsSuppression{
+		Alerts: []settings.SettingIpsSuppressionAlerts{{
 			Category:  "emerging-scan",
 			Gid:       &gid,
 			ID:        &id,
@@ -2282,9 +2282,9 @@ func TestIpsSuppressionRawSetting(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	var decoded struct {
-		Key       string                         `json:"key"`
-		Alerts    []settings.SettingIpsAlerts    `json:"alerts"`
-		Whitelist []settings.SettingIpsWhitelist `json:"whitelist"`
+		Key       string                                    `json:"key"`
+		Alerts    []settings.SettingIpsSuppressionAlerts    `json:"alerts"`
+		Whitelist []settings.SettingIpsSuppressionWhitelist `json:"whitelist"`
 	}
 	if err := json.Unmarshal(buf, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -2297,7 +2297,7 @@ func TestIpsSuppressionRawSetting(t *testing.T) {
 	}
 
 	// Fully empty suppression: both lists still serialize as [].
-	raw = ipsSuppressionRawSetting(&settings.SettingIpsSuppression{})
+	raw = ipsSuppressionRawSetting(&settings.IpsSuppression{})
 	buf, err = raw.MarshalJSON()
 	if err != nil {
 		t.Fatalf("marshal empty: %v", err)
@@ -2388,11 +2388,11 @@ func TestUsgGeoRawSetting(t *testing.T) {
 // setting is authoritative and overrides the geo fields of the usg struct,
 // including mapping action back to the legacy block field.
 func TestApplyUsgGeoIPFiltering(t *testing.T) {
-	setting := &settings.Usg{
-		GeoIPFilteringEnabled: false,
-		GeoIPFilteringBlock:   "allow",
-	}
-	applyUsgGeoIPFiltering(setting, map[string]any{
+	// go-unifi v1.34.1 removed the geo_ip_filtering_* fields from settings.Usg,
+	// so the values are carried in usgGeoIPFiltering instead; the behaviour
+	// guarded here is unchanged.
+	geo := &usgGeoIPFiltering{Enabled: false, Block: "allow"}
+	applyUsgGeoIPFiltering(geo, map[string]any{
 		"key": "usg_geo",
 		"ip_filtering": map[string]any{
 			"enabled":           true,
@@ -2401,28 +2401,27 @@ func TestApplyUsgGeoIPFiltering(t *testing.T) {
 			"traffic_direction": "both",
 		},
 	})
-	if !setting.GeoIPFilteringEnabled || setting.GeoIPFilteringBlock != "block" ||
-		setting.GeoIPFilteringCountries != "KP,RU" ||
-		setting.GeoIPFilteringTrafficDirection != "both" {
-		t.Errorf("override mismatch: %+v", setting)
+	if !geo.Enabled || geo.Block != "block" ||
+		geo.Countries != "KP,RU" || geo.TrafficDirection != "both" {
+		t.Errorf("override mismatch: %+v", geo)
 	}
 
 	// A list-shaped countries payload is normalized to the comma form.
-	applyUsgGeoIPFiltering(setting, map[string]any{
+	applyUsgGeoIPFiltering(geo, map[string]any{
 		"ip_filtering": map[string]any{
 			"countries": []any{"CN", "KP"},
 		},
 	})
-	if setting.GeoIPFilteringCountries != "CN,KP" {
-		t.Errorf("countries list not normalized: %q", setting.GeoIPFilteringCountries)
+	if geo.Countries != "CN,KP" {
+		t.Errorf("countries list not normalized: %q", geo.Countries)
 	}
 
-	// Missing/malformed ip_filtering leaves the struct untouched.
-	before := *setting
-	applyUsgGeoIPFiltering(setting, map[string]any{"ip_filtering": "bogus"})
-	applyUsgGeoIPFiltering(setting, map[string]any{})
-	if *setting != before {
-		t.Errorf("no-op payloads must not modify the setting")
+	// Missing/malformed ip_filtering leaves the carrier untouched.
+	before := *geo
+	applyUsgGeoIPFiltering(geo, map[string]any{"ip_filtering": "bogus"})
+	applyUsgGeoIPFiltering(geo, map[string]any{})
+	if *geo != before {
+		t.Errorf("no-op payloads must not modify the carrier")
 	}
 }
 

@@ -766,10 +766,10 @@ func (r *vpnClientResource) modelToNetwork(
 				diags.Append(d...)
 				if !diags.HasError() {
 					if len(dnsServers) > 0 {
-						network.DHCPDDNS1 = dnsServers[0]
+						network.DHCPDDNS1 = util.Ptr(dnsServers[0])
 					}
 					if len(dnsServers) > 1 {
-						network.DHCPDDNS2 = dnsServers[1]
+						network.DHCPDDNS2 = util.Ptr(dnsServers[1])
 					}
 				}
 			}
@@ -812,10 +812,10 @@ func (r *vpnClientResource) modelToNetwork(
 					// Use DNS servers from config file if not set explicitly
 					if len(parsed.DNS) > 0 && wireguard.DnsServers.IsNull() {
 						if len(parsed.DNS) > 0 {
-							network.DHCPDDNS1 = parsed.DNS[0]
+							network.DHCPDDNS1 = util.Ptr(parsed.DNS[0])
 						}
 						if len(parsed.DNS) > 1 {
-							network.DHCPDDNS2 = parsed.DNS[1]
+							network.DHCPDDNS2 = util.Ptr(parsed.DNS[1])
 						}
 					}
 				}
@@ -927,11 +927,11 @@ func (r *vpnClientResource) networkToModel(
 		dnsServersList = priorWG.DnsServers
 	} else {
 		var dnsServers []string
-		if network.DHCPDDNS1 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS1)
-		}
-		if network.DHCPDDNS2 != "" {
-			dnsServers = append(dnsServers, network.DHCPDDNS2)
+		// *string slots: nil and "" alike mean no server in that slot.
+		for _, slot := range []*string{network.DHCPDDNS1, network.DHCPDDNS2} {
+			if slot != nil && *slot != "" {
+				dnsServers = append(dnsServers, *slot)
+			}
 		}
 		if len(dnsServers) > 0 {
 			var d diag.Diagnostics
