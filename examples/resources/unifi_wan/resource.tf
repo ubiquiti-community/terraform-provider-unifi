@@ -63,3 +63,15 @@ resource "unifi_wan" "secondary" {
     upload_kilobits_per_second   = 100000
   }
 }
+
+# A PPPoE uplink. The credentials are only written when set, so an imported
+# PPPoE WAN can be managed for its other settings without touching the ISP
+# login. Prefer password_wo: it never lands in state, at the cost of the
+# provider being unable to detect a password changed outside Terraform.
+resource "unifi_wan" "pppoe" {
+  name = "Internet (PPPoE)"
+  type = "pppoe"
+
+  username    = var.isp_username
+  password_wo = var.isp_password
+}

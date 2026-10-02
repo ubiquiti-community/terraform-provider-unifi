@@ -27,6 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -76,6 +77,11 @@ type wanResourceModel struct {
 	// WAN Type Settings
 	Type   types.String `tfsdk:"type"`
 	TypeV6 types.String `tfsdk:"type_v6"`
+
+	// PPPoE credentials, used when type = "pppoe".
+	Username   types.String `tfsdk:"username"`
+	Password   types.String `tfsdk:"password"`
+	PasswordWO types.String `tfsdk:"password_wo"`
 
 	// VLAN Settings
 	Vlan types.Object `tfsdk:"vlan"`
@@ -390,6 +396,41 @@ func (r *wanResource) Schema(
 				MarkdownDescription: "The WAN type (dhcp, static, pppoe)",
 				Validators: []validator.String{
 					stringvalidator.OneOf("dhcp", "static", "pppoe", "disabled"),
+				},
+			},
+			"username": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "PPPoE username supplied by the ISP. Only " +
+					"meaningful when `type` is `pppoe`. Left unset, the attribute is " +
+					"not written and whatever the controller holds is preserved, so an " +
+					"imported PPPoE uplink can be managed without touching its login.",
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"password": schema.StringAttribute{
+				Optional:  true,
+				Sensitive: true,
+				MarkdownDescription: "PPPoE password supplied by the ISP. Stored in " +
+					"state - use `password_wo` to avoid persisting the secret. Only " +
+					"meaningful when `type` is `pppoe`.",
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.ConflictsWith(path.MatchRoot("password_wo")),
+				},
+			},
+			"password_wo": schema.StringAttribute{
+				MarkdownDescription: "Write-only equivalent of `password` " +
+					"(Terraform 1.11+). Used at apply time but never written to state, " +
+					"so it can be sourced from an ephemeral resource. Because nothing " +
+					"is stored, the provider cannot detect a password changed outside " +
+					"Terraform: such a change produces no diff. Mutually exclusive " +
+					"with `password`.",
+				Optional:  true,
+				Sensitive: true,
+				WriteOnly: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"type_v6": schema.StringAttribute{
@@ -910,6 +951,11 @@ func (r *wanResource) Create(
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
+	plan.PasswordWO = r.readPasswordWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Convert to unifi.Network
 	network, diags := r.modelToNetwork(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -1222,6 +1268,11 @@ func (r *wanResource) Update(
 	r.applyPlanToState(ctx, &plan, &state)
 	state.Timeouts = plan.Timeouts
 
+	state.PasswordWO = r.readPasswordWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Step 3: Convert the updated state to API format
 	network, diags := r.modelToNetwork(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -1448,6 +1499,19 @@ func (r *wanResource) ImportState(
 // modelToNetwork converts from Terraform model to unifi.Network.
 // Only fields with known values are set on the Network struct; null/unknown
 // fields are left as nil so marshalWAN omits them via omitempty.
+// readPasswordWO reads the write-only password_wo attribute. Write-only values
+// only ever appear in the request config, never in the plan or state, so they
+// have to be fetched explicitly and copied into the model before conversion.
+func (r *wanResource) readPasswordWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var passwordWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("password_wo"), &passwordWO)...)
+	return passwordWO
+}
+
 func (r *wanResource) modelToNetwork(
 	ctx context.Context,
 	model *wanResourceModel,
@@ -1479,6 +1543,21 @@ func (r *wanResource) modelToNetwork(
 	}
 	if !model.TypeV6.IsNull() && !model.TypeV6.IsUnknown() {
 		network.WANTypeV6 = model.TypeV6.ValueStringPointer()
+	}
+
+	// PPPoE credentials. go-unifi models both as *string with omitempty, so an
+	// unset attribute keeps the key off the wire and the controller preserves
+	// the stored login - an imported PPPoE uplink can be managed for its other
+	// settings without wiping the ISP credentials (#515). password_wo is
+	// write-only, so it reaches modelToNetwork through the model only after
+	// Create/Update copy it in from the request config.
+	if !model.Username.IsNull() && !model.Username.IsUnknown() {
+		network.WANUsername = model.Username.ValueStringPointer()
+	}
+	if !model.Password.IsNull() && !model.Password.IsUnknown() {
+		network.WANPassword = model.Password.ValueStringPointer()
+	} else if !model.PasswordWO.IsNull() && !model.PasswordWO.IsUnknown() {
+		network.WANPassword = model.PasswordWO.ValueStringPointer()
 	}
 
 	// DNS Settings
@@ -1739,6 +1818,15 @@ func (r *wanResource) networkToModel(
 	}
 
 	// WAN Type Settings — only overwrite when API returns a value
+	// username round-trips; the controller never returns the password, and a
+	// write-only password_wo must never be written to state, so both password
+	// attributes are left exactly as the configuration had them.
+	if network.WANUsername != nil && *network.WANUsername != "" {
+		model.Username = types.StringValue(*network.WANUsername)
+	} else {
+		model.Username = types.StringNull()
+	}
+
 	if network.WANType != nil {
 		model.Type = types.StringValue(*network.WANType)
 	}
