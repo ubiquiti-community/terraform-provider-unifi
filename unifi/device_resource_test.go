@@ -824,6 +824,11 @@ func Test_buildMinimalUpdateDevice(t *testing.T) {
 		LedOverride:                "on",
 		LedOverrideColor:           "#00ff00",
 		LedOverrideColorBrightness: ptrInt64(20),
+		StpVersion:                 "rstp",
+		StpPriority:                ptrInt64(4096),
+		OutletOverrides: []unifi.DeviceOutletOverrides{
+			{Index: ptrInt64(1), Name: "rack-pdu", RelayState: true},
+		},
 	}
 	current := &unifi.Device{State: 1, Adopted: true}
 	overrides := []unifi.DevicePortOverrides{{PortIDX: ptrInt64(1)}}
@@ -857,6 +862,15 @@ func Test_buildMinimalUpdateDevice(t *testing.T) {
 	if got.ConfigNetwork == nil || got.ConfigNetwork.DNS1 != "10.0.200.2" ||
 		got.ConfigNetwork.DNS2 != "10.0.200.3" {
 		t.Errorf("ConfigNetwork DNS = %#v, want dns1/dns2 preserved", got.ConfigNetwork)
+	}
+	if got.StpVersion != "rstp" || got.StpPriority == nil || *got.StpPriority != 4096 {
+		t.Errorf("STP = %q/%v, want rstp/4096 preserved (#476)", got.StpVersion, got.StpPriority)
+	}
+	if len(got.OutletOverrides) != 1 || got.OutletOverrides[0].Name != "rack-pdu" {
+		t.Errorf(
+			"OutletOverrides = %#v, want the outlet name preserved (#510)",
+			got.OutletOverrides,
+		)
 	}
 
 	// Unset LED fields stay zero-valued (omitempty drops them from the PUT body).
@@ -2175,4 +2189,70 @@ resource "unifi_device" "test_ap" {
 	]
 }
 `, ngChannel, naChannel)
+}
+
+// Test_buildMinimalUpdateDevice_carriesConfigurableFields guards the recurring
+// bug class where modelToAPIDevice populates a field that the hand-listed update
+// body then drops (#329, #337, #476, #482, #510): the controller keeps its old
+// value and the post-apply read fails with an inconsistent-result error. Every
+// field listed here must survive buildMinimalUpdateDevice unchanged. When a new
+// configurable attribute is wired into modelToAPIDevice, add it to both.
+func Test_buildMinimalUpdateDevice_carriesConfigurableFields(t *testing.T) {
+	deviceReq := &unifi.Device{
+		ID:                     "dev-1",
+		Type:                   "usw",
+		MAC:                    "00:11:22:33:44:55",
+		Name:                   "core-switch",
+		Disabled:               true,
+		BandsteeringMode:       "prefer_5g",
+		FlowctrlEnabled:        true,
+		JumboframeEnabled:      true,
+		StpVersion:             "rstp",
+		StpPriority:            ptrInt64(0), // 0 is a valid (root) priority, not "unset".
+		Locked:                 true,
+		PoeMode:                "auto",
+		OutdoorModeOverride:    "on",
+		Volume:                 ptrInt64(30),
+		BaresipPassword:        "talk-secret",
+		LcmBrightness:          ptrInt64(50),
+		LcmBrightnessOverride:  true,
+		LcmIDleTimeout:         ptrInt64(120),
+		LcmIDleTimeoutOverride: true,
+		LcmNightModeBegins:     "22:00",
+		LcmNightModeEnds:       "06:00",
+		OutletEnabled:          true,
+		OutletOverrides: []unifi.DeviceOutletOverrides{
+			{Index: ptrInt64(2), Name: "nas"},
+		},
+		MgmtNetworkID:              "net-mgmt",
+		LedOverride:                "on",
+		LedOverrideColor:           "#00ff00",
+		LedOverrideColorBrightness: ptrInt64(20),
+		SwitchVLANEnabled:          true,
+		MeshStaVapEnabled:          true,
+		ConfigNetwork:              &unifi.DeviceConfigNetwork{Type: "dhcp"},
+		RadioTable:                 []unifi.DeviceRadioTable{{Name: "wifi0", Radio: "ng"}},
+	}
+
+	got := buildMinimalUpdateDevice(deviceReq, nil, nil)
+
+	want := reflect.ValueOf(*deviceReq)
+	have := reflect.ValueOf(*got)
+	for _, name := range []string{
+		"ID", "Type", "MAC", "Name",
+		"Disabled", "BandsteeringMode", "FlowctrlEnabled", "JumboframeEnabled",
+		"StpVersion", "StpPriority", "Locked", "PoeMode", "OutdoorModeOverride",
+		"Volume", "BaresipPassword",
+		"LcmBrightness", "LcmBrightnessOverride", "LcmIDleTimeout",
+		"LcmIDleTimeoutOverride", "LcmNightModeBegins", "LcmNightModeEnds",
+		"OutletEnabled", "OutletOverrides",
+		"MgmtNetworkID", "LedOverride", "LedOverrideColor", "LedOverrideColorBrightness",
+		"SwitchVLANEnabled", "MeshStaVapEnabled", "ConfigNetwork", "RadioTable",
+	} {
+		w := want.FieldByName(name).Interface()
+		h := have.FieldByName(name).Interface()
+		if !reflect.DeepEqual(w, h) {
+			t.Errorf("%s dropped from the update body: want %#v, got %#v", name, w, h)
+		}
+	}
 }

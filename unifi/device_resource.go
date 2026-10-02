@@ -1778,6 +1778,15 @@ func (r *deviceResource) ImportState(
 // plan (user-configured, or state-inherited via the list's UseStateForUnknown),
 // its non-zero sub-fields (channel, tx_power, …) also travel in the PUT; sending
 // back the values the controller already returned is idempotent.
+// Every other user-configurable field that modelToAPIDevice populates is carried
+// as well: stp_version and stp_priority (#476), outlet_overrides (#510), and the
+// LCM display, PoE, outlet, lock, disable, band-steering, flow-control,
+// jumbo-frame, outdoor-mode, volume and Talk password settings. Each of them is
+// `omitempty` in go-unifi, so an unset attribute stays off the wire, while a
+// configured one must travel or the controller keeps its old value and the
+// post-apply read fails with an inconsistent-result error. When adding an
+// attribute to modelToAPIDevice, add it here and to
+// Test_buildMinimalUpdateDevice_carriesConfigurableFields.
 func buildMinimalUpdateDevice(
 	deviceReq, currentDevice *unifi.Device,
 	portOverrides []unifi.DevicePortOverrides,
@@ -1812,6 +1821,25 @@ func buildMinimalUpdateDevice(
 		ConfigNetwork:              deviceReq.ConfigNetwork,
 		MeshStaVapEnabled:          deviceReq.MeshStaVapEnabled,
 		RadioTable:                 deviceReq.RadioTable,
+		Disabled:                   deviceReq.Disabled,
+		BandsteeringMode:           deviceReq.BandsteeringMode,
+		FlowctrlEnabled:            deviceReq.FlowctrlEnabled,
+		JumboframeEnabled:          deviceReq.JumboframeEnabled,
+		StpVersion:                 deviceReq.StpVersion,
+		StpPriority:                deviceReq.StpPriority,
+		Locked:                     deviceReq.Locked,
+		PoeMode:                    deviceReq.PoeMode,
+		OutdoorModeOverride:        deviceReq.OutdoorModeOverride,
+		Volume:                     deviceReq.Volume,
+		BaresipPassword:            deviceReq.BaresipPassword,
+		LcmBrightness:              deviceReq.LcmBrightness,
+		LcmBrightnessOverride:      deviceReq.LcmBrightnessOverride,
+		LcmIDleTimeout:             deviceReq.LcmIDleTimeout,
+		LcmIDleTimeoutOverride:     deviceReq.LcmIDleTimeoutOverride,
+		LcmNightModeBegins:         deviceReq.LcmNightModeBegins,
+		LcmNightModeEnds:           deviceReq.LcmNightModeEnds,
+		OutletEnabled:              deviceReq.OutletEnabled,
+		OutletOverrides:            deviceReq.OutletOverrides,
 	}
 	if currentDevice != nil {
 		minimalDevice.State = currentDevice.State
