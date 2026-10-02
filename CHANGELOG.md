@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### ✨ Features
+
+- **`unifi_setting`: manage Global Switch Settings via the new `global_switch` block** (`stp_version`, `dhcp_snoop`, `jumboframe_enabled`, `dot1x_portctrl_enabled`). Current controllers only honor jumbo frames at the site level: setting `unifi_device.jumboframe_enabled = true` is accepted and then read back as `false`, failing apply with `Provider produced inconsistent result after apply`, so jumbo frames were previously unmanageable. The block is opt-in like the others on `unifi_setting`, all fields are Optional+Computed with `UseStateForUnknown`, and only the fields you set are sent to the controller, so Global Switch options the provider doesn't model (ACL isolation, switch exclusions, link debounce, PoE staging) are left untouched (#513)
+
 ### 🐛 Bug Fixes
 
 - **`unifi_device`: carry every configurable field into the update PUT.** `stp_version`, `stp_priority`, `outlet_overrides`, `outlet_enabled`, the `lcm_*` display settings, `poe_mode`, `locked`, `disabled`, `bandsteering_mode`, `flowctrl_enabled`, `jumboframe_enabled`, `outdoor_mode_override`, `volume` and `x_baresip_password` were converted from the plan but never copied into the minimal body sent on update, so the controller kept its previous values and the post-apply read failed with `Provider produced inconsistent result after apply` (for example `stp_priority` staying at `32768` after planning `4096`). All of them are now included. Every one of these fields is `omitempty` in go-unifi, so attributes that are not declared stay off the wire and existing configurations are unaffected (#476, #510)

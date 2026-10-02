@@ -55,3 +55,16 @@ resource "unifi_setting" "radius_only" {
     auth_port          = 1812
   }
 }
+
+# Configure Global Switch Settings (spanning tree, rogue DHCP detection,
+# jumbo frames, 802.1X) for every switch on the site
+resource "unifi_setting" "global_switch" {
+  site = "default"
+
+  global_switch = {
+    stp_version            = "rstp"
+    dhcp_snoop             = true
+    jumboframe_enabled     = true
+    dot1x_portctrl_enabled = false
+  }
+}

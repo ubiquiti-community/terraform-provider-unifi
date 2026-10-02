@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -248,7 +249,21 @@ type settingResourceModel struct {
 	Radius        types.Object   `tfsdk:"radius"`
 	USG           types.Object   `tfsdk:"usg"`
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
+	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
+}
+
+// settingGlobalSwitchModel is the nested global_switch block (Settings > Networks
+// > Global Switch Settings). Current controllers ignore the per-device
+// jumboframe_enabled flag and honor only this site setting. Writes send only
+// the fields present in config and rely on the controller merging the partial
+// payload, which keeps fields not exposed here (ACL isolation, switch
+// exclusions, PoE staging, ...) intact.
+type settingGlobalSwitchModel struct {
+	StpVersion           types.String `tfsdk:"stp_version"`
+	DHCPSnoop            types.Bool   `tfsdk:"dhcp_snoop"`
+	JumboframeEnabled    types.Bool   `tfsdk:"jumboframe_enabled"`
+	Dot1XPortctrlEnabled types.Bool   `tfsdk:"dot1x_portctrl_enabled"`
 }
 
 // settingIgmpSnoopingModel is the nested igmp_snooping block. On UniFi 10.3.x the
@@ -384,6 +399,12 @@ var (
 	igmpSnoopingAttrTypes = map[string]attr.Type{
 		"enabled":     types.BoolType,
 		"network_ids": types.ListType{ElemType: types.StringType},
+	}
+	globalSwitchAttrTypes = map[string]attr.Type{
+		"stp_version":            types.StringType,
+		"dhcp_snoop":             types.BoolType,
+		"jumboframe_enabled":     types.BoolType,
+		"dot1x_portctrl_enabled": types.BoolType,
 	}
 )
 
@@ -1299,6 +1320,49 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"global_switch": schema.SingleNestedAttribute{
+				MarkdownDescription: "Site-wide switch settings (Settings > Networks > Global Switch Settings). " +
+					"On current controllers jumbo frames are only honored here, not via `unifi_device.jumboframe_enabled`. " +
+					"Options not exposed by this block are preserved across updates.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"stp_version": schema.StringAttribute{
+						MarkdownDescription: "Spanning Tree Protocol mode for all switches: `stp`, `rstp`, or `disabled`.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("stp", "rstp", "disabled"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"dhcp_snoop": schema.BoolAttribute{
+						MarkdownDescription: "Enable Rogue DHCP Server Detection (DHCP snooping).",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"jumboframe_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable jumbo frames on all switches.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"dot1x_portctrl_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable 802.1X port control.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
 			"timeouts": timeouts.Attributes(
 				ctx,
 				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
@@ -1641,6 +1705,14 @@ func (r *settingResource) Create(
 		}
 	}
 
+	var globalSwitchConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
+	r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Read back the settings
 	r.readSettings(ctx, site, &data, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
@@ -1965,6 +2037,14 @@ func (r *settingResource) Update(
 			resp.Diagnostics.AddError("Error Updating IGMP Snooping Setting", err.Error())
 			return
 		}
+	}
+
+	var globalSwitchConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
+	r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Read back the settings
@@ -2443,6 +2523,27 @@ func (r *settingResource) readSettings(
 		data.IgmpSnooping = objValue
 	} else {
 		data.IgmpSnooping = types.ObjectNull(igmpSnoopingAttrTypes)
+	}
+
+	// Global switch settings
+	if !data.GlobalSwitch.IsNull() && !data.GlobalSwitch.IsUnknown() {
+		_, gsSetting, err := ui.GetSetting[*settings.GlobalSwitch](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Global Switch Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx,
+			globalSwitchAttrTypes,
+			r.globalSwitchSettingToModel(gsSetting),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.GlobalSwitch = objValue
+	} else {
+		data.GlobalSwitch = types.ObjectNull(globalSwitchAttrTypes)
 	}
 }
 
@@ -3187,6 +3288,73 @@ func (r *settingResource) igmpSnoopingSettingToModel(
 	diags.Append(d...)
 	model.NetworkIDs = ids
 	return model
+}
+
+// Global switch conversion functions.
+
+// persistGlobalSwitch writes the global_switch fields set in config, if any.
+// obj must come from config, not the plan: UseStateForUnknown fills omitted
+// fields in the plan from state, and those must not be re-sent. The
+// controller merges this partial PUT into the stored setting, so fields the
+// pinned go-unifi struct doesn't know about (link debounce, PoE staging, ...)
+// are left untouched.
+func (r *settingResource) persistGlobalSwitch(
+	ctx context.Context,
+	site string,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) {
+	if obj.IsNull() || obj.IsUnknown() {
+		return
+	}
+	var model settingGlobalSwitchModel
+	diags.Append(obj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return
+	}
+
+	setting := globalSwitchRawSetting(&model)
+	if len(setting.Data) == 0 {
+		return
+	}
+	if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		diags.AddError("Error Updating Global Switch Setting", err.Error())
+	}
+}
+
+const globalSwitchSettingKey = "global_switch"
+
+// globalSwitchRawSetting builds a partial global_switch payload containing only
+// the fields set in the model.
+func globalSwitchRawSetting(model *settingGlobalSwitchModel) *settings.RawSetting {
+	data := map[string]any{}
+	if !model.StpVersion.IsNull() && !model.StpVersion.IsUnknown() {
+		data["stp_version"] = model.StpVersion.ValueString()
+	}
+	if !model.DHCPSnoop.IsNull() && !model.DHCPSnoop.IsUnknown() {
+		data["dhcp_snoop"] = model.DHCPSnoop.ValueBool()
+	}
+	if !model.JumboframeEnabled.IsNull() && !model.JumboframeEnabled.IsUnknown() {
+		data["jumboframe_enabled"] = model.JumboframeEnabled.ValueBool()
+	}
+	if !model.Dot1XPortctrlEnabled.IsNull() && !model.Dot1XPortctrlEnabled.IsUnknown() {
+		data["dot1x_portctrl_enabled"] = model.Dot1XPortctrlEnabled.ValueBool()
+	}
+	return &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: globalSwitchSettingKey},
+		Data:        data,
+	}
+}
+
+func (r *settingResource) globalSwitchSettingToModel(
+	setting *settings.GlobalSwitch,
+) *settingGlobalSwitchModel {
+	return &settingGlobalSwitchModel{
+		StpVersion:           types.StringValue(setting.StpVersion),
+		DHCPSnoop:            types.BoolValue(setting.DHCPSnoop),
+		JumboframeEnabled:    types.BoolValue(setting.JumboframeEnabled),
+		Dot1XPortctrlEnabled: types.BoolValue(setting.Dot1XPortctrlEnabled),
+	}
 }
 
 // DoH conversion functions.
