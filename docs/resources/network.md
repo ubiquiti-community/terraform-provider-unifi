@@ -92,7 +92,7 @@ resource "unifi_network" "third_party" {
 
 ### Optional
 
-- `auto_scale` (Boolean) Specifies whether auto-scaling is enabled.
+- `auto_scale` (Boolean) Specifies whether auto-scaling is enabled. The controller stores no default: left unset, the attribute is not written and whatever the controller holds is preserved.
 - `dhcp_guarding` (Attributes) DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network. (see [below for nested schema](#nestedatt--dhcp_guarding))
 - `dhcp_relay` (Attributes) DHCP relay configuration. (see [below for nested schema](#nestedatt--dhcp_relay))
 - `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
@@ -117,7 +117,7 @@ resource "unifi_network" "third_party" {
 - `ipv6_ra_priority` (String) The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.
 - `ipv6_ra_valid_lifetime` (String) The IPv6 Router Advertisement valid lifetime, as a Go duration string (e.g. `86400s`, `24h`). Must be a whole number of seconds between `0s` and `31536000s` (1 year).
 - `ipv6_static_subnet` (String) The IPv6 static subnet of the network. Only used when `ipv6_interface_type` is `static`.
-- `lte_lan` (Boolean) Whether this network/VLAN stays active when the gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to the controller's `lte_lan_enabled` flag and only matters when a UniFi LTE failover device is in use; otherwise it is cosmetic. Defaults to `true` (network stays available during LTE failover); set to `false` to disable it while on the LTE backup link. The controller may set this automatically, which is why existing networks can show differing values.
+- `lte_lan` (Boolean) Whether this network/VLAN stays active when the gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to the controller's `lte_lan_enabled` flag and only matters when a UniFi LTE failover device is in use; otherwise it is cosmetic. The controller stores no default: left unset, the attribute is not written and whatever the controller holds is preserved, which is why existing networks show differing values.
 - `multicast_dns` (Boolean) Specifies whether mDNS is enabled. This is read back from the controller rather than defaulted: some controllers (notably UniFi OS gateways) ignore `mdns_enabled` at create/update time and always store `false`, so forcing a `true` default produced a "provider produced inconsistent result after apply" error.
 - `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
 - `network_isolation` (Boolean) Specifies whether network isolation is enabled.

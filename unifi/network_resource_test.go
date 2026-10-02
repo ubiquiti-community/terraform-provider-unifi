@@ -1907,12 +1907,16 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyDefaults(t *testing.T
 }
 
 // Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults covers
-// #517: the same class as #414, for the four attributes that were still copied
-// from the prior model verbatim. The controller omits auto_scale,
-// setting_preference, internet_access and lte_lan for a vlan-only network, and
+// #517: the same class as #414, for the attributes that were copied from the
+// prior model verbatim. The controller omits them for a vlan-only network and
 // an imported resource has no prior value either, so leaving the null in place
-// made every later plan propose the schema default and import-first adoption
-// could never reach a no-op.
+// made every later plan propose the schema default.
+//
+// auto_scale and lte_lan are deliberately NOT normalized (#524): the
+// controller stores no default for either - a network created without the keys
+// comes back without them - so resolving a null to true would write a value
+// nobody configured. They stay null; only internet_access and
+// setting_preference, which do have defaults the controller honours, resolve.
 func Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults(t *testing.T) {
 	r := &networkResource{}
 	base := func() *networkResourceModel {
@@ -1937,31 +1941,33 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults(t *testi
 		priorInternet  types.Bool
 		priorLteLan    types.Bool
 		priorSetting   types.String
-		wantAutoScale  bool
+		wantNullScale  bool
 		wantInternet   bool
+		wantNullLteLan bool
 		wantLteLan     bool
+		wantAutoScale  bool
 		wantSetting    string
 	}{
 		{
-			name:           "import nulls use schema defaults",
+			name:           "import nulls: defaults where the controller has one",
 			priorAutoScale: types.BoolNull(),
 			priorInternet:  types.BoolNull(),
 			priorLteLan:    types.BoolNull(),
 			priorSetting:   types.StringNull(),
-			wantAutoScale:  true,
+			wantNullScale:  true,
 			wantInternet:   true,
-			wantLteLan:     true,
+			wantNullLteLan: true,
 			wantSetting:    "auto",
 		},
 		{
-			name:           "unknown plan values use schema defaults",
+			name:           "unknown plan values: same split",
 			priorAutoScale: types.BoolUnknown(),
 			priorInternet:  types.BoolUnknown(),
 			priorLteLan:    types.BoolUnknown(),
 			priorSetting:   types.StringUnknown(),
-			wantAutoScale:  true,
+			wantNullScale:  true,
 			wantInternet:   true,
-			wantLteLan:     true,
+			wantNullLteLan: true,
 			wantSetting:    "auto",
 		},
 		{
@@ -1997,15 +2003,23 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults(t *testi
 				t.Fatalf("networkToModel: %v", d)
 			}
 
+			// auto_scale and lte_lan must stay null when nothing was
+			// configured, so the write path leaves them off the wire (#524).
 			for _, c := range []struct {
-				name string
-				got  types.Bool
-				want bool
+				name     string
+				got      types.Bool
+				wantNull bool
+				want     bool
 			}{
-				{"auto_scale", model.AutoScale, tt.wantAutoScale},
-				{"internet_access", model.InternetAccess, tt.wantInternet},
-				{"lte_lan", model.LteLan, tt.wantLteLan},
+				{"auto_scale", model.AutoScale, tt.wantNullScale, tt.wantAutoScale},
+				{"lte_lan", model.LteLan, tt.wantNullLteLan, tt.wantLteLan},
 			} {
+				if c.wantNull {
+					if !c.got.IsNull() {
+						t.Errorf("%s = %v, want null (controller has no default)", c.name, c.got)
+					}
+					continue
+				}
 				if c.got.IsNull() || c.got.IsUnknown() {
 					t.Errorf("%s should be known, got %v", c.name, c.got)
 					continue
@@ -2013,6 +2027,16 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults(t *testi
 				if c.got.ValueBool() != c.want {
 					t.Errorf("%s = %v, want %v", c.name, c.got.ValueBool(), c.want)
 				}
+			}
+
+			if model.InternetAccess.IsNull() || model.InternetAccess.IsUnknown() {
+				t.Errorf("internet_access should be known, got %v", model.InternetAccess)
+			} else if model.InternetAccess.ValueBool() != tt.wantInternet {
+				t.Errorf(
+					"internet_access = %v, want %v",
+					model.InternetAccess.ValueBool(),
+					tt.wantInternet,
+				)
 			}
 
 			if model.SettingPreference.IsNull() || model.SettingPreference.IsUnknown() {
@@ -2023,6 +2047,83 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults(t *testi
 			}
 			if got := model.SettingPreference.ValueString(); got != tt.wantSetting {
 				t.Errorf("setting_preference = %q, want %q", got, tt.wantSetting)
+			}
+		})
+	}
+}
+
+// Test_networkResource_autoScaleLteLanStayOffTheWire covers #524: the
+// controller stores no default for auto_scale_enabled or lte_lan_enabled - a
+// network created without the keys comes back without them, while one written
+// even once carries an explicit value. The provider used to declare
+// auto_scale with Default(true), so importing a network that had auto-scaling
+// off planned false -> true and the apply switched it on. Nothing may now reach
+// the wire unless the configuration actually set it.
+func Test_networkResource_autoScaleLteLanStayOffTheWire(t *testing.T) {
+	r := &networkResource{}
+
+	base := func() *networkResourceModel {
+		return &networkResourceModel{
+			Name:              types.StringValue("n"),
+			Purpose:           types.StringValue(unifi.PurposeCorporate),
+			Subnet:            cidrtypes.NewIPv4PrefixValue("10.0.0.0/24"),
+			ThirdPartyGateway: types.BoolValue(false),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:    types.ListNull(types.StringType),
+			IPv6Aliases:  types.ListNull(types.StringType),
+			DhcpServer:   types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			DhcpRelay:    types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server: types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding: types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+		}
+	}
+
+	for name, value := range map[string]types.Bool{
+		"null stays off the wire":    types.BoolNull(),
+		"unknown stays off the wire": types.BoolUnknown(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			model := base()
+			model.AutoScale = value
+			model.LteLan = value
+
+			network, diags := r.modelToNetwork(context.Background(), model)
+			if diags.HasError() {
+				t.Fatalf("modelToNetwork: %v", diags)
+			}
+			if network.AutoScaleEnabled != nil {
+				t.Errorf(
+					"auto_scale_enabled = %v, want nil so the key is omitted",
+					*network.AutoScaleEnabled,
+				)
+			}
+			if network.LteLanEnabled != nil {
+				t.Errorf(
+					"lte_lan_enabled = %v, want nil so the key is omitted",
+					*network.LteLanEnabled,
+				)
+			}
+		})
+	}
+
+	// An explicit value - false included - still travels.
+	for _, want := range []bool{true, false} {
+		t.Run(fmt.Sprintf("explicit %v is sent", want), func(t *testing.T) {
+			model := base()
+			model.AutoScale = types.BoolValue(want)
+			model.LteLan = types.BoolValue(want)
+
+			network, diags := r.modelToNetwork(context.Background(), model)
+			if diags.HasError() {
+				t.Fatalf("modelToNetwork: %v", diags)
+			}
+			if network.AutoScaleEnabled == nil || *network.AutoScaleEnabled != want {
+				t.Errorf("auto_scale_enabled = %v, want %v", network.AutoScaleEnabled, want)
+			}
+			if network.LteLanEnabled == nil || *network.LteLanEnabled != want {
+				t.Errorf("lte_lan_enabled = %v, want %v", network.LteLanEnabled, want)
 			}
 		})
 	}
