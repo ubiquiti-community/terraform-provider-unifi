@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -20,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
@@ -62,14 +64,17 @@ type wireguardPeerIdentityModel struct {
 
 // wireguardPeerResourceModel describes the resource data model.
 type wireguardPeerResourceModel struct {
-	ID          types.String   `tfsdk:"id"`
-	Site        types.String   `tfsdk:"site"`
-	NetworkID   types.String   `tfsdk:"network_id"`
-	Name        types.String   `tfsdk:"name"`
-	InterfaceIP types.String   `tfsdk:"interface_ip"`
-	PublicKey   types.String   `tfsdk:"public_key"`
-	AllowedIPs  types.List     `tfsdk:"allowed_ips"`
-	Timeouts    timeouts.Value `tfsdk:"timeouts"`
+	ID          types.String `tfsdk:"id"`
+	Site        types.String `tfsdk:"site"`
+	NetworkID   types.String `tfsdk:"network_id"`
+	Name        types.String `tfsdk:"name"`
+	InterfaceIP types.String `tfsdk:"interface_ip"`
+	PublicKey   types.String `tfsdk:"public_key"`
+	AllowedIPs  types.List   `tfsdk:"allowed_ips"`
+
+	PresharedKey   types.String   `tfsdk:"preshared_key"`
+	PresharedKeyWO types.String   `tfsdk:"preshared_key_wo"`
+	Timeouts       timeouts.Value `tfsdk:"timeouts"`
 }
 
 // wireguardPeerListConfigModel describes the list configuration model. Peers
@@ -179,6 +184,35 @@ func (r *wireguardPeerResource) Schema(
 				MarkdownDescription: "The WireGuard public key of the peer.",
 				Required:            true,
 			},
+			"preshared_key": schema.StringAttribute{
+				MarkdownDescription: "Optional WireGuard pre-shared key for this peer " +
+					"(the UI's Pre-Shared Key toggle), adding a layer of symmetric " +
+					"encryption on top of the key pair. The controller stores and " +
+					"returns it in clear text, so it is kept in state - use " +
+					"`preshared_key_wo` to avoid persisting the secret. Left unset, " +
+					"the attribute is not written and a key configured out of band is " +
+					"preserved.",
+				Optional:  true,
+				Sensitive: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.ConflictsWith(path.MatchRoot("preshared_key_wo")),
+				},
+			},
+			"preshared_key_wo": schema.StringAttribute{
+				MarkdownDescription: "Write-only equivalent of `preshared_key` " +
+					"(Terraform 1.11+). Used at apply time but never written to state, " +
+					"so it can be sourced from an ephemeral resource. Because nothing " +
+					"is stored, the provider cannot detect a key changed outside " +
+					"Terraform: such a change produces no diff. Mutually exclusive " +
+					"with `preshared_key`.",
+				Optional:  true,
+				Sensitive: true,
+				WriteOnly: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
 			"allowed_ips": schema.ListAttribute{
 				MarkdownDescription: "Additional CIDRs routed to this peer beyond its tunnel IP.",
 				ElementType:         types.StringType,
@@ -244,6 +278,11 @@ func (r *wireguardPeerResource) Create(
 	}
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
+
+	data.PresharedKeyWO = r.readPresharedKeyWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	peer, diags := r.modelToPeer(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -386,6 +425,11 @@ func (r *wireguardPeerResource) Update(
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
+	data.PresharedKeyWO = r.readPresharedKeyWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	peer, diags := r.modelToPeer(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -517,6 +561,20 @@ func (r *wireguardPeerResource) ImportState(
 	}
 }
 
+// readPresharedKeyWO reads the write-only preshared_key_wo attribute. Write-only
+// values only ever appear in the request config, never in the plan or state, so
+// they have to be fetched explicitly and copied into the model before
+// conversion.
+func (r *wireguardPeerResource) readPresharedKeyWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var keyWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("preshared_key_wo"), &keyWO)...)
+	return keyWO
+}
+
 // modelToPeer converts the Terraform model to the API struct.
 func (r *wireguardPeerResource) modelToPeer(
 	ctx context.Context,
@@ -527,6 +585,16 @@ func (r *wireguardPeerResource) modelToPeer(
 		InterfaceIP: model.InterfaceIP.ValueString(),
 		PublicKey:   model.PublicKey.ValueString(),
 		AllowedIPs:  []string{},
+	}
+
+	// The peer endpoints are full replaces: a write that omits preshared_key
+	// destroys a stored one (verified on Network 10.6.106). go-unifi models it
+	// as *string with omitempty, so leaving it nil keeps the key off the wire
+	// and the controller preserves what it has (#490).
+	if !model.PresharedKey.IsNull() && !model.PresharedKey.IsUnknown() {
+		peer.PresharedKey = model.PresharedKey.ValueStringPointer()
+	} else if !model.PresharedKeyWO.IsNull() && !model.PresharedKeyWO.IsUnknown() {
+		peer.PresharedKey = model.PresharedKeyWO.ValueStringPointer()
 	}
 
 	var diags diag.Diagnostics
@@ -550,6 +618,18 @@ func (r *wireguardPeerResource) peerToModel(
 	model.Name = types.StringValue(peer.Name)
 	model.InterfaceIP = types.StringValue(peer.InterfaceIP)
 	model.PublicKey = types.StringValue(peer.PublicKey)
+
+	// The controller returns the key in clear text and omits the field when the
+	// peer has none. Only mirror it into state when the state-bearing attribute
+	// is the one in use: with preshared_key_wo the secret must stay out of
+	// state, so the attribute is left as configured.
+	if model.PresharedKeyWO.IsNull() || model.PresharedKeyWO.IsUnknown() {
+		if peer.PresharedKey != nil && *peer.PresharedKey != "" {
+			model.PresharedKey = types.StringValue(*peer.PresharedKey)
+		} else {
+			model.PresharedKey = types.StringNull()
+		}
+	}
 
 	allowedIPs, diags := types.ListValueFrom(ctx, types.StringType, peer.AllowedIPs)
 	model.AllowedIPs = allowedIPs
