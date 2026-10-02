@@ -1584,6 +1584,99 @@ func Test_globalSwitchRawSetting(t *testing.T) {
 	})
 }
 
+// TestConnectivityRawSetting covers #518: only the fields the configuration
+// actually sets may reach the controller, so the partial PUT leaves the
+// generated mesh credentials (x_mesh_essid / x_mesh_psk) and any unmodelled
+// option intact.
+func TestConnectivityRawSetting(t *testing.T) {
+	t.Run("only configured fields are sent", func(t *testing.T) {
+		raw := connectivityRawSetting(&settingConnectivityModel{
+			Enabled:        types.BoolValue(false),
+			MloMeshEnabled: types.BoolNull(),
+			UplinkType:     types.StringUnknown(),
+			UplinkHost:     types.StringNull(),
+		})
+		if raw.Key != "connectivity" {
+			t.Errorf("Key = %q, want connectivity", raw.Key)
+		}
+		if len(raw.Data) != 1 {
+			t.Fatalf("want exactly one field, got %v", raw.Data)
+		}
+		if v, ok := raw.Data["enabled"].(bool); !ok || v {
+			t.Errorf("enabled = %v, want a false bool", raw.Data["enabled"])
+		}
+		// The mesh secrets are controller-generated and must never be written.
+		for _, key := range []string{"x_mesh_essid", "x_mesh_psk"} {
+			if _, present := raw.Data[key]; present {
+				t.Errorf("%s must never be sent", key)
+			}
+		}
+	})
+
+	t.Run("nothing configured sends nothing", func(t *testing.T) {
+		raw := connectivityRawSetting(&settingConnectivityModel{
+			Enabled:        types.BoolNull(),
+			MloMeshEnabled: types.BoolUnknown(),
+			UplinkType:     types.StringNull(),
+			UplinkHost:     types.StringUnknown(),
+		})
+		if len(raw.Data) != 0 {
+			t.Errorf("want an empty payload, got %v", raw.Data)
+		}
+	})
+
+	t.Run("all fields travel when set", func(t *testing.T) {
+		raw := connectivityRawSetting(&settingConnectivityModel{
+			Enabled:        types.BoolValue(true),
+			MloMeshEnabled: types.BoolValue(true),
+			UplinkType:     types.StringValue("internet"),
+			UplinkHost:     types.StringValue("1.1.1.1"),
+		})
+		for key, want := range map[string]any{
+			"enabled":          true,
+			"mlo_mesh_enabled": true,
+			"uplink_type":      "internet",
+			"uplink_host":      "1.1.1.1",
+		} {
+			if raw.Data[key] != want {
+				t.Errorf("%s = %v, want %v", key, raw.Data[key], want)
+			}
+		}
+	})
+}
+
+func Test_settingResource_connectivitySettingToModel(t *testing.T) {
+	r := &settingResource{}
+	got := r.connectivitySettingToModel(&settings.Connectivity{
+		Enabled:        true,
+		MloMeshEnabled: false,
+		UplinkType:     "gateway",
+		// Generated secrets exist on the setting but must not surface.
+		MeshEssid: "unifi-mesh",
+		MeshPsk:   "shouldnotleak",
+	})
+	if !got.Enabled.ValueBool() {
+		t.Error("Enabled should be true")
+	}
+	if got.MloMeshEnabled.IsNull() || got.MloMeshEnabled.ValueBool() {
+		t.Error("MloMeshEnabled should be a known false")
+	}
+	if got.UplinkType.ValueString() != "gateway" {
+		t.Errorf("UplinkType = %q, want gateway", got.UplinkType.ValueString())
+	}
+	// An uplink_host the controller does not store reads back null, not "".
+	if !got.UplinkHost.IsNull() {
+		t.Errorf("UplinkHost = %v, want null", got.UplinkHost)
+	}
+	if _, d := types.ObjectValueFrom(
+		context.Background(),
+		connectivityAttrTypes,
+		got,
+	); d.HasError() {
+		t.Fatalf("model does not match connectivityAttrTypes: %v", d)
+	}
+}
+
 func Test_settingResource_globalSwitchSettingToModel(t *testing.T) {
 	r := &settingResource{}
 	got := r.globalSwitchSettingToModel(&settings.GlobalSwitch{
