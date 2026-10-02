@@ -200,8 +200,8 @@ Optional:
 
 - `antenna_gain` (Number) Antenna gain.
 - `antenna_id` (Number) Antenna ID.
-- `assisted_roaming_enabled` (Boolean) Enable assisted roaming.
-- `assisted_roaming_rssi` (Number) Assisted roaming RSSI threshold.
+- `assisted_roaming_enabled` (Boolean, Deprecated) Deprecated and no longer applied. UniFi removed 802.11k assisted roaming from the radio table; the field is absent from the controller API and from the firmware's own field definitions as of Network 10.6, so the provider can neither read nor write it. Always null.
+- `assisted_roaming_rssi` (Number, Deprecated) Deprecated and no longer applied. See `assisted_roaming_enabled`. Always null.
 - `channel` (String) Channel number or 'auto'.
 - `dfs` (Boolean) Enable DFS (Dynamic Frequency Selection).
 - `hard_noise_floor_enabled` (Boolean) Enable hard noise floor.
