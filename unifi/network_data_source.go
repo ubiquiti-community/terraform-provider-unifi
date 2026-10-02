@@ -606,7 +606,7 @@ func (d *networkDataSource) setDataSourceData(
 
 	// Shared with resource fields
 	model.Enabled = types.BoolValue(network.Enabled)
-	model.AutoScale = types.BoolValue(network.AutoScaleEnabled)
+	model.AutoScale = types.BoolPointerValue(network.AutoScaleEnabled)
 	model.Subnet = types.StringPointerValue(network.IPSubnet)
 	model.DomainName = types.StringPointerValue(network.DomainName)
 	model.Vlan = types.Int64PointerValue(network.VLAN)
@@ -617,7 +617,7 @@ func (d *networkDataSource) setDataSourceData(
 	model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
 	model.GatewayType = types.StringPointerValue(network.GatewayType)
 	model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
-	model.LteLan = types.BoolValue(network.LteLanEnabled)
+	model.LteLan = types.BoolPointerValue(network.LteLanEnabled)
 	model.ThirdPartyGateway = types.BoolValue(network.Purpose == unifi.PurposeVLANOnly)
 
 	// ip_aliases

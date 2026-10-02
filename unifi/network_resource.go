@@ -358,10 +358,14 @@ func (r *networkResource) Schema(
 				},
 			},
 			"auto_scale": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether auto-scaling is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Specifies whether auto-scaling is enabled. " +
+					"The controller stores no default: left unset, the attribute is " +
+					"not written and whatever the controller holds is preserved.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"subnet": schema.StringAttribute{
 				MarkdownDescription: "The network's gateway IP and prefix in CIDR notation. The host " +
@@ -554,13 +558,14 @@ func (r *networkResource) Schema(
 					"gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to " +
 					"the controller's `lte_lan_enabled` flag and only matters when a " +
 					"UniFi LTE failover device is in use; otherwise it is cosmetic. " +
-					"Defaults to `true` (network stays available during LTE failover); " +
-					"set to `false` to disable it while on the LTE backup link. The " +
-					"controller may set this automatically, which is why existing " +
-					"networks can show differing values.",
+					"The controller stores no default: left unset, the attribute is " +
+					"not written and whatever the controller holds is preserved, " +
+					"which is why existing networks show differing values.",
 				Optional: true,
 				Computed: true,
-				Default:  booldefault.StaticBool(true),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ip_aliases": schema.ListAttribute{
 				MarkdownDescription: "List of IP aliases for the network, in CIDR notation " +
@@ -1616,7 +1621,7 @@ func (r *networkResource) modelToNetwork(
 		Name:                        model.Name.ValueStringPointer(),
 		Purpose:                     unifi.PurposeCorporate,
 		NetworkGroup:                util.Ptr("LAN"),
-		AutoScaleEnabled:            model.AutoScale.ValueBool(),
+		AutoScaleEnabled:            boolPointerIfKnown(model.AutoScale),
 		IPSubnet:                    model.Subnet.ValueStringPointer(),
 		NetworkIsolationEnabled:     model.NetworkIsolation.ValueBool(),
 		SettingPreference:           model.SettingPreference.ValueStringPointer(),
@@ -1638,7 +1643,7 @@ func (r *networkResource) modelToNetwork(
 		IPV6PDStart:               optStr(model.IPv6PDStart),
 		IPV6PDStop:                optStr(model.IPv6PDStop),
 		IPV6PDAutoPrefixidEnabled: model.IPv6PDAutoPrefixidEnabled.ValueBool(),
-		LteLanEnabled:             model.LteLan.ValueBool(),
+		LteLanEnabled:             boolPointerIfKnown(model.LteLan),
 		VLANEnabled:               !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
 		Enabled:                   model.Enabled.ValueBool(),
 		IGMPSnooping:              model.IgmpSnooping.ValueBool(),
@@ -2027,6 +2032,29 @@ func (r *networkResource) modelToNetwork(
 // def otherwise. A vlan-only network has no controller-side value for these
 // attributes, and an imported one has no prior state either, so a null has to
 // resolve to the schema Default or every subsequent plan proposes it (#517).
+// nullIfUnknown collapses an unknown to null, for attributes the controller
+// neither stores nor defaults: leaving the unknown in the result trips
+// "invalid result object after apply", and inventing a value would write
+// something nobody configured.
+func nullIfUnknown(v types.Bool) types.Bool {
+	if v.IsUnknown() {
+		return types.BoolNull()
+	}
+	return v
+}
+
+// boolPointerIfKnown returns nil for an unset attribute so the field stays off
+// the wire, preserving whatever the controller holds. Used for fields the
+// controller has no default for: writing false (or a provider-invented true)
+// for an unconfigured attribute changes the network behind the operator's back
+// (#524).
+func boolPointerIfKnown(v types.Bool) *bool {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	return v.ValueBoolPointer()
+}
+
 func boolOrDefault(prior types.Bool, def bool) types.Bool {
 	if prior.IsNull() || prior.IsUnknown() {
 		return types.BoolValue(def)
@@ -2085,7 +2113,10 @@ func (r *networkResource) networkToModel(
 		// prior value, and the controller omits these for vlan-only, so copying
 		// the null straight through makes every later plan propose the default
 		// (#517, same root cause as #414).
-		model.AutoScale = boolOrDefault(previousModel.AutoScale, true)
+		// An unknown must not survive into the result (Terraform rejects it as
+		// an invalid result object); resolve it to null, since the controller
+		// omits the field for vlan-only and has no default anyway (#524).
+		model.AutoScale = nullIfUnknown(previousModel.AutoScale)
 		model.SettingPreference = stringOrDefault(previousModel.SettingPreference, "auto")
 		model.InternetAccess = boolOrDefault(previousModel.InternetAccess, true)
 		// multicast_dns uses UseStateForUnknown, so it may be unknown during
@@ -2116,11 +2147,10 @@ func (r *networkResource) networkToModel(
 		model.IPv6StaticSubnet = previousModel.IPv6StaticSubnet
 		model.IPv6PDInterface = previousModel.IPv6PDInterface
 		model.IPv6PDPrefixID = previousModel.IPv6PDPrefixID
-		// lte_lan has no schema Default, so its documented "defaults to true"
-		// only holds via the controller's own value; for vlan-only the
-		// controller omits the field, so fall back to that documented default
-		// rather than leaving a null that plans forever (#517).
-		model.LteLan = boolOrDefault(previousModel.LteLan, true)
+		// Neither lte_lan nor auto_scale carries a schema Default any more:
+		// the controller stores no default for either (#524), so a prior null
+		// stays null instead of planning an invented value.
+		model.LteLan = nullIfUnknown(previousModel.LteLan)
 		// The IPv6 attributes below are Computed + UseStateForUnknown. On Create
 		// there is no prior state, so the plan carries them as unknown; copying
 		// the plan value verbatim would leave them unknown in the result and
@@ -2183,7 +2213,7 @@ func (r *networkResource) networkToModel(
 			model.DomainName = previousModel.DomainName
 		}
 	} else {
-		model.AutoScale = types.BoolValue(network.AutoScaleEnabled)
+		model.AutoScale = types.BoolPointerValue(network.AutoScaleEnabled)
 		if network.IPSubnet != nil {
 			model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
 		} else {
@@ -2236,7 +2266,7 @@ func (r *networkResource) networkToModel(
 		model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
 		model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
 		model.IPv6PDAutoPrefixidEnabled = types.BoolValue(network.IPV6PDAutoPrefixidEnabled)
-		model.LteLan = types.BoolValue(network.LteLanEnabled)
+		model.LteLan = types.BoolPointerValue(network.LteLanEnabled)
 		model.DomainName = types.StringPointerValue(network.DomainName)
 	}
 
