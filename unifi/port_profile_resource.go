@@ -1150,23 +1150,30 @@ func (r *portProfileResource) portProfileToModel(
 		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
 	}
 
-	// Set remaining fields to defaults or null as appropriate
-	model.EgressRateLimitKbps = types.Int64Null()
-	model.EgressRateLimitKbpsEnabled = types.BoolValue(false)
-	model.PriorityQueue1Level = types.Int64Null()
-	model.PriorityQueue2Level = types.Int64Null()
-	model.PriorityQueue3Level = types.Int64Null()
-	model.PriorityQueue4Level = types.Int64Null()
-	model.StormctrlBcastEnabled = types.BoolValue(false)
-	model.StormctrlBcastLevel = types.Int64Null()
-	model.StormctrlBcastRate = types.Int64Null()
-	model.StormctrlMcastEnabled = types.BoolValue(false)
-	model.StormctrlMcastLevel = types.Int64Null()
-	model.StormctrlMcastRate = types.Int64Null()
-	model.StormctrlType = types.StringNull()
-	model.StormctrlUcastEnabled = types.BoolValue(false)
-	model.StormctrlUcastLevel = types.Int64Null()
-	model.StormctrlUcastRate = types.Int64Null()
+	// Round-trip the rate-limit, priority-queue and storm-control fields from
+	// the controller. These used to be hardcoded to null/false regardless of
+	// what the controller held, so a configured value could not survive the
+	// post-apply read: Create reported "Provider produced inconsistent result
+	// after apply", left the resource tainted, and the next apply looped on the
+	// same error (#496). Every one of them exists on go-unifi's PortProfile.
+	model.EgressRateLimitKbps = types.Int64PointerValue(portProfile.EgressRateLimitKbps)
+	model.EgressRateLimitKbpsEnabled = types.BoolValue(portProfile.EgressRateLimitKbpsEnabled)
+	model.PriorityQueue1Level = types.Int64PointerValue(portProfile.PriorityQueue1Level)
+	model.PriorityQueue2Level = types.Int64PointerValue(portProfile.PriorityQueue2Level)
+	model.PriorityQueue3Level = types.Int64PointerValue(portProfile.PriorityQueue3Level)
+	model.PriorityQueue4Level = types.Int64PointerValue(portProfile.PriorityQueue4Level)
+	// go-unifi spells the broadcast fields StormctrlBroadcastast* (a codegen
+	// typo); they carry the stormctrl_bcast_* JSON keys.
+	model.StormctrlBcastEnabled = types.BoolValue(portProfile.StormctrlBroadcastastEnabled)
+	model.StormctrlBcastLevel = types.Int64PointerValue(portProfile.StormctrlBroadcastastLevel)
+	model.StormctrlBcastRate = types.Int64PointerValue(portProfile.StormctrlBroadcastastRate)
+	model.StormctrlMcastEnabled = types.BoolValue(portProfile.StormctrlMcastEnabled)
+	model.StormctrlMcastLevel = types.Int64PointerValue(portProfile.StormctrlMcastLevel)
+	model.StormctrlMcastRate = types.Int64PointerValue(portProfile.StormctrlMcastRate)
+	model.StormctrlType = stringOrNull(portProfile.StormctrlType)
+	model.StormctrlUcastEnabled = types.BoolValue(portProfile.StormctrlUcastEnabled)
+	model.StormctrlUcastLevel = types.Int64PointerValue(portProfile.StormctrlUcastLevel)
+	model.StormctrlUcastRate = types.Int64PointerValue(portProfile.StormctrlUcastRate)
 	model.STPPortMode = types.BoolValue(portProfile.StpPortMode)
 
 	return diags

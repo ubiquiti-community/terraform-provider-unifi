@@ -213,6 +213,7 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ip_group_id` (String) ID of a `unifi_firewall_group` (address-group type) to match. Used when `matching_target` is `IP` with `matching_target_type = OBJECT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
+- `match_mac` (Boolean) Match the clients in `client_macs` by MAC address rather than by their current IP address. Corresponds to the controller's `match_mac` flag on a `CLIENT` matching target. Defaults to `false`.
 - `match_opposite_ips` (Boolean) Invert the IP match: when `true`, the endpoint matches every address **except** those in `ips` / `ip_group_id`. Corresponds to the "Match Opposite" toggle on an `IP` matching target in the UniFi UI. Defaults to `false`.
 - `match_opposite_networks` (Boolean) Invert the network match: when `true`, the endpoint matches every network **except** those in `network_ids`. Corresponds to the "Match Opposite" toggle on a `NETWORK` matching target in the UniFi UI. Defaults to `false`.
 - `match_opposite_ports` (Boolean) Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. Corresponds to the "Match Opposite" toggle on the port selector in the UniFi UI. Defaults to `false`.
@@ -240,6 +241,7 @@ Optional:
 - `client_macs` (List of String) List of client MAC addresses to match. Used when `matching_target` is `CLIENT`.
 - `ip_group_id` (String) ID of a `unifi_firewall_group` (address-group type) to match. Used when `matching_target` is `IP` with `matching_target_type = OBJECT`.
 - `ips` (List of String) List of IP addresses or CIDR ranges to match. Used when `matching_target` is `IP`.
+- `match_mac` (Boolean) Match the clients in `client_macs` by MAC address rather than by their current IP address. Corresponds to the controller's `match_mac` flag on a `CLIENT` matching target. Defaults to `false`.
 - `match_opposite_ips` (Boolean) Invert the IP match: when `true`, the endpoint matches every address **except** those in `ips` / `ip_group_id`. Corresponds to the "Match Opposite" toggle on an `IP` matching target in the UniFi UI. Defaults to `false`.
 - `match_opposite_networks` (Boolean) Invert the network match: when `true`, the endpoint matches every network **except** those in `network_ids`. Corresponds to the "Match Opposite" toggle on a `NETWORK` matching target in the UniFi UI. Defaults to `false`.
 - `match_opposite_ports` (Boolean) Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. Corresponds to the "Match Opposite" toggle on the port selector in the UniFi UI. Defaults to `false`.

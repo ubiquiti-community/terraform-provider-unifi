@@ -583,6 +583,7 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 				"match_opposite_ips":      types.BoolType,
 				"match_opposite_networks": types.BoolType,
 				"match_opposite_ports":    types.BoolType,
+				"match_mac":               types.BoolType,
 			},
 		},
 	}
@@ -1412,6 +1413,7 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 					MatchOppositeIPs:      types.BoolValue(false),
 					MatchOppositeNetworks: types.BoolValue(false),
 					MatchOppositePorts:    types.BoolValue(false),
+					MatchMAC:              types.BoolValue(false),
 				}
 			}(),
 		},
@@ -1477,6 +1479,7 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 					MatchOppositeIPs:      types.BoolValue(false),
 					MatchOppositeNetworks: types.BoolValue(false),
 					MatchOppositePorts:    types.BoolValue(false),
+					MatchMAC:              types.BoolValue(false),
 				}
 			}(),
 		},
