@@ -1908,6 +1908,128 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyDefaults(t *testing.T
 	}
 }
 
+// Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults covers
+// #517: the same class as #414, for the four attributes that were still copied
+// from the prior model verbatim. The controller omits auto_scale,
+// setting_preference, internet_access and lte_lan for a vlan-only network, and
+// an imported resource has no prior value either, so leaving the null in place
+// made every later plan propose the schema default and import-first adoption
+// could never reach a no-op.
+func Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults(t *testing.T) {
+	r := &networkResource{}
+	base := func() *networkResourceModel {
+		return &networkResourceModel{
+			// Import seeds identity only, leaving computed attributes null.
+			NetworkIsolation: types.BoolNull(),
+			DhcpServer:       types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
+			DhcpRelay:        types.ObjectNull(dhcpRelayModel{}.AttributeTypes()),
+			DhcpV6Server:     types.ObjectNull(dhcpV6ServerModel{}.AttributeTypes()),
+			DhcpGuarding:     types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
+			NatOutboundIPAddresses: types.ListNull(
+				types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			),
+			IPAliases:   types.ListNull(types.StringType),
+			IPv6Aliases: types.ListNull(types.StringType),
+		}
+	}
+
+	tests := []struct {
+		name           string
+		priorAutoScale types.Bool
+		priorInternet  types.Bool
+		priorLteLan    types.Bool
+		priorSetting   types.String
+		wantAutoScale  bool
+		wantInternet   bool
+		wantLteLan     bool
+		wantSetting    string
+	}{
+		{
+			name:           "import nulls use schema defaults",
+			priorAutoScale: types.BoolNull(),
+			priorInternet:  types.BoolNull(),
+			priorLteLan:    types.BoolNull(),
+			priorSetting:   types.StringNull(),
+			wantAutoScale:  true,
+			wantInternet:   true,
+			wantLteLan:     true,
+			wantSetting:    "auto",
+		},
+		{
+			name:           "unknown plan values use schema defaults",
+			priorAutoScale: types.BoolUnknown(),
+			priorInternet:  types.BoolUnknown(),
+			priorLteLan:    types.BoolUnknown(),
+			priorSetting:   types.StringUnknown(),
+			wantAutoScale:  true,
+			wantInternet:   true,
+			wantLteLan:     true,
+			wantSetting:    "auto",
+		},
+		{
+			name:           "explicit false and non-default values are preserved",
+			priorAutoScale: types.BoolValue(false),
+			priorInternet:  types.BoolValue(false),
+			priorLteLan:    types.BoolValue(false),
+			priorSetting:   types.StringValue("manual"),
+			wantAutoScale:  false,
+			wantInternet:   false,
+			wantLteLan:     false,
+			wantSetting:    "manual",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := base()
+			previous.AutoScale = tt.priorAutoScale
+			previous.InternetAccess = tt.priorInternet
+			previous.LteLan = tt.priorLteLan
+			previous.SettingPreference = tt.priorSetting
+
+			network := &unifi.Network{
+				ID:      "net-vlan-only-imported",
+				Name:    strPtr("Imported VLAN Only"),
+				Purpose: unifi.PurposeVLANOnly,
+				Enabled: true,
+			}
+			var model networkResourceModel
+			d := r.networkToModel(context.Background(), network, &model, "default", previous)
+			if d.HasError() {
+				t.Fatalf("networkToModel: %v", d)
+			}
+
+			for _, c := range []struct {
+				name string
+				got  types.Bool
+				want bool
+			}{
+				{"auto_scale", model.AutoScale, tt.wantAutoScale},
+				{"internet_access", model.InternetAccess, tt.wantInternet},
+				{"lte_lan", model.LteLan, tt.wantLteLan},
+			} {
+				if c.got.IsNull() || c.got.IsUnknown() {
+					t.Errorf("%s should be known, got %v", c.name, c.got)
+					continue
+				}
+				if c.got.ValueBool() != c.want {
+					t.Errorf("%s = %v, want %v", c.name, c.got.ValueBool(), c.want)
+				}
+			}
+
+			if model.SettingPreference.IsNull() || model.SettingPreference.IsUnknown() {
+				t.Fatalf(
+					"setting_preference should be known, got %v",
+					model.SettingPreference,
+				)
+			}
+			if got := model.SettingPreference.ValueString(); got != tt.wantSetting {
+				t.Errorf("setting_preference = %q, want %q", got, tt.wantSetting)
+			}
+		})
+	}
+}
+
 // Test_networkResource_purpose covers #276: purpose must be author-settable
 // (guest/vlan-only/corporate) on write and reflected from the controller on read.
 func Test_networkResource_purpose(t *testing.T) {

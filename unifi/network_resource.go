@@ -2022,6 +2022,26 @@ func (r *networkResource) modelToNetwork(
 
 // networkToModel converts from unifi.Network to Terraform model.
 // previousModel is the model from the plan or previous state, used to preserve null values.
+// boolOrDefault returns the prior value when the configuration carried one, and
+// def otherwise. A vlan-only network has no controller-side value for these
+// attributes, and an imported one has no prior state either, so a null has to
+// resolve to the schema Default or every subsequent plan proposes it (#517).
+func boolOrDefault(prior types.Bool, def bool) types.Bool {
+	if prior.IsNull() || prior.IsUnknown() {
+		return types.BoolValue(def)
+	}
+	return prior
+}
+
+// stringOrDefault is boolOrDefault for strings; an empty string counts as
+// absent, matching the gateway_type handling this mirrors.
+func stringOrDefault(prior types.String, def string) types.String {
+	if prior.IsNull() || prior.IsUnknown() || prior.ValueString() == "" {
+		return types.StringValue(def)
+	}
+	return prior
+}
+
 func (r *networkResource) networkToModel(
 	ctx context.Context,
 	network *unifi.Network,
@@ -2059,9 +2079,14 @@ func (r *networkResource) networkToModel(
 	// to avoid "inconsistent result after apply" errors.
 	if isVLANOnly && previousModel != nil {
 		model.Subnet = previousModel.Subnet
-		model.AutoScale = previousModel.AutoScale
-		model.SettingPreference = previousModel.SettingPreference
-		model.InternetAccess = previousModel.InternetAccess
+		// Same normalization as gateway_type/ipv6_interface_type below, for the
+		// attributes that carry a schema Default: an imported network has no
+		// prior value, and the controller omits these for vlan-only, so copying
+		// the null straight through makes every later plan propose the default
+		// (#517, same root cause as #414).
+		model.AutoScale = boolOrDefault(previousModel.AutoScale, true)
+		model.SettingPreference = stringOrDefault(previousModel.SettingPreference, "auto")
+		model.InternetAccess = boolOrDefault(previousModel.InternetAccess, true)
 		// multicast_dns uses UseStateForUnknown, so it may be unknown during
 		// Create. Resolve it from the API value (the controller does not honor
 		// mDNS for vlan-only networks, so this is effectively false).
@@ -2090,7 +2115,11 @@ func (r *networkResource) networkToModel(
 		model.IPv6StaticSubnet = previousModel.IPv6StaticSubnet
 		model.IPv6PDInterface = previousModel.IPv6PDInterface
 		model.IPv6PDPrefixID = previousModel.IPv6PDPrefixID
-		model.LteLan = previousModel.LteLan
+		// lte_lan has no schema Default, so its documented "defaults to true"
+		// only holds via the controller's own value; for vlan-only the
+		// controller omits the field, so fall back to that documented default
+		// rather than leaving a null that plans forever (#517).
+		model.LteLan = boolOrDefault(previousModel.LteLan, true)
 		// The IPv6 attributes below are Computed + UseStateForUnknown. On Create
 		// there is no prior state, so the plan carries them as unknown; copying
 		// the plan value verbatim would leave them unknown in the result and
