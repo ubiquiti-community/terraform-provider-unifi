@@ -55,3 +55,33 @@ resource "unifi_setting" "radius_only" {
     auth_port          = 1812
   }
 }
+
+# Configure etherlighting settings
+resource "unifi_setting" "etherlighting_example" {
+  site = "default"
+
+  etherlighting = {
+    speed_overrides = [
+      {
+        speed = "FE"
+        color = "ff0000"
+      },
+      {
+        speed = "GbE"
+        color = "00ff00"
+      },
+      {
+        speed = "2.5GbE"
+        color = "0000ff"
+      },
+      {
+        speed = "5GbE"
+        color = "ffff00"
+      },
+      {
+        speed = "10GbE"
+        color = "ffffff"
+      }
+    ]
+  }
+}
