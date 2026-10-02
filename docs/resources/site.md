@@ -24,21 +24,41 @@ resource "unifi_site" "mysite" {
 
 - `description` (String) The description of the site.
 
+### Optional
+
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
+
 ### Read-Only
 
 - `id` (String) The ID of the site.
 - `name` (String) The name of the site.
 
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 ## Import
 
 Import is supported using the following syntax:
 
-The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# import using the API/UI ID
+# Import using the site's 24-hex controller id (the `_id` from
+# /proxy/network/api/self/sites).
 terraform import unifi_site.mysite 5fe6261995fe130013456a36
 
-# import using the name (short ID)
-terraform import unifi_site.mysite vq98kwez
+# Or import by the site's short name. Any value that is not a 24-hex id is
+# treated as a name; use the `name=` prefix to be explicit (e.g. the default
+# site is named `default`).
+terraform import unifi_site.mysite name=default
+
+# Note: the UUID shown in the UI / Integration API (.../integration/v1/sites)
+# is NOT the import id — use the 24-hex `_id` or the site name above.
 ```

@@ -34,6 +34,7 @@ data "unifi_network" "my_network" {
 - `id` (String) The ID of the network.
 - `name` (String) The name of the network.
 - `site` (String) The name of the site to associate the network with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -55,9 +56,9 @@ data "unifi_network" "my_network" {
 - `ipv6_pd_start` (String) Start address of the DHCPv6 range when `ipv6_interface_type` is `pd`.
 - `ipv6_pd_stop` (String) End address of the DHCPv6 range when `ipv6_interface_type` is `pd`.
 - `ipv6_ra` (Boolean) Specifies whether to enable IPv6 router advertisements.
-- `ipv6_ra_preferred_lifetime` (Number) Preferred lifetime for IPv6 RA in which the address can be used.
+- `ipv6_ra_preferred_lifetime` (String) Preferred lifetime for IPv6 RA, as a Go duration string.
 - `ipv6_ra_priority` (String) IPv6 router advertisement priority. One of `high`, `medium`, or `low`.
-- `ipv6_ra_valid_lifetime` (Number) Total lifetime in which the IPv6 RA address can be used.
+- `ipv6_ra_valid_lifetime` (String) Total lifetime for the IPv6 RA address, as a Go duration string.
 - `ipv6_static_subnet` (String) The static IPv6 subnet (when `ipv6_interface_type` is `static`).
 - `lte_lan` (Boolean) Specifies whether LTE LAN is enabled.
 - `multicast_dns` (Boolean) Specifies whether mDNS is enabled.
@@ -79,6 +80,14 @@ data "unifi_network" "my_network" {
 - `wan_type` (String) Specifies the IPv4 WAN connection type. One of `disabled`, `static`, `dhcp`, or `pppoe`.
 - `wan_type_v6` (String) Specifies the IPv6 WAN connection type. One of `disabled`, `static`, or `dhcpv6`.
 - `wan_username` (String) Specifies the IPv4 WAN username.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--dhcp_guarding"></a>
 ### Nested Schema for `dhcp_guarding`
@@ -109,8 +118,9 @@ Read-Only:
 - `dns_servers` (List of String) List of DNS server addresses for DHCP clients.
 - `enabled` (Boolean) Specifies whether DHCP server is enabled.
 - `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
-- `leasetime` (Number) Specifies the lease time for DHCP addresses in seconds.
+- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string.
 - `ntp_enabled` (Boolean) Specifies whether DHCP NTP is enabled.
+- `ntp_servers` (List of String) List of NTP server addresses for DHCP clients.
 - `start` (String) The IPv4 address where the DHCP range starts.
 - `stop` (String) The IPv4 address where the DHCP range stops.
 - `tftp_server` (String) TFTP server address.

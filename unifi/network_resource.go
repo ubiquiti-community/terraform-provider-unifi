@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -20,7 +23,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -36,10 +38,11 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &networkResource{}
-	_ resource.ResourceWithImportState = &networkResource{}
-	_ resource.ResourceWithIdentity    = &networkResource{}
-	_ resource.ResourceWithModifyPlan  = &networkResource{}
+	_ resource.Resource                 = &networkResource{}
+	_ resource.ResourceWithImportState  = &networkResource{}
+	_ resource.ResourceWithIdentity     = &networkResource{}
+	_ resource.ResourceWithModifyPlan   = &networkResource{}
+	_ resource.ResourceWithUpgradeState = &networkResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -62,7 +65,8 @@ type networkResource struct {
 }
 
 type networkIdentityModel struct {
-	ID types.String `tfsdk:"id"`
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
 }
 
 // networkListConfigModel describes the list configuration model.
@@ -107,21 +111,22 @@ func (m winsModel) AttributeTypes() map[string]attr.Type {
 
 // dhcpServerModel describes the DHCP server configuration.
 type dhcpServerModel struct {
-	Boot              types.Object `tfsdk:"boot"`
-	Enabled           types.Bool   `tfsdk:"enabled"`
-	Start             types.String `tfsdk:"start"`
-	Stop              types.String `tfsdk:"stop"`
-	GatewayEnabled    types.Bool   `tfsdk:"gateway_enabled"`
-	ConflictChecking  types.Bool   `tfsdk:"conflict_checking"`
-	NtpEnabled        types.Bool   `tfsdk:"ntp_enabled"`
-	TimeOffsetEnabled types.Bool   `tfsdk:"time_offset_enabled"`
-	DnsEnabled        types.Bool   `tfsdk:"dns_enabled"`
-	Leasetime         types.Int64  `tfsdk:"leasetime"`
-	Wins              types.Object `tfsdk:"wins"`
-	WpadUrl           types.String `tfsdk:"wpad_url"`
-	TftpServer        types.String `tfsdk:"tftp_server"`
-	UnifiController   types.String `tfsdk:"unifi_controller"`
-	DnsServers        types.List   `tfsdk:"dns_servers"`
+	Boot              types.Object         `tfsdk:"boot"`
+	Enabled           types.Bool           `tfsdk:"enabled"`
+	Start             types.String         `tfsdk:"start"`
+	Stop              types.String         `tfsdk:"stop"`
+	GatewayEnabled    types.Bool           `tfsdk:"gateway_enabled"`
+	ConflictChecking  types.Bool           `tfsdk:"conflict_checking"`
+	NtpEnabled        types.Bool           `tfsdk:"ntp_enabled"`
+	NtpServers        types.List           `tfsdk:"ntp_servers"`
+	TimeOffsetEnabled types.Bool           `tfsdk:"time_offset_enabled"`
+	DnsEnabled        types.Bool           `tfsdk:"dns_enabled"`
+	Leasetime         timetypes.GoDuration `tfsdk:"leasetime"`
+	Wins              types.Object         `tfsdk:"wins"`
+	WpadUrl           types.String         `tfsdk:"wpad_url"`
+	TftpServer        types.String         `tfsdk:"tftp_server"`
+	UnifiController   types.String         `tfsdk:"unifi_controller"`
+	DnsServers        types.List           `tfsdk:"dns_servers"`
 }
 
 func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
@@ -133,9 +138,10 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 		"gateway_enabled":     types.BoolType,
 		"conflict_checking":   types.BoolType,
 		"ntp_enabled":         types.BoolType,
+		"ntp_servers":         types.ListType{ElemType: types.StringType},
 		"time_offset_enabled": types.BoolType,
 		"dns_enabled":         types.BoolType,
-		"leasetime":           types.Int64Type,
+		"leasetime":           timetypes.GoDurationType{},
 		"wins":                types.ObjectType{AttrTypes: winsModel{}.AttributeTypes()},
 		"wpad_url":            types.StringType,
 		"tftp_server":         types.StringType,
@@ -145,10 +151,10 @@ func (m dhcpServerModel) AttributeTypes() map[string]attr.Type {
 }
 
 type natOutboundIPAddressesModel struct {
-	IPAddress       types.String `tfsdk:"ip_address"`                  // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
-	IPAddressPool   types.List   `tfsdk:"ip_address_pool,omitempty"`   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
-	Mode            types.String `tfsdk:"mode,omitempty"`              // all|ip_address|ip_address_pool
-	WANNetworkGroup types.String `tfsdk:"wan_network_group,omitempty"` // WAN[2-9]?
+	IPAddress       types.String `tfsdk:"ip_address"`        // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^$
+	IPAddressPool   types.List   `tfsdk:"ip_address_pool"`   // ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$|^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])-(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+	Mode            types.String `tfsdk:"mode"`              // all|ip_address|ip_address_pool
+	WANNetworkGroup types.String `tfsdk:"wan_network_group"` // WAN[2-9]?
 }
 
 func (d natOutboundIPAddressesModel) AttributeTypes() map[string]attr.Type {
@@ -213,40 +219,44 @@ func (m dhcpV6ServerModel) AttributeTypes() map[string]attr.Type {
 
 // networkResourceModel describes the resource data model.
 type networkResourceModel struct {
-	ID                        types.String         `tfsdk:"id"`
-	Site                      types.String         `tfsdk:"site"`
-	Enabled                   types.Bool           `tfsdk:"enabled"`
-	Name                      types.String         `tfsdk:"name"`
-	NatOutboundIPAddresses    types.List           `tfsdk:"nat_outbound_ip_addresses"`
-	AutoScale                 types.Bool           `tfsdk:"auto_scale"`
-	Subnet                    cidrtypes.IPv4Prefix `tfsdk:"subnet"`
-	DomainName                types.String         `tfsdk:"domain_name"`
-	Vlan                      types.Int64          `tfsdk:"vlan"`
-	NetworkIsolation          types.Bool           `tfsdk:"network_isolation"`
-	SettingPreference         types.String         `tfsdk:"setting_preference"`
-	InternetAccess            types.Bool           `tfsdk:"internet_access"`
-	IgmpSnooping              types.Bool           `tfsdk:"igmp_snooping"`
-	MulticastDNS              types.Bool           `tfsdk:"multicast_dns"`
-	GatewayType               types.String         `tfsdk:"gateway_type"`
-	IPv6InterfaceType         types.String         `tfsdk:"ipv6_interface_type"`
-	IPv6StaticSubnet          types.String         `tfsdk:"ipv6_static_subnet"`
-	IPv6RA                    types.Bool           `tfsdk:"ipv6_ra"`
-	IPv6RAPriority            types.String         `tfsdk:"ipv6_ra_priority"`
-	IPv6RAPreferredLifetime   types.Int64          `tfsdk:"ipv6_ra_preferred_lifetime"`
-	IPv6RAValidLifetime       types.Int64          `tfsdk:"ipv6_ra_valid_lifetime"`
-	IPv6PDInterface           types.String         `tfsdk:"ipv6_pd_interface"`
-	IPv6PDPrefixID            types.String         `tfsdk:"ipv6_pd_prefixid"`
-	IPv6PDStart               types.String         `tfsdk:"ipv6_pd_start"`
-	IPv6PDStop                types.String         `tfsdk:"ipv6_pd_stop"`
-	IPv6PDAutoPrefixidEnabled types.Bool           `tfsdk:"ipv6_pd_auto_prefixid_enabled"`
-	LteLan                    types.Bool           `tfsdk:"lte_lan"`
-	IPAliases                 types.List           `tfsdk:"ip_aliases"`
-	IPv6Aliases               types.List           `tfsdk:"ipv6_aliases"`
-	ThirdPartyGateway         types.Bool           `tfsdk:"third_party_gateway"`
-	DhcpGuarding              types.Object         `tfsdk:"dhcp_guarding"`
-	DhcpServer                types.Object         `tfsdk:"dhcp_server"`
-	DhcpV6Server              types.Object         `tfsdk:"dhcp_v6_server"`
-	DhcpRelay                 types.Object         `tfsdk:"dhcp_relay"`
+	ID                          types.String         `tfsdk:"id"`
+	Site                        types.String         `tfsdk:"site"`
+	Enabled                     types.Bool           `tfsdk:"enabled"`
+	Name                        types.String         `tfsdk:"name"`
+	NatOutboundIPAddresses      types.List           `tfsdk:"nat_outbound_ip_addresses"`
+	AutoScale                   types.Bool           `tfsdk:"auto_scale"`
+	Subnet                      cidrtypes.IPv4Prefix `tfsdk:"subnet"`
+	DomainName                  types.String         `tfsdk:"domain_name"`
+	Vlan                        types.Int64          `tfsdk:"vlan"`
+	NetworkIsolation            types.Bool           `tfsdk:"network_isolation"`
+	SettingPreference           types.String         `tfsdk:"setting_preference"`
+	InternetAccess              types.Bool           `tfsdk:"internet_access"`
+	IgmpSnooping                types.Bool           `tfsdk:"igmp_snooping"`
+	MulticastDNS                types.Bool           `tfsdk:"multicast_dns"`
+	GatewayType                 types.String         `tfsdk:"gateway_type"`
+	IPv6InterfaceType           types.String         `tfsdk:"ipv6_interface_type"`
+	IPv6ClientAddressAssignment types.String         `tfsdk:"ipv6_client_address_assignment"`
+	IPv6StaticSubnet            types.String         `tfsdk:"ipv6_static_subnet"`
+	IPv6RA                      types.Bool           `tfsdk:"ipv6_ra"`
+	IPv6RAPriority              types.String         `tfsdk:"ipv6_ra_priority"`
+	IPv6RAPreferredLifetime     timetypes.GoDuration `tfsdk:"ipv6_ra_preferred_lifetime"`
+	IPv6RAValidLifetime         timetypes.GoDuration `tfsdk:"ipv6_ra_valid_lifetime"`
+	IPv6PDInterface             types.String         `tfsdk:"ipv6_pd_interface"`
+	IPv6PDPrefixID              types.String         `tfsdk:"ipv6_pd_prefixid"`
+	IPv6PDStart                 types.String         `tfsdk:"ipv6_pd_start"`
+	IPv6PDStop                  types.String         `tfsdk:"ipv6_pd_stop"`
+	IPv6PDAutoPrefixidEnabled   types.Bool           `tfsdk:"ipv6_pd_auto_prefixid_enabled"`
+	LteLan                      types.Bool           `tfsdk:"lte_lan"`
+	IPAliases                   types.List           `tfsdk:"ip_aliases"`
+	IPv6Aliases                 types.List           `tfsdk:"ipv6_aliases"`
+	ThirdPartyGateway           types.Bool           `tfsdk:"third_party_gateway"`
+	Purpose                     types.String         `tfsdk:"purpose"`
+	DhcpGuarding                types.Object         `tfsdk:"dhcp_guarding"`
+	DhcpServer                  types.Object         `tfsdk:"dhcp_server"`
+	DhcpV6Server                types.Object         `tfsdk:"dhcp_v6_server"`
+	DhcpRelay                   types.Object         `tfsdk:"dhcp_relay"`
+	FirewallZoneID              types.String         `tfsdk:"firewall_zone_id"`
+	Timeouts                    timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (r *networkResource) Metadata(
@@ -264,12 +274,24 @@ func (r *networkResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
 			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
 		},
 	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *networkResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *networkResource) Schema(
@@ -278,6 +300,9 @@ func (r *networkResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: leasetime, ipv6_ra_preferred_lifetime and ipv6_ra_valid_lifetime
+		// changed from Int64 (seconds) to GoDuration strings. See UpgradeState.
+		Version:             1,
 		MarkdownDescription: "`unifi_network` manages networks (VLANs) in the UniFi controller.",
 
 		Attributes: map[string]schema.Attribute{
@@ -339,9 +364,12 @@ func (r *networkResource) Schema(
 				Default:             booldefault.StaticBool(true),
 			},
 			"subnet": schema.StringAttribute{
-				MarkdownDescription: "The IPv4 subnet of the network in CIDR notation. Optional: it is " +
-					"not required for `vlan_only` networks (`third_party_gateway = true`), where the " +
-					"UniFi controller does not manage the subnet.",
+				MarkdownDescription: "The network's gateway IP and prefix in CIDR notation. The host " +
+					"portion is the gateway address the controller assigns — it need not be the first " +
+					"usable address: `10.0.10.1/24` uses gateway `10.0.10.1`, while `10.0.10.254/24` " +
+					"uses gateway `10.0.10.254` on the same subnet. Optional: it is not required for " +
+					"`vlan_only` networks (`third_party_gateway = true`), where the UniFi controller " +
+					"does not manage the subnet.",
 				Optional:   true,
 				CustomType: cidrtypes.IPv4PrefixType{},
 			},
@@ -421,6 +449,17 @@ func (r *networkResource) Schema(
 					stringvalidator.OneOf("none", "pd", "static"),
 				},
 			},
+			"ipv6_client_address_assignment": schema.StringAttribute{
+				MarkdownDescription: "How clients on this network obtain an IPv6 address (UI: Networks → IPv6 → Client Address Assignment). One of `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). Computed from the controller when not set.",
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("slaac", "dhcpv6", "slaac-dhcpv6"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"ipv6_static_subnet": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 static subnet of the network. Only used when `ipv6_interface_type` is `static`.",
 				Optional:            true,
@@ -429,27 +468,49 @@ func (r *networkResource) Schema(
 				MarkdownDescription: "Specifies whether IPv6 Router Advertisement (RA) is enabled.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ipv6_ra_priority": schema.StringAttribute{
 				MarkdownDescription: "The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("high", "medium", "low"),
 				},
-			},
-			"ipv6_ra_preferred_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime in seconds (0-31536000).",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.Between(0, 31536000),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"ipv6_ra_valid_lifetime": schema.Int64Attribute{
-				MarkdownDescription: "The IPv6 Router Advertisement valid lifetime in seconds (0-31536000).",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.Between(0, 31536000),
+			"ipv6_ra_preferred_lifetime": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 Router Advertisement preferred lifetime, as a Go " +
+					"duration string (e.g. `14400s`, `4h`). Must be a whole number of seconds " +
+					"between `0s` and `31536000s` (1 year).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 31536000*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"ipv6_ra_valid_lifetime": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 Router Advertisement valid lifetime, as a Go " +
+					"duration string (e.g. `86400s`, `24h`). Must be a whole number of seconds " +
+					"between `0s` and `31536000s` (1 year).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 31536000*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_pd_interface": schema.StringAttribute{
@@ -466,17 +527,27 @@ func (r *networkResource) Schema(
 					"`pd`, otherwise the controller rejects the network with " +
 					"`api.err.InvalidIpv6Addr`.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ipv6_pd_stop": schema.StringAttribute{
 				MarkdownDescription: "The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). " +
 					"Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ipv6_pd_auto_prefixid_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lte_lan": schema.BoolAttribute{
 				MarkdownDescription: "Whether this network/VLAN stays active when the " +
@@ -492,20 +563,39 @@ func (r *networkResource) Schema(
 				Default:  booldefault.StaticBool(true),
 			},
 			"ip_aliases": schema.ListAttribute{
-				MarkdownDescription: "List of IP aliases for the network.",
-				Optional:            true,
-				ElementType:         types.StringType,
+				MarkdownDescription: "List of IP aliases for the network, in CIDR notation " +
+					"(e.g. `192.168.2.1/24`). The controller rejects entries without a " +
+					"prefix length.",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 			"ipv6_aliases": schema.ListAttribute{
-				MarkdownDescription: "List of IPv6 aliases for the network.",
-				Optional:            true,
-				ElementType:         types.StringType,
+				MarkdownDescription: "List of IPv6 aliases for the network. Not currently supported: " +
+					"the underlying UniFi API client has no field for this value, so a " +
+					"non-empty list is rejected at plan time (#413).",
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 			"third_party_gateway": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
+			},
+			"purpose": schema.StringAttribute{
+				MarkdownDescription: "The network purpose: `corporate` (default), `guest`, or `vlan-only`. Leave unset to let the controller manage it (a `third_party_gateway` network is always `vlan-only`). **Note:** on Zone-Based-Firewall controllers the purpose is coupled to the firewall zone — a `guest` network only keeps `purpose = \"guest\"` while it belongs to the guest/Hotspot zone (assign it there via `unifi_firewall_zone`), otherwise the controller rewrites it back to `corporate` and the apply fails with an inconsistent-result error.",
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(
+						unifi.PurposeCorporate,
+						unifi.PurposeGuest,
+						unifi.PurposeVLANOnly,
+					),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dhcp_guarding": schema.SingleNestedAttribute{
 				MarkdownDescription: "DHCP guarding configuration. Specifies allowed DHCP server IPs to prevent rogue DHCP servers on the network.",
@@ -518,9 +608,13 @@ func (r *networkResource) Schema(
 						Default:             booldefault.StaticBool(false),
 					},
 					"servers": schema.ListAttribute{
-						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3).",
-						Optional:            true,
-						ElementType:         types.StringType,
+						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3). " +
+							"On `corporate` and `guest` networks the controller only honors " +
+							"DHCP guarding with `setting_preference = \"manual\"`; when " +
+							"`setting_preference` is not configured, the provider sets it to " +
+							"`manual` automatically whenever `dhcp_guarding.enabled` is `true`.",
+						Optional:    true,
+						ElementType: types.StringType,
 						Validators: []validator.List{
 							listvalidator.SizeAtMost(3),
 						},
@@ -609,6 +703,20 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
+					"ntp_servers": schema.ListAttribute{
+						MarkdownDescription: "List of NTP server addresses for DHCP clients.",
+						Optional:            true,
+						ElementType:         types.StringType,
+						Validators: []validator.List{
+							listvalidator.SizeAtMost(2),
+							listvalidator.ValueStringsAre(
+								stringvalidator.Any(
+									validators.IPv4Validator(),
+									validators.IPv6Validator(),
+								),
+							),
+						},
+					},
 					"time_offset_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Specifies whether DHCP time offset is enabled.",
 						Optional:            true,
@@ -621,11 +729,13 @@ func (r *networkResource) Schema(
 						Computed:            true,
 						Default:             booldefault.StaticBool(false),
 					},
-					"leasetime": schema.Int64Attribute{
-						MarkdownDescription: "Specifies the lease time for DHCP addresses in seconds.",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(86400),
+					"leasetime": schema.StringAttribute{
+						MarkdownDescription: "Specifies the DHCP lease time, as a Go duration " +
+							"string (e.g. `24h`, `86400s`). Defaults to `24h0m0s`.",
+						CustomType: timetypes.GoDurationType{},
+						Optional:   true,
+						Computed:   true,
+						Default:    stringdefault.StaticString("24h0m0s"),
 					},
 					"wins": schema.SingleNestedAttribute{
 						MarkdownDescription: "WINS server configuration.",
@@ -740,6 +850,59 @@ func (r *networkResource) Schema(
 					},
 				},
 			},
+			"firewall_zone_id": schema.StringAttribute{
+				MarkdownDescription: "The firewall zone ID assigned to this network. " +
+					"Note: This field is dual-managed and can compete with `unifi_firewall_zone.network_ids`. " +
+					"To prevent state drift loops, ensure you manage zone membership from exactly one side. " +
+					"On Zone-Based Firewall (ZBF) controllers, this field is tightly coupled to the network's `purpose` field.",
+				Optional: true,
+				Computed: true,
+			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
+		},
+	}
+}
+
+// UpgradeState migrates v0 state to v1: leasetime (nested in dhcp_server),
+// ipv6_ra_preferred_lifetime and ipv6_ra_valid_lifetime changed from integer
+// seconds to GoDuration strings.
+func (r *networkResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "ipv6_ra_preferred_lifetime", time.Second)
+						util.SetDurationField(state, "ipv6_ra_valid_lifetime", time.Second)
+						if dhcp, ok := state["dhcp_server"].(map[string]any); ok {
+							util.SetDurationField(dhcp, "leasetime", time.Second)
+						}
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade network state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
+			},
 		},
 	}
 }
@@ -769,13 +932,17 @@ func (r *networkResource) Configure(
 	r.client = client
 }
 
-// ModifyPlan forces setting_preference to "manual" when DHCP relay is enabled.
+// ModifyPlan rejects a configured ipv6_aliases (#413, unsupported by the
+// underlying client) and forces setting_preference to "manual" when DHCP
+// relay or DHCP guarding is enabled.
 //
-// With setting_preference "auto" the controller auto-manages the network and
-// re-enables its built-in DHCP server, which silently turns dhcp_relay off
-// (the two cannot coexist). Forcing "manual" makes the controller honor the
-// explicit relay configuration. We only override the default; an explicit
-// user-provided value is left untouched.
+// With setting_preference "auto" the controller auto-manages the network:
+// it re-enables its built-in DHCP server, which silently turns dhcp_relay
+// off (the two cannot coexist), and it force-resets dhcpguard_enabled to
+// false on every write (#419). Forcing "manual" makes the controller honor
+// the explicit relay/guarding configuration. We only override the default;
+// an explicit user-provided value is left untouched (with a warning for the
+// unsatisfiable auto+guarding combination).
 func (r *networkResource) ModifyPlan(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
@@ -785,22 +952,197 @@ func (r *networkResource) ModifyPlan(
 		return // resource is being destroyed
 	}
 
-	var configPref types.String
-	resp.Diagnostics.Append(
-		req.Config.GetAttribute(ctx, path.Root("setting_preference"), &configPref)...)
-	if resp.Diagnostics.HasError() || !configPref.IsNull() {
-		return // user set it explicitly: respect their choice
+	// firewall_zone_id: Optional+Computed with no plan modifier, so on any
+	// update the framework re-plans it as unknown when the config is null —
+	// including updates manufactured purely by the setting_preference
+	// default ("auto") flapping against a state pinned to "manual" below.
+	// On controllers without zone-based firewalling the applied value is
+	// always null, so the unknown never resolves to anything else, yet it
+	// makes every follow-up plan non-empty (a perpetual diff for any relay
+	// or guarding network). Pin the plan back to null when neither state nor
+	// config carry a value; ZBF controllers assign a zone on first apply, so
+	// a genuinely zone-managed network never has a null prior state here.
+	if !req.State.Raw.IsNull() {
+		var stateZone, configZone, planZone types.String
+		resp.Diagnostics.Append(
+			req.State.GetAttribute(ctx, path.Root("firewall_zone_id"), &stateZone)...)
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root("firewall_zone_id"), &configZone)...)
+		resp.Diagnostics.Append(
+			req.Plan.GetAttribute(ctx, path.Root("firewall_zone_id"), &planZone)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if stateZone.IsNull() && configZone.IsNull() && planZone.IsUnknown() {
+			resp.Diagnostics.Append(
+				resp.Plan.SetAttribute(
+					ctx,
+					path.Root("firewall_zone_id"),
+					types.StringNull(),
+				)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
 	}
 
-	var relay types.Object
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("dhcp_relay"), &relay)...)
-	if resp.Diagnostics.HasError() || relay.IsNull() || relay.IsUnknown() {
+	// ipv6_aliases: go-unifi's Network struct has no field for this yet, so a
+	// configured value can never reach the controller. Fail fast at plan time
+	// with a clear message instead of Create/Update silently dropping it and
+	// producing a confusing "provider produced inconsistent result after
+	// apply" error (#413).
+	// Read from the plan (not config) so that unknown values derived from
+	// data sources are caught here too.
+	var ipv6Aliases types.List
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("ipv6_aliases"), &ipv6Aliases)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !ipv6Aliases.IsNull() {
+		resp.Diagnostics.AddError(
+			"ipv6_aliases is not yet supported",
+			"The underlying UniFi API client (go-unifi) does not currently expose "+
+				"a field for ipv6_aliases, so the provider cannot send this value to "+
+				"the controller even though the controller accepts and returns it. "+
+				"Remove ipv6_aliases from this configuration until upstream client "+
+				"support lands (see issue #413).",
+		)
 		return
 	}
 
-	var dr dhcpRelayModel
-	resp.Diagnostics.Append(relay.As(ctx, &dr, basetypes.ObjectAsOptions{})...)
-	if resp.Diagnostics.HasError() || !dr.Enabled.ValueBool() {
+	// ip_address_pool inside nat_outbound_ip_addresses: the field is not yet
+	// wired to the API request side (modelToNetwork ignores it) and Read always
+	// writes null, which causes the same inconsistent-result-after-apply failure
+	// as ipv6_aliases. Reject any non-null value at plan time.
+	var natList types.List
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("nat_outbound_ip_addresses"), &natList)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !natList.IsNull() && !natList.IsUnknown() {
+		for i, elem := range natList.Elements() {
+			obj, ok := elem.(types.Object)
+			if !ok {
+				continue
+			}
+			if obj.IsNull() || obj.IsUnknown() {
+				continue
+			}
+			poolAttr, poolOk := obj.Attributes()["ip_address_pool"]
+			if poolOk && (!poolAttr.IsNull() || poolAttr.IsUnknown()) {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("nat_outbound_ip_addresses").AtListIndex(i).AtName("ip_address_pool"),
+					"ip_address_pool is not yet supported",
+					"The ip_address_pool field inside nat_outbound_ip_addresses is not yet "+
+						"wired to the API request side, so a configured value cannot be sent "+
+						"to the controller and Read will always return null, causing an "+
+						"inconsistent-result-after-apply error. Remove ip_address_pool from "+
+						"this configuration until end-to-end support lands.",
+				)
+				return
+			}
+		}
+	}
+
+	// DHCP guarding on corporate/guest networks requires setting_preference =
+	// "manual": with "auto" the controller auto-manages the network and
+	// force-resets dhcpguard_enabled to false on write (verified against a
+	// live controller: a POST carrying dhcpguard_enabled=true with
+	// setting_preference="auto" is stored with dhcpguard_enabled=false for
+	// purpose corporate and guest; vlan-only keeps it). This surfaced as
+	// guarding silently dropped or as "provider produced inconsistent result
+	// after apply" on .dhcp_guarding.enabled (#419). It is controller
+	// behavior, not the historic go-unifi marshaling gap (go-unifi#68) —
+	// current go-unifi serializes dhcpd_ip_1..3 for corporate, guest, and
+	// vlan-only purposes alike.
+	guardEnabled := false
+	var guarding types.Object
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("dhcp_guarding"), &guarding)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !guarding.IsNull() && !guarding.IsUnknown() {
+		var dg dhcpGuardingModel
+		resp.Diagnostics.Append(guarding.As(ctx, &dg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		guardEnabled = dg.Enabled.ValueBool()
+	}
+
+	// Effective purpose mirrors modelToNetwork: default corporate when unset,
+	// third_party_gateway forces vlan-only. Only corporate/guest reset
+	// guarding under "auto"; an unknown purpose is treated as at risk.
+	guardAtRisk := false
+	if guardEnabled {
+		var purpose types.String
+		resp.Diagnostics.Append(
+			req.Plan.GetAttribute(ctx, path.Root("purpose"), &purpose)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		effectivePurpose := unifi.PurposeCorporate
+		if !purpose.IsNull() && !purpose.IsUnknown() && purpose.ValueString() != "" {
+			effectivePurpose = purpose.ValueString()
+		}
+		var thirdPartyGateway types.Bool
+		resp.Diagnostics.Append(
+			req.Plan.GetAttribute(ctx, path.Root("third_party_gateway"), &thirdPartyGateway)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !thirdPartyGateway.IsUnknown() && thirdPartyGateway.ValueBool() {
+			effectivePurpose = unifi.PurposeVLANOnly
+		}
+		guardAtRisk = effectivePurpose == unifi.PurposeCorporate ||
+			effectivePurpose == unifi.PurposeGuest
+	}
+
+	var configPref types.String
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("setting_preference"), &configPref)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !configPref.IsNull() {
+		// The user set setting_preference explicitly: respect their choice,
+		// but surface the unsatisfiable combination instead of letting apply
+		// fail with a confusing inconsistent-result error.
+		if configPref.ValueString() == "auto" && guardAtRisk {
+			resp.Diagnostics.AddAttributeWarning(
+				path.Root("setting_preference"),
+				"DHCP guarding is reset by the controller when setting_preference is \"auto\"",
+				"The controller force-disables dhcpguard_enabled on any write to an "+
+					"auto-managed network, so dhcp_guarding.enabled = true cannot take "+
+					"effect and apply is likely to fail with \"Provider produced "+
+					"inconsistent result after apply\". Set setting_preference = "+
+					"\"manual\", or remove it so the provider manages it, to use DHCP "+
+					"guarding (#419).",
+			)
+		}
+		return
+	}
+
+	needManual := guardAtRisk
+
+	var relay types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("dhcp_relay"), &relay)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !relay.IsNull() && !relay.IsUnknown() {
+		var dr dhcpRelayModel
+		resp.Diagnostics.Append(relay.As(ctx, &dr, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		needManual = needManual || dr.Enabled.ValueBool()
+	}
+
+	if !needManual {
 		return
 	}
 
@@ -824,6 +1166,14 @@ func (r *networkResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// Convert to unifi.Network
 	network, diags := r.modelToNetwork(ctx, &data)
@@ -861,7 +1211,7 @@ func (r *networkResource) Create(
 	}
 
 	// Save data into Terraform state
-	idModel := networkIdentityModel{ID: data.ID}
+	idModel := networkIdentityModel{ID: data.ID, Site: data.Site}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -879,7 +1229,44 @@ func (r *networkResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Read identity, falling back to state for resources created before
+	// identity support. When an identity comes in it must be passed through
+	// unchanged: Terraform treats any modification of a non-null identity
+	// (including filling a null attribute) as an error.
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	var idModel networkIdentityModel
+	if haveIdentity {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		idModel.ID = data.ID
+		idModel.Site = data.Site
+	}
+
+	// Tolerate identity-only state (the refresh right after an identity-based
+	// import): fill the missing lookup keys from identity.
+	id := ""
+	if !data.ID.IsNull() && !data.ID.IsUnknown() {
+		id = data.ID.ValueString()
+	}
+	if id == "" {
+		id = idModel.ID.ValueString()
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		site = idModel.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -887,13 +1274,13 @@ func (r *networkResource) Read(
 	var err error
 	var network *unifi.Network
 
-	if !data.ID.IsNull() && !data.ID.IsUnknown() {
+	if id != "" {
 		// Get the network by ID
-		network, err = r.client.GetNetwork(ctx, site, data.ID.ValueString())
+		network, err = r.client.GetNetwork(ctx, site, id)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error Reading network",
-				"Could not read network ID "+data.ID.ValueString()+": "+err.Error(),
+				"Could not read network ID "+id+": "+err.Error(),
 			)
 			return
 		}
@@ -922,8 +1309,12 @@ func (r *networkResource) Read(
 		return
 	}
 
-	// Save updated data into Terraform state
-	idModel := networkIdentityModel{ID: data.ID}
+	// Save updated data into Terraform state. A pre-existing identity is
+	// re-set unchanged; a fresh one is derived from the refreshed state.
+	if !haveIdentity {
+		idModel.ID = data.ID
+		idModel.Site = data.Site
+	}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -941,6 +1332,14 @@ func (r *networkResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := data.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Convert to unifi.Network
 	network, diags := r.modelToNetwork(ctx, &data)
 	resp.Diagnostics.Append(diags...)
@@ -954,6 +1353,39 @@ func (r *networkResource) Update(
 	}
 
 	network.ID = data.ID.ValueString()
+
+	// modelToNetwork zero-values the DHCP guarding fields when the
+	// dhcp_guarding block is absent from configuration (and the DHCP server
+	// option fields when dhcp_server is absent), and the controller treats
+	// the resulting PUT literally — silently wiping settings configured
+	// outside Terraform on every unrelated update. Preserve the controller's
+	// current values instead.
+	if data.DhcpGuarding.IsNull() || data.DhcpServer.IsNull() {
+		current, err := r.client.GetNetwork(ctx, site, network.ID)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating network",
+				fmt.Sprintf(
+					"Could not read the network to preserve its unmanaged DHCP settings: %s",
+					err,
+				),
+			)
+			return
+		}
+		preserveUnmanagedDhcpGuarding(data.DhcpGuarding, network, current)
+
+		relayEnabled := false
+		if !data.DhcpRelay.IsNull() && !data.DhcpRelay.IsUnknown() {
+			var relay dhcpRelayModel
+			resp.Diagnostics.Append(
+				data.DhcpRelay.As(ctx, &relay, basetypes.ObjectAsOptions{})...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			relayEnabled = relay.Enabled.ValueBool()
+		}
+		preserveUnmanagedDhcpServer(data.DhcpServer, relayEnabled, network, current)
+	}
 
 	// Update the network
 	updatedNetwork, err := r.client.UpdateNetwork(ctx, site, network)
@@ -978,8 +1410,16 @@ func (r *networkResource) Update(
 		return
 	}
 
-	// Save updated data into Terraform state
-	idModel := networkIdentityModel{ID: data.ID}
+	// Save updated data into Terraform state. Identity is immutable once set:
+	// carry the incoming identity through unchanged, deriving a fresh one from
+	// state only when it was absent.
+	idModel := networkIdentityModel{ID: data.ID, Site: data.Site}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -996,6 +1436,14 @@ func (r *networkResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -1019,31 +1467,135 @@ func (r *networkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		req.ID = idParts[1]
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// Formats: "site:id", "name=<name>", a bare 24-hex controller ObjectID, or
+	// a plain network name.
+	if req.ID != "" {
+		var site types.String
+
+		idParts := strings.Split(req.ID, ":")
+		if len(idParts) == 2 {
+			site = types.StringValue(idParts[0])
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+			req.ID = idParts[1]
+		}
+
+		if strings.HasPrefix(req.ID, "name=") {
+			req.ID = strings.TrimPrefix(req.ID, "name=")
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+			idModel := networkIdentityModel{ID: types.StringValue(req.ID), Site: site}
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("id"), idModel.ID)...)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
+		} else {
+			// Fall back to importing by name.
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		}
+		return
 	}
 
-	if strings.HasPrefix(req.ID, "name=") {
-		req.ID = strings.TrimPrefix(req.ID, "name=")
-		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
-	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
-		idModel := networkIdentityModel{ID: types.StringValue(req.ID)}
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		resource.ImportStatePassthroughWithIdentity(
-			ctx,
-			path.Root("id"),
-			path.Root("id"),
-			req,
-			resp,
-		)
-	} else {
-		resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var idModel networkIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idModel.ID)...)
+	if !idModel.Site.IsNull() && idModel.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), idModel.Site)...)
+	}
+}
+
+// preserveUnmanagedDhcpGuarding copies the controller's current DHCP guarding
+// fields onto an outgoing network update when the configuration does not
+// manage the dhcp_guarding block (planned is null). Without this, an update
+// built from the model alone carries dhcpguard_enabled=false and empty
+// dhcpd_ip_1..3, disabling guarding that was configured outside Terraform.
+// Returns true when the fields were preserved.
+func preserveUnmanagedDhcpGuarding(
+	planned types.Object,
+	network *unifi.Network,
+	current *unifi.Network,
+) bool {
+	if !planned.IsNull() {
+		return false
+	}
+	network.DHCPguardEnabled = current.DHCPguardEnabled
+	network.DHCPDIP1 = current.DHCPDIP1
+	network.DHCPDIP2 = current.DHCPDIP2
+	network.DHCPDIP3 = current.DHCPDIP3
+	return true
+}
+
+// preserveUnmanagedDhcpServer copies the controller's current DHCP server
+// option fields onto an outgoing network update when the configuration does
+// not manage the dhcp_server block (planned is null). modelToNetwork
+// zero-fills these fields in that case, and go-unifi serializes them for
+// corporate/guest networks (since go-unifi#73 that includes empty
+// dhcpd_dns_1..4 and pointer-to-empty dhcpd_ntp_1..2, so an empty value now
+// actively clears the slot). Without preserving, any unrelated update would
+// reset the controller's DHCP configuration — range, lease time, DNS, NTP,
+// WINS, boot options — configured outside Terraform. Skipped when DHCP relay
+// is enabled: relay requires the built-in DHCP server disabled, and
+// modelToNetwork's zero-filling is intentional there. Returns true when the
+// fields were preserved.
+func preserveUnmanagedDhcpServer(
+	planned types.Object,
+	relayEnabled bool,
+	network *unifi.Network,
+	current *unifi.Network,
+) bool {
+	if !planned.IsNull() || relayEnabled {
+		return false
+	}
+	network.DHCPDEnabled = current.DHCPDEnabled
+	network.DHCPDStart = current.DHCPDStart
+	network.DHCPDStop = current.DHCPDStop
+	network.DHCPDLeaseTime = current.DHCPDLeaseTime
+	network.DHCPDGatewayEnabled = current.DHCPDGatewayEnabled
+	network.DHCPDConflictChecking = current.DHCPDConflictChecking
+	network.DHCPDBootEnabled = current.DHCPDBootEnabled
+	network.DHCPDBootServer = current.DHCPDBootServer
+	network.DHCPDBootFilename = current.DHCPDBootFilename
+	network.DHCPDTimeOffsetEnabled = current.DHCPDTimeOffsetEnabled
+	network.DHCPDDNSEnabled = current.DHCPDDNSEnabled
+	network.DHCPDDNS1 = current.DHCPDDNS1
+	network.DHCPDDNS2 = current.DHCPDDNS2
+	network.DHCPDDNS3 = current.DHCPDDNS3
+	network.DHCPDDNS4 = current.DHCPDDNS4
+	network.DHCPDNtpEnabled = current.DHCPDNtpEnabled
+	network.DHCPDNtp1 = current.DHCPDNtp1
+	network.DHCPDNtp2 = current.DHCPDNtp2
+	network.DHCPDWinsEnabled = current.DHCPDWinsEnabled
+	network.DHCPDWins1 = current.DHCPDWins1
+	network.DHCPDWins2 = current.DHCPDWins2
+	network.DHCPDWPAdUrl = current.DHCPDWPAdUrl
+	network.DHCPDTFTPServer = current.DHCPDTFTPServer
+	network.DHCPDUnifiController = current.DHCPDUnifiController
+	return true
+}
+
+// stringListOrNull builds a Terraform list from values. When values is empty,
+// it mirrors previous's null-ness instead of always collapsing to null: these
+// list attributes are Optional but not Computed, so an empty-list plan (e.g.
+// dns_servers = []) must read back as an empty list, not null, or Terraform
+// reports "provider produced inconsistent result after apply". A previous
+// value of null (attribute never configured) is preserved as null.
+func stringListOrNull(
+	ctx context.Context,
+	values []string,
+	previous types.List,
+) (types.List, diag.Diagnostics) {
+	if len(values) > 0 {
+		return types.ListValueFrom(ctx, types.StringType, values)
+	}
+	if !previous.IsNull() && !previous.IsUnknown() {
+		return types.ListValueMust(types.StringType, []attr.Value{}), nil
+	}
+	return types.ListNull(types.StringType), nil
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
@@ -1054,26 +1606,30 @@ func (r *networkResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Name:                      model.Name.ValueStringPointer(),
-		Purpose:                   unifi.PurposeCorporate,
-		NetworkGroup:              util.Ptr("LAN"),
-		AutoScaleEnabled:          model.AutoScale.ValueBool(),
-		IPSubnet:                  model.Subnet.ValueStringPointer(),
-		NetworkIsolationEnabled:   model.NetworkIsolation.ValueBool(),
-		SettingPreference:         model.SettingPreference.ValueStringPointer(),
-		InternetAccessEnabled:     model.InternetAccess.ValueBool(),
-		MdnsEnabled:               model.MulticastDNS.ValueBool(),
-		GatewayType:               model.GatewayType.ValueStringPointer(),
-		IPV6InterfaceType:         model.IPv6InterfaceType.ValueStringPointer(),
-		IPV6Subnet:                model.IPv6StaticSubnet.ValueStringPointer(),
-		IPV6RaEnabled:             model.IPv6RA.ValueBool(),
-		IPV6RaPriority:            model.IPv6RAPriority.ValueStringPointer(),
-		IPV6RaPreferredLifetime:   model.IPv6RAPreferredLifetime.ValueInt64Pointer(),
-		IPV6RaValidLifetime:       model.IPv6RAValidLifetime.ValueInt64Pointer(),
-		IPV6PDInterface:           model.IPv6PDInterface.ValueStringPointer(),
+		Name:                        model.Name.ValueStringPointer(),
+		Purpose:                     unifi.PurposeCorporate,
+		NetworkGroup:                util.Ptr("LAN"),
+		AutoScaleEnabled:            model.AutoScale.ValueBool(),
+		IPSubnet:                    model.Subnet.ValueStringPointer(),
+		NetworkIsolationEnabled:     model.NetworkIsolation.ValueBool(),
+		SettingPreference:           model.SettingPreference.ValueStringPointer(),
+		InternetAccessEnabled:       model.InternetAccess.ValueBool(),
+		MdnsEnabled:                 model.MulticastDNS.ValueBool(),
+		GatewayType:                 model.GatewayType.ValueStringPointer(),
+		IPV6InterfaceType:           model.IPv6InterfaceType.ValueStringPointer(),
+		IPV6ClientAddressAssignment: optStr(model.IPv6ClientAddressAssignment),
+		IPV6Subnet:                  model.IPv6StaticSubnet.ValueStringPointer(),
+		IPV6RaEnabled:               model.IPv6RA.ValueBool(),
+		IPV6RaPriority:              optStr(model.IPv6RAPriority),
+		IPV6RaPreferredLifetime: util.DurationUnitsPtr(
+			model.IPv6RAPreferredLifetime,
+			time.Second,
+		),
+		IPV6RaValidLifetime:       util.DurationUnitsPtr(model.IPv6RAValidLifetime, time.Second),
+		IPV6PDInterface:           optStr(model.IPv6PDInterface),
 		IPV6PDPrefixid:            model.IPv6PDPrefixID.ValueString(),
-		IPV6PDStart:               model.IPv6PDStart.ValueStringPointer(),
-		IPV6PDStop:                model.IPv6PDStop.ValueStringPointer(),
+		IPV6PDStart:               optStr(model.IPv6PDStart),
+		IPV6PDStop:                optStr(model.IPv6PDStop),
 		IPV6PDAutoPrefixidEnabled: model.IPv6PDAutoPrefixidEnabled.ValueBool(),
 		LteLanEnabled:             model.LteLan.ValueBool(),
 		VLANEnabled:               !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
@@ -1082,7 +1638,13 @@ func (r *networkResource) modelToNetwork(
 		IPAliases:                 []string{},
 	}
 
-	// Handle third-party gateway mode
+	// Purpose: default corporate, honor an explicitly configured value (guest,
+	// vlan-only, corporate). third_party_gateway is the legacy way to request
+	// vlan-only and takes precedence so existing configs keep working.
+	if !model.Purpose.IsNull() && !model.Purpose.IsUnknown() &&
+		model.Purpose.ValueString() != "" {
+		network.Purpose = model.Purpose.ValueString()
+	}
 	if model.ThirdPartyGateway.ValueBool() {
 		network.Purpose = unifi.PurposeVLANOnly
 	}
@@ -1148,15 +1710,9 @@ func (r *networkResource) modelToNetwork(
 		}
 	}
 
-	// Handle IPv6 aliases
-	if !model.IPv6Aliases.IsNull() && !model.IPv6Aliases.IsUnknown() {
-		var ipv6Aliases []string
-		d := model.IPv6Aliases.ElementsAs(ctx, &ipv6Aliases, false)
-		diags.Append(d...)
-		// if !diags.HasError() {
-		// 	// IPv6Aliases field not available in API
-		// }
-	}
+	// ipv6_aliases: go-unifi's Network struct has no field to send this to the
+	// API (#413), so there is nothing to map here. ModifyPlan rejects a
+	// non-empty configured value before modelToNetwork ever runs.
 
 	// A DHCP server and DHCP relay cannot coexist on a network: with relay on,
 	// emitting DHCPDEnabled=true (as the default branch below would) makes the
@@ -1206,9 +1762,43 @@ func (r *networkResource) modelToNetwork(
 			network.DHCPDGatewayEnabled = dhcpServer.GatewayEnabled.ValueBool()
 			network.DHCPDConflictChecking = dhcpServer.ConflictChecking.ValueBool()
 			network.DHCPDNtpEnabled = dhcpServer.NtpEnabled.ValueBool()
+
+			// Handle NTP servers
+			if !dhcpServer.NtpServers.IsNull() && !dhcpServer.NtpServers.IsUnknown() {
+				var ntpServers []string
+				d := dhcpServer.NtpServers.ElementsAs(ctx, &ntpServers, false)
+				diags.Append(d...)
+				if !diags.HasError() {
+					for i, ntp := range ntpServers {
+						if i >= 2 {
+							break
+						}
+						switch i {
+						case 0:
+							network.DHCPDNtp1 = util.Ptr(ntp)
+						case 1:
+							network.DHCPDNtp2 = util.Ptr(ntp)
+						}
+					}
+					// Set remaining NTP servers to empty
+					for i := len(ntpServers); i < 2; i++ {
+						switch i {
+						case 0:
+							network.DHCPDNtp1 = util.Ptr("")
+						case 1:
+							network.DHCPDNtp2 = util.Ptr("")
+						}
+					}
+				}
+			} else {
+				// Set all NTP servers to empty string when not configured
+				network.DHCPDNtp1 = util.Ptr("")
+				network.DHCPDNtp2 = util.Ptr("")
+			}
+
 			network.DHCPDTimeOffsetEnabled = dhcpServer.TimeOffsetEnabled.ValueBool()
 			network.DHCPDDNSEnabled = dhcpServer.DnsEnabled.ValueBool()
-			network.DHCPDLeaseTime = dhcpServer.Leasetime.ValueInt64Pointer()
+			network.DHCPDLeaseTime = util.DurationUnitsPtr(dhcpServer.Leasetime, time.Second)
 
 			// Handle WINS configuration
 			if !dhcpServer.Wins.IsNull() && !dhcpServer.Wins.IsUnknown() {
@@ -1324,6 +1914,8 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPDGatewayEnabled = false
 		network.DHCPDConflictChecking = true
 		network.DHCPDNtpEnabled = false
+		network.DHCPDNtp1 = util.Ptr("")
+		network.DHCPDNtp2 = util.Ptr("")
 		network.DHCPDTimeOffsetEnabled = false
 		network.DHCPDDNSEnabled = false
 		network.DHCPDLeaseTime = util.Ptr(int64(86400))
@@ -1419,6 +2011,12 @@ func (r *networkResource) modelToNetwork(
 		network.DHCPRelayEnabled = false
 	}
 
+	if !model.FirewallZoneID.IsNull() && !model.FirewallZoneID.IsUnknown() &&
+		model.FirewallZoneID.ValueString() != "" {
+		zoneID := model.FirewallZoneID.ValueString()
+		network.FirewallZoneID = &zoneID
+	}
+
 	return network, diags
 }
 
@@ -1444,6 +2042,18 @@ func (r *networkResource) networkToModel(
 	isVLANOnly := network.Purpose == unifi.PurposeVLANOnly
 	model.ThirdPartyGateway = types.BoolValue(isVLANOnly)
 
+	// Reflect the controller's actual purpose. On ZBF controllers the purpose is
+	// driven by the network's firewall zone (e.g. guest ⇄ Hotspot zone), so we
+	// read it back rather than assume the configured value: an unset purpose
+	// (Computed) resolves to whatever the controller reports, and a configured
+	// value that the controller rejects surfaces as an inconsistent-result error
+	// instead of silently drifting.
+	if network.Purpose != "" {
+		model.Purpose = types.StringValue(network.Purpose)
+	} else {
+		model.Purpose = types.StringValue(unifi.PurposeCorporate)
+	}
+
 	// For vlan-only networks, the API does not return fields like subnet, gateway_type,
 	// setting_preference, etc. Preserve the plan/state values for these irrelevant fields
 	// to avoid "inconsistent result after apply" errors.
@@ -1460,19 +2070,81 @@ func (r *networkResource) networkToModel(
 		} else {
 			model.MulticastDNS = previousModel.MulticastDNS
 		}
-		model.GatewayType = previousModel.GatewayType
-		model.IPv6InterfaceType = previousModel.IPv6InterfaceType
+		// Preserve configured values, but normalize import/read values that are
+		// absent because the controller omits fields irrelevant to vlan-only
+		// networks. Leaving these null/unknown would perpetually plan the schema
+		// defaults (gateway_type="default", ipv6_interface_type="none") (#414).
+		if previousModel.GatewayType.IsNull() || previousModel.GatewayType.IsUnknown() ||
+			previousModel.GatewayType.ValueString() == "" {
+			model.GatewayType = types.StringValue("default")
+		} else {
+			model.GatewayType = previousModel.GatewayType
+		}
+		if previousModel.IPv6InterfaceType.IsNull() ||
+			previousModel.IPv6InterfaceType.IsUnknown() ||
+			previousModel.IPv6InterfaceType.ValueString() == "" {
+			model.IPv6InterfaceType = types.StringValue("none")
+		} else {
+			model.IPv6InterfaceType = previousModel.IPv6InterfaceType
+		}
 		model.IPv6StaticSubnet = previousModel.IPv6StaticSubnet
-		model.IPv6RA = previousModel.IPv6RA
-		model.IPv6RAPriority = previousModel.IPv6RAPriority
-		model.IPv6RAPreferredLifetime = previousModel.IPv6RAPreferredLifetime
-		model.IPv6RAValidLifetime = previousModel.IPv6RAValidLifetime
 		model.IPv6PDInterface = previousModel.IPv6PDInterface
 		model.IPv6PDPrefixID = previousModel.IPv6PDPrefixID
-		model.IPv6PDStart = previousModel.IPv6PDStart
-		model.IPv6PDStop = previousModel.IPv6PDStop
-		model.IPv6PDAutoPrefixidEnabled = previousModel.IPv6PDAutoPrefixidEnabled
 		model.LteLan = previousModel.LteLan
+		// The IPv6 attributes below are Computed + UseStateForUnknown. On Create
+		// there is no prior state, so the plan carries them as unknown; copying
+		// the plan value verbatim would leave them unknown in the result and
+		// trip "invalid result object after apply". Resolve unknowns from the
+		// API value (vlan-only networks have no meaningful IPv6 config, so this
+		// is effectively the controller's zero value).
+		if previousModel.IPv6ClientAddressAssignment.IsUnknown() {
+			model.IPv6ClientAddressAssignment = types.StringPointerValue(
+				network.IPV6ClientAddressAssignment,
+			)
+		} else {
+			model.IPv6ClientAddressAssignment = previousModel.IPv6ClientAddressAssignment
+		}
+		if previousModel.IPv6RA.IsUnknown() {
+			model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
+		} else {
+			model.IPv6RA = previousModel.IPv6RA
+		}
+		if previousModel.IPv6RAPriority.IsUnknown() {
+			model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
+		} else {
+			model.IPv6RAPriority = previousModel.IPv6RAPriority
+		}
+		if previousModel.IPv6RAPreferredLifetime.IsUnknown() {
+			model.IPv6RAPreferredLifetime = util.DurationPtrValue(
+				network.IPV6RaPreferredLifetime,
+				time.Second,
+			)
+		} else {
+			model.IPv6RAPreferredLifetime = previousModel.IPv6RAPreferredLifetime
+		}
+		if previousModel.IPv6RAValidLifetime.IsUnknown() {
+			model.IPv6RAValidLifetime = util.DurationPtrValue(
+				network.IPV6RaValidLifetime,
+				time.Second,
+			)
+		} else {
+			model.IPv6RAValidLifetime = previousModel.IPv6RAValidLifetime
+		}
+		if previousModel.IPv6PDStart.IsUnknown() {
+			model.IPv6PDStart = types.StringPointerValue(network.IPV6PDStart)
+		} else {
+			model.IPv6PDStart = previousModel.IPv6PDStart
+		}
+		if previousModel.IPv6PDStop.IsUnknown() {
+			model.IPv6PDStop = types.StringPointerValue(network.IPV6PDStop)
+		} else {
+			model.IPv6PDStop = previousModel.IPv6PDStop
+		}
+		if previousModel.IPv6PDAutoPrefixidEnabled.IsUnknown() {
+			model.IPv6PDAutoPrefixidEnabled = types.BoolValue(network.IPV6PDAutoPrefixidEnabled)
+		} else {
+			model.IPv6PDAutoPrefixidEnabled = previousModel.IPv6PDAutoPrefixidEnabled
+		}
 		// domain_name uses UseStateForUnknown, so it may be unknown during Create.
 		// Resolve unknown to null since the API doesn't return it for vlan-only.
 		if previousModel.DomainName.IsUnknown() {
@@ -1489,14 +2161,42 @@ func (r *networkResource) networkToModel(
 		}
 		model.SettingPreference = types.StringPointerValue(network.SettingPreference)
 		model.InternetAccess = types.BoolValue(network.InternetAccessEnabled)
-		model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
-		model.GatewayType = types.StringPointerValue(network.GatewayType)
-		model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+		// Some controllers (notably UniFi OS gateways) ignore mdns_enabled
+		// per-network and always store false, so a configured `true` would fail
+		// the consistency check (#282; the vlan-only branch above already does
+		// this). Preserve the configured/known value; fall back to the
+		// controller's value only when it wasn't set by the user (unknown/null,
+		// e.g. on Read or List).
+		if previousModel != nil && !previousModel.MulticastDNS.IsNull() &&
+			!previousModel.MulticastDNS.IsUnknown() {
+			model.MulticastDNS = previousModel.MulticastDNS
+		} else {
+			model.MulticastDNS = types.BoolValue(network.MdnsEnabled)
+		}
+		// UniFi omits these fields when they have their implicit controller defaults.
+		// Normalize the omitted values to the provider schema defaults so an imported
+		// network does not perpetually plan null -> default/none changes (#414).
+		if network.GatewayType == nil || *network.GatewayType == "" {
+			model.GatewayType = types.StringValue("default")
+		} else {
+			model.GatewayType = types.StringPointerValue(network.GatewayType)
+		}
+		if network.IPV6InterfaceType == nil || *network.IPV6InterfaceType == "" {
+			model.IPv6InterfaceType = types.StringValue("none")
+		} else {
+			model.IPv6InterfaceType = types.StringPointerValue(network.IPV6InterfaceType)
+		}
+		model.IPv6ClientAddressAssignment = types.StringPointerValue(
+			network.IPV6ClientAddressAssignment,
+		)
 		model.IPv6StaticSubnet = types.StringPointerValue(network.IPV6Subnet)
 		model.IPv6RA = types.BoolValue(network.IPV6RaEnabled)
 		model.IPv6RAPriority = types.StringPointerValue(network.IPV6RaPriority)
-		model.IPv6RAPreferredLifetime = types.Int64PointerValue(network.IPV6RaPreferredLifetime)
-		model.IPv6RAValidLifetime = types.Int64PointerValue(network.IPV6RaValidLifetime)
+		model.IPv6RAPreferredLifetime = util.DurationPtrValue(
+			network.IPV6RaPreferredLifetime,
+			time.Second,
+		)
+		model.IPv6RAValidLifetime = util.DurationPtrValue(network.IPV6RaValidLifetime, time.Second)
 		model.IPv6PDInterface = types.StringPointerValue(network.IPV6PDInterface)
 		if network.IPV6PDPrefixid == "" {
 			model.IPv6PDPrefixID = types.StringNull()
@@ -1553,11 +2253,65 @@ func (r *networkResource) networkToModel(
 
 	model.Vlan = types.Int64PointerValue(network.VLAN)
 
-	// Handle lists - for now set to null
-	model.NatOutboundIPAddresses = types.ListNull(
-		types.ObjectType{AttrTypes: natOutboundIPAddresses()},
-	)
-	model.IPAliases = types.ListNull(types.StringType)
+	// nat_outbound_ip_addresses: ip_address, mode and wan_network_group round-trip
+	// from the API. ip_address_pool is not wired end-to-end (ModifyPlan rejects
+	// a non-null configured value before Create/Update run) so it is always null.
+	// Only populate the field when:
+	//   1. It was already non-null in the previous state (i.e., the user manages
+	//      it), or
+	//   2. This is an import (previousModel == nil) and the controller returned data.
+	// This mirrors the dhcp_server "preserve null unless managed" pattern so that
+	// a controller-side non-empty list doesn't cause unexpected plan changes for
+	// users who haven't configured nat_outbound_ip_addresses.
+	shouldPopulateNAT := previousModel == nil || !previousModel.NatOutboundIPAddresses.IsNull()
+	if shouldPopulateNAT && len(network.NATOutboundIPAddresses) > 0 {
+		natValues := make([]natOutboundIPAddressesModel, 0, len(network.NATOutboundIPAddresses))
+		for _, nat := range network.NATOutboundIPAddresses {
+			natValues = append(natValues, natOutboundIPAddressesModel{
+				IPAddress:       types.StringValue(nat.IPAddress),
+				IPAddressPool:   types.ListNull(types.StringType),
+				Mode:            types.StringPointerValue(nat.Mode),
+				WANNetworkGroup: types.StringPointerValue(nat.WANNetworkGroup),
+			})
+		}
+		natList, d := types.ListValueFrom(
+			ctx,
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			natValues,
+		)
+		diags.Append(d...)
+		model.NatOutboundIPAddresses = natList
+	} else if shouldPopulateNAT {
+		// Managed but API returned nothing: write an empty list (not null) to
+		// avoid drift between empty vs null when the user configures [].
+		model.NatOutboundIPAddresses = types.ListValueMust(
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+			[]attr.Value{},
+		)
+	} else {
+		model.NatOutboundIPAddresses = types.ListNull(
+			types.ObjectType{AttrTypes: natOutboundIPAddresses()},
+		)
+	}
+
+	if len(network.IPAliases) > 0 {
+		ipAliasesList, d := types.ListValueFrom(ctx, types.StringType, network.IPAliases)
+		diags.Append(d...)
+		model.IPAliases = ipAliasesList
+	} else if previousModel != nil && !previousModel.IPAliases.IsNull() &&
+		!previousModel.IPAliases.IsUnknown() {
+		// Managed but the API returned nothing: keep a known empty list (not
+		// null) so a configured `ip_aliases = []` doesn't fail apply with an
+		// inconsistent-result error (planned [] vs applied null).
+		model.IPAliases = types.ListValueMust(types.StringType, []attr.Value{})
+	} else {
+		model.IPAliases = types.ListNull(types.StringType)
+	}
+
+	// ipv6_aliases: go-unifi's Network struct has no field to carry this value
+	// yet, even though the controller accepts and returns it (#413). ModifyPlan
+	// rejects a non-empty configured value before Create/Update run, so this
+	// only ever needs to represent the "unset" case.
 	model.IPv6Aliases = types.ListNull(types.StringType)
 
 	// Only populate dhcp_server if:
@@ -1576,6 +2330,21 @@ func (r *networkResource) networkToModel(
 				return types.StringNull()
 			}
 			return types.StringValue(*ptr)
+		}
+
+		// Extract the previous dhcp_server value (from plan or prior state) so
+		// list attributes below can distinguish "never configured" (null) from
+		// "configured empty" (empty list) when the API reports no values.
+		var previousDhcpServer dhcpServerModel
+		var previousWins winsModel
+		if previousModel != nil && !previousModel.DhcpServer.IsNull() &&
+			!previousModel.DhcpServer.IsUnknown() {
+			d := previousModel.DhcpServer.As(ctx, &previousDhcpServer, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+			if !previousDhcpServer.Wins.IsNull() && !previousDhcpServer.Wins.IsUnknown() {
+				d := previousDhcpServer.Wins.As(ctx, &previousWins, basetypes.ObjectAsOptions{})
+				diags.Append(d...)
+			}
 		}
 
 		bootServer := types.StringNull()
@@ -1610,13 +2379,21 @@ func (r *networkResource) networkToModel(
 			dnsServers = append(dnsServers, network.DHCPDDNS4)
 		}
 
-		var dnsServersList types.List
-		if len(dnsServers) > 0 {
-			dnsServersList, d = types.ListValueFrom(ctx, types.StringType, dnsServers)
-			diags.Append(d...)
-		} else {
-			dnsServersList = types.ListNull(types.StringType)
+		dnsServersList, d := stringListOrNull(ctx, dnsServers, previousDhcpServer.DnsServers)
+		diags.Append(d...)
+
+		// Build NTP servers list from DHCPDNtp1-2
+		var ntpServers []string
+		if network.DHCPDNtp1 != nil && *network.DHCPDNtp1 != "" {
+			ntpServers = append(ntpServers, *network.DHCPDNtp1)
 		}
+		if network.DHCPDNtp2 != nil && *network.DHCPDNtp2 != "" {
+			ntpServers = append(ntpServers, *network.DHCPDNtp2)
+		}
+		ntpServers = uniqueStrings(ntpServers)
+
+		ntpServersList, d := stringListOrNull(ctx, ntpServers, previousDhcpServer.NtpServers)
+		diags.Append(d...)
 
 		// Build WINS addresses list from DHCPDWins1-2
 		var winsAddresses []string
@@ -1627,13 +2404,8 @@ func (r *networkResource) networkToModel(
 			winsAddresses = append(winsAddresses, *network.DHCPDWins2)
 		}
 
-		var winsAddressesList types.List
-		if len(winsAddresses) > 0 {
-			winsAddressesList, d = types.ListValueFrom(ctx, types.StringType, winsAddresses)
-			diags.Append(d...)
-		} else {
-			winsAddressesList = types.ListNull(types.StringType)
-		}
+		winsAddressesList, d := stringListOrNull(ctx, winsAddresses, previousWins.Addresses)
+		diags.Append(d...)
 
 		winsValue := winsModel{
 			Enabled:   types.BoolValue(network.DHCPDWinsEnabled),
@@ -1649,9 +2421,10 @@ func (r *networkResource) networkToModel(
 			GatewayEnabled:    types.BoolValue(network.DHCPDGatewayEnabled),
 			ConflictChecking:  types.BoolValue(network.DHCPDConflictChecking),
 			NtpEnabled:        types.BoolValue(network.DHCPDNtpEnabled),
+			NtpServers:        ntpServersList,
 			TimeOffsetEnabled: types.BoolValue(network.DHCPDTimeOffsetEnabled),
 			DnsEnabled:        types.BoolValue(network.DHCPDDNSEnabled),
-			Leasetime:         types.Int64PointerValue(network.DHCPDLeaseTime),
+			Leasetime:         util.DurationPtrValue(network.DHCPDLeaseTime, time.Second),
 			Wins:              winsObj,
 			WpadUrl:           strPtrToType(network.DHCPDWPAdUrl),
 			Start:             types.StringPointerValue(network.DHCPDStart),
@@ -1754,6 +2527,12 @@ func (r *networkResource) networkToModel(
 		model.DhcpRelay = types.ObjectNull(dhcpRelayModel{}.AttributeTypes())
 	}
 
+	if network.FirewallZoneID != nil {
+		model.FirewallZoneID = types.StringPointerValue(network.FirewallZoneID)
+	} else {
+		model.FirewallZoneID = types.StringNull()
+	}
+
 	return diags
 }
 
@@ -1830,8 +2609,9 @@ func (r *networkResource) List(
 
 	stream.Results = func(push func(list.ListResult) bool) {
 		for _, network := range networks {
-			// Filter by purpose: only corporate and vlan-only networks.
+			// Filter by purpose: only corporate, guest and vlan-only networks.
 			if network.Purpose != unifi.PurposeCorporate &&
+				network.Purpose != unifi.PurposeGuest &&
 				network.Purpose != unifi.PurposeVLANOnly {
 				continue
 			}
@@ -1850,11 +2630,10 @@ func (r *networkResource) List(
 
 			// Set identity.
 			result.Diagnostics.Append(
-				result.Identity.SetAttribute(
-					ctx,
-					path.Root("id"),
-					types.StringValue(network.ID),
-				)...,
+				result.Identity.Set(ctx, networkIdentityModel{
+					ID:   types.StringValue(network.ID),
+					Site: types.StringValue(site),
+				})...,
 			)
 
 			// Convert to model.
@@ -1862,6 +2641,7 @@ func (r *networkResource) List(
 			result.Diagnostics.Append(
 				r.networkToModel(ctx, &network, &model, site, &networkResourceModel{})...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

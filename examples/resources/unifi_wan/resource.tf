@@ -1,30 +1,65 @@
-resource "unifi_wan" "default" {
-  name         = "Internet 1"
-  type         = "dhcp"
-  type_v6      = "dhcpv6"
-  vlan_enabled = true
-  vlan         = 10
-  enabled      = true
+# Basic DHCP WAN on a tagged VLAN.
+resource "unifi_wan" "primary" {
+  name    = "Internet 1"
+  type    = "dhcp"   # one of: dhcp, static, pppoe, disabled
+  type_v6 = "dhcpv6" # IPv6 WAN type: dhcpv6, slaac, ...
+  enabled = true
 
-  dns_preference = "manual"
-  dns1           = "1.1.1.1"
-  dns2           = "1.0.0.1"
+  # WAN VLAN tagging.
+  vlan = {
+    enabled = true
+    id      = 10
+  }
 
-  smartq_enabled   = true
-  smartq_up_rate   = 500000
-  smartq_down_rate = 500000
+  # Manual upstream DNS instead of the ISP-provided servers.
+  dns = {
+    preference = "manual" # auto or manual
+    primary    = "1.1.1.1"
+    secondary  = "1.0.0.1"
+  }
+}
 
-  egress_qos_enabled = true
-  egress_qos         = 1
-  dhcp_cos           = 0
-  dhcpv6_cos         = 0
+# Fully-featured secondary WAN used as a weighted load-balance member, with
+# Smart Queues (SQM), QoS marking, IGMP proxy and advertised line capacity.
+resource "unifi_wan" "secondary" {
+  name    = "Internet 2"
+  type    = "dhcp"
+  enabled = true
 
+  vlan = {
+    enabled = true
+    id      = 20
+  }
+
+  # Smart Queue Management rates are in kbps.
+  smartq = {
+    enabled   = true
+    up_rate   = 500000
+    down_rate = 500000
+  }
+
+  # Egress QoS / 802.1p priority (0-7).
+  egress_qos = {
+    enabled  = true
+    priority = 1
+  }
+
+  # Participate in WAN load balancing. type: failover-only | weighted.
+  load_balance = {
+    type              = "weighted"
+    weight            = 75 # 1-100
+    failover_priority = 2  # 1-10
+  }
+
+  # Multicast/IGMP proxy: downstream is none | lan | guest.
+  igmp_proxy = {
+    downstream = "lan"
+    upstream   = true
+  }
+
+  # Advertise the line's real capacity to the controller (kbps).
   provider_capabilities = {
     download_kilobits_per_second = 1000000
     upload_kilobits_per_second   = 100000
   }
-
-  load_balance_type   = "weighted"
-  load_balance_weight = 75
-  failover_priority   = 2
 }

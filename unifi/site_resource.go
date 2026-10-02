@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -20,9 +25,20 @@ import (
 var (
 	_ resource.Resource                = &siteFrameworkResource{}
 	_ resource.ResourceWithImportState = &siteFrameworkResource{}
+	_ resource.ResourceWithIdentity    = &siteFrameworkResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &siteFrameworkResource{}
+	_ list.ListResourceWithConfigure = &siteFrameworkResource{}
 )
 
 func NewSiteFrameworkResource() resource.Resource {
+	return &siteFrameworkResource{}
+}
+
+func NewSiteListResource() list.ListResource {
 	return &siteFrameworkResource{}
 }
 
@@ -33,9 +49,22 @@ type siteFrameworkResource struct {
 
 // siteFrameworkResourceModel describes the resource data model.
 type siteFrameworkResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Name        types.String `tfsdk:"name"`
-	Description types.String `tfsdk:"description"`
+	ID          types.String   `tfsdk:"id"`
+	Name        types.String   `tfsdk:"name"`
+	Description types.String   `tfsdk:"description"`
+	Timeouts    timeouts.Value `tfsdk:"timeouts"`
+}
+
+// siteListConfigModel describes the list configuration model. Sites are global
+// (not site-scoped), so there is no `site` attribute.
+type siteListConfigModel struct {
+	Filter types.List `tfsdk:"filter"`
+}
+
+// siteListFilterModel represents a single name/value filter entry.
+type siteListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 func (r *siteFrameworkResource) Metadata(
@@ -44,6 +73,21 @@ func (r *siteFrameworkResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_site"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *siteFrameworkResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+		},
+	}
 }
 
 func (r *siteFrameworkResource) Schema(
@@ -73,6 +117,10 @@ func (r *siteFrameworkResource) Schema(
 				MarkdownDescription: "The description of the site.",
 				Required:            true,
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -114,6 +162,14 @@ func (r *siteFrameworkResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	description := plan.Description.ValueString()
 
 	// Create the Site
@@ -143,6 +199,7 @@ func (r *siteFrameworkResource) Create(
 		return
 	}
 
+	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), plan.ID)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -158,6 +215,29 @@ func (r *siteFrameworkResource) Read(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Fall back to the identity id when the state id is empty (e.g. the
+	// refresh right after an identity-based import of an old state).
+	if (state.ID.IsNull() || state.ID.IsUnknown()) && req.Identity != nil &&
+		!req.Identity.Raw.IsNull() {
+		var identityID types.String
+		resp.Diagnostics.Append(
+			req.Identity.GetAttribute(ctx, path.Root("id"), &identityID)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !identityID.IsNull() && identityID.ValueString() != "" {
+			state.ID = identityID
+		}
 	}
 
 	var err error
@@ -181,10 +261,15 @@ func (r *siteFrameworkResource) Read(
 	} else {
 		site, err = r.client.GetSiteByName(ctx, state.Name.ValueString())
 		if err != nil {
+			if _, ok := err.(*unifi.NotFoundError); ok {
+				resp.State.RemoveResource(ctx)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading Site",
 				"Could not read site with Name "+state.Name.ValueString()+": "+err.Error(),
 			)
+			return
 		}
 	}
 
@@ -195,6 +280,13 @@ func (r *siteFrameworkResource) Read(
 		return
 	}
 
+	// Terraform rejects any modification of a stored identity, so pass a
+	// stored identity through untouched (resp.Identity is pre-populated from
+	// it) and only derive a fresh one from state when none exists yet.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -219,8 +311,17 @@ func (r *siteFrameworkResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
+	state.Timeouts = plan.Timeouts
 
 	// Step 3: Convert the updated state to API format
 	// Note: Site name cannot be changed after creation, only description
@@ -255,6 +356,12 @@ func (r *siteFrameworkResource) Update(
 		return
 	}
 
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), state.ID)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -284,6 +391,14 @@ func (r *siteFrameworkResource) Delete(
 		return
 	}
 
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
 	id := state.ID.ValueString()
 
 	_, err := r.client.DeleteSite(ctx, id)
@@ -301,6 +416,28 @@ func (r *siteFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform
+	// 1.12+). ImportStatePassthroughID leaves the state empty on this path, so
+	// copy the identity id into state by hand.
+	if req.ID == "" {
+		var id types.String
+		resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("id"), &id)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if id.IsNull() || id.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"Site identity must have `id` set to the site's 24-hex controller id.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		return
+	}
+
+	// Import by ID string (terraform import CLI, or import block with id set):
+	// a 24-hex controller id, or a site name (optionally with a `name=` prefix).
 	rootAttributeName := "name"
 	if after, ok := strings.CutPrefix(req.ID, "name="); ok {
 		req.ID = after
@@ -308,7 +445,14 @@ func (r *siteFrameworkResource) ImportState(
 		rootAttributeName = "id"
 	}
 
-	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
+	resp.Diagnostics.Append(
+		resp.State.SetAttribute(ctx, path.Root(rootAttributeName), req.ID)...)
+	if rootAttributeName == "id" {
+		// Mirror the id into the resource identity; a name-based import leaves
+		// the identity to be filled in by the first Read.
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), req.ID)...)
+	}
 }
 
 // Helper functions for conversion and merging
@@ -319,6 +463,19 @@ func (r *siteFrameworkResource) siteToModel(
 	model *siteFrameworkResourceModel,
 ) diag.Diagnostics {
 	var diags diag.Diagnostics
+
+	if site == nil {
+		// Defensive: the read paths now return before reaching here on a
+		// not-found, but never dereference a nil site (it previously panicked —
+		// #261, e.g. importing with an identifier that is neither a 24-hex id
+		// nor a known site name).
+		diags.AddError(
+			"Site Not Found",
+			"No site matched the given identifier. Import a site by its 24-hex "+
+				"id, or by name with 'name=<site-name>' (e.g. 'name=default').",
+		)
+		return diags
+	}
 
 	if site.ID == "" && site.Name == "" {
 		// If both ID and Name are empty, we can't import this site
@@ -334,4 +491,123 @@ func (r *siteFrameworkResource) siteToModel(
 	model.Description = types.StringValue(site.Description)
 
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource]. Sites are global, so
+// the config has no `site` attribute.
+func (r *siteFrameworkResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List sites in the UniFi controller.",
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `description`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *siteFrameworkResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config siteListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	// Process filter blocks.
+	var filters []siteListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	// Sites are global; ListSites takes no site argument.
+	sites, err := r.client.ListSites(ctx)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Sites",
+			"Could not list sites: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for i := range sites {
+			site := sites[i]
+
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if site.Name != val {
+					continue
+				}
+			}
+
+			// Apply description filter.
+			if val, ok := postFilters["description"]; ok {
+				if site.Description != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer description, fall back to name then ID.
+			switch {
+			case site.Description != "":
+				result.DisplayName = site.Description
+			case site.Name != "":
+				result.DisplayName = site.Name
+			default:
+				result.DisplayName = site.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(site.ID),
+				)...,
+			)
+
+			// Convert to model.
+			var model siteFrameworkResourceModel
+			result.Diagnostics.Append(r.siteToModel(ctx, &site, &model)...)
+			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

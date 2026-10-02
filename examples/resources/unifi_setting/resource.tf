@@ -29,12 +29,20 @@ resource "unifi_setting" "combined" {
     accounting_enabled      = true
     auth_port               = 1812
     acct_port               = 1813
-    interim_update_interval = 600
+    interim_update_interval = "10m"
     secret                  = "my-radius-secret"
   }
 
   usg = {
-    multicast_dns_enabled = true
+    broadcast_ping = false
+    upnp_enabled   = true
+    ftp_module     = false
+
+    # DNS verification is a nested object on the USG/gateway settings.
+    dns_verification = {
+      domain             = "example.com"
+      primary_dns_server = "1.1.1.1"
+    }
   }
 }
 

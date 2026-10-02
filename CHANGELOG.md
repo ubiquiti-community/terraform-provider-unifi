@@ -2,6 +2,287 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_device`: carry every configurable field into the update PUT.** `stp_version`, `stp_priority`, `outlet_overrides`, `outlet_enabled`, the `lcm_*` display settings, `poe_mode`, `locked`, `disabled`, `bandsteering_mode`, `flowctrl_enabled`, `jumboframe_enabled`, `outdoor_mode_override`, `volume` and `x_baresip_password` were converted from the plan but never copied into the minimal body sent on update, so the controller kept its previous values and the post-apply read failed with `Provider produced inconsistent result after apply` (for example `stp_priority` staying at `32768` after planning `4096`). All of them are now included. Every one of these fields is `omitempty` in go-unifi, so attributes that are not declared stay off the wire and existing configurations are unaffected (#476, #510)
+- **`unifi_device`: apply per-device management IP and DNS changes from `config_network`.** The Terraform configuration was converted into `DeviceConfigNetwork` but dropped when assembling the minimal update payload, so the controller kept its previous values and the post-apply read could fail with `Provider produced inconsistent result after apply`. The update payload now includes the configured management network settings, including `dns1` and `dns2`; an unset block stays omitted (#482)
+
+## [v0.57.0] - 2026-09-29
+
+### ✨ Features
+
+- **`unifi_firewall_policy`: expose the "Match Opposite" (invert) toggles.** New `match_opposite_ips`, `match_opposite_networks` and `match_opposite_ports` attributes on the `source` and `destination` blocks, plus a top-level `match_opposite_protocol`, map 1:1 to the controller's `match_opposite_*` flags — the "Match Opposite" switches in the UI that make an endpoint match everything *except* the listed networks/IPs/ports (or protocol). Previously the provider neither read nor wrote these flags, so a policy inverted in the UI could not be expressed in Terraform and any update through the provider silently reset the inversion to `false`. All four are Optional+Computed with a `false` default and are round-tripped from the controller on read, so existing configurations plan clean; policies inverted outside Terraform now show a diff until the attribute is declared. The v0→v1 endpoint state upgrader seeds the new fields as `false` (refresh overwrites them with the live values)
+
+### 🐛 Bug Fixes
+
+- **`unifi_network`: collapse duplicate DHCP NTP servers returned by the controller.** UniFi can store a single configured server in both DHCP NTP fields, causing `dhcp_server.ntp_servers` to read back with duplicate entries and produce inconsistent-result errors or persistent drift. Both the resource and data source now return unique servers in their original order; the resource continues to preserve the distinction between an unset list and an explicitly empty list (#477)
+- **Fix every plan failing under OpenTofu after upgrading from v0.55.0 with `attribute "site" is required`.** v0.56.0 added `site` (and `network_id` on `unifi_wireguard_peer`) to the resource identity of 21 resources without bumping the identity schema version. Terraform decodes the old `{"id"}` identity with the new attributes null, but OpenTofu requires every attribute of the current identity schema to be present, so `unifi_dns_record`, `unifi_firewall_group`, `unifi_network`, `unifi_port_forward` and `unifi_wan` failed directly and their dependents were skipped. The identity schema of `ap_group`, `client_qos_rate`, `dns_record`, `firewall_group`, `firewall_policy`, `firewall_rule`, `firewall_zone`, `network`, `port_forward`, `port_profile`, `power_supervisor`, `radius_profile`, `radius_user`, `site_to_site_vpn`, `static_route`, `traffic_route`, `vpn_client`, `vpn_server`, `wan`, `wireguard_peer` and `wlan` is now at version 1, with a shared upgrader that carries stored values over and fills a missing `site` from the provider's configured site. No configuration or state changes are needed. A resource whose `site` differs from the provider's site gets the provider's site in its upgraded identity. A `unifi_wireguard_peer` identity written before v0.56.0 keeps a null `network_id`, since an identity upgrader cannot see state; plans are unaffected because Read takes `network_id` from state (#506)
+- **`unifi_port_profile`: an explicitly empty `port_security_mac_address` no longer fails apply with `Provider produced inconsistent result after apply`.** The controller stores a profile whose Port State is Disabled as `port_security_enabled = true` with an empty MAC allowlist, so no device can pass. The read turned an empty allowlist from the controller into `null`, so a configured `[]` could not be kept in state and both create and update failed, although the controller had accepted the write. An explicitly empty set now reads back as `[]`, an unset attribute still reads as `null`, and addresses the controller reports are adopted as before. To disable ports through a profile, set `port_security_enabled = true` with `port_security_mac_address = []`: `forward = "disabled"` alone leaves the port Active (#470)
+- **`unifi_firewall_policy`: fix `Provider produced inconsistent result after apply` when UniFi renumbers a policy's `index`.** The controller can renumber remaining policies when siblings are deleted during the same apply. The computed, read-only `index` no longer uses `UseStateForUnknown`, allowing an updated policy's post-apply read to refresh the controller-assigned value instead of comparing it against a stale index pinned in the plan (#348, #473)
+
+## [v0.56.1] - 2026-09-24
+
+### 🐛 Bug Fixes
+
+- **`unifi_device`: fix `terraform plan` failing after upgrading from v0.55.0 with `failed to decode identity: unsupported attribute "id"`.** v0.56.0 changed the `unifi_device` resource identity key from the controller device `id` to the device `mac` without bumping the identity schema version, so every state holding a `unifi_device` written by v0.55.0 or earlier failed to plan. The identity schema is now at version 1 with an upgrader for version 0 identities, which exist in two shapes: a `{"mac"}` identity written by v0.56.0 is carried over, and an `{"id"}` identity written by earlier versions is rebuilt from the state's `mac` attribute on the next refresh. No configuration or state changes are needed, and states already written by v0.56.0 keep working. Other resources whose identity only gained an optional `site` (or `network_id`) attribute in v0.56.0 were not affected (#502, #504)
+
+## [v0.56.0] - 2026-09-23
+
+### ✨ Features
+
+- **`unifi_wlan`: per-SSID band steering via the new `bandsteering_mode` attribute** (`off` | `equal` | `prefer_5g`). Modern controllers expose band steering on the wlanconf record, and on WiFi 6/7 access points this per-SSID control has replaced the legacy device-level one (still available as `unifi_device.bandsteering_mode`), so band steering was previously unmanageable on that hardware. Optional+Computed with value validation; the value is echoed from the controller on read, stays entirely off the wire when unset, and on controllers without per-SSID band steering (which accept and ignore the key) the declared value is kept in state instead of failing the apply with an inconsistent-result error. Requires go-unifi with `WLAN.BandsteeringMode` (go-unifi#72) (#388)
+
+### 🐛 Bug Fixes
+
+- **`unifi_network`: `dhcp_server.dns_servers`, `dhcp_server.ntp_servers`, and `dhcp_server.wins.addresses` can now be set back to empty.** Two halves made an explicit `[]` impossible. Read collapsed an empty controller response to `null` while the plan held `[]`, failing apply with "provider produced inconsistent result after apply"; the readback now mirrors the previous value's null-ness, so `[]` round-trips as `[]` and never-configured stays `null`. And on the wire, go-unifi tagged `dhcpd_dns_1..4` with `omitempty` and squashed a pointer-to-empty `dhcpd_ntp_1..2` to nil, so the clearing PUT silently omitted the fields and the controller (whose networkconf PUT keeps omitted fields) retained the old servers — fixed upstream in go-unifi#73, picked up by the go.mod bump. Because corporate/guest updates now serialize those fields unconditionally, updates on networks whose configuration does not manage the `dhcp_server` block preserve the controller's current DHCP options (range, lease time, DNS/NTP/WINS, boot fields) by reading the network first, the same pattern #439 introduced for `dhcp_guarding` (#429)
+- **`unifi_wlan`: creating a WLAN with `"6g"` in `wlan_bands` no longer fails with `Provider produced inconsistent result after apply`.** The provider marshals the full declared band list — `6g` included — on both create and update, but some controllers (observed on Network 10.4.x) silently drop `6g` from the initial create response while accepting the identical payload on a subsequent update; the reporter's manual workaround (create without `6g`, then add it) confirmed the asymmetry. `Create` now compares the controller's response against the requested band list and, when a band was dropped, immediately re-asserts the intended configuration with a single follow-up update — the created WLAN carries all declared bands in one `terraform apply`. If the controller refuses the band even then, the apply now fails with an actionable diagnostic (6GHz gating: WPA3/SAE with PMF, 6GHz-capable APs) instead of the cryptic consistency error, and the created WLAN is tracked in state as tainted rather than orphaned on the controller (#406)
+- **`unifi_device`: fix declared `radio_table` rejecting every update with `api.err.InvalidPayload` (400).** A radio_table entry declared with only some sub-fields (e.g. `radio`/`channel`/`ht`/`tx_power_mode`) leaves the rest Unknown — not Null — in the plan, and `ValueInt64Pointer()` maps Unknown to a pointer at the Go zero value, so every undeclared numeric sub-field went out as a literal `0` (`"antenna_gain":0,"min_rssi":0,"sens_level":0,…`), which the controller rejects; and simply omitting them is not enough, because the controller requires each entry to carry the hardware-assigned radio `name` and fails with `api.err.MissingValue` (key `radio`) without it. Unknown sub-fields now stay off the wire like Null, hardware-derived fields the practitioner left unset (`name`, `antenna_gain`, `antenna_id`, channel/width/power when undeclared) are echoed from the device's current radio table so controller-required values are always present, and the post-apply state keeps the declared list's count/order/values, resolving only the undeclared sub-fields from the controller. As part of the same diff-hygiene class, an empty `port_overrides` now mirrors the device's existing representation (null vs `[]`) instead of always sending `[]`, which manufactured a spurious `null→[]` change that some controllers reject on devices without ports (#427)
+- **`unifi_setting.ips`: `suppression_alerts` / `suppression_whitelist` are now actually saved on current controllers instead of producing a perpetual diff.** Newer controllers (observed on Network 10.4.x) no longer store IPS suppression nested inside the `ips` setting: the `set/setting/ips` endpoint silently drops the nested `suppression` field and the data lives under the standalone `ips_suppression` setting key, so the provider's writes never landed and every plan re-showed the whole list. The provider now re-reads the `ips` setting after writing it; when the controller did not persist the nested field, it writes the entries to the `ips_suppression` setting (and refresh reads them back from there). Controllers that still nest suppression under `ips` keep using the nested path unchanged, and controllers that support neither shape now fail loudly instead of drifting silently (#381)
+- **`unifi_setting.usg`: `geo_ip_filtering_*` now actually configures Region Blocking on current controllers instead of applying without effect.** Newer controllers (observed on Network 10.4.x) ignore the `geo_ip_filtering_*` fields on the `usg` setting: the live Region Blocking configuration is stored under the standalone `usg_geo` setting key (as `ip_filtering.{action,countries,enabled,traffic_direction}`), so applies never changed anything and OpenTofu/Terraform reported an inconsistent result. The provider now also writes the configured fields to `usg_geo` (mapping `geo_ip_filtering_block` to `action`), treats a stored `usg_geo` setting as authoritative on refresh, and keeps existing configurations working unchanged on older controllers that reject the `usg_geo` key and persist the fields on `usg` itself — no configuration changes needed on either controller generation (#374)
+
+- **`unifi_network`: stop `ip_aliases` and `nat_outbound_ip_addresses` always failing apply with "provider produced inconsistent result after apply".** `Read` hardcoded both attributes to `null` regardless of what the API returned, so any network with a non-empty value configured failed every apply, unconditionally. Both now round-trip from the controller's response. `ipv6_aliases` remains unsupported — go-unifi's `Network` struct has no field for it even though the controller accepts and returns it — but a configured value is now rejected with a clear error at plan time instead of failing apply with a confusing inconsistent-result error (#413)
+- **`unifi_client`: fix every in-place update failing with `Provider produced inconsistent result after apply: .last_ip`.** `last_ip` and `hostname` are values the controller reports from live observation, not derived from any configured attribute, yet both used `UseStateForUnknown`. That plan modifier pins the *planned* value to the prior state whenever config doesn't set the attribute — appropriate for values that only change when the practitioner changes them, but wrong here, since the controller can legitimately report a new value between plan and apply (the client re-associates, a DHCP lease renews, etc.). Terraform then requires the applied value to exactly match the pinned plan value, so any update — regardless of which attribute actually changed — failed once `last_ip` or `hostname` drifted. Both are now plain `Computed` attributes that plan as `(known after apply)` on update, so the real post-apply value from the controller is always accepted (#428)
+- **`unifi_network`: make `dhcp_guarding` actually take effect on `corporate`/`guest`/`vlan-only` networks.** Two independent drops hid `dhcp_guarding` from the controller. First, go-unifi historically only marshaled `dhcpd_ip_1..3` for `purpose = "vlan-only"` networks — fixed upstream (go-unifi#68) and already picked up by the go-unifi bump on main, which serializes them for `corporate` and `guest` too. Second — and still present until now — the provider defaults `setting_preference` to `auto`, and the controller force-resets `dhcpguard_enabled` to `false` on any write to an auto-managed network, so guarding either silently never took effect or apply failed with `Provider produced inconsistent result after apply: .dhcp_guarding.enabled`. `ModifyPlan` now pins `setting_preference` to `manual` whenever `dhcp_guarding.enabled` is planned `true` on a `corporate`/`guest` network (vlan-only networks keep guarding under `auto`) and the practitioner has not set `setting_preference` explicitly, mirroring the existing DHCP relay behavior; an explicit `setting_preference = "auto"` combined with enabled guarding now gets a plan-time warning explaining the controller will reset it. Also fixes the perpetual non-empty plan this pinning previously caused for DHCP relay networks on controllers without zone-based firewalling: the `setting_preference` default flapping `auto`→`manual` made every plan an update, which re-planned the null `firewall_zone_id` as `(known after apply)` forever; `ModifyPlan` now pins the plan back to null when neither state nor config carry a zone (#419)
+
+- **`unifi_network`: stop updates silently disabling DHCP guarding configured outside Terraform.** The update PUT is assembled from the Terraform model alone, so when the `dhcp_guarding` block is absent from configuration the body carries `dhcpguard_enabled: false` (with the trusted-server fields empty or, for corporate/guest networks on current go-unifi, absent from the wire entirely) — any unrelated update (changing the DHCP pool, DNS, anything) wiped guarding that was enabled on the controller, with no plan diff and no error. When the block is unmanaged the provider now reads the network first and carries the controller's current guarding fields through the update; removing the block therefore preserves guarding rather than disabling it — disable explicitly with `enabled = false`. Managing `dhcp_guarding` end-to-end additionally requires go-unifi to marshal `dhcpd_ip_1..3` for corporate/guest networks (go-unifi#68) — without that fix the controller rejects an enabled guard with `api.err.MissingIPAddress` (#439)
+
+- **`unifi_device`: pin down and guard the fix that stops zero declared `port_override` blocks wiping live switch overrides.** A switch with live controller-side overrides, updated while config declares zero `port_override` blocks (e.g. a name-only change), must send the controller's current overrides unchanged — not `port_overrides: null` (rejected by some controllers with `api.err.InvalidPayload`, 400) and not `[]` (which would silently reset every live override, #436 is only safe when the device truly has none). This behavior already existed in `updateDevice` but was untested and duplicated across an `if`/`else`; it is now a single `resolvePortOverridesForUpdate` helper with direct regression coverage (#438)
+- **`unifi_device`: stop a declared `port_override` stripping settings from every port on the device.** `op_mode` is only written when it is not `"switch"` (gateways reject it, #213) and `DevicePortOverrides.OpMode` is `omitempty`, so declaring a port that carries `op_mode: "switch"` on the controller produced an entry with the field missing. `UpdateDevice` PUTs `getDeviceDiff(existing, target)` and compares `port_overrides` as a single JSON value, so that one difference sent the whole array — full-replaced from a copy round-tripped through `DevicePortOverrides`, which drops the fields it does not model (`stp_edge_state`, `stp_bpdu_guard_enabled`, `multicast_router_mode`, `sd_wan_underlay_port`) and every field at its zero value. Undeclared ports were stripped along with declared ones, the plan showed nothing, and the apply reported success. The merge now carries a controller-side `op_mode` forward onto the declared entry, so the marshalled array stays identical and nothing is written; a config-supplied non-`switch` `op_mode` still wins, and no value is ever sourced from config, so #213 stays fixed (#430, #266, #213)
+- **`unifi_setting.ntp`: stop empty NTP server slots causing perpetual diffs or inconsistent results.** The controller stores unused `ntp_server_1..4` values as empty strings, but the provider read them back as `null`, conflicting with an explicitly configured `""`. The server attributes now preserve prior state during unrelated plans and normalize controller empty strings to known empty Terraform values (#382)
+
+## [v0.55.0] - 2026-07-10
+
+### ✨ Features
+
+- **`unifi_ap_group`: manage AP group membership.** Full CRUD, complementing the existing read-only data source. Which APs belong to a group was fixed in the controller UI: the data source could read a group, but nothing could create or edit one, so `unifi_wlan.ap_group_ids` could only reference groups built by hand. The resource writes membership through the v2 `apgroups` API. `device_macs` reuses the `unifi_client` MAC type, so `AA-BB-…` and `aa:bb:…` read back equal rather than churning the plan on every refresh. Import takes the group ID, or `site:id` for a non-default site (#359, go-unifi#52).
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_policy`: fix creating a policy that matches an IP group failing with `api.err.EmptyFirewallDestinationIps` (400).** A `source`/`destination` referencing an address group via `ip_group_id` (#316) must be sent with `matching_target_type = "OBJECT"`, but the #293 derivation back-filled an empty type as `SPECIFIC` for any non-ANY match — and on create the type is never controller-assigned, so every create with `ip_group_id` was rejected and only literal `ips` worked. A group reference now derives `OBJECT`, also overriding a stale `""`/`"ANY"`/`"SPECIFIC"` carried in state so switching an existing policy from literal `ips` to a group reference works on update too; a controller-assigned `OBJECT`/`LIST` is still preserved (#365, #316, #293)
+- **`unifi_device`: carry `switch_vlan_enabled`, `radio_table[].vwire_enabled`, and `mesh_sta_vap_enabled` in the update PUT.** The update PUT was assembled from a minimal `Device` that dropped several configured fields, so the controller never received them and every apply that set one failed with `inconsistent result after apply` (`was cty.True, but now cty.False`). Fixed for: `switch_vlan_enabled` (the "Port VLAN" toggle, e.g. an AP with a built-in switch, where the toggle is what makes VLAN tagging take effect on the built-in ports); `radio_table[].vwire_enabled` (the "Mesh Parent" toggle — the whole `radio_table` was omitted from the minimal PUT, dropping every radio sub-field); and `mesh_sta_vap_enabled` (the "Mesh Connect" toggle, newly added to the `unifi_device` schema as an `Optional + Computed` bool). All are now carried in the PUT body when configured. `omitempty` (at every level, including `radio_table`) keeps a `false`/empty off the wire, so it never disturbs the controller default. Verified against a real controller (#363)
+- **`unifi_device` / `unifi_setting`: stop controller-managed lists churning to "known after apply" on unrelated edits.** Several `Optional + Computed` lists were replanned as `(known after apply)` whenever any other field on the same resource changed — a spurious diff (the same class as #338). They now use `UseStateForUnknown`, keeping their prior value unless explicitly changed: `unifi_device` `radio_table` and `outlet_overrides`, and `unifi_setting` `contents` (syslog facilities), `server_names` (DoH), `enabled_categories` / `enabled_networks` (IPS), and `network_ids` (IGMP snooping).
+- **`unifi_ap_group`: allow empty membership and stop empty groups reading back as `null`.** `device_macs` was `Required` with a `SizeAtLeast(1)` validator, and the read mapped an empty member list to `SetNull` — so a group the controller legitimately allows to have zero members (the API returns 201 for an empty membership) could not be authored, and importing one surfaced as an empty-vs-`null` inconsistency. `device_macs` now accepts an empty set and reads empty back as an empty set. The built-in default "All APs" group (which the controller marks read-only) is documented as non-editable through the resource.
+
+## [v0.54.1] - 2026-07-05
+
+### 🐛 Bug Fixes
+
+- **`unifi_radius_profile`: make `auth_server` / `acct_server` `ip` optional so the default profile can be imported.** The controller-managed default RADIUS profile (created when a gateway RADIUS/VPN service is enabled, with `use_usg_auth_server = true`) returns a server entry without an IP. `ip` was `Required`, so re-declaring an imported profile failed with `The argument "ip" is required`, and an empty IP read back as `""` instead of null. `ip` is now `Optional` and an absent IP maps to null, so the default profile round-trips cleanly (#356)
+
+## [v0.54.0] - 2026-07-02
+
+### ✨ Features
+
+- **`unifi_network`: expose the network `purpose` (`corporate`, `guest`, `vlan-only`).** A new `Optional + Computed` attribute. The provider previously hard-coded `corporate` (or `vlan-only` for a `third_party_gateway`), so a `guest` network could not be authored and a controller-assigned guest purpose was silently fought on every apply. `purpose` is now sent when configured and read back from the controller. **Note:** on Zone-Based-Firewall controllers the purpose is coupled to the firewall zone — a `guest` network only keeps `purpose = "guest"` while it belongs to the guest/Hotspot zone (assign it there via `unifi_firewall_zone`); placed in a non-guest zone the controller rewrites it back to `corporate`. `third_party_gateway = true` still forces `vlan-only` for backward compatibility (#276)
+- **`unifi_firewall_policy`: make `connection_state_type` / `connection_states` author-settable.** Both attributes were `Computed`-only, so setting them returned `Invalid Configuration for Read-Only Attribute` — you could not author a policy scoped to a specific connection state. They are now `Optional + Computed`: leave them unset and the controller manages them as before, or set `connection_state_type = "CUSTOM"` with `connection_states = ["NEW", …]` (or `RESPOND_ONLY`) to author, for example, a `NEW`-only logging/deny policy that coexists with stateful returns in a zone-based firewall. Values are validated (`ALL`/`RESPOND_ONLY`/`CUSTOM`; states `NEW`/`ESTABLISHED`/`RELATED`/`INVALID`) and still round-trip on update (#351)
+- **`unifi_wan`: expose `networkgroup` (`WAN`, `WAN2`, …).** A new computed-by-default attribute identifying which WAN group an interface belongs to. The provider previously hard-coded `wan_networkgroup`/`attr_hidden_id` to `WAN`, so updating a **secondary** uplink (`WAN2`) collided with the primary and the controller rejected the PUT (`api.err.WanConfigurationForNetworkGroupAlreadyExists`). The group is now read from the controller and preserved in the update payload (`UseStateForUnknown`, so an imported `WAN2` needs no explicit config), making multi-WAN setups manageable (#334)
+
+### 🐛 Bug Fixes
+
+- **`unifi_network`: fix `inconsistent result after apply` on `multicast_dns` for non-vlan-only networks.** Some controllers (notably UniFi OS gateways) ignore the per-network `mdns_enabled` flag and always store `false`, so a configured `true` conflicted with the post-apply read. The corporate-network read path now preserves the configured value (the vlan-only path already did), falling back to the controller's value only when it was left unset (#282)
+- **`unifi_wan`: fix `inconsistent result after apply` on `wan_dslite_remote_host_auto`.** The controller can force this field back to `true` server-side, so the post-apply read conflicted with a user-configured `false`. The create/update paths now re-assert the configured DS-Lite values on the post-apply state (the update path applied its write-preserve before the API round-trip, so the controller value won); the next refresh still reconciles with the controller (#281)
+- **`unifi_firewall_policy`: stop `source`/`destination` match lists churning to "known after apply" on unrelated edits.** Changing any other field (e.g. `index` or `protocol`) replanned `network_ids`, `client_macs`, `ips` and `web_domains` as `(known after apply)` — showing a spurious diff and risking the controller recomputing them. These Computed attributes now use `UseStateForUnknown`, so they keep their prior value unless explicitly changed (#338)
+- **`unifi_device`: fix LED updates failing with `inconsistent result after apply`.** The update PUT body was assembled as a minimal device that dropped the LED override fields (`led_override`, `led_override_color`, `led_override_color_brightness`), so the controller kept the old values and the post-apply read conflicted with the plan. They are now included in the PUT, and — because the controller applies LED changes to APs asynchronously — the update path also re-asserts the planned LED values on the post-apply state, leaving the next refresh to reconcile with the controller (#337)
+- **`unifi_device`: fix `mgmt_network_id` (Network Override) never persisting.** The update PUT was assembled from a minimal `Device` that dropped a configured `mgmt_network_id`, so the controller never received it: every apply that set it failed with `inconsistent result after apply`, and the per-device management VLAN could not be set through the provider. The field is now carried in the PUT body when configured. `omitempty` keeps a null value off the wire, so it never reintroduces the #177 zero-value rejection. The tag-upstream-first connectivity requirement documented in #330 still applies (#329)
+- **`unifi_wan`: fix `inconsistent result after apply` on `dns` address fields (`primary`, `secondary`, `ipv6_primary`, `ipv6_secondary`).** When no DNS server is configured the controller persists and returns an empty string `""`, but these Optional fields plan as `null`, so the post-apply read conflicted with the plan (e.g. after import with IPv6 DNS preference `auto`). The read now normalizes `""` (and a nil pointer) to `null`, so unset addresses stay null and a real address still round-trips (#333)
+- **`unifi_firewall_policy`: make `index` read-only to stop `inconsistent result after apply` and a perpetual diff.** Pinning `index` failed: the controller ignores a client-supplied value and always appends the policy at the end of its source/destination zone-pair, so the post-apply read (e.g. `10010` → `10020`) conflicted with the plan and then looped forever. Verified against a real UniFi OS 10.x controller — the supported integration API rejects `index` as input and exposes no reorder operation, so policy ordering cannot be managed through the provider. `index` is now `Computed` (controller-assigned) and the provider no longer sends it; reorder policies in the UniFi UI if needed (#348)
+
+## [v0.53.0] - 2026-06-24
+
+### ✨ Features
+
+- **`unifi_firewall_policy`: match an IP group on `source`/`destination`.** A new `ip_group_id` attribute references a `unifi_firewall_group` of type address-group (used with `matching_target = "IP"` and `matching_target_type = "OBJECT"`), alongside the existing `port_group_id`. Backed by a go-unifi change adding the `ip_group_id` field to the firewall-policy source/destination structs (#316)
+- **`unifi_dns_record`: support `NS` records.** `record_type` now accepts `NS`, enabling Forward Domain entries (delegating a domain to another name server). Schema, validator, docs and an example were updated (#318, #319)
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_policy`: fix `inconsistent result after apply` on `source`/`destination` `matching_target_type` when updating a policy (e.g. changing `action`).** This field is firmware-derived: the controller (and the provider's own derivation for #293) may set it to a concrete value during the update PUT (e.g. `""` → `"SPECIFIC"` for a non-ANY match), which the planned value cannot anticipate when the prior state still carries an empty type. The update path now re-asserts the planned value on the post-apply state, leaving the next refresh to reconcile it with the controller (#324)
+- **`unifi_wlan`: fix `inconsistent result after apply` on controller-managed fields.** `minimum_data_rate_2g_kbps`/`minimum_data_rate_5g_kbps` defaulted to `0`, but the controller assigns its own value in `auto` mode (e.g. `1000`/`6000`); they are now `Computed` (via `UseStateForUnknown`) instead of statically defaulted. `radius_profile_id` and `bc_filter_list` were `Optional`-only yet the controller populates them on its own, so they too became `Optional + Computed`. When these are left unset, the controller's value is now accepted instead of conflicting with a `0`/`null` plan (#323)
+
+### 📚 Documentation
+
+- **`unifi_device`: document the `mgmt_network_id` tag-upstream-first requirement.** Setting the Network Override tags the device's management onto the target VLAN; if that VLAN is not tagged on the device's upstream port the device drops off and the apply fails with an inconsistent-result error. The description now spells out the two-step apply (tag the uplink first, then set `mgmt_network_id`) (#329, #330)
+
+## [v0.52.4] - 2026-06-17
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_zone`: create no longer fails with "Unrecognized field default_zone" (400) on UniFi Network 10.4.x.** The server-computed `default_zone` was always serialized into the create request; it is now omitted (modeled as `*bool` in go-unifi) and only read back as a computed attribute (#310)
+
+### 📚 Documentation
+
+- **`unifi_network`: clarify that `subnet` sets the gateway IP.** A custom gateway is already supported — the host portion of `subnet` is the gateway (e.g. `10.0.10.254/24` → gateway `.254`); it need not be the first usable address (#308, #309)
+
+## [v0.52.3] - 2026-06-17
+
+### 🐛 Bug Fixes
+
+- Fix operation timeouts for the list resources, and add acceptance tests for them
+
+## [v0.52.2] - 2026-06-16
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_policy`: set `matching_target_type` for specific matches.** Switching a `source`/`destination` from `matching_target = "ANY"` to a specific target (e.g. `"IP"`) left `matching_target_type` empty, so the update was rejected with `api.err.MissingFirewallPolicySourceMatchingTargetType (400)`. The provider now sends `SPECIFIC` for a non-ANY match (preserving a controller-assigned `OBJECT`/`LIST`) (#293)
+
+---
+
+## [v0.52.1] - 2026-06-16
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting`: stop serializing `0` for unset numeric fields.** An unset Optional+Computed integer was sent as `0`, which the controller rejects (e.g. syslog `netconsole_port: 0` → `400 api.err.InvalidPayload`). The provider now omits `syslog.port`/`syslog.netconsole_port`, `lcm.brightness`/`lcm.idle_timeout`, and `ips` alert `gid`/`id` when unset (#303)
+
+---
+
+## [v0.52.0] - 2026-06-16
+
+### ✨ Features
+
+- **`unifi_setting` `mgmt` block — full management settings** (#274): `advanced_feature_enabled`, `auto_upgrade_hour`, `debug_tools_enabled`, `direct_connect_enabled`, `unifi_idp_enabled`, `wifiman_enabled`, `ssh_username`, `ssh_password` (sensitive), `ssh_auth_password_enabled`. Configured fields are overlaid onto the controller's current settings, so unset fields are preserved.
+- **`unifi_setting` `ips` block — signature alert suppression** (#275): new `suppression_alerts` list (`category`, `gid`, `id`, `signature`, `type`) with a nested `tracking` list (`direction`, `mode`, `value`).
+
+---
+
+## [v0.51.0] - 2026-06-16
+
+### ✨ Features
+
+- **`unifi_client`: new read-only `last_ip` attribute** — the most recent IP the controller has seen for the client (#287)
+- **`unifi_setting`: new `auto_speedtest` block** — periodic internet speed test (`enabled`, `cron_expr`) (#272)
+- **`unifi_setting`: six more setting categories** (#273):
+  - `dpi` — Deep Packet Inspection (`enabled`, `fingerprinting_enabled`)
+  - `lcm` — device display (`enabled`, `brightness`, `idle_timeout`, `sync`, `touch_event`)
+  - `network_optimization` — automated network optimization (`enabled`)
+  - `ntp` — time servers (`ntp_server_1..4`, `setting_preference`)
+  - `syslog` — remote rsyslog (`enabled`, `ip`, `port`, `contents`, `log_all_contents`, `debug`, `this_controller`/`this_controller_encrypted_only`, `netconsole_*`)
+  - `country` — regulatory `code`
+
+---
+
+## [v0.50.0] - 2026-06-16
+
+### ⚠️ Breaking Changes
+
+- **`unifi_firewall_policy` `source.port`/`destination.port` are now strings** (were numbers). Update configs from `port = 161` to `port = "161"`. Existing state is migrated automatically by a schema upgrader, so no manual action is required. This is what fixes #288 below and adds comma-separated port lists (#286).
+
+### ✨ Features
+
+- **List resources for 19 more managed resources** (5 → 24 listable), enabling `terraform query` / config-driven import workflows: `radius_user`, `dns_record`, `dynamic_dns`, `radius_profile`, `firewall_group`, `port_forward`, `static_route`, `traffic_route`, `wan`, `vpn_client`, `vpn_server`, `wireguard_peer`, `device`, `client_qos_rate`, `site`, `power_supervisor`, `firewall_rule`, `network`, `port_profile` (#277, #279)
+- **Per-resource operation timeouts** — resources and data sources now accept a standardized `timeouts` block (create/read/update/delete) (#285)
+- **`unifi_firewall_policy` ports accept a comma-separated list** (e.g. `"80,443"`) and round-trip correctly on import (#286)
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_policy`: a portless source/destination no longer freezes the gateway firewall.** A policy with `port_matching_type = ANY` was serialized with `port = "0"`, which current UniFi OS rejects (valid ports are 1–65535) — silently dropping the *entire* firewall ruleset while `apply` reported success. Portless endpoints now omit the port field entirely (#288)
+- **`unifi_wlan`: `enhanced_iot = true` no longer fails with "provider produced inconsistent result after apply".** When enhanced IoT is enabled the controller forces `iapp_enabled`, `wpa3_support`, `wpa3_transition`, `pmf_mode` and `dtim_ng`; the provider now pins those fields to the controller's values so apply and subsequent plans stay consistent (#283)
+
+### 🔧 Maintenance
+
+- CI: gate `golangci-lint` on newly-introduced issues only, so a `latest`-tracking linter no longer blocks every PR on pre-existing findings, and clear the existing findings in the test suite (#294)
+- CI: workflow cleanup, coverage reporting, and stricter dependency linting (#278, #285)
+- Build(deps): bump `golangci/golangci-lint-action` 8 → 9.2.1 (#291) and `codecov/codecov-action` 5 → 7 (#289)
+
+---
+
+## [v0.49.0] - 2026-06-12
+
+### ✨ Features
+
+- **New `unifi_power_supervisor` resource — UniFi Device Supervisor** (UniFi Network 10.2+). Watch a device's heartbeat and have the controller automatically power-cycle its upstream PoE source after a silence threshold. Reference the supervised device by `device_mac`; set the `heartbeat_interval` / `silence_threshold` / `power_off_duration` timings (seconds). The controller resolves the upstream PoE port automatically (`power_sources` is computed). Full CRUD + import by `id`, `site:id`, or the device's MAC. Backed by a new go-unifi v2 client; live-validated on UniFi Network 10.4.57. Note: the supervised device must be powered by a controller-manageable PoE port — a non-PoE uplink is rejected with `PORT_NOT_POE_CAPABLE` (#244)
+
+### 🐛 Bug Fixes
+
+- **Surface the controller's actual error message on v2 API failures.** Errors from the v2 API (firewall policy/zone, wireguard peer, power supervisor) previously showed only a bare `(400 Bad Request)` because the SDK parsed only the v1 error shape. The underlying go-unifi SDK now reads the v2 error body too, so failures include the controller's reason and code (e.g. `api.err.PurePoeRequiresUplinkException: … PORT_NOT_POE_CAPABLE`)
+
+---
+
+## [v0.48.0] - 2026-06-12
+
+### ✨ Features
+
+- **`unifi_firewall_policy`: allow `protocol = "icmp"` / `"icmpv6"`.** The protocol validator only accepted `all`/`tcp`/`udp`/`tcp_udp`, so zone-based firewall ICMP policies could not be planned even though the controller (UniFi Network 10.4.57) accepts and returns them. The firmware-managed `icmp_typename` / `icmp_v6_typename` fields are already round-tripped, so the validator was the only blocker. Note: the controller rejects `create_allow_respond = true` for ICMP policies (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy for the reply (#259)
+
+### 🐛 Bug Fixes
+
+- **`unifi_device`: stop a single `port_override` from wiping every other port.** The UniFi `PUT /rest/device/<id>` treats `port_overrides` as a full-replace array, and the provider sent only the declared subset — so declaring one port silently dropped all other ports' overrides back to the default VLAN (a port carrying e.g. an NVR on a CCTV VLAN would lose connectivity). The provider now merges the declared `port_override` blocks (by `index`) onto the device's current overrides before the PUT, making `port_override` **partial management**: manage only the ports you declare, leave the rest untouched. Removing a block stops managing that port but does not reset it (#266)
+
+---
+
+## [v0.47.2] - 2026-06-12
+
+### 🐛 Bug Fixes
+
+- **`unifi_site`: fix provider panic when importing/reading with an unmatched identifier.** Importing a site by an identifier that is neither a 24-hex controller id nor a known site name (e.g. the UUID shown in the UI / Integration API) crashed the provider with a nil-pointer dereference. The read paths now return cleanly on not-found, and `siteToModel` guards against a nil site. Import docs clarify the supported forms (24-hex `_id` or `name=<site-name>`) (#261)
+- **`unifi_wan`: fix spurious plan diff after import.** Two read quirks made an imported WAN unable to reach `No changes` without an apply: `vlan.id` was read as null (so it always wanted `+ id = 0`) and is now mapped to the schema default `0`; and `provider_capabilities` (the detected line rate) became `Optional + Computed` with `UseStateForUnknown`, so omitting it from config no longer tries to clear it (#262)
+
+---
+
+## [v0.47.1] - 2026-06-11
+
+### 🔒 Security
+
+- **Stop leaking secrets in error messages.** A failed create/update embedded the raw request payload in the error — including `x_wireguard_private_key`, `x_passphrase`, and `x_ipsec_pre_shared_key` in cleartext — exposing them in terminal scrollback and CI logs. The underlying go-unifi SDK now redacts sensitive fields from payloads in error messages (#256)
+
+### 🐛 Bug Fixes
+
+- **`unifi_vpn_server`: generate the WireGuard `private_key` when unset.** The controller does not generate one (it rejects creation with `api.err.WireguardMissingPrivateKey`) despite the schema marking the field optional/computed. The provider now generates a valid key at create time, and the subnet docs note that the **gateway** form (`10.x.0.1/24`) is required, not the network address (#255)
+
+- **`unifi_network`: fix `inconsistent result after apply` / perpetual diffs on the IPv6 RA/PD attributes.** Networks that carry controller-set RA/PD values (`ipv6_ra`, `ipv6_ra_priority`, `ipv6_ra_preferred_lifetime`, `ipv6_ra_valid_lifetime`, `ipv6_pd_start`, `ipv6_pd_stop`, `ipv6_pd_auto_prefixid_enabled`) — common even on v4-only networks — drifted forever (e.g. `ipv6_ra: true -> false`, `ipv6_pd_start: "::2" -> null`) and could fail apply. These are now `Optional + Computed` with `UseStateForUnknown`, and unset values are no longer serialized as `""`/`0`, so controller-normalized values are preserved instead of clobbered. Extends the v0.47.0 fix to `unifi_network` (#253)
+- **`unifi_network`: fix create failing with `api.err.InvalidPayload` when `ipv6_client_address_assignment` is unset.** The attribute (added in v0.45.0) is `Optional + Computed`, so on create it was serialized as an empty string `""`, which the controller rejects — breaking network creation unless the field was pinned to a value. It is now omitted from the payload when unset (#252)
+- **`unifi_wan`: allow `type_v6 = "slaac"`.** The validator only accepted `dhcpv6`/`static`/`disabled`, but the controller also supports `slaac` — and **requires** it when the IPv6 delegation type is `single_network` (`api.err.SingleNetworkMustBeSLAAC` otherwise). This blocked enabling IPv6 on the WAN for ISPs that deliver it by Router Advertisement (e.g. Free/Freebox in bridge mode). Validated live on UniFi Network 10.4.57 (#250)
+
+---
+
+## [v0.47.0] - 2026-06-11
+
+### ✨ Features
+
+- **`unifi_firewall_policy`: match traffic by domain/FQDN.** A new `web_domains` attribute on `source` and `destination` (used with `matching_target = "WEB"`) lets a policy filter on hostnames. Backed by a go-unifi change that adds the `web_domains` field and the `WEB` matching target to the firewall-policy schema (#242)
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_policy`: actually send/read `network_ids` and `client_macs`.** These match fields were exposed in the schema but never wired to the API — the provider dropped them on write and forced them to `null` on read. They now round-trip like `ips` (#242)
+- **`unifi_device`: fix `Provider produced inconsistent result after apply` that broke every device update.** Write-only attributes never returned by the controller (`forget_on_destroy`, `allow_adoption`) are no longer clobbered to `null` by prior state (notably after an import), and the LED attributes (`led_override`, `led_override_color`, `led_override_color_brightness`) now preserve their configured value when the controller does not echo them back. All five gained `UseStateForUnknown` plan modifiers (#243)
+- **`unifi_port_profile`: fix `inconsistent result after apply` on `stp_port_mode` and `excluded_networkconf_ids`.** `stp_port_mode` is now actually round-tripped to/from the controller (it was forced to `null` and never sent), and both attributes became `Optional + Computed` with `UseStateForUnknown` so controller-computed values no longer conflict with the plan (#245)
+- **`unifi_wlan`: fix `inconsistent result after apply` on `dtim_ng`/`dtim_na`/`dtim_6e` and `iapp_enabled`.** The DTIM fields became `Optional + Computed` so controller defaults (e.g. `1`/`3`/`3`) are accepted when unset, and `iapp_enabled` dropped its static `false` default (the controller may return `true`) in favor of `Optional + Computed` + `UseStateForUnknown` (#245)
+
+---
+
+## [v0.46.0] - 2026-06-11
+
+### ✨ Features
+
+- **New `unifi_site_to_site_vpn` resource** — manage a UniFi manual site-to-site IPsec VPN (`purpose = site-vpn`, `vpn_type = ipsec-vpn`). Exposes the tunnel essentials (`peer_ip`, `interface`, `key_exchange`, `remote_subnets`, `pre_shared_key`) plus the full `profile = customized` IKE/ESP tuning surface (encryption, hash, DH groups, lifetimes, PFS, dynamic routing, route distance). The pre-shared key supports a write-only variant (`pre_shared_key_wo`, Terraform 1.11+). Backed by a go-unifi fix that completes the previously-stubbed site-VPN marshaler. Validated live on UniFi Network 10.4.57 (#78, #239)
+
+### 🧹 Maintenance
+
+- Added a regression unit test for the `unifi_device` `port_override` refresh crash fixed in v0.45.1, and removed a duplicate initialization left by merging the parallel fix (#236, #240)
+
+---
+
+## [v0.45.1] - 2026-06-11
+
+### 🐛 Bug Fixes
+
+- `unifi_device`: fix a refresh/plan crash (`Value Conversion Error … types.ListType[!!! MISSING TYPE !!!]` on `tagged_networkconf_ids`) that hit any device with `port_override` blocks. The override read path now initializes the list to a typed null. Note: `tagged_networkconf_ids` is not yet round-tripped (it reads as null) pending the field being added to the go-unifi SDK (#235, #237)
+
+---
+
+## [v0.45.0] - 2026-06-10
+
+### ✨ Features
+
+- **`unifi_network.ipv6_client_address_assignment`** — new optional+computed attribute to declaratively pin how clients on a network obtain an IPv6 address: `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). UI: Networks → IPv6 → Client Address Assignment. Backed by a go-unifi fix that emits the field in the corporate/guest marshalers (it was decode-only before). Validated on a live UniFi Network 10.4.57 controller (#232, #233)
+
+### 🐛 Bug Fixes
+
+- **Login rate-limit resilience** — username/password auth no longer fails with `Unable to Create HTTP Client` when several back-to-back operations (`init → import → plan → plan → apply`) exhaust the controller's `POST /api/auth/login` rate-limit. The SDK now surfaces HTTP 429 and retries login with a dedicated budget that honors `Retry-After`. API-key auth is unaffected (it skips login) (#231)
+
+---
+
 ## [v0.44.0] - 2026-06-10
 
 ### ✨ Features

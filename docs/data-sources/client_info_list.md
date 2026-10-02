@@ -28,10 +28,19 @@ output "total_clients" {
 ### Optional
 
 - `site` (String) The name of the site to retrieve clients from.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `clients` (Attributes List) List of active clients on the network. (see [below for nested schema](#nestedatt--clients))
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--clients"></a>
 ### Nested Schema for `clients`
@@ -76,7 +85,7 @@ Read-Only:
 - `sw_port` (Number) The switch port number the client is connected to.
 - `tx_bytes` (Number) Total bytes transmitted.
 - `tx_rate` (Number) The transmit rate in kbps.
-- `uptime` (Number) The uptime of the client in seconds.
+- `uptime` (String) The uptime of the client, as a Go duration string.
 - `use_fixedip` (Boolean) Whether this client uses a fixed IP.
 - `usergroup_id` (String) The user group ID for the client.
 - `wired_rate_mbps` (Number) The wired connection rate in Mbps.

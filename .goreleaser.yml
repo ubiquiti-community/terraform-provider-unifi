@@ -1,5 +1,3 @@
-# Visit https://goreleaser.com for documentation on how to customize this
-# behavior.
 version: 2
 before:
   hooks:
@@ -25,9 +23,13 @@ builds:
     ignore:
       - goos: darwin
         goarch: "386"
+      - goos: windows
+        goarch: arm
     binary: "{{ .ProjectName }}_v{{ .Version }}"
 archives:
-  - formats: ["zip"]
+  - formats:
+      - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 checksum:
   extra_files:
     - glob: "terraform-registry-manifest.json"
@@ -39,7 +41,7 @@ signs:
     args:
       - "--batch"
       - "--local-user"
-      - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
+      - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
       - "${signature}"
       - "--detach-sign"
@@ -48,8 +50,5 @@ release:
   extra_files:
     - glob: "terraform-registry-manifest.json"
       name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
-  # If you want to manually examine the release before its live, uncomment this line:
-  draft: true
 changelog:
   disable: true
-  use: github-native

@@ -4,11 +4,18 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -17,14 +24,26 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var (
 	_ resource.Resource                = &firewallRuleResource{}
 	_ resource.ResourceWithImportState = &firewallRuleResource{}
+	_ resource.ResourceWithIdentity    = &firewallRuleResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &firewallRuleResource{}
+	_ list.ListResourceWithConfigure = &firewallRuleResource{}
 )
 
 func NewFirewallRuleResource() resource.Resource {
+	return &firewallRuleResource{}
+}
+
+func NewFirewallRuleListResource() list.ListResource {
 	return &firewallRuleResource{}
 }
 
@@ -32,39 +51,58 @@ type firewallRuleResource struct {
 	client *Client
 }
 
+// firewallRuleIdentityModel describes the resource identity data model.
+type firewallRuleIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
+// firewallRuleListConfigModel describes the list configuration model.
+type firewallRuleListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// firewallRuleListFilterModel represents a single name/value filter entry.
+type firewallRuleListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 type firewallRuleResourceModel struct {
-	ID                  types.String `tfsdk:"id"`
-	Site                types.String `tfsdk:"site"`
-	Name                types.String `tfsdk:"name"`
-	Action              types.String `tfsdk:"action"`
-	Ruleset             types.String `tfsdk:"ruleset"`
-	RuleIndex           types.Int64  `tfsdk:"rule_index"`
-	Protocol            types.String `tfsdk:"protocol"`
-	ProtocolV6          types.String `tfsdk:"protocol_v6"`
-	ICMPTypename        types.String `tfsdk:"icmp_typename"`
-	ICMPV6Typename      types.String `tfsdk:"icmp_v6_typename"`
-	Enabled             types.Bool   `tfsdk:"enabled"`
-	SrcNetworkID        types.String `tfsdk:"src_network_id"`
-	SrcNetworkType      types.String `tfsdk:"src_network_type"`
-	SrcFirewallGroupIDs types.Set    `tfsdk:"src_firewall_group_ids"`
-	SrcAddress          types.String `tfsdk:"src_address"`
-	SrcAddressIPv6      types.String `tfsdk:"src_address_ipv6"`
-	SrcPort             types.String `tfsdk:"src_port"`
-	SrcMac              types.String `tfsdk:"src_mac"`
-	DstNetworkID        types.String `tfsdk:"dst_network_id"`
-	DstNetworkType      types.String `tfsdk:"dst_network_type"`
-	DstFirewallGroupIDs types.Set    `tfsdk:"dst_firewall_group_ids"`
-	DstAddress          types.String `tfsdk:"dst_address"`
-	DstAddressIPv6      types.String `tfsdk:"dst_address_ipv6"`
-	DstPort             types.String `tfsdk:"dst_port"`
-	Logging             types.Bool   `tfsdk:"logging"`
-	StateEstablished    types.Bool   `tfsdk:"state_established"`
-	StateInvalid        types.Bool   `tfsdk:"state_invalid"`
-	StateNew            types.Bool   `tfsdk:"state_new"`
-	StateRelated        types.Bool   `tfsdk:"state_related"`
-	IPSec               types.String `tfsdk:"ip_sec"`
-	SettingPreference   types.String `tfsdk:"setting_preference"`
-	ProtocolMatchExcept types.Bool   `tfsdk:"protocol_match_excepted"`
+	ID                  types.String       `tfsdk:"id"`
+	Site                types.String       `tfsdk:"site"`
+	Name                types.String       `tfsdk:"name"`
+	Action              types.String       `tfsdk:"action"`
+	Ruleset             types.String       `tfsdk:"ruleset"`
+	RuleIndex           types.Int64        `tfsdk:"rule_index"`
+	Protocol            types.String       `tfsdk:"protocol"`
+	ProtocolV6          types.String       `tfsdk:"protocol_v6"`
+	ICMPTypename        types.String       `tfsdk:"icmp_typename"`
+	ICMPV6Typename      types.String       `tfsdk:"icmp_v6_typename"`
+	Enabled             types.Bool         `tfsdk:"enabled"`
+	SrcNetworkID        types.String       `tfsdk:"src_network_id"`
+	SrcNetworkType      types.String       `tfsdk:"src_network_type"`
+	SrcFirewallGroupIDs types.Set          `tfsdk:"src_firewall_group_ids"`
+	SrcAddress          types.String       `tfsdk:"src_address"`
+	SrcAddressIPv6      types.String       `tfsdk:"src_address_ipv6"`
+	SrcPort             types.String       `tfsdk:"src_port"`
+	SrcMac              hwtypes.MACAddress `tfsdk:"src_mac"`
+	DstNetworkID        types.String       `tfsdk:"dst_network_id"`
+	DstNetworkType      types.String       `tfsdk:"dst_network_type"`
+	DstFirewallGroupIDs types.Set          `tfsdk:"dst_firewall_group_ids"`
+	DstAddress          types.String       `tfsdk:"dst_address"`
+	DstAddressIPv6      types.String       `tfsdk:"dst_address_ipv6"`
+	DstPort             types.String       `tfsdk:"dst_port"`
+	Logging             types.Bool         `tfsdk:"logging"`
+	StateEstablished    types.Bool         `tfsdk:"state_established"`
+	StateInvalid        types.Bool         `tfsdk:"state_invalid"`
+	StateNew            types.Bool         `tfsdk:"state_new"`
+	StateRelated        types.Bool         `tfsdk:"state_related"`
+	IPSec               types.String       `tfsdk:"ip_sec"`
+	SettingPreference   types.String       `tfsdk:"setting_preference"`
+	ProtocolMatchExcept types.Bool         `tfsdk:"protocol_match_excepted"`
+	Timeouts            timeouts.Value     `tfsdk:"timeouts"`
 }
 
 func (r *firewallRuleResource) Metadata(
@@ -73,6 +111,33 @@ func (r *firewallRuleResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_firewall_rule"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *firewallRuleResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *firewallRuleResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *firewallRuleResource) Schema(
@@ -195,6 +260,7 @@ func (r *firewallRuleResource) Schema(
 			},
 			"src_mac": schema.StringAttribute{
 				MarkdownDescription: "The source MAC address of the firewall rule.",
+				CustomType:          hwtypes.MACAddressType{},
 				Optional:            true,
 			},
 			"dst_network_id": schema.StringAttribute{
@@ -278,6 +344,10 @@ func (r *firewallRuleResource) Schema(
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -318,6 +388,14 @@ func (r *firewallRuleResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	firewallRule := r.modelToFirewallRule(ctx, &data)
 
 	site := data.Site.ValueString()
@@ -336,6 +414,11 @@ func (r *firewallRuleResource) Create(
 
 	r.firewallRuleToModel(ctx, createdFirewallRule, &data, site)
 
+	identity := firewallRuleIdentityModel{
+		ID:   data.ID,
+		Site: data.Site,
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -351,12 +434,41 @@ func (r *firewallRuleResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Read identity, falling back to state for resources created before
+	// identity support. This also lets Read work from an identity-only state
+	// (the refresh right after an identity-based import).
+	var identity firewallRuleIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = data.ID
+		identity.Site = data.Site
+	}
+
+	id := data.ID.ValueString()
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
 	site := data.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
 
-	firewallRule, err := r.client.GetFirewallRule(ctx, site, data.ID.ValueString())
+	firewallRule, err := r.client.GetFirewallRule(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -364,13 +476,17 @@ func (r *firewallRuleResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Firewall Rule",
-			"Could not read firewall rule with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read firewall rule with ID "+id+": "+err.Error(),
 		)
 		return
 	}
 
 	r.firewallRuleToModel(ctx, firewallRule, &data, site)
 
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = data.ID
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -391,6 +507,14 @@ func (r *firewallRuleResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	r.applyPlanToState(ctx, &plan, &state)
 
@@ -413,6 +537,24 @@ func (r *firewallRuleResource) Update(
 
 	r.firewallRuleToModel(ctx, updatedFirewallRule, &state, site)
 
+	state.Timeouts = plan.Timeouts
+
+	// Identity should not change during update; fall back to state for
+	// resources created before identity support.
+	identity := firewallRuleIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			identity.ID = state.ID
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -427,6 +569,14 @@ func (r *firewallRuleResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -451,26 +601,53 @@ func (r *firewallRuleResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Identity-based import (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity firewallRuleIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...,
+			)
+		}
+		return
+	}
+
+	// Import by ID string ("id" or "site:id").
 	idParts := strings.Split(req.ID, ":")
 
-	if len(idParts) == 2 {
-		site := idParts[0]
-		id := idParts[1]
+	var site, id string
+	switch len(idParts) {
+	case 2:
+		site, id = idParts[0], idParts[1]
+	case 1:
+		id = idParts[0]
+	default:
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			"Import ID must be in format 'site:id' or 'id'",
+		)
+		return
+	}
 
+	if site != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-		return
 	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 
-	if len(idParts) == 1 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-		return
+	// Mirror into identity so it is populated from the first refresh on.
+	if resp.Identity != nil {
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
+		if site != "" {
+			resp.Diagnostics.Append(
+				resp.Identity.SetAttribute(ctx, path.Root("site"), site)...,
+			)
+		}
 	}
-
-	resp.Diagnostics.AddError(
-		"Invalid Import ID",
-		"Import ID must be in format 'site:id' or 'id'",
-	)
 }
 
 func (r *firewallRuleResource) applyPlanToState(
@@ -741,11 +918,7 @@ func (r *firewallRuleResource) firewallRuleToModel(
 		model.SrcPort = types.StringNull()
 	}
 
-	if firewallRule.SrcMACAddress != "" {
-		model.SrcMac = types.StringValue(firewallRule.SrcMACAddress)
-	} else {
-		model.SrcMac = types.StringNull()
-	}
+	model.SrcMac = util.MACValueOrNull(firewallRule.SrcMACAddress)
 
 	if firewallRule.DstNetworkID != "" {
 		model.DstNetworkID = types.StringValue(firewallRule.DstNetworkID)
@@ -803,4 +976,145 @@ func (r *firewallRuleResource) firewallRuleToModel(
 	}
 
 	model.ProtocolMatchExcept = types.BoolValue(firewallRule.ProtocolMatchExcepted)
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *firewallRuleResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List firewall rules in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list firewall rules from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `ruleset`, `action`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *firewallRuleResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config firewallRuleListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []firewallRuleListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	rules, err := r.client.ListFirewallRule(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing Firewall Rules", "Could not list firewall rules: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, rule := range rules {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if rule.Name != val {
+					continue
+				}
+			}
+
+			// Apply ruleset filter.
+			if val, ok := postFilters["ruleset"]; ok {
+				if rule.Ruleset != val {
+					continue
+				}
+			}
+
+			// Apply action filter.
+			if val, ok := postFilters["action"]; ok {
+				if rule.Action != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", rule.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if rule.Name != "" {
+				result.DisplayName = rule.Name
+			} else {
+				result.DisplayName = rule.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(rule.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
+				)...,
+			)
+
+			// Convert to model.
+			var model firewallRuleResourceModel
+			ruleCopy := rule
+			r.firewallRuleToModel(ctx, &ruleCopy, &model, site)
+			model.Timeouts = timeoutsNullValue()
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

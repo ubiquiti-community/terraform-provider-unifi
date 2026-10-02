@@ -2,7 +2,9 @@ package models
 
 import (
 	"context"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -108,7 +110,7 @@ func AttributeTypes() map[string]attr.Type {
 		"is_wired":                     types.BoolType,
 		"authorized":                   types.BoolType,
 		"status":                       types.StringType,
-		"uptime":                       types.Int64Type,
+		"uptime":                       timetypes.GoDurationType{},
 		"first_seen":                   types.Int64Type,
 		"last_seen":                    types.Int64Type,
 		"oui":                          types.StringType,
@@ -200,8 +202,9 @@ func Attributes() map[string]schema.Attribute {
 			MarkdownDescription: "The status of the client.",
 			Computed:            true,
 		},
-		"uptime": schema.Int64Attribute{
-			MarkdownDescription: "The uptime of the client in seconds.",
+		"uptime": schema.StringAttribute{
+			MarkdownDescription: "The uptime of the client, as a Go duration string.",
+			CustomType:          timetypes.GoDurationType{},
 			Computed:            true,
 		},
 		"first_seen": schema.Int64Attribute{
@@ -398,7 +401,7 @@ func ClientInfoAttrValues(
 		"is_wired":                   types.BoolValue(clientInfo.IsWired),
 		"authorized":                 types.BoolValue(clientInfo.Authorized),
 		"status":                     util.StringValueOrNull(clientInfo.Status),
-		"uptime":                     types.Int64PointerValue(clientInfo.Uptime),
+		"uptime":                     util.DurationPtrValue(clientInfo.Uptime, time.Second),
 		"first_seen":                 types.Int64PointerValue(clientInfo.FirstSeen),
 		"last_seen":                  types.Int64PointerValue(clientInfo.LastSeen),
 		"oui":                        util.StringValueOrNull(clientInfo.Oui),

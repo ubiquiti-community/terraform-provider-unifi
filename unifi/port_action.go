@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/action/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,9 +31,10 @@ type portAction struct {
 
 // portActionModel describes the action request and response data model.
 type portActionModel struct {
-	DeviceMAC  types.String `tfsdk:"device_mac"`
-	PortNumber types.Int64  `tfsdk:"port_number"`
-	PoeMode    types.String `tfsdk:"poe_mode"`
+	DeviceMAC  hwtypes.MACAddress `tfsdk:"device_mac"`
+	PortNumber types.Int64        `tfsdk:"port_number"`
+	PoeMode    types.String       `tfsdk:"poe_mode"`
+	Timeouts   timeouts.Value     `tfsdk:"timeouts"`
 }
 
 func (a *portAction) Metadata(
@@ -52,6 +56,7 @@ func (a *portAction) Schema(
 		Attributes: map[string]schema.Attribute{
 			"device_mac": schema.StringAttribute{
 				MarkdownDescription: "MAC address of the device containing the port to configure.",
+				CustomType:          hwtypes.MACAddressType{},
 				Required:            true,
 			},
 			"port_number": schema.Int64Attribute{
@@ -62,6 +67,7 @@ func (a *portAction) Schema(
 				MarkdownDescription: "PoE mode to set for the port. Valid values are `auto`, `pasv24`, `passthrough`, and `off`.",
 				Required:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -103,6 +109,14 @@ func (a *portAction) Invoke(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	invokeTimeout, timeoutDiags := config.Timeouts.Invoke(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, invokeTimeout)
+	defer cancel()
 
 	// Validate PoE mode
 	poeMode := config.PoeMode.ValueString()

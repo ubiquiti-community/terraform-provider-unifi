@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -21,11 +23,12 @@ type clientQosRateDataSource struct {
 }
 
 type clientQosRateDataSourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	Name           types.String `tfsdk:"name"`
-	QOSRateMaxDown types.Int64  `tfsdk:"qos_rate_max_down"`
-	QOSRateMaxUp   types.Int64  `tfsdk:"qos_rate_max_up"`
+	ID             types.String   `tfsdk:"id"`
+	Site           types.String   `tfsdk:"site"`
+	Name           types.String   `tfsdk:"name"`
+	QOSRateMaxDown types.Int64    `tfsdk:"qos_rate_max_down"`
+	QOSRateMaxUp   types.Int64    `tfsdk:"qos_rate_max_up"`
+	Timeouts       timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *clientQosRateDataSource) Metadata(
@@ -66,6 +69,7 @@ func (d *clientQosRateDataSource) Schema(
 				MarkdownDescription: "The maximum upload rate.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -105,6 +109,14 @@ func (d *clientQosRateDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

@@ -21,6 +21,7 @@ Data source for RADIUS users.
 ### Optional
 
 - `site` (String) The name of the site the account is associated with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -29,3 +30,10 @@ Data source for RADIUS users.
 - `password` (String, Sensitive) The password of the account.
 - `tunnel_medium_type` (Number) See RFC2868 section 3.2.
 - `tunnel_type` (Number) See RFC2868 section 3.1.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

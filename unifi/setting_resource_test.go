@@ -1,11 +1,82 @@
 package unifi
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 )
+
+// testAccSettingProbeClient builds a raw API client for capability probes,
+// skipping the test when the controller cannot be reached.
+func testAccSettingProbeClient(t *testing.T, ctx context.Context) *unifi.ApiClient {
+	t.Helper()
+	client, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:       os.Getenv("UNIFI_API"),
+		Username:      os.Getenv("UNIFI_USERNAME"),
+		Password:      os.Getenv("UNIFI_PASSWORD"),
+		AllowInsecure: true,
+	})
+	if err != nil {
+		t.Skipf("cannot probe controller capabilities: %s", err)
+	}
+	return client
+}
+
+// testAccSettingDohCustomServersPreCheck skips when the controller rejects
+// custom DoH servers (app.err.DohCustomServersUnsupported on simulation
+// controllers). The probe applies a custom-server config and restores the
+// original setting when it succeeds.
+func testAccSettingDohCustomServersPreCheck(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	client := testAccSettingProbeClient(t, ctx)
+	_, current, err := unifi.GetSetting[*settings.Doh](client, ctx, "default")
+	if err != nil {
+		t.Skipf("cannot read DoH setting to probe custom-server support: %s", err)
+	}
+	probe := *current
+	probe.State = "custom"
+	probe.CustomServers = []settings.SettingDohCustomServers{
+		{ServerName: "tfacc-doh-probe", Enabled: true},
+	}
+	if err := client.UpdateSetting(ctx, "default", &probe); err != nil {
+		t.Skipf("custom DoH servers not supported by this controller: %s", err)
+	}
+	if err := client.UpdateSetting(ctx, "default", current); err != nil {
+		t.Fatalf("restoring DoH setting after probe: %s", err)
+	}
+}
+
+// testAccSettingIpsHoneypotPreCheck skips when the site's gateway is
+// USG-class: the controller rejects honeypot config with
+// api.err.HoneypotIsNotSupportedInUsg (the simulated gateway is a UGW3).
+func testAccSettingIpsHoneypotPreCheck(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	client := testAccSettingProbeClient(t, ctx)
+	devices, err := client.ListDevice(ctx, "default")
+	if err != nil {
+		t.Skipf("cannot probe gateway model for honeypot support: %s", err)
+	}
+	for _, d := range devices {
+		if d.Type == "ugw" {
+			t.Skip("IPS honeypot is not supported on USG-class gateways")
+		}
+	}
+}
 
 func TestAccSettingResource_mgmt(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -109,6 +180,143 @@ func TestAccSettingResource_usg(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccSettingResource_usgGeo guards #374: the Region Blocking fields must
+// round-trip and the follow-up refresh plan must stay empty. On controllers
+// that store the config as usg.geo_ip_filtering_* the legacy path is used;
+// controllers that store it under usg_geo.ip_filtering take the standalone
+// write/read path.
+func TestAccSettingResource_usgGeo(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSettingConfig_usgGeo(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_enabled", "true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_block", "block",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_countries", "KP,RU",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_traffic_direction", "both",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_usgGeoUpdated(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_countries", "CN,KP,RU",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_traffic_direction", "ingress",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_usgGeoDisabled(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "usg.geo_ip_filtering_enabled", "false",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccSettingConfig_usgGeo() string {
+	return `
+resource "unifi_setting" "test" {
+  usg = {
+    geo_ip_filtering_enabled           = true
+    geo_ip_filtering_block             = "block"
+    geo_ip_filtering_countries         = "KP,RU"
+    geo_ip_filtering_traffic_direction = "both"
+  }
+}
+`
+}
+
+func testAccSettingConfig_usgGeoUpdated() string {
+	return `
+resource "unifi_setting" "test" {
+  usg = {
+    geo_ip_filtering_enabled           = true
+    geo_ip_filtering_block             = "block"
+    geo_ip_filtering_countries         = "CN,KP,RU"
+    geo_ip_filtering_traffic_direction = "ingress"
+  }
+}
+`
+}
+
+func testAccSettingConfig_usgGeoDisabled() string {
+	return `
+resource "unifi_setting" "test" {
+  usg = {
+    geo_ip_filtering_enabled           = false
+    geo_ip_filtering_block             = "block"
+    geo_ip_filtering_countries         = "CN,KP,RU"
+    geo_ip_filtering_traffic_direction = "ingress"
+  }
+}
+`
+}
+
+// TestAccSettingResource_import exercises both import paths: the classic
+// string import (the import id is the site name, with state verification) and
+// the Terraform 1.12+ identity-based import block.
+//
+// The config intentionally manages no setting sections: readSettings only
+// refreshes sections already present in state, so a freshly imported setting
+// has every section null and any configured section would make the
+// post-import plan non-empty (the same reason the string-import tests above
+// need ImportStateVerifyIgnore for their section attributes).
+func TestAccSettingResource_import(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSettingConfig_import(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_setting.test_import", "id", "default"),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test_import",
+						"site",
+						"default",
+					),
+				),
+			},
+			// Classic string import (the import id is the site name).
+			{
+				ResourceName:      "unifi_setting.test_import",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			// Identity-based import (import block with identity, Terraform 1.12+).
+			{
+				ResourceName:    "unifi_setting.test_import",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithResourceIdentity,
+			},
+		},
+	})
+}
+
+func testAccSettingConfig_import() string {
+	return `
+resource "unifi_setting" "test_import" {
+}
+`
 }
 
 func TestAccSettingResource_combined(t *testing.T) {
@@ -348,16 +556,14 @@ func TestAccSettingResource_doh(t *testing.T) {
 }
 
 func TestAccSettingResource_dohCustomServers(t *testing.T) {
-	// custom_servers requires controller support beyond simulation/demo mode;
-	// the simulation controller returns DohCustomServersUnsupported (400).
-	// Run only against a real controller (UNIFI_SKIP_CONTAINER bypasses the
-	// docker simulation and targets the pre-set UNIFI_* endpoint).
-	if os.Getenv("UNIFI_SKIP_CONTAINER") == "" {
-		t.Skip("custom DoH servers require a real controller; set UNIFI_SKIP_CONTAINER to run")
-	}
-
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
+		PreCheck: func() {
+			preCheck(t)
+			// Simulation controllers reject custom_servers with
+			// DohCustomServersUnsupported (400); probe instead of inferring
+			// from the environment.
+			testAccSettingDohCustomServersPreCheck(t)
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -455,16 +661,14 @@ func TestAccSettingResource_ips(t *testing.T) {
 }
 
 func TestAccSettingResource_ipsHoneypot(t *testing.T) {
-	// Honeypot requires a UDM-class gateway; the simulation controller presents as a USG,
-	// which returns HoneypotIsNotSupportedInUsg (400).
-	// honeypot is not supported on USG-class/simulation controllers; it
-	// requires a UDM-class device. Run only against a real controller.
-	if os.Getenv("UNIFI_SKIP_CONTAINER") == "" {
-		t.Skip("honeypot requires a real UDM-class controller; set UNIFI_SKIP_CONTAINER to run")
-	}
-
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { preCheck(t) },
+		PreCheck: func() {
+			preCheck(t)
+			// Honeypot requires a UDM-class gateway; sites with a USG-class
+			// gateway (including the simulated UGW3 once adopted) reject it
+			// with HoneypotIsNotSupportedInUsg (400).
+			testAccSettingIpsHoneypotPreCheck(t)
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
@@ -494,6 +698,129 @@ func TestAccSettingResource_ipsHoneypot(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccSettingResource_ipsSuppression guards #381: suppression entries must
+// round-trip and the follow-up plan must be empty (the framework fails a step
+// whose post-apply refresh plan is non-empty, which is exactly the perpetual
+// diff reported). On controllers that nest suppression in the ips setting the
+// nested path is used; controllers that store it under the standalone
+// ips_suppression key take the fallback write/read path.
+func TestAccSettingResource_ipsSuppression(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSettingConfig_ipsSuppression(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.#", "1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"ips.suppression_alerts.0.signature",
+						"ET SCAN Potential SSH Scan OUTBOUND",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.0.id", "2003068",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.#", "1",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.0.value", "10.0.0.5",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_ipsSuppressionUpdated(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.#", "2",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.#", "0",
+					),
+				),
+			},
+			{
+				Config: testAccSettingConfig_ipsSuppressionCleared(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_alerts.#", "0",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test", "ips.suppression_whitelist.#", "0",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccSettingConfig_ipsSuppression() string {
+	return `
+resource "unifi_setting" "test" {
+  ips = {
+    ips_mode = "disabled"
+    suppression_alerts = [{
+      category  = "emerging-scan"
+      gid       = 1
+      id        = 2003068
+      signature = "ET SCAN Potential SSH Scan OUTBOUND"
+      type      = "all"
+      tracking  = []
+    }]
+    suppression_whitelist = [{
+      direction = "both"
+      mode      = "ip"
+      value     = "10.0.0.5"
+    }]
+  }
+}
+`
+}
+
+func testAccSettingConfig_ipsSuppressionUpdated() string {
+	return `
+resource "unifi_setting" "test" {
+  ips = {
+    ips_mode = "disabled"
+    suppression_alerts = [
+      {
+        category  = "emerging-scan"
+        gid       = 1
+        id        = 2003068
+        signature = "ET SCAN Potential SSH Scan OUTBOUND"
+        type      = "all"
+        tracking  = []
+      },
+      {
+        category  = "emerging-dos"
+        gid       = 1
+        id        = 2019010
+        signature = "ET DOS Possible NTP DDoS"
+        type      = "all"
+        tracking  = []
+      },
+    ]
+    suppression_whitelist = []
+  }
+}
+`
+}
+
+func testAccSettingConfig_ipsSuppressionCleared() string {
+	return `
+resource "unifi_setting" "test" {
+  ips = {
+    ips_mode              = "disabled"
+    suppression_alerts    = []
+    suppression_whitelist = []
+  }
+}
+`
 }
 
 func testAccSettingConfig_dohAuto() string {
@@ -596,4 +923,1191 @@ resource "unifi_setting" "test" {
   }
 }
 `
+}
+
+func TestNewSettingResource(t *testing.T) {
+	r := NewSettingResource()
+	if r == nil {
+		t.Fatal("NewSettingResource() returned nil")
+	}
+	if _, ok := r.(fwresource.ResourceWithConfigure); !ok {
+		t.Error("expected ResourceWithConfigure interface")
+	}
+	if _, ok := r.(fwresource.ResourceWithImportState); !ok {
+		t.Error("expected ResourceWithImportState interface")
+	}
+}
+
+func Test_settingResource_Metadata(t *testing.T) {
+	tests := []struct {
+		providerTypeName, wantTypeName string
+	}{
+		{"unifi", "unifi_setting"},
+		{"test", "test_setting"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.providerTypeName, func(t *testing.T) {
+			r := &settingResource{}
+			resp := &fwresource.MetadataResponse{}
+			r.Metadata(
+				context.Background(),
+				fwresource.MetadataRequest{ProviderTypeName: tt.providerTypeName},
+				resp,
+			)
+			if resp.TypeName != tt.wantTypeName {
+				t.Errorf("TypeName = %q, want %q", resp.TypeName, tt.wantTypeName)
+			}
+		})
+	}
+}
+
+func Test_settingResource_Schema(t *testing.T) {
+	r := &settingResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
+	}
+	for _, attr := range []string{"id", "site", "mgmt", "radius", "usg", "igmp_snooping", "doh", "ips"} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
+	}
+}
+
+// TestSettingNtpServersUseStateForUnknown guards #382: omitted
+// Optional+Computed server fields must retain their prior values instead of
+// repeatedly planning as "known after apply" when the NTP block is configured.
+func TestSettingNtpServersUseStateForUnknown(t *testing.T) {
+	resp := &fwresource.SchemaResponse{}
+	(&settingResource{}).Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	ntp, ok := resp.Schema.Attributes["ntp"].(schema.SingleNestedAttribute)
+	if !ok {
+		t.Fatal("ntp is not a SingleNestedAttribute")
+	}
+	for _, key := range []string{"ntp_server_1", "ntp_server_2", "ntp_server_3", "ntp_server_4"} {
+		server, ok := ntp.Attributes[key].(schema.StringAttribute)
+		if !ok {
+			t.Errorf("ntp.%s is not a StringAttribute", key)
+			continue
+		}
+		if !server.Optional || !server.Computed {
+			t.Errorf("ntp.%s must remain Optional+Computed", key)
+		}
+		if len(server.PlanModifiers) == 0 {
+			t.Errorf("ntp.%s must use UseStateForUnknown (#382)", key)
+			continue
+		}
+
+		req := planmodifier.StringRequest{
+			ConfigValue: types.StringNull(),
+			PlanValue:   types.StringUnknown(),
+			State: tfsdk.State{
+				Raw: tftypes.NewValue(tftypes.String, ""),
+			},
+			StateValue: types.StringValue(""),
+		}
+		modified := &planmodifier.StringResponse{PlanValue: req.PlanValue}
+		server.PlanModifiers[0].PlanModifyString(context.Background(), req, modified)
+		if modified.Diagnostics.HasError() {
+			t.Errorf("ntp.%s plan modifier returned errors: %v", key, modified.Diagnostics)
+		}
+		if modified.PlanValue.IsNull() || modified.PlanValue.IsUnknown() ||
+			modified.PlanValue.ValueString() != "" {
+			t.Errorf("ntp.%s plan = %v, want prior known empty state", key, modified.PlanValue)
+		}
+	}
+}
+
+func Test_settingResource_UpgradeState(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+	got := r.UpgradeState(ctx)
+	if got == nil {
+		t.Fatal("UpgradeState() returned nil")
+	}
+	if _, ok := got[0]; !ok {
+		t.Error("UpgradeState() map should contain version key 0")
+	}
+}
+
+func Test_settingResource_Configure(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      any
+		wantError bool
+	}{
+		{"nil", nil, false},
+		{"wrong type", "wrong", true},
+		{"correct client", &Client{Site: "default"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &settingResource{}
+			resp := &fwresource.ConfigureResponse{}
+			r.Configure(
+				context.Background(),
+				fwresource.ConfigureRequest{ProviderData: tt.data},
+				resp,
+			)
+			if tt.wantError && !resp.Diagnostics.HasError() {
+				t.Error("expected error")
+			}
+			if !tt.wantError && resp.Diagnostics.HasError() {
+				t.Errorf("unexpected error: %v", resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func Test_settingResource_ImportState(t *testing.T) {
+	t.Skip(
+		"ImportState delegates to ImportStatePassthroughID which requires full state schema setup",
+	)
+}
+
+func Test_settingResource_mgmtModelToSetting(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("nil model returns empty setting", func(t *testing.T) {
+		// mgmtModelToSetting does not accept nil (it dereferences the pointer);
+		// test zero-value model produces a zero-value settings.Mgmt.
+		model := &settingMgmtModel{
+			AutoUpgrade: types.BoolNull(),
+			SSHEnabled:  types.BoolNull(),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtModelToSetting(ctx, model, &settings.Mgmt{})
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.AutoUpgrade {
+			t.Error("AutoUpgrade should be false for null input")
+		}
+		if got.SSHEnabled {
+			t.Error("SSHEnabled should be false for null input")
+		}
+	})
+
+	t.Run("basic fields set", func(t *testing.T) {
+		model := &settingMgmtModel{
+			AutoUpgrade: types.BoolValue(true),
+			SSHEnabled:  types.BoolValue(false),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtModelToSetting(ctx, model, &settings.Mgmt{})
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AutoUpgrade {
+			t.Error("AutoUpgrade should be true")
+		}
+		if got.SSHEnabled {
+			t.Error("SSHEnabled should be false")
+		}
+	})
+}
+
+func Test_settingResource_mgmtSettingToModel(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan fields produce null model fields", func(t *testing.T) {
+		setting := &settings.Mgmt{
+			AutoUpgrade: true,
+			SSHEnabled:  true,
+		}
+		plan := &settingMgmtModel{
+			AutoUpgrade: types.BoolNull(),
+			SSHEnabled:  types.BoolNull(),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtSettingToModel(ctx, setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AutoUpgrade.IsNull() {
+			t.Error("AutoUpgrade should be null when plan is null")
+		}
+		if !got.SSHEnabled.IsNull() {
+			t.Error("SSHEnabled should be null when plan is null")
+		}
+	})
+
+	t.Run("non-null plan fields reflect remote value", func(t *testing.T) {
+		setting := &settings.Mgmt{
+			AutoUpgrade: true,
+			SSHEnabled:  false,
+		}
+		plan := &settingMgmtModel{
+			AutoUpgrade: types.BoolValue(false), // plan had a value configured
+			SSHEnabled:  types.BoolValue(true),
+			SSHKeys:     types.ListNull(types.StringType),
+		}
+		got := r.mgmtSettingToModel(ctx, setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AutoUpgrade.ValueBool() {
+			t.Error("AutoUpgrade should reflect remote value (true)")
+		}
+		if got.SSHEnabled.ValueBool() {
+			t.Error("SSHEnabled should reflect remote value (false)")
+		}
+	})
+}
+
+func Test_settingResource_radiusModelToSetting(t *testing.T) {
+	r := &settingResource{}
+
+	t.Run("null fields leave base unchanged", func(t *testing.T) {
+		authPort := int64(1812)
+		base := &settings.Radius{
+			AccountingEnabled: true,
+			AuthPort:          &authPort,
+		}
+		model := &settingRadiusModel{
+			AccountingEnabled:     types.BoolNull(),
+			AcctPort:              types.Int64Null(),
+			AuthPort:              types.Int64Null(),
+			InterimUpdateInterval: timetypes.NewGoDurationNull(),
+			Secret:                types.StringNull(),
+		}
+		got := r.radiusModelToSetting(context.Background(), model, base)
+		// radiusModelToSetting starts from base and only overlays non-null fields.
+		// Null AccountingEnabled means the base value (true) is left in place.
+		if !got.AccountingEnabled {
+			t.Error("AccountingEnabled should remain true (from base)")
+		}
+	})
+
+	t.Run("non-null fields overlay base", func(t *testing.T) {
+		base := &settings.Radius{}
+		model := &settingRadiusModel{
+			AccountingEnabled:     types.BoolValue(true),
+			AcctPort:              types.Int64Value(1813),
+			AuthPort:              types.Int64Value(1812),
+			InterimUpdateInterval: timetypes.NewGoDurationNull(),
+			Secret:                types.StringValue("mysecret"),
+		}
+		got := r.radiusModelToSetting(context.Background(), model, base)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AccountingEnabled {
+			t.Error("AccountingEnabled should be true")
+		}
+		if got.AuthPort == nil || *got.AuthPort != 1812 {
+			t.Errorf("AuthPort = %v, want 1812", got.AuthPort)
+		}
+		if got.Secret != "mysecret" {
+			t.Errorf("Secret = %q, want mysecret", got.Secret)
+		}
+	})
+}
+
+func Test_settingResource_radiusSettingToModel(t *testing.T) {
+	r := &settingResource{}
+
+	t.Run("nil secret plan produces null secret model", func(t *testing.T) {
+		authPort := int64(1812)
+		acctPort := int64(1813)
+		setting := &settings.Radius{
+			AccountingEnabled: true,
+			AuthPort:          &authPort,
+			AcctPort:          &acctPort,
+			Secret:            "remote-secret",
+		}
+		plan := &settingRadiusModel{
+			Secret: types.StringNull(),
+		}
+		got := r.radiusSettingToModel(context.Background(), setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.AccountingEnabled.ValueBool() {
+			t.Error("AccountingEnabled should be true")
+		}
+		// When plan.Secret is null, model.Secret should be null regardless of remote value.
+		if !got.Secret.IsNull() {
+			t.Errorf(
+				"Secret should be null when plan secret is null, got %q",
+				got.Secret.ValueString(),
+			)
+		}
+	})
+
+	t.Run("non-null secret plan reflects remote value", func(t *testing.T) {
+		setting := &settings.Radius{Secret: "the-secret"}
+		plan := &settingRadiusModel{Secret: types.StringValue("old")}
+		got := r.radiusSettingToModel(context.Background(), setting, plan)
+		if got.Secret.ValueString() != "the-secret" {
+			t.Errorf("Secret = %q, want the-secret", got.Secret.ValueString())
+		}
+	})
+}
+
+func Test_settingResource_usgModelToSetting(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null fields produce zero-value setting", func(t *testing.T) {
+		model := &settingUSGModel{
+			FtpModule:       types.BoolNull(),
+			BroadcastPing:   types.BoolNull(),
+			DNSVerification: types.ObjectNull(nil),
+		}
+		got := r.usgModelToSetting(ctx, model)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.FtpModule {
+			t.Error("FtpModule should be false for null input")
+		}
+	})
+
+	t.Run("ftp_module set to true", func(t *testing.T) {
+		model := &settingUSGModel{
+			FtpModule:       types.BoolValue(true),
+			BroadcastPing:   types.BoolNull(),
+			DNSVerification: types.ObjectNull(nil),
+		}
+		got := r.usgModelToSetting(ctx, model)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.FtpModule {
+			t.Error("FtpModule should be true")
+		}
+	})
+}
+
+func Test_settingResource_usgSettingToModel(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan fields produce null model fields", func(t *testing.T) {
+		setting := &settings.Usg{FtpModule: true, SipModule: true}
+		plan := &settingUSGModel{
+			FtpModule: types.BoolNull(),
+			SipModule: types.BoolNull(),
+		}
+		got := r.usgSettingToModel(ctx, setting, plan)
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.FtpModule.IsNull() {
+			t.Error("FtpModule should be null when plan is null")
+		}
+	})
+
+	t.Run("non-null plan fields reflect remote value", func(t *testing.T) {
+		setting := &settings.Usg{FtpModule: true, GreModule: false}
+		plan := &settingUSGModel{
+			FtpModule: types.BoolValue(false),
+			GreModule: types.BoolValue(true),
+		}
+		got := r.usgSettingToModel(ctx, setting, plan)
+		if !got.FtpModule.ValueBool() {
+			t.Error("FtpModule should be true (remote value)")
+		}
+		if got.GreModule.ValueBool() {
+			t.Error("GreModule should be false (remote value)")
+		}
+	})
+}
+
+func Test_settingResource_igmpSnoopingModelToSetting(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("enabled overlaid onto base", func(t *testing.T) {
+		base := &settings.IgmpSnooping{Enabled: false, QuerierMode: "AUTO"}
+		model := &settingIgmpSnoopingModel{
+			Enabled:    types.BoolValue(true),
+			NetworkIDs: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingModelToSetting(ctx, model, base, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if !got.Enabled {
+			t.Error("Enabled should be true")
+		}
+		// Advanced fields on base must be preserved.
+		if got.QuerierMode != "AUTO" {
+			t.Errorf("QuerierMode = %q, want AUTO", got.QuerierMode)
+		}
+	})
+
+	t.Run("network_ids overlaid onto base", func(t *testing.T) {
+		base := &settings.IgmpSnooping{NetworkIDs: []string{"old-net"}}
+		nids, d := types.ListValueFrom(ctx, types.StringType, []string{"net-1", "net-2"})
+		if d.HasError() {
+			t.Fatalf("building list: %v", d)
+		}
+		model := &settingIgmpSnoopingModel{
+			Enabled:    types.BoolNull(),
+			NetworkIDs: nids,
+		}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingModelToSetting(ctx, model, base, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if len(got.NetworkIDs) != 2 || got.NetworkIDs[0] != "net-1" {
+			t.Errorf("NetworkIDs = %v, want [net-1 net-2]", got.NetworkIDs)
+		}
+	})
+}
+
+func Test_settingResource_igmpSnoopingSettingToModel(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("basic fields mapped", func(t *testing.T) {
+		setting := &settings.IgmpSnooping{
+			Enabled:    true,
+			NetworkIDs: []string{"net-a", "net-b"},
+		}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingSettingToModel(ctx, setting, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.Enabled.ValueBool() {
+			t.Error("Enabled should be true")
+		}
+		var ids []string
+		if d := got.NetworkIDs.ElementsAs(ctx, &ids, false); d.HasError() {
+			t.Fatalf("reading network_ids: %v", d)
+		}
+		if len(ids) != 2 {
+			t.Errorf("NetworkIDs len = %d, want 2", len(ids))
+		}
+	})
+
+	t.Run("empty network ids", func(t *testing.T) {
+		setting := &settings.IgmpSnooping{Enabled: false, NetworkIDs: nil}
+		var diags diag.Diagnostics
+		got := r.igmpSnoopingSettingToModel(ctx, setting, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.Enabled.ValueBool() {
+			t.Error("Enabled should be false")
+		}
+	})
+}
+
+func Test_settingResource_dohModelToSetting(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null fields produce empty setting", func(t *testing.T) {
+		model := &settingDohModel{
+			State:         types.StringNull(),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.State != "" {
+			t.Errorf("State should be empty, got %q", got.State)
+		}
+	})
+
+	t.Run("state set", func(t *testing.T) {
+		model := &settingDohModel{
+			State:         types.StringValue("auto"),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.State != "auto" {
+			t.Errorf("State = %q, want auto", got.State)
+		}
+	})
+}
+
+func Test_settingResource_dohSettingToModel(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan state produces null model state", func(t *testing.T) {
+		setting := &settings.Doh{State: "auto"}
+		plan := &settingDohModel{
+			State:         types.StringNull(),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.State.IsNull() {
+			t.Errorf("State should be null when plan is null, got %q", got.State.ValueString())
+		}
+	})
+
+	t.Run("non-null plan state reflects remote value", func(t *testing.T) {
+		setting := &settings.Doh{State: "off"}
+		plan := &settingDohModel{
+			State:         types.StringValue("auto"),
+			ServerNames:   types.ListNull(types.StringType),
+			CustomServers: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		got := r.dohSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.State.ValueString() != "off" {
+			t.Errorf("State = %q, want off", got.State.ValueString())
+		}
+	})
+}
+
+func Test_settingResource_ipsModelToSetting(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null fields produce empty setting", func(t *testing.T) {
+		model := &settingIpsModel{
+			IPSMode:          types.StringNull(),
+			HoneypotEnabled:  types.BoolNull(),
+			RestrictTorrents: types.BoolNull(),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if got.IPsMode != "" {
+			t.Errorf("IPsMode should be empty, got %q", got.IPsMode)
+		}
+	})
+
+	t.Run("ips_mode and restrict_torrents set", func(t *testing.T) {
+		model := &settingIpsModel{
+			IPSMode:          types.StringValue("disabled"),
+			RestrictTorrents: types.BoolValue(true),
+			HoneypotEnabled:  types.BoolNull(),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsModelToSetting(ctx, model, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.IPsMode != "disabled" {
+			t.Errorf("IPsMode = %q, want disabled", got.IPsMode)
+		}
+		if !got.RestrictTorrents {
+			t.Error("RestrictTorrents should be true")
+		}
+	})
+}
+
+func Test_settingResource_ipsSettingToModel(t *testing.T) {
+	r := &settingResource{}
+	ctx := context.Background()
+
+	t.Run("null plan ips_mode produces null model ips_mode", func(t *testing.T) {
+		setting := &settings.Ips{IPsMode: "ips"}
+		plan := &settingIpsModel{
+			IPSMode: types.StringNull(),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if !got.IPSMode.IsNull() {
+			t.Errorf("IPSMode should be null when plan is null, got %q", got.IPSMode.ValueString())
+		}
+	})
+
+	t.Run("non-null plan reflects remote value", func(t *testing.T) {
+		setting := &settings.Ips{IPsMode: "disabled", RestrictTorrents: true}
+		plan := &settingIpsModel{
+			IPSMode:          types.StringValue("ips"),
+			RestrictTorrents: types.BoolValue(false),
+		}
+		var diags diag.Diagnostics
+		got := r.ipsSettingToModel(ctx, setting, plan, &diags)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.IPSMode.ValueString() != "disabled" {
+			t.Errorf("IPSMode = %q, want disabled", got.IPSMode.ValueString())
+		}
+		if !got.RestrictTorrents.ValueBool() {
+			t.Error("RestrictTorrents should be true (remote value)")
+		}
+	})
+}
+
+// TestIgmpSnoopingModelMerge guards #164: the site-level igmp_snooping setting
+// exposes only enabled + network_ids, and the model->setting conversion must
+// overlay those onto the current remote setting so advanced querier/flood
+// fields configured in the UI are preserved across an update.
+func TestIgmpSnoopingModelMerge(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+	var diags diag.Diagnostics
+
+	// Current remote setting with advanced fields that must survive.
+	base := &settings.IgmpSnooping{
+		Enabled:             false,
+		QuerierMode:         "CUSTOM",
+		QuerierSwitches:     []string{"aa:bb:cc:dd:ee:ff"},
+		FloodKnownProtocols: true,
+	}
+	nids, d := types.ListValueFrom(ctx, types.StringType, []string{"net-1", "net-2"})
+	if d.HasError() {
+		t.Fatalf("building network_ids: %v", d)
+	}
+	model := &settingIgmpSnoopingModel{
+		Enabled:    types.BoolValue(true),
+		NetworkIDs: nids,
+	}
+
+	out := r.igmpSnoopingModelToSetting(ctx, model, base, &diags)
+	if diags.HasError() {
+		t.Fatalf("igmpSnoopingModelToSetting: %v", diags)
+	}
+	if !out.Enabled {
+		t.Error("Enabled not applied from model")
+	}
+	if len(out.NetworkIDs) != 2 || out.NetworkIDs[0] != "net-1" {
+		t.Errorf("NetworkIDs = %v, want [net-1 net-2]", out.NetworkIDs)
+	}
+	// Advanced fields must be preserved from base (not dropped).
+	if out.QuerierMode != "CUSTOM" || len(out.QuerierSwitches) != 1 || !out.FloodKnownProtocols {
+		t.Errorf("advanced fields not preserved: querier_mode=%q querier_switches=%v flood=%v",
+			out.QuerierMode, out.QuerierSwitches, out.FloodKnownProtocols)
+	}
+
+	// Read-back conversion.
+	m := r.igmpSnoopingSettingToModel(ctx, out, &diags)
+	if diags.HasError() {
+		t.Fatalf("igmpSnoopingSettingToModel: %v", diags)
+	}
+	if !m.Enabled.ValueBool() {
+		t.Error("model Enabled = false, want true")
+	}
+	var ids []string
+	if d := m.NetworkIDs.ElementsAs(ctx, &ids, false); d.HasError() {
+		t.Fatalf("reading model network_ids: %v", d)
+	}
+	if len(ids) != 2 {
+		t.Errorf("model network_ids = %v, want 2", ids)
+	}
+}
+
+// TestAutoSpeedtestSettingRoundTrip is a unit round-trip for the auto_speedtest
+// setting block (#272): model -> go-unifi setting -> model preserves the fields.
+func TestAutoSpeedtestSettingRoundTrip(t *testing.T) {
+	r := &settingResource{}
+	in := &settingAutoSpeedtestModel{
+		Enabled:  types.BoolValue(true),
+		CronExpr: types.StringValue("0 3 * * *"),
+	}
+	setting := r.autoSpeedtestModelToSetting(in)
+	if !setting.Enabled || setting.CronExpr != "0 3 * * *" {
+		t.Fatalf("modelToSetting = %+v, want enabled cron=0 3 * * *", setting)
+	}
+	out := r.autoSpeedtestSettingToModel(setting)
+	if !out.Enabled.ValueBool() || out.CronExpr.ValueString() != "0 3 * * *" {
+		t.Errorf("settingToModel = %+v, want enabled cron preserved", out)
+	}
+}
+
+// TestNtpSettingStateNormalization guards #382: the controller represents
+// unset NTP servers as "", which is a valid configured value and must not be
+// rewritten to null during the post-apply read.
+func TestNtpSettingStateNormalization(t *testing.T) {
+	r := &settingResource{}
+	apiSetting := r.ntpModelToSetting(&settingNtpModel{
+		NtpServer1:        types.StringValue("pool.ntp.org"),
+		NtpServer2:        types.StringValue(""),
+		NtpServer3:        types.StringNull(),
+		NtpServer4:        types.StringNull(),
+		SettingPreference: types.StringValue("manual"),
+	})
+
+	state := r.ntpSettingToModel(apiSetting)
+	if state.NtpServer1.ValueString() != "pool.ntp.org" {
+		t.Errorf("ntp_server_1 = %q, want pool.ntp.org", state.NtpServer1.ValueString())
+	}
+	for key, value := range map[string]types.String{
+		"ntp_server_2": state.NtpServer2,
+		"ntp_server_3": state.NtpServer3,
+		"ntp_server_4": state.NtpServer4,
+	} {
+		if value.IsNull() || value.IsUnknown() || value.ValueString() != "" {
+			t.Errorf("%s = %v, want known empty string", key, value)
+		}
+	}
+}
+
+// TestSettingBlocksRoundTrip covers the model<->go-unifi conversions for the
+// settings added in #273 (a representative scalar block and the list-bearing one).
+func TestSettingBlocksRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+
+	t.Run("ntp", func(t *testing.T) {
+		in := &settingNtpModel{
+			NtpServer1:        types.StringValue("pool.ntp.org"),
+			SettingPreference: types.StringValue("manual"),
+		}
+		out := r.ntpSettingToModel(r.ntpModelToSetting(in))
+		if out.NtpServer1.ValueString() != "pool.ntp.org" ||
+			out.SettingPreference.ValueString() != "manual" {
+			t.Errorf("ntp round-trip mismatch: %+v", out)
+		}
+	})
+
+	t.Run("syslog", func(t *testing.T) {
+		var diags diag.Diagnostics
+		contents, _ := types.ListValueFrom(ctx, types.StringType, []string{"device", "client"})
+		in := &settingSyslogModel{
+			Enabled:  types.BoolValue(true),
+			IP:       types.StringValue("10.0.0.9"),
+			Port:     types.Int64Value(514),
+			Contents: contents,
+		}
+		setting := r.syslogModelToSetting(ctx, in, &diags)
+		if diags.HasError() {
+			t.Fatalf("modelToSetting: %v", diags)
+		}
+		if !setting.Enabled || setting.IP != "10.0.0.9" || setting.Port == nil ||
+			*setting.Port != 514 || len(setting.Contents) != 2 {
+			t.Fatalf("syslog modelToSetting mismatch: %+v", setting)
+		}
+		out := r.syslogSettingToModel(ctx, setting, &diags)
+		if diags.HasError() {
+			t.Fatalf("settingToModel: %v", diags)
+		}
+		var gotContents []string
+		out.Contents.ElementsAs(ctx, &gotContents, false)
+		if out.IP.ValueString() != "10.0.0.9" || len(gotContents) != 2 {
+			t.Errorf("syslog round-trip mismatch: %+v", out)
+		}
+	})
+}
+
+// TestMgmtNewFields guards #274: the new mgmt fields overlay onto the current
+// remote setting (read-base, so unmanaged fields aren't clobbered) and the
+// secret ssh_password is preserved from the plan (the controller never echoes it).
+func TestMgmtNewFields(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+
+	// Base has a field the user does NOT manage; it must survive.
+	base := &settings.Mgmt{WifimanEnabled: true}
+	model := &settingMgmtModel{
+		SSHUsername:            types.StringValue("admin"),
+		SSHPassword:            types.StringValue("s3cret"),
+		SSHAuthPasswordEnabled: types.BoolValue(true),
+		AdvancedFeatureEnabled: types.BoolValue(true),
+	}
+	setting := r.mgmtModelToSetting(ctx, model, base)
+	if !setting.WifimanEnabled {
+		t.Error("read-base field WifimanEnabled was clobbered")
+	}
+	if setting.SSHUsername != "admin" || setting.SSHPassword != "s3cret" ||
+		!setting.SSHAuthPasswordEnabled || !setting.AdvancedFeatureEnabled {
+		t.Errorf("overlay missing: %+v", setting)
+	}
+
+	// On read, ssh_password is preserved from the plan (API returns no plaintext).
+	plan := &settingMgmtModel{
+		SSHUsername: types.StringValue("admin"),
+		SSHPassword: types.StringValue("s3cret"),
+	}
+	out := r.mgmtSettingToModel(ctx, &settings.Mgmt{SSHUsername: "admin"}, plan)
+	if out.SSHPassword.ValueString() != "s3cret" {
+		t.Errorf("ssh_password not preserved: %q", out.SSHPassword.ValueString())
+	}
+	if out.SSHUsername.ValueString() != "admin" {
+		t.Errorf("ssh_username = %q, want admin", out.SSHUsername.ValueString())
+	}
+	// An unconfigured field stays null (no drift on unmanaged settings).
+	if !out.WifimanEnabled.IsNull() {
+		t.Error("unconfigured wifiman_enabled should be null")
+	}
+}
+
+// TestIpsSuppressionAlertsRoundTrip guards #275: signature alert suppression
+// (incl. gid/id pointers and the nested tracking list) round-trips model<->setting.
+func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	r := &settingResource{}
+
+	tracking, _ := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: ipsTrackingAttrTypes},
+		[]settingIpsTrackingModel{{
+			Direction: types.StringValue("both"),
+			Mode:      types.StringValue("ip"),
+			Value:     types.StringValue("10.0.0.5"),
+		}})
+	alerts, _ := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: ipsAlertAttrTypes},
+		[]settingIpsAlertModel{{
+			Category:  types.StringValue("malware"),
+			Gid:       types.Int64Value(1),
+			ID:        types.Int64Value(2001),
+			Signature: types.StringValue("ET MALWARE"),
+			Type:      types.StringValue("track"),
+			Tracking:  tracking,
+		}})
+
+	model := &settingIpsModel{
+		EnabledCategories:    types.ListNull(types.StringType),
+		EnabledNetworks:      types.ListNull(types.StringType),
+		Honeypot:             types.ListNull(types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}),
+		SuppressionWhitelist: types.ListNull(types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}),
+		SuppressionAlerts:    alerts,
+	}
+	setting := r.ipsModelToSetting(ctx, model, &diags)
+	if diags.HasError() {
+		t.Fatalf("modelToSetting: %v", diags)
+	}
+	if setting.Suppression == nil || len(setting.Suppression.Alerts) != 1 {
+		t.Fatalf("alerts not built: %+v", setting.Suppression)
+	}
+	a := setting.Suppression.Alerts[0]
+	if a.Category != "malware" || a.Gid == nil || *a.Gid != 1 || a.ID == nil || *a.ID != 2001 ||
+		a.Type != "track" || len(a.Tracking) != 1 || a.Tracking[0].Value != "10.0.0.5" {
+		t.Fatalf("alert mismatch: %+v", a)
+	}
+
+	out := r.ipsSettingToModel(ctx, setting, model, &diags)
+	if diags.HasError() {
+		t.Fatalf("settingToModel: %v", diags)
+	}
+	var outAlerts []settingIpsAlertModel
+	out.SuppressionAlerts.ElementsAs(ctx, &outAlerts, false)
+	if len(outAlerts) != 1 || outAlerts[0].Signature.ValueString() != "ET MALWARE" ||
+		outAlerts[0].Gid.ValueInt64() != 1 {
+		t.Errorf("read-back alerts mismatch: %+v", outAlerts)
+	}
+}
+
+// TestSyslogOmitsUnsetPorts guards #303: an unset port / netconsole_port must be
+// omitted (nil pointer), not serialized as 0 — the controller rejects port 0.
+func TestSyslogOmitsUnsetPorts(t *testing.T) {
+	ctx := context.Background()
+	var diags diag.Diagnostics
+	r := &settingResource{}
+
+	m := &settingSyslogModel{
+		Enabled:        types.BoolValue(true),
+		IP:             types.StringValue("10.0.10.15"),
+		Port:           types.Int64Value(1514),
+		NetconsolePort: types.Int64Null(), // netconsole disabled / unset
+		Contents:       types.ListNull(types.StringType),
+	}
+	setting := r.syslogModelToSetting(ctx, m, &diags)
+	if diags.HasError() {
+		t.Fatalf("modelToSetting: %v", diags)
+	}
+	if setting.NetconsolePort != nil {
+		t.Errorf("netconsole_port must be omitted when unset, got %d", *setting.NetconsolePort)
+	}
+	if setting.Port == nil || *setting.Port != 1514 {
+		t.Errorf("port = %v, want 1514", setting.Port)
+	}
+
+	// Unknown (Optional+Computed at create) must also omit, not send 0.
+	m.Port = types.Int64Unknown()
+	setting = r.syslogModelToSetting(ctx, m, &diags)
+	if setting.Port != nil {
+		t.Errorf("unknown port must be omitted, got %d", *setting.Port)
+	}
+}
+
+// TestLcmOmitsUnsetInts guards the same #303 pattern for the lcm block.
+func TestLcmOmitsUnsetInts(t *testing.T) {
+	r := &settingResource{}
+	setting := r.lcmModelToSetting(&settingLcmModel{
+		Enabled:     types.BoolValue(true),
+		Brightness:  types.Int64Null(),
+		IdleTimeout: types.Int64Unknown(),
+	})
+	if setting.Brightness != nil || setting.IDleTimeout != nil {
+		t.Errorf("unset lcm ints must be omitted: brightness=%v idle=%v",
+			setting.Brightness, setting.IDleTimeout)
+	}
+}
+
+// TestIpsSuppressionFromRaw guards the #381 read path: newer controllers store
+// suppression under the standalone ips_suppression setting, whose raw payload
+// (decoded as map[string]any, so numbers arrive as float64) must convert into
+// the nested suppression struct the ips conversions consume.
+func TestIpsSuppressionFromRaw(t *testing.T) {
+	raw := map[string]any{
+		"_id":     "69d1925309e6659556d6e2f4",
+		"site_id": "62e7da55ac20a206e6945eea",
+		"key":     "ips_suppression",
+		"alerts": []any{
+			map[string]any{
+				"category":  "emerging-scan",
+				"gid":       float64(1),
+				"id":        float64(2003068),
+				"signature": "ET SCAN Potential SSH Scan OUTBOUND",
+				"type":      "track",
+				"tracking": []any{
+					map[string]any{
+						"direction": "both",
+						"mode":      "ip",
+						"value":     "10.0.0.5",
+					},
+				},
+			},
+		},
+		"whitelist": []any{
+			map[string]any{"direction": "src", "mode": "subnet", "value": "10.0.0.0/24"},
+		},
+	}
+
+	supp, err := ipsSuppressionFromRaw(raw)
+	if err != nil {
+		t.Fatalf("ipsSuppressionFromRaw: %v", err)
+	}
+	if len(supp.Alerts) != 1 || len(supp.Whitelist) != 1 {
+		t.Fatalf("unexpected counts: %+v", supp)
+	}
+	a := supp.Alerts[0]
+	if a.Gid == nil || *a.Gid != 1 || a.ID == nil || *a.ID != 2003068 {
+		t.Errorf("gid/id mismatch: gid=%v id=%v", a.Gid, a.ID)
+	}
+	if a.Signature != "ET SCAN Potential SSH Scan OUTBOUND" || a.Category != "emerging-scan" ||
+		a.Type != "track" {
+		t.Errorf("alert mismatch: %+v", a)
+	}
+	if len(a.Tracking) != 1 || a.Tracking[0].Value != "10.0.0.5" {
+		t.Errorf("tracking mismatch: %+v", a.Tracking)
+	}
+	if supp.Whitelist[0].Mode != "subnet" || supp.Whitelist[0].Value != "10.0.0.0/24" {
+		t.Errorf("whitelist mismatch: %+v", supp.Whitelist[0])
+	}
+}
+
+// TestIpsSuppressionRawSetting guards the #381 write path: the standalone
+// setting must carry the ips_suppression key and serialize nil entry slices
+// as empty JSON arrays (clearing the last entry must clear the controller,
+// and the endpoint rejects null lists).
+func TestIpsSuppressionRawSetting(t *testing.T) {
+	gid := int64(1)
+	id := int64(2003068)
+	raw := ipsSuppressionRawSetting(&settings.SettingIpsSuppression{
+		Alerts: []settings.SettingIpsAlerts{{
+			Category:  "emerging-scan",
+			Gid:       &gid,
+			ID:        &id,
+			Signature: "ET SCAN Potential SSH Scan OUTBOUND",
+			Type:      "all",
+		}},
+	})
+	if raw.Key != "ips_suppression" {
+		t.Fatalf("key = %q, want ips_suppression", raw.Key)
+	}
+
+	buf, err := raw.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded struct {
+		Key       string                         `json:"key"`
+		Alerts    []settings.SettingIpsAlerts    `json:"alerts"`
+		Whitelist []settings.SettingIpsWhitelist `json:"whitelist"`
+	}
+	if err := json.Unmarshal(buf, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.Key != "ips_suppression" || len(decoded.Alerts) != 1 {
+		t.Fatalf("payload mismatch: %s", buf)
+	}
+	if decoded.Whitelist == nil || len(decoded.Whitelist) != 0 {
+		t.Errorf("nil whitelist must serialize as []: %s", buf)
+	}
+
+	// Fully empty suppression: both lists still serialize as [].
+	raw = ipsSuppressionRawSetting(&settings.SettingIpsSuppression{})
+	buf, err = raw.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal empty: %v", err)
+	}
+	var decodedEmpty map[string]any
+	if err := json.Unmarshal(buf, &decodedEmpty); err != nil {
+		t.Fatalf("unmarshal empty: %v", err)
+	}
+	if v, ok := decodedEmpty["alerts"].([]any); !ok || len(v) != 0 {
+		t.Errorf("alerts must be an empty array: %s", buf)
+	}
+	if v, ok := decodedEmpty["whitelist"].([]any); !ok || len(v) != 0 {
+		t.Errorf("whitelist must be an empty array: %s", buf)
+	}
+}
+
+// TestIpsSuppressionConfigured covers the plan gate for the #381 fallback
+// read: only a plan that manages at least one suppression list triggers the
+// standalone-setting lookup.
+func TestIpsSuppressionConfigured(t *testing.T) {
+	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
+	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
+
+	unmanaged := &settingIpsModel{
+		SuppressionAlerts:    types.ListNull(alertType),
+		SuppressionWhitelist: types.ListNull(whitelistType),
+	}
+	if ipsSuppressionConfigured(unmanaged) {
+		t.Error("null lists must not count as configured")
+	}
+
+	empty, _ := types.ListValueFrom(context.Background(), alertType, []settingIpsAlertModel{})
+	managed := &settingIpsModel{
+		SuppressionAlerts:    empty,
+		SuppressionWhitelist: types.ListNull(whitelistType),
+	}
+	if !ipsSuppressionConfigured(managed) {
+		t.Error("an empty configured list must count as configured")
+	}
+}
+
+// TestUsgGeoRawSetting guards the #374 write path: the standalone usg_geo
+// setting must carry the ip_filtering payload with the legacy block field
+// mapped to action, and only configured fields present (enabled always,
+// matching the always-serialized legacy usg field).
+func TestUsgGeoRawSetting(t *testing.T) {
+	raw := usgGeoRawSetting(&settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolValue(true),
+		GeoIPFilteringBlock:            types.StringValue("block"),
+		GeoIPFilteringCountries:        types.StringValue("KP,RU"),
+		GeoIPFilteringTrafficDirection: types.StringValue("both"),
+	})
+	if raw.Key != "usg_geo" {
+		t.Fatalf("key = %q, want usg_geo", raw.Key)
+	}
+	ipf, ok := raw.Data["ip_filtering"].(map[string]any)
+	if !ok {
+		t.Fatalf("ip_filtering missing: %+v", raw.Data)
+	}
+	if ipf["enabled"] != true || ipf["action"] != "block" ||
+		ipf["countries"] != "KP,RU" || ipf["traffic_direction"] != "both" {
+		t.Errorf("ip_filtering mismatch: %+v", ipf)
+	}
+
+	// Unconfigured optional fields are omitted; enabled defaults to false.
+	raw = usgGeoRawSetting(&settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolNull(),
+		GeoIPFilteringBlock:            types.StringNull(),
+		GeoIPFilteringCountries:        types.StringValue("KP"),
+		GeoIPFilteringTrafficDirection: types.StringNull(),
+	})
+	ipf, ok = raw.Data["ip_filtering"].(map[string]any)
+	if !ok {
+		t.Fatalf("ip_filtering missing: %+v", raw.Data)
+	}
+	if ipf["enabled"] != false {
+		t.Errorf("unconfigured enabled must serialize false: %+v", ipf)
+	}
+	if _, ok := ipf["action"]; ok {
+		t.Errorf("unconfigured action must be omitted: %+v", ipf)
+	}
+	if _, ok := ipf["traffic_direction"]; ok {
+		t.Errorf("unconfigured traffic_direction must be omitted: %+v", ipf)
+	}
+}
+
+// TestApplyUsgGeoIPFiltering guards the #374 read path: a stored usg_geo
+// setting is authoritative and overrides the geo fields of the usg struct,
+// including mapping action back to the legacy block field.
+func TestApplyUsgGeoIPFiltering(t *testing.T) {
+	setting := &settings.Usg{
+		GeoIPFilteringEnabled: false,
+		GeoIPFilteringBlock:   "allow",
+	}
+	applyUsgGeoIPFiltering(setting, map[string]any{
+		"key": "usg_geo",
+		"ip_filtering": map[string]any{
+			"enabled":           true,
+			"action":            "block",
+			"countries":         "KP,RU",
+			"traffic_direction": "both",
+		},
+	})
+	if !setting.GeoIPFilteringEnabled || setting.GeoIPFilteringBlock != "block" ||
+		setting.GeoIPFilteringCountries != "KP,RU" ||
+		setting.GeoIPFilteringTrafficDirection != "both" {
+		t.Errorf("override mismatch: %+v", setting)
+	}
+
+	// A list-shaped countries payload is normalized to the comma form.
+	applyUsgGeoIPFiltering(setting, map[string]any{
+		"ip_filtering": map[string]any{
+			"countries": []any{"CN", "KP"},
+		},
+	})
+	if setting.GeoIPFilteringCountries != "CN,KP" {
+		t.Errorf("countries list not normalized: %q", setting.GeoIPFilteringCountries)
+	}
+
+	// Missing/malformed ip_filtering leaves the struct untouched.
+	before := *setting
+	applyUsgGeoIPFiltering(setting, map[string]any{"ip_filtering": "bogus"})
+	applyUsgGeoIPFiltering(setting, map[string]any{})
+	if *setting != before {
+		t.Errorf("no-op payloads must not modify the setting")
+	}
+}
+
+// TestUsgGeoConfigured covers the plan gate for the #374 paths.
+func TestUsgGeoConfigured(t *testing.T) {
+	unmanaged := &settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolNull(),
+		GeoIPFilteringBlock:            types.StringNull(),
+		GeoIPFilteringCountries:        types.StringNull(),
+		GeoIPFilteringTrafficDirection: types.StringNull(),
+	}
+	if usgGeoConfigured(unmanaged) {
+		t.Error("all-null geo fields must not count as configured")
+	}
+	managed := &settingUSGModel{
+		GeoIPFilteringEnabled:          types.BoolNull(),
+		GeoIPFilteringBlock:            types.StringNull(),
+		GeoIPFilteringCountries:        types.StringValue("KP"),
+		GeoIPFilteringTrafficDirection: types.StringNull(),
+	}
+	if !usgGeoConfigured(managed) {
+		t.Error("any configured geo field must count as configured")
+	}
 }

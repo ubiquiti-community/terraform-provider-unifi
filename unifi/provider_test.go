@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/docker/compose/v2/pkg/api"
+	fwprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -33,7 +34,21 @@ func TestMain(m *testing.M) {
 	}
 
 	// UNIFI_SKIP_CONTAINER bypasses docker-compose and uses pre-set UNIFI_* env vars.
+	// The controller still needs the same readiness wait and seed state (default
+	// WAN network) that the compose path performs, or tests relying on
+	// defaultWANNetworkID fail on a fresh controller.
 	if os.Getenv("UNIFI_SKIP_CONTAINER") != "" {
+		ctx := context.Background()
+		logger := NewLogger(ctx)
+		if err := waitForUniFiAPI(
+			ctx,
+			logger,
+			os.Getenv("UNIFI_API"),
+			os.Getenv("UNIFI_USERNAME"),
+			os.Getenv("UNIFI_PASSWORD"),
+		); err != nil {
+			panic(err)
+		}
 		os.Exit(m.Run())
 	}
 
@@ -140,7 +155,7 @@ func runAcceptanceTests(m *testing.M) int {
 		}
 	}()
 
-	if _, err := waitForUniFiAPI(ctx, logger, endpoint, user, password); err != nil {
+	if err := waitForUniFiAPI(ctx, logger, endpoint, user, password); err != nil {
 		panic(err)
 	}
 
@@ -178,7 +193,7 @@ func waitForUniFiAPI(
 	ctx context.Context,
 	logger *UnifiLogger,
 	endpoint, user, password string,
-) (client *unifi.ApiClient, err error) {
+) error {
 	maxRetries := 60
 	retryDelay := 3 * time.Second
 
@@ -191,7 +206,7 @@ func waitForUniFiAPI(
 	var loginSuccessful bool
 	for i := range maxRetries {
 		// Step 1: Try to login
-		client, err = unifi.New(ctx, &unifi.Config{
+		client, err := unifi.New(ctx, &unifi.Config{
 			BaseURL:        endpoint,
 			Username:       user,
 			Password:       password,
@@ -214,7 +229,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return nil, fmt.Errorf(
+			return fmt.Errorf(
 				"UniFi API login did not succeed after %d attempts (waited %v): %w",
 				maxRetries,
 				time.Duration(maxRetries)*retryDelay,
@@ -261,7 +276,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return nil, fmt.Errorf(
+				return fmt.Errorf(
 					"UniFi API sites not ready after %d attempts: %w",
 					maxRetries,
 					err,
@@ -282,7 +297,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return nil, fmt.Errorf("no sites available after %d attempts", maxRetries)
+			return fmt.Errorf("no sites available after %d attempts", maxRetries)
 		}
 
 		// Step 3: Verify we can list devices (API fully operational)
@@ -305,7 +320,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return nil, fmt.Errorf(
+				return fmt.Errorf(
 					"device endpoint not operational after %d attempts: %w",
 					maxRetries,
 					err,
@@ -373,7 +388,7 @@ func waitForUniFiAPI(
 					continue
 				}
 
-				return nil, fmt.Errorf(
+				return fmt.Errorf(
 					"UniFi API networks not ready after %d attempts: %w",
 					maxRetries,
 					err,
@@ -394,7 +409,7 @@ func waitForUniFiAPI(
 				continue
 			}
 
-			return nil, fmt.Errorf("no networks available after %d attempts", maxRetries)
+			return fmt.Errorf("no networks available after %d attempts", maxRetries)
 		}
 
 		// Step 5: Ensure a default WAN network exists
@@ -426,8 +441,114 @@ func waitForUniFiAPI(
 			len(sites),
 			i+1,
 		)
-		return client, nil
+		return nil
 	}
 
-	return nil, fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
+	return fmt.Errorf("UniFi API did not become ready after %d attempts", maxRetries)
+}
+
+func TestClient_GetSiteName(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *Client
+		want string
+	}{
+		{"default site", &Client{Site: "default"}, "default"},
+		{"custom site", &Client{Site: "office"}, "office"},
+		{"empty site", &Client{Site: ""}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.c.GetSiteName(); got != tt.want {
+				t.Errorf("Client.GetSiteName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNew(t *testing.T) {
+	p := New()
+	if p == nil {
+		t.Fatal("New() returned nil")
+	}
+}
+
+func Test_unifiProvider_Metadata(t *testing.T) {
+	p := &unifiProvider{}
+	resp := &fwprovider.MetadataResponse{}
+	p.Metadata(context.Background(), fwprovider.MetadataRequest{}, resp)
+	if resp.TypeName != "unifi" {
+		t.Errorf("TypeName = %q, want %q", resp.TypeName, "unifi")
+	}
+}
+
+func Test_unifiProvider_Schema(t *testing.T) {
+	p := &unifiProvider{}
+	resp := &fwprovider.SchemaResponse{}
+	p.Schema(context.Background(), fwprovider.SchemaRequest{}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
+	}
+	for _, attr := range []string{"api_key", "username", "password", "api_url", "site", "allow_insecure"} {
+		if _, ok := resp.Schema.Attributes[attr]; !ok {
+			t.Errorf("missing attribute %q", attr)
+		}
+	}
+}
+
+func Test_unifiProvider_Resources(t *testing.T) {
+	p := &unifiProvider{}
+	got := p.Resources(context.Background())
+	if len(got) == 0 {
+		t.Error("Resources() returned empty slice")
+	}
+	for i, factory := range got {
+		if r := factory(); r == nil {
+			t.Errorf("Resources()[%d]() returned nil", i)
+		}
+	}
+}
+
+func Test_unifiProvider_DataSources(t *testing.T) {
+	p := &unifiProvider{}
+	got := p.DataSources(context.Background())
+	if len(got) == 0 {
+		t.Error("DataSources() returned empty slice")
+	}
+	for i, factory := range got {
+		if ds := factory(); ds == nil {
+			t.Errorf("DataSources()[%d]() returned nil", i)
+		}
+	}
+}
+
+func Test_unifiProvider_EphemeralResources(t *testing.T) {
+	p := &unifiProvider{}
+	_ = p.EphemeralResources(context.Background())
+}
+
+func Test_unifiProvider_Actions(t *testing.T) {
+	p := &unifiProvider{}
+	got := p.Actions(context.Background())
+	if len(got) == 0 {
+		t.Error("Actions() returned empty slice")
+	}
+	for i, factory := range got {
+		if a := factory(); a == nil {
+			t.Errorf("Actions()[%d]() returned nil", i)
+		}
+	}
+}
+
+func Test_unifiProvider_ListResources(t *testing.T) {
+	p := &unifiProvider{}
+	got := p.ListResources(context.Background())
+	if len(got) == 0 {
+		t.Error("ListResources() returned empty slice")
+	}
+	for i, factory := range got {
+		if lr := factory(); lr == nil {
+			t.Errorf("ListResources()[%d]() returned nil", i)
+		}
+	}
 }

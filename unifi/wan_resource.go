@@ -5,13 +5,18 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -33,9 +38,20 @@ import (
 var (
 	_ resource.Resource                = &wanResource{}
 	_ resource.ResourceWithImportState = &wanResource{}
+	_ resource.ResourceWithIdentity    = &wanResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &wanResource{}
+	_ list.ListResourceWithConfigure = &wanResource{}
 )
 
 func NewWANResource() resource.Resource {
+	return &wanResource{}
+}
+
+func NewWANListResource() list.ListResource {
 	return &wanResource{}
 }
 
@@ -44,11 +60,18 @@ type wanResource struct {
 	client *Client
 }
 
-// wanResourceModel describes the resource data model.
-type wanResourceModel struct {
+// wanIdentityModel describes the resource identity data model.
+type wanIdentityModel struct {
 	ID   types.String `tfsdk:"id"`
 	Site types.String `tfsdk:"site"`
-	Name types.String `tfsdk:"name"`
+}
+
+// wanResourceModel describes the resource data model.
+type wanResourceModel struct {
+	ID           types.String `tfsdk:"id"`
+	Site         types.String `tfsdk:"site"`
+	Name         types.String `tfsdk:"name"`
+	NetworkGroup types.String `tfsdk:"networkgroup"`
 
 	// WAN Type Settings
 	Type   types.String `tfsdk:"type"`
@@ -92,6 +115,20 @@ type wanResourceModel struct {
 
 	// Provider Capabilities
 	ProviderCapabilities types.Object `tfsdk:"provider_capabilities"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
+}
+
+// wanListConfigModel describes the list configuration model.
+type wanListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// wanListFilterModel represents a single name/value filter entry.
+type wanListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 // vlanModel describes the VLAN configuration.
@@ -271,6 +308,33 @@ func (r *wanResource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_wan"
 }
 
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *wanResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *wanResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
+}
+
 func (r *wanResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
@@ -299,6 +363,26 @@ func (r *wanResource) Schema(
 				Required:            true,
 				MarkdownDescription: "The name of the WAN network",
 			},
+			"networkgroup": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "The WAN network group this interface belongs to " +
+					"(`WAN`, `WAN2`, …). The primary uplink is `WAN`; a secondary/SFP " +
+					"uplink is `WAN2`. Computed from the controller when unset (so an " +
+					"imported `WAN2` is preserved), defaulting to `WAN` on create. " +
+					"Required to manage multi-WAN (WAN2+) setups, where a hard-coded " +
+					"`WAN` collides with the primary " +
+					"(`api.err.WanConfigurationForNetworkGroupAlreadyExists`).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^WAN([2-9])?$|^WAN_LTE_FAILOVER$`),
+						"must be WAN, WAN2-WAN9, or WAN_LTE_FAILOVER",
+					),
+				},
+			},
 			"type": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -309,14 +393,18 @@ func (r *wanResource) Schema(
 				},
 			},
 			"type_v6": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "The IPv6 WAN type (dhcpv6, static, disabled)",
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "The IPv6 WAN type. One of `dhcpv6`, `slaac`, " +
+					"`static`, or `disabled`. Note: the controller requires `slaac` when " +
+					"the IPv6 delegation type is `single_network` " +
+					"(`api.err.SingleNetworkMustBeSLAAC` otherwise) — common with ISPs that " +
+					"deliver IPv6 by Router Advertisement, e.g. Free/Freebox in bridge mode.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 				Validators: []validator.String{
-					stringvalidator.OneOf("dhcpv6", "static", "disabled"),
+					stringvalidator.OneOf("dhcpv6", "slaac", "static", "disabled"),
 				},
 			},
 			"vlan": schema.SingleNestedAttribute{
@@ -738,19 +826,38 @@ func (r *wanResource) Schema(
 				},
 			},
 			"provider_capabilities": schema.SingleNestedAttribute{
-				Optional:            true,
-				MarkdownDescription: "WAN provider capabilities",
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "WAN provider capabilities (line rate). Detected/" +
+					"populated by the controller; preserved when not set in config.",
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"download_kilobits_per_second": schema.Int64Attribute{
-						Required:            true,
+						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "Download speed in kilobits per second",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 					},
 					"upload_kilobits_per_second": schema.Int64Attribute{
-						Required:            true,
+						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "Upload speed in kilobits per second",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 					},
 				},
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Create: true,
+				Read:   true,
+				Update: true,
+				Delete: true,
+			}),
 		},
 	}
 }
@@ -794,6 +901,14 @@ func (r *wanResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// Convert to unifi.Network
 	network, diags := r.modelToNetwork(ctx, &plan)
@@ -842,7 +957,12 @@ func (r *wanResource) Create(
 
 			// Overlay explicit config values onto the API state
 			r.overlayConfig(&state, &config, &plan)
+			state.Timeouts = plan.Timeouts
 
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, wanIdentityModel{
+				ID:   state.ID,
+				Site: state.Site,
+			})...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 			return
 		}
@@ -871,8 +991,13 @@ func (r *wanResource) Create(
 
 	// Overlay explicit config values onto the API state
 	r.overlayConfig(&state, &config, &plan)
+	state.Timeouts = plan.Timeouts
 
 	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, wanIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -887,16 +1012,26 @@ func (r *wanResource) adoptExistingWAN(
 		return nil, fmt.Errorf("listing networks: %w", err)
 	}
 
+	// Match the WAN that owns the same network group we are creating (WAN, WAN2,
+	// …), not just the primary "WAN" — otherwise a WAN2 conflict adopts the wrong
+	// interface (#334).
+	wantGroup := "WAN"
+	if network.WANNetworkGroup != nil && *network.WANNetworkGroup != "" {
+		wantGroup = *network.WANNetworkGroup
+	}
 	var existing *unifi.Network
 	for _, n := range networks {
 		if n.Purpose == unifi.PurposeWAN && n.WANNetworkGroup != nil &&
-			*n.WANNetworkGroup == "WAN" {
+			*n.WANNetworkGroup == wantGroup {
 			existing = &n
 			break
 		}
 	}
 	if existing == nil {
-		return nil, fmt.Errorf("existing WAN network not found despite creation conflict")
+		return nil, fmt.Errorf(
+			"existing WAN network (group %s) not found despite creation conflict",
+			wantGroup,
+		)
 	}
 
 	network.ID = existing.ID
@@ -938,6 +1073,25 @@ func (r *wanResource) overlayConfig(
 	if !config.ProviderCapabilities.IsNull() {
 		state.ProviderCapabilities = plan.ProviderCapabilities
 	}
+	// setting_preference / ipv6_setting_preference are Computed: the controller
+	// may echo back "auto" in the create response even when the user asked for
+	// "manual". When the user explicitly set them, keep their value so the result
+	// stays consistent with the plan (mirrors applyPlanToState on the Update path).
+	if !config.SettingPreference.IsNull() {
+		state.SettingPreference = plan.SettingPreference
+	}
+	if !config.IPv6SettingPreference.IsNull() {
+		state.IPv6SettingPreference = plan.IPv6SettingPreference
+	}
+	// The controller can force wan_dslite_remote_host_auto back to `true`
+	// server-side; keep the user's value so the create result matches the plan
+	// (#281).
+	if !config.DsliteRemoteHostAuto.IsNull() {
+		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
+	}
+	if !config.DsliteRemoteHost.IsNull() {
+		state.DsliteRemoteHost = plan.DsliteRemoteHost
+	}
 }
 
 func (r *wanResource) Read(
@@ -953,7 +1107,44 @@ func (r *wanResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Read identity, falling back to state for resources created before
+	// identity support. When an identity comes in it must be passed through
+	// unchanged: Terraform treats any modification of a non-null identity
+	// (including filling a null attribute) as an error.
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	var identity wanIdentityModel
+	if haveIdentity {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+
+	// Tolerate identity-only state (the refresh right after an identity-based
+	// import): fill the missing lookup keys from identity.
+	id := ""
+	if !state.ID.IsNull() && !state.ID.IsUnknown() {
+		id = state.ID.ValueString()
+	}
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
+
 	site := state.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -961,7 +1152,7 @@ func (r *wanResource) Read(
 	var network *unifi.Network
 	var err error
 
-	if state.ID.IsNull() || state.ID.IsUnknown() {
+	if id == "" {
 		network, err = r.client.GetNetworkByName(ctx, site, state.Name.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -972,7 +1163,7 @@ func (r *wanResource) Read(
 		}
 	} else {
 		// Get the network
-		network, err = r.client.GetNetwork(ctx, site, state.ID.ValueString())
+		network, err = r.client.GetNetwork(ctx, site, id)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Client Error",
@@ -989,7 +1180,13 @@ func (r *wanResource) Read(
 		return
 	}
 
-	// Save updated data into Terraform state
+	// Save updated data into Terraform state. A pre-existing identity is
+	// re-set unchanged; a fresh one is derived from the refreshed state.
+	if !haveIdentity {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1013,8 +1210,17 @@ func (r *wanResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
+	state.Timeouts = plan.Timeouts
 
 	// Step 3: Convert the updated state to API format
 	network, diags := r.modelToNetwork(ctx, &state)
@@ -1046,7 +1252,31 @@ func (r *wanResource) Update(
 		return
 	}
 
-	// Save updated data into Terraform state
+	// Step 6: Re-assert the planned DS-Lite values. The controller overrides
+	// wan_dslite_remote_host_auto server-side (it forces `true` when the AFTR is
+	// auto-detected for the interface), so the post-apply read returns `true`
+	// where the plan set `false` and the consistency check fails (#281). Keep the
+	// planned value when the user set it; the next Read reconciles state with the
+	// controller. (networkToModel runs after applyPlanToState, so its value would
+	// otherwise win.)
+	if !plan.DsliteRemoteHostAuto.IsNull() && !plan.DsliteRemoteHostAuto.IsUnknown() {
+		state.DsliteRemoteHostAuto = plan.DsliteRemoteHostAuto
+	}
+	if !plan.DsliteRemoteHost.IsNull() && !plan.DsliteRemoteHost.IsUnknown() {
+		state.DsliteRemoteHost = plan.DsliteRemoteHost
+	}
+
+	// Save updated data into Terraform state. Identity is immutable once set:
+	// carry the incoming identity through unchanged, deriving a fresh one from
+	// state only when it was absent.
+	identity := wanIdentityModel{ID: state.ID, Site: state.Site}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -1138,6 +1368,14 @@ func (r *wanResource) Delete(
 		return
 	}
 
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -1165,20 +1403,46 @@ func (r *wanResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	idParts := strings.Split(req.ID, ":")
-	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
-		req.ID = idParts[1]
+	// Import by ID string (terraform import CLI, or import block with id set).
+	// Formats: "site:id", "name=<name>", a bare 24-hex controller ObjectID, or
+	// a plain network name.
+	if req.ID != "" {
+		var site types.String
+
+		idParts := strings.Split(req.ID, ":")
+		if len(idParts) == 2 {
+			site = types.StringValue(idParts[0])
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+			req.ID = idParts[1]
+		}
+
+		if strings.HasPrefix(req.ID, "name=") {
+			req.ID = strings.TrimPrefix(req.ID, "name=")
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+			identity := wanIdentityModel{ID: types.StringValue(req.ID), Site: site}
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+		} else {
+			// Fall back to importing by name.
+			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+		}
+		return
 	}
 
-	rootAttributeName := "name"
-	if strings.HasPrefix(req.ID, "name=") {
-		req.ID = strings.TrimPrefix(req.ID, "name=")
-	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
-		rootAttributeName = "id"
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var identity wanIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+	if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+	}
 }
 
 // modelToNetwork converts from Terraform model to unifi.Network.
@@ -1190,11 +1454,21 @@ func (r *wanResource) modelToNetwork(
 ) (*unifi.Network, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
+	// Preserve the interface's WAN network group (WAN, WAN2, …). Hard-coding "WAN"
+	// breaks a secondary uplink: its PUT collides with the primary WAN and the
+	// controller rejects it (WanConfigurationForNetworkGroupAlreadyExists) (#334).
+	// attr_hidden_id mirrors the group. Defaults to "WAN" via the schema default.
+	networkGroup := "WAN"
+	if !model.NetworkGroup.IsNull() && !model.NetworkGroup.IsUnknown() &&
+		model.NetworkGroup.ValueString() != "" {
+		networkGroup = model.NetworkGroup.ValueString()
+	}
+
 	network := &unifi.Network{
 		Name:            model.Name.ValueStringPointer(),
 		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
-		WANNetworkGroup: util.Ptr("WAN"),  // Statically set to "WAN"
-		HiddenID:        "WAN",            // Statically set to "WAN"
+		WANNetworkGroup: util.Ptr(networkGroup),
+		HiddenID:        networkGroup,
 		Enabled:         model.Enabled.ValueBool(),
 	}
 
@@ -1431,6 +1705,18 @@ func (r *wanResource) modelToNetwork(
 	return network, diags
 }
 
+// dnsAddrValue maps a controller WAN DNS address pointer to a Terraform value,
+// treating both a nil pointer and an empty string as null. The DNS address
+// fields are Optional (not Computed), so when no server is configured the
+// controller persists and returns "" — which would otherwise conflict with the
+// planned null and fail the consistency check (#333).
+func dnsAddrValue(p *string) types.String {
+	if p == nil || *p == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(*p)
+}
+
 // networkToModel converts from unifi.Network to Terraform model.
 func (r *wanResource) networkToModel(
 	ctx context.Context,
@@ -1444,6 +1730,14 @@ func (r *wanResource) networkToModel(
 	model.Site = types.StringValue(site)
 	model.Name = types.StringPointerValue(network.Name)
 
+	// Preserve the WAN network group (WAN, WAN2, …) so updates target the right
+	// interface instead of always defaulting to "WAN" (#334).
+	if network.WANNetworkGroup != nil && *network.WANNetworkGroup != "" {
+		model.NetworkGroup = types.StringValue(*network.WANNetworkGroup)
+	} else {
+		model.NetworkGroup = types.StringValue("WAN")
+	}
+
 	// WAN Type Settings — only overwrite when API returns a value
 	if network.WANType != nil {
 		model.Type = types.StringValue(*network.WANType)
@@ -1452,10 +1746,16 @@ func (r *wanResource) networkToModel(
 		model.TypeV6 = types.StringValue(*network.WANTypeV6)
 	}
 
-	// VLAN Settings
+	// VLAN Settings. The controller omits the VLAN id when no WAN VLAN is set;
+	// map it to the schema default (0) rather than null so an imported WAN plans
+	// clean without needing an apply (#262).
+	vlanID := int64(0)
+	if network.WANVLAN != nil {
+		vlanID = *network.WANVLAN
+	}
 	vlanValue := vlanModel{
 		Enabled: types.BoolValue(network.WANVLANEnabled),
-		ID:      types.Int64PointerValue(network.WANVLAN),
+		ID:      types.Int64Value(vlanID),
 	}
 	vlanObj, d := types.ObjectValueFrom(ctx, vlanValue.AttributeTypes(), vlanValue)
 	diags.Append(d...)
@@ -1495,16 +1795,16 @@ func (r *wanResource) networkToModel(
 			diags.Append(d...)
 		}
 		if network.WANDNS1 != nil {
-			currentDNS.Primary = types.StringValue(*network.WANDNS1)
+			currentDNS.Primary = dnsAddrValue(network.WANDNS1)
 		}
 		if network.WANDNS2 != nil {
-			currentDNS.Secondary = types.StringValue(*network.WANDNS2)
+			currentDNS.Secondary = dnsAddrValue(network.WANDNS2)
 		}
 		if network.WANIPV6DNS1 != nil {
-			currentDNS.IPv6Primary = types.StringValue(*network.WANIPV6DNS1)
+			currentDNS.IPv6Primary = dnsAddrValue(network.WANIPV6DNS1)
 		}
 		if network.WANIPV6DNS2 != nil {
-			currentDNS.IPv6Secondary = types.StringValue(*network.WANIPV6DNS2)
+			currentDNS.IPv6Secondary = dnsAddrValue(network.WANIPV6DNS2)
 		}
 		if network.WANDNSPreference != nil {
 			currentDNS.Preference = types.StringValue(*network.WANDNSPreference)
@@ -1784,5 +2084,118 @@ func applyWANDefaults(model *wanResourceModel) {
 	// List types need properly-typed null values
 	if model.IPAliases.IsNull() || model.IPAliases.IsUnknown() {
 		model.IPAliases = types.ListNull(types.StringType)
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *wanResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List WAN networks in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list WAN networks from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *wanResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config wanListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []wanListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	networks, err := r.client.ListNetwork(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing WAN Networks", "Could not list WAN networks: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, network := range networks {
+			// Filter to only WAN networks.
+			if network.Purpose != unifi.PurposeWAN || network.WANNetworkGroup == nil {
+				continue
+			}
+
+			// Apply name filter if specified.
+			if nameFilter, ok := postFilters["name"]; ok {
+				if network.Name == nil || *network.Name != nameFilter {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+			if network.Name != nil {
+				result.DisplayName = *network.Name
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.Set(ctx, wanIdentityModel{
+					ID:   types.StringValue(network.ID),
+					Site: types.StringValue(site),
+				})...,
+			)
+
+			// Convert to model.
+			var model wanResourceModel
+			result.Diagnostics.Append(r.networkToModel(ctx, &network, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

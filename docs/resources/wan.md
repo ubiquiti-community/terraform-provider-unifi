@@ -12,35 +12,70 @@ WAN network resource
 ## Example Usage
 
 ```terraform
-resource "unifi_wan" "default" {
-  name         = "Internet 1"
-  type         = "dhcp"
-  type_v6      = "dhcpv6"
-  vlan_enabled = true
-  vlan         = 10
-  enabled      = true
+# Basic DHCP WAN on a tagged VLAN.
+resource "unifi_wan" "primary" {
+  name    = "Internet 1"
+  type    = "dhcp"   # one of: dhcp, static, pppoe, disabled
+  type_v6 = "dhcpv6" # IPv6 WAN type: dhcpv6, slaac, ...
+  enabled = true
 
-  dns_preference = "manual"
-  dns1           = "1.1.1.1"
-  dns2           = "1.0.0.1"
+  # WAN VLAN tagging.
+  vlan = {
+    enabled = true
+    id      = 10
+  }
 
-  smartq_enabled   = true
-  smartq_up_rate   = 500000
-  smartq_down_rate = 500000
+  # Manual upstream DNS instead of the ISP-provided servers.
+  dns = {
+    preference = "manual" # auto or manual
+    primary    = "1.1.1.1"
+    secondary  = "1.0.0.1"
+  }
+}
 
-  egress_qos_enabled = true
-  egress_qos         = 1
-  dhcp_cos           = 0
-  dhcpv6_cos         = 0
+# Fully-featured secondary WAN used as a weighted load-balance member, with
+# Smart Queues (SQM), QoS marking, IGMP proxy and advertised line capacity.
+resource "unifi_wan" "secondary" {
+  name    = "Internet 2"
+  type    = "dhcp"
+  enabled = true
 
+  vlan = {
+    enabled = true
+    id      = 20
+  }
+
+  # Smart Queue Management rates are in kbps.
+  smartq = {
+    enabled   = true
+    up_rate   = 500000
+    down_rate = 500000
+  }
+
+  # Egress QoS / 802.1p priority (0-7).
+  egress_qos = {
+    enabled  = true
+    priority = 1
+  }
+
+  # Participate in WAN load balancing. type: failover-only | weighted.
+  load_balance = {
+    type              = "weighted"
+    weight            = 75 # 1-100
+    failover_priority = 2  # 1-10
+  }
+
+  # Multicast/IGMP proxy: downstream is none | lan | guest.
+  igmp_proxy = {
+    downstream = "lan"
+    upstream   = true
+  }
+
+  # Advertise the line's real capacity to the controller (kbps).
   provider_capabilities = {
     download_kilobits_per_second = 1000000
     upload_kilobits_per_second   = 100000
   }
-
-  load_balance_type   = "weighted"
-  load_balance_weight = 75
-  failover_priority   = 2
 }
 ```
 
@@ -63,14 +98,16 @@ resource "unifi_wan" "default" {
 - `ipv6_setting_preference` (String) Whether WAN IPv6 settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `load_balance` (Attributes) Load balance configuration (see [below for nested schema](#nestedatt--load_balance))
 - `mac_override_enabled` (Boolean) Whether the WAN interface MAC address is overridden.
-- `provider_capabilities` (Attributes) WAN provider capabilities (see [below for nested schema](#nestedatt--provider_capabilities))
+- `networkgroup` (String) The WAN network group this interface belongs to (`WAN`, `WAN2`, …). The primary uplink is `WAN`; a secondary/SFP uplink is `WAN2`. Computed from the controller when unset (so an imported `WAN2` is preserved), defaulting to `WAN` on create. Required to manage multi-WAN (WAN2+) setups, where a hard-coded `WAN` collides with the primary (`api.err.WanConfigurationForNetworkGroupAlreadyExists`).
+- `provider_capabilities` (Attributes) WAN provider capabilities (line rate). Detected/populated by the controller; preserved when not set in config. (see [below for nested schema](#nestedatt--provider_capabilities))
 - `report_wan_event` (Boolean) Whether to report WAN events
 - `setting_preference` (String) Whether WAN settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `single_network_lan` (String) The LAN network used for IPv6 single-network prefix delegation (used when the IPv6 delegation type is `single_network`).
 - `site` (String) The name of the site to associate the WAN network with
 - `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `type` (String) The WAN type (dhcp, static, pppoe)
-- `type_v6` (String) The IPv6 WAN type (dhcpv6, static, disabled)
+- `type_v6` (String) The IPv6 WAN type. One of `dhcpv6`, `slaac`, `static`, or `disabled`. Note: the controller requires `slaac` when the IPv6 delegation type is `single_network` (`api.err.SingleNetworkMustBeSLAAC` otherwise) — common with ISPs that deliver IPv6 by Router Advertisement, e.g. Free/Freebox in bridge mode.
 - `upnp` (Attributes) UPnP configuration (see [below for nested schema](#nestedatt--upnp))
 - `vlan` (Attributes) VLAN configuration (see [below for nested schema](#nestedatt--vlan))
 - `wan_dslite_remote_host` (String) The DS-Lite AFTR remote host. Only used when `wan_dslite_remote_host_auto` is disabled.
@@ -163,7 +200,7 @@ Optional:
 <a id="nestedatt--provider_capabilities"></a>
 ### Nested Schema for `provider_capabilities`
 
-Required:
+Optional:
 
 - `download_kilobits_per_second` (Number) Download speed in kilobits per second
 - `upload_kilobits_per_second` (Number) Upload speed in kilobits per second
@@ -177,6 +214,17 @@ Optional:
 - `down_rate` (Number) Smart Queue download rate in kbps
 - `enabled` (Boolean) Whether Smart Queue is enabled
 - `up_rate` (Number) Smart Queue upload rate in kbps
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 
 <a id="nestedatt--upnp"></a>
@@ -202,7 +250,7 @@ Optional:
 
 Import is supported using the following syntax:
 
-The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 # import from provider configured site

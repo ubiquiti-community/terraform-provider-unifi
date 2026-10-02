@@ -50,6 +50,33 @@ resource "unifi_vpn_client" "wireguard_manual" {
   }
 }
 
+variable "wireguard_private_key" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
+resource "unifi_vpn_client" "wireguard_write_only" {
+  name          = "my-write-only-wireguard"
+  enabled       = true
+  subnet        = "10.0.2.2/24"
+  default_route = false
+  pull_dns      = true
+
+  wireguard = {
+    private_key_wo         = var.wireguard_private_key
+    private_key_wo_version = 1
+    interface              = "wan"
+    dns_servers            = ["1.1.1.1"]
+
+    peer = {
+      ip         = "203.0.113.1"
+      port       = 51820
+      public_key = "your_peer_public_key_here"
+    }
+  }
+}
+
 resource "unifi_vpn_client" "wireguard_with_psk" {
   name          = "secure-wireguard"
   enabled       = true
@@ -88,6 +115,7 @@ resource "unifi_vpn_client" "wireguard_with_psk" {
 - `enabled` (Boolean) Specifies whether the VPN client is enabled.
 - `pull_dns` (Boolean) Specifies whether to pull DNS servers from the VPN.
 - `site` (String) The name of the site to associate the VPN client with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -95,10 +123,6 @@ resource "unifi_vpn_client" "wireguard_with_psk" {
 
 <a id="nestedatt--wireguard"></a>
 ### Nested Schema for `wireguard`
-
-Required:
-
-- `private_key` (String, Sensitive) WireGuard private key for this client.
 
 Optional:
 
@@ -108,6 +132,9 @@ Optional:
 - `peer` (Attributes) Manual WireGuard peer configuration. Specify peer endpoint and public key. (see [below for nested schema](#nestedatt--wireguard--peer))
 - `preshared_key` (String, Sensitive) WireGuard preshared key. Required when preshared_key_enabled is true.
 - `preshared_key_enabled` (Boolean) Specifies whether to use a preshared key for additional security.
+- `private_key` (String, Sensitive) WireGuard private key for this client. Stored in state; use `private_key_wo` to avoid persisting the secret.
+- `private_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `private_key` (Terraform 1.11+). Used at apply time but never written to state. Mutually exclusive with `private_key`.
+- `private_key_wo_version` (Number) Version counter for `private_key_wo`. Increment this value to trigger a private key update.
 
 <a id="nestedatt--wireguard--configuration"></a>
 ### Nested Schema for `wireguard.configuration`
@@ -127,11 +154,23 @@ Required:
 - `port` (Number) WireGuard peer endpoint port.
 - `public_key` (String, Sensitive) WireGuard peer public key.
 
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 ## Import
 
 Import is supported using the following syntax:
 
-The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 # Import a VPN client by ID

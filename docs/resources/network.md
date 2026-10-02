@@ -40,8 +40,8 @@ resource "unifi_network" "dual_stack" {
   ipv6_static_subnet         = "fd00:1::1/64"
   ipv6_ra                    = true
   ipv6_ra_priority           = "high"
-  ipv6_ra_valid_lifetime     = 86400
-  ipv6_ra_preferred_lifetime = 14400
+  ipv6_ra_valid_lifetime     = "24h"
+  ipv6_ra_preferred_lifetime = "4h"
 
   dhcp_v6_server = {
     enabled  = true
@@ -99,11 +99,13 @@ resource "unifi_network" "third_party" {
 - `dhcp_v6_server` (Attributes) DHCPv6 server configuration. (see [below for nested schema](#nestedatt--dhcp_v6_server))
 - `domain_name` (String) The domain name for the network.
 - `enabled` (Boolean) Specifies whether the network is enabled.
+- `firewall_zone_id` (String) The firewall zone ID assigned to this network. Note: This field is dual-managed and can compete with `unifi_firewall_zone.network_ids`. To prevent state drift loops, ensure you manage zone membership from exactly one side. On Zone-Based Firewall (ZBF) controllers, this field is tightly coupled to the network's `purpose` field.
 - `gateway_type` (String) The gateway type. Must be one of `default` or `switch`.
 - `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled.
 - `internet_access` (Boolean) Specifies whether internet access is enabled.
-- `ip_aliases` (List of String) List of IP aliases for the network.
-- `ipv6_aliases` (List of String) List of IPv6 aliases for the network.
+- `ip_aliases` (List of String) List of IP aliases for the network, in CIDR notation (e.g. `192.168.2.1/24`). The controller rejects entries without a prefix length.
+- `ipv6_aliases` (List of String) List of IPv6 aliases for the network. Not currently supported: the underlying UniFi API client has no field for this value, so a non-empty list is rejected at plan time (#413).
+- `ipv6_client_address_assignment` (String) How clients on this network obtain an IPv6 address (UI: Networks → IPv6 → Client Address Assignment). One of `slaac` (SLAAC only), `dhcpv6` (DHCPv6 only), or `slaac-dhcpv6` (both). Computed from the controller when not set.
 - `ipv6_interface_type` (String) Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.
 - `ipv6_pd_auto_prefixid_enabled` (Boolean) Specifies whether automatic prefix ID assignment is enabled for IPv6 Prefix Delegation.
 - `ipv6_pd_interface` (String) The IPv6 Prefix Delegation WAN interface (e.g., `wan`, `wan2`).
@@ -111,18 +113,20 @@ resource "unifi_network" "third_party" {
 - `ipv6_pd_start` (String) The start of the IPv6 Prefix Delegation range (e.g. `::2`). Required together with `ipv6_pd_stop` when `ipv6_interface_type` is `pd`, otherwise the controller rejects the network with `api.err.InvalidIpv6Addr`.
 - `ipv6_pd_stop` (String) The end of the IPv6 Prefix Delegation range (e.g. `::7d1`). Required together with `ipv6_pd_start` when `ipv6_interface_type` is `pd`.
 - `ipv6_ra` (Boolean) Specifies whether IPv6 Router Advertisement (RA) is enabled.
-- `ipv6_ra_preferred_lifetime` (Number) The IPv6 Router Advertisement preferred lifetime in seconds (0-31536000).
+- `ipv6_ra_preferred_lifetime` (String) The IPv6 Router Advertisement preferred lifetime, as a Go duration string (e.g. `14400s`, `4h`). Must be a whole number of seconds between `0s` and `31536000s` (1 year).
 - `ipv6_ra_priority` (String) The IPv6 Router Advertisement priority. Must be one of `high`, `medium`, or `low`.
-- `ipv6_ra_valid_lifetime` (Number) The IPv6 Router Advertisement valid lifetime in seconds (0-31536000).
+- `ipv6_ra_valid_lifetime` (String) The IPv6 Router Advertisement valid lifetime, as a Go duration string (e.g. `86400s`, `24h`). Must be a whole number of seconds between `0s` and `31536000s` (1 year).
 - `ipv6_static_subnet` (String) The IPv6 static subnet of the network. Only used when `ipv6_interface_type` is `static`.
 - `lte_lan` (Boolean) Whether this network/VLAN stays active when the gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to the controller's `lte_lan_enabled` flag and only matters when a UniFi LTE failover device is in use; otherwise it is cosmetic. Defaults to `true` (network stays available during LTE failover); set to `false` to disable it while on the LTE backup link. The controller may set this automatically, which is why existing networks can show differing values.
 - `multicast_dns` (Boolean) Specifies whether mDNS is enabled. This is read back from the controller rather than defaulted: some controllers (notably UniFi OS gateways) ignore `mdns_enabled` at create/update time and always store `false`, so forcing a `true` default produced a "provider produced inconsistent result after apply" error.
 - `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
 - `network_isolation` (Boolean) Specifies whether network isolation is enabled.
+- `purpose` (String) The network purpose: `corporate` (default), `guest`, or `vlan-only`. Leave unset to let the controller manage it (a `third_party_gateway` network is always `vlan-only`). **Note:** on Zone-Based-Firewall controllers the purpose is coupled to the firewall zone — a `guest` network only keeps `purpose = "guest"` while it belongs to the guest/Hotspot zone (assign it there via `unifi_firewall_zone`), otherwise the controller rewrites it back to `corporate` and the apply fails with an inconsistent-result error.
 - `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the network with.
-- `subnet` (String) The IPv4 subnet of the network in CIDR notation. Optional: it is not required for `vlan_only` networks (`third_party_gateway = true`), where the UniFi controller does not manage the subnet.
+- `subnet` (String) The network's gateway IP and prefix in CIDR notation. The host portion is the gateway address the controller assigns — it need not be the first usable address: `10.0.10.1/24` uses gateway `10.0.10.1`, while `10.0.10.254/24` uses gateway `10.0.10.254` on the same subnet. Optional: it is not required for `vlan_only` networks (`third_party_gateway = true`), where the UniFi controller does not manage the subnet.
 - `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `vlan` (Number) The VLAN ID for the network.
 
 ### Read-Only
@@ -135,7 +139,7 @@ resource "unifi_network" "third_party" {
 Optional:
 
 - `enabled` (Boolean) Specifies whether DHCP guarding is enabled.
-- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3).
+- `servers` (List of String) List of allowed DHCP server IP addresses (maximum 3). On `corporate` and `guest` networks the controller only honors DHCP guarding with `setting_preference = "manual"`; when `setting_preference` is not configured, the provider sets it to `manual` automatically whenever `dhcp_guarding.enabled` is `true`.
 
 
 <a id="nestedatt--dhcp_relay"></a>
@@ -158,8 +162,9 @@ Optional:
 - `dns_servers` (List of String) List of DNS server addresses for DHCP clients.
 - `enabled` (Boolean) Specifies whether DHCP server is enabled.
 - `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
-- `leasetime` (Number) Specifies the lease time for DHCP addresses in seconds.
+- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string (e.g. `24h`, `86400s`). Defaults to `24h0m0s`.
 - `ntp_enabled` (Boolean) Specifies whether DHCP NTP is enabled.
+- `ntp_servers` (List of String) List of NTP server addresses for DHCP clients.
 - `start` (String) The IPv4 address where the DHCP range starts.
 - `stop` (String) The IPv4 address where the DHCP range stops.
 - `tftp_server` (String) TFTP server address.
@@ -211,11 +216,22 @@ Optional:
 - `mode` (String) The mode.
 - `wan_network_group` (String) The WAN network group.
 
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 ## Import
 
 Import is supported using the following syntax:
 
-The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 # import by ID from provider configured site

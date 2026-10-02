@@ -12,8 +12,25 @@ Retrieves properties of a client of the network by MAC address.
 ## Example Usage
 
 ```terraform
-data "unifi_client" "default" {
+# Look up a known client by its MAC address. Most attributes (name, fixed IP,
+# blocked state, QoS rate group, etc.) are computed from the controller.
+data "unifi_client" "workstation" {
   mac = "01:23:45:67:89:ab"
+}
+
+output "client_fixed_ip" {
+  description = "The fixed IPv4 address assigned to the client, if any."
+  value       = data.unifi_client.workstation.fixed_ip
+}
+
+output "client_blocked" {
+  description = "Whether the client is currently blocked from the network."
+  value       = data.unifi_client.workstation.blocked
+}
+
+output "client_qos_max_down" {
+  description = "Maximum download rate (kbps) from the client's QoS group."
+  value       = data.unifi_client.workstation.qos_rate.max_down
 }
 ```
 
@@ -27,6 +44,7 @@ data "unifi_client" "default" {
 ### Optional
 
 - `site` (String) The name of the site the client is associated with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -42,6 +60,14 @@ data "unifi_client" "default" {
 - `network_id` (String) The network ID for this client.
 - `note` (String) A note with additional information for the client.
 - `qos_rate` (Attributes) QoS rate limiting configuration from the client's group. (see [below for nested schema](#nestedatt--qos_rate))
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--qos_rate"></a>
 ### Nested Schema for `qos_rate`

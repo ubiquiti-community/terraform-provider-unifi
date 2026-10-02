@@ -36,6 +36,33 @@ resource "unifi_vpn_client" "wireguard_manual" {
   }
 }
 
+variable "wireguard_private_key" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
+resource "unifi_vpn_client" "wireguard_write_only" {
+  name          = "my-write-only-wireguard"
+  enabled       = true
+  subnet        = "10.0.2.2/24"
+  default_route = false
+  pull_dns      = true
+
+  wireguard = {
+    private_key_wo         = var.wireguard_private_key
+    private_key_wo_version = 1
+    interface              = "wan"
+    dns_servers            = ["1.1.1.1"]
+
+    peer = {
+      ip         = "203.0.113.1"
+      port       = 51820
+      public_key = "your_peer_public_key_here"
+    }
+  }
+}
+
 resource "unifi_vpn_client" "wireguard_with_psk" {
   name          = "secure-wireguard"
   enabled       = true

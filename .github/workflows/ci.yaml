@@ -1,5 +1,5 @@
 # Terraform Provider testing workflow.
-name: Tests
+name: CI/CD
 
 # This GitHub action runs your tests for each pull request and push.
 # Optionally, you can turn it on using a schedule for regular testing.
@@ -19,19 +19,39 @@ on:
     - "go.sum"
     - ".github/workflows/ci.yaml"
 
-# Testing only needs permissions to read the repository contents.
+# contents: read is needed to check out the repository.
+# id-token: write is needed for Codecov OIDC uploads.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
-  # Ensure project builds before running testing matrix
+  lint:
+    name: GolangCI Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+          cache: true
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: latest
+          # The action tracks golangci-lint `latest`, so new checks can appear
+          # without any code change and flag pre-existing debt. Gate PRs on the
+          # issues they actually introduce; pre-existing findings are paid down
+          # separately rather than blocking every PR.
+          only-new-issues: true
+
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-    - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: "go.mod"
         cache: true
@@ -41,8 +61,8 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-    - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: "go.mod"
         cache: true
@@ -53,16 +73,44 @@ jobs:
           (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
   test:
     runs-on: ubuntu-latest
-    env:
-      CGO_ENABLED: "0"
     steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-    - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: "go.mod"
         cache: true
     - run: go mod download
 
     - name: Unit tests
-      run: |
-        go test -v -cover -timeout 120m ./...
+      if: always()
+      # -race requires cgo; the coverage profile feeds Codecov below.
+      run: go tool gotestsum --junitfile junit.xml -- -coverprofile=coverage.txt -covermode=atomic -race -count=1 -timeout 120m -v ./...
+      env:
+        CGO_ENABLED: "1"
+
+    - name: Generate HTML coverage report
+      if: always()
+      run: go tool cover -html=coverage.txt -o coverage.html
+
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage-report
+        path: |
+          coverage.txt
+          coverage.html
+          junit.xml
+
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/test-results-action@v1
+      with:
+        use_oidc: true
+        flags: unit
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v7
+      with:
+        use_oidc: true
+        flags: unit

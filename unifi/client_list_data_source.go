@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -29,12 +31,13 @@ type clientListDataSource struct {
 }
 
 type clientListDataSourceModel struct {
-	Site    types.String `tfsdk:"site"`
-	Group   types.String `tfsdk:"group"`
-	Wired   types.Bool   `tfsdk:"wired"`
-	Blocked types.Bool   `tfsdk:"blocked"`
-	OUI     types.String `tfsdk:"oui"`
-	Clients types.List   `tfsdk:"clients"`
+	Site     types.String   `tfsdk:"site"`
+	Group    types.String   `tfsdk:"group"`
+	Wired    types.Bool     `tfsdk:"wired"`
+	Blocked  types.Bool     `tfsdk:"blocked"`
+	OUI      types.String   `tfsdk:"oui"`
+	Clients  types.List     `tfsdk:"clients"`
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func clientListEntryAttrTypes() map[string]attr.Type {
@@ -311,6 +314,7 @@ func (d *clientListDataSource) Schema(
 					Attributes: clientListEntrySchemaAttributes(),
 				},
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -386,6 +390,14 @@ func (d *clientListDataSource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {

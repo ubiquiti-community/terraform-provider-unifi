@@ -3,10 +3,16 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -20,9 +26,20 @@ import (
 var (
 	_ resource.Resource                = &firewallGroupResource{}
 	_ resource.ResourceWithImportState = &firewallGroupResource{}
+	_ resource.ResourceWithIdentity    = &firewallGroupResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &firewallGroupResource{}
+	_ list.ListResourceWithConfigure = &firewallGroupResource{}
 )
 
 func NewFirewallGroupFrameworkResource() resource.Resource {
+	return &firewallGroupResource{}
+}
+
+func NewFirewallGroupListResource() list.ListResource {
 	return &firewallGroupResource{}
 }
 
@@ -33,11 +50,30 @@ type firewallGroupResource struct {
 
 // firewallGroupResourceModel describes the resource data model.
 type firewallGroupResourceModel struct {
-	ID      types.String `tfsdk:"id"`
-	Site    types.String `tfsdk:"site"`
-	Name    types.String `tfsdk:"name"`
-	Type    types.String `tfsdk:"type"`
-	Members types.Set    `tfsdk:"members"`
+	ID       types.String   `tfsdk:"id"`
+	Site     types.String   `tfsdk:"site"`
+	Name     types.String   `tfsdk:"name"`
+	Type     types.String   `tfsdk:"type"`
+	Members  types.Set      `tfsdk:"members"`
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
+}
+
+// firewallGroupIdentityModel describes the resource identity data model.
+type firewallGroupIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
+// firewallGroupListConfigModel describes the list configuration model.
+type firewallGroupListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// firewallGroupListFilterModel represents a single name/value filter entry.
+type firewallGroupListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 func (r *firewallGroupResource) Metadata(
@@ -46,6 +82,33 @@ func (r *firewallGroupResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_firewall_group"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *firewallGroupResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *firewallGroupResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *firewallGroupResource) Schema(
@@ -89,6 +152,10 @@ func (r *firewallGroupResource) Schema(
 				Required:    true,
 				ElementType: types.StringType,
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -129,6 +196,14 @@ func (r *firewallGroupResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	site := plan.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -156,8 +231,13 @@ func (r *firewallGroupResource) Create(
 	// Set state
 	plan.ID = types.StringValue(apiFirewallGroup.ID)
 	plan.Site = types.StringValue(site)
-	r.setResourceData(ctx, apiFirewallGroup, &plan, site)
+	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, apiFirewallGroup, &plan, site)...)
 
+	identity := firewallGroupIdentityModel{
+		ID:   plan.ID,
+		Site: plan.Site,
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -174,8 +254,36 @@ func (r *firewallGroupResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Read identity, falling back to state for resources created before
+	// identity support. This also lets Read work from an identity-only state
+	// (the refresh right after an identity-based import).
+	var identity firewallGroupIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	} else {
+		identity.ID = state.ID
+		identity.Site = state.Site
+	}
+
 	id := state.ID.ValueString()
+	if id == "" {
+		id = identity.ID.ValueString()
+	}
 	site := state.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
@@ -194,8 +302,12 @@ func (r *firewallGroupResource) Read(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, firewallGroup, &state, site)
+	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, firewallGroup, &state, site)...)
 
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = state.ID
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -218,6 +330,14 @@ func (r *firewallGroupResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	site := plan.Site.ValueString()
 	if site == "" {
@@ -273,8 +393,26 @@ func (r *firewallGroupResource) Update(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, apiFirewallGroup, &state, site)
+	resp.Diagnostics.Append(r.firewallGroupToModel(ctx, apiFirewallGroup, &state, site)...)
 
+	state.Timeouts = plan.Timeouts
+
+	// Identity should not change during update; fall back to state for
+	// resources created before identity support.
+	identity := firewallGroupIdentityModel{
+		ID:   state.ID,
+		Site: state.Site,
+	}
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			identity.ID = state.ID
+		}
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -290,6 +428,14 @@ func (r *firewallGroupResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()
@@ -315,18 +461,48 @@ func (r *firewallGroupResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Identity-based import (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity firewallGroupIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...,
+			)
+		}
+		return
+	}
+
+	// Import by ID string ("id" or "site:id").
 	idParts, diags := util.ParseImportID(req.ID, 1, 2)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if site := idParts["site"]; site != "" {
+	site := idParts["site"]
+	id := idParts["id"]
+
+	if site != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 	}
 
-	if id := idParts["id"]; id != "" {
+	if id != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	}
+
+	// Mirror into identity so it is populated from the first refresh on.
+	if resp.Identity != nil {
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
+		if site != "" {
+			resp.Diagnostics.Append(
+				resp.Identity.SetAttribute(ctx, path.Root("site"), site)...,
+			)
+		}
 	}
 }
 
@@ -357,28 +533,181 @@ func (r *firewallGroupResource) setResourceData(
 	model *firewallGroupResourceModel,
 	site string,
 ) {
+	r.firewallGroupToModel(ctx, firewallGroup, model, site)
+}
+
+// firewallGroupToModel populates the resource model from the API struct,
+// setting every schema field. It is the reusable API->model converter shared
+// by Read and List.
+func (r *firewallGroupResource) firewallGroupToModel(
+	ctx context.Context,
+	api *unifi.FirewallGroup,
+	model *firewallGroupResourceModel,
+	site string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	if api.ID != "" {
+		model.ID = types.StringValue(api.ID)
+	}
+
 	model.Site = types.StringValue(site)
 
-	if firewallGroup.Name == "" {
+	if api.Name == "" {
 		model.Name = types.StringNull()
 	} else {
-		model.Name = types.StringValue(firewallGroup.Name)
+		model.Name = types.StringValue(api.Name)
 	}
 
-	if firewallGroup.GroupType == "" {
+	if api.GroupType == "" {
 		model.Type = types.StringNull()
 	} else {
-		model.Type = types.StringValue(firewallGroup.GroupType)
+		model.Type = types.StringValue(api.GroupType)
 	}
 
-	if len(firewallGroup.GroupMembers) == 0 {
+	if len(api.GroupMembers) == 0 {
 		model.Members = types.SetNull(types.StringType)
 	} else {
-		membersList := make([]types.String, len(firewallGroup.GroupMembers))
-		for i, member := range firewallGroup.GroupMembers {
+		membersList := make([]types.String, len(api.GroupMembers))
+		for i, member := range api.GroupMembers {
 			membersList[i] = types.StringValue(member)
 		}
-		membersSet, _ := types.SetValueFrom(ctx, types.StringType, membersList)
+		membersSet, d := types.SetValueFrom(ctx, types.StringType, membersList)
+		diags.Append(d...)
 		model.Members = membersSet
+	}
+
+	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *firewallGroupResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List firewall groups in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list firewall groups from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `type`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *firewallGroupResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config firewallGroupListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []firewallGroupListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	groups, err := r.client.ListFirewallGroup(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Firewall Groups",
+			"Could not list firewall groups: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, group := range groups {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if group.Name != val {
+					continue
+				}
+			}
+
+			// Apply type filter.
+			if val, ok := postFilters["type"]; ok {
+				if group.GroupType != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if group.Name != "" {
+				result.DisplayName = group.Name
+			} else {
+				result.DisplayName = group.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(group.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
+				)...,
+			)
+
+			// Convert to model.
+			var model firewallGroupResourceModel
+			result.Diagnostics.Append(
+				r.firewallGroupToModel(ctx, &group, &model, site)...,
+			)
+			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

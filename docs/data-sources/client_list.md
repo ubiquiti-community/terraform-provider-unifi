@@ -52,11 +52,20 @@ output "wired_client_ips" {
 - `group` (String) Filter clients by network members group name.
 - `oui` (String) Filter clients by OUI (vendor prefix).
 - `site` (String) The name of the site to retrieve clients from.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `wired` (Boolean) Filter clients by wired connection status.
 
 ### Read-Only
 
 - `clients` (Attributes List) List of clients matching the specified filters. (see [below for nested schema](#nestedatt--clients))
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 
 <a id="nestedatt--clients"></a>
 ### Nested Schema for `clients`

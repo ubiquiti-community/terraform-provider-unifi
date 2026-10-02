@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -116,44 +115,22 @@ func shouldMergeValue(val reflect.Value) bool {
 }
 
 // isNullOrUnknown checks if a Terraform Framework value is null or unknown.
+//
+// It works for any attr.Value, including the base types (types.String,
+// types.Bool, …) and the custom string types from terraform-plugin-framework
+// -nettypes (iptypes/cidrtypes/hwtypes), all of which expose IsNull/IsUnknown.
 func isNullOrUnknown(val reflect.Value) bool {
-	// Check for types.String, types.Bool, types.Int64, etc.
-	if val.Type().String() == "types.String" {
-		if str, ok := val.Interface().(types.String); ok {
-			return str.IsNull() || str.IsUnknown()
-		}
+	if !val.CanInterface() {
+		return false
 	}
-	if val.Type().String() == "types.Bool" {
-		if b, ok := val.Interface().(types.Bool); ok {
-			return b.IsNull() || b.IsUnknown()
-		}
+	// Any framework value (base or custom) satisfies this interface.
+	type nullableValue interface {
+		IsNull() bool
+		IsUnknown() bool
 	}
-	if val.Type().String() == "types.Int64" {
-		if i, ok := val.Interface().(types.Int64); ok {
-			return i.IsNull() || i.IsUnknown()
-		}
+	if v, ok := val.Interface().(nullableValue); ok {
+		return v.IsNull() || v.IsUnknown()
 	}
-	if val.Type().String() == "types.Float64" {
-		if f, ok := val.Interface().(types.Float64); ok {
-			return f.IsNull() || f.IsUnknown()
-		}
-	}
-	if val.Type().String() == "types.List" {
-		if l, ok := val.Interface().(types.List); ok {
-			return l.IsNull() || l.IsUnknown()
-		}
-	}
-	if val.Type().String() == "types.Set" {
-		if s, ok := val.Interface().(types.Set); ok {
-			return s.IsNull() || s.IsUnknown()
-		}
-	}
-	if val.Type().String() == "types.Map" {
-		if m, ok := val.Interface().(types.Map); ok {
-			return m.IsNull() || m.IsUnknown()
-		}
-	}
-
 	return false
 }
 

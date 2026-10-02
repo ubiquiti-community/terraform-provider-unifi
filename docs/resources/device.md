@@ -40,22 +40,23 @@ resource "unifi_device" "us_24_poe" {
   name = "Switch with POE"
 
   port_override {
-    number          = 1
+    index           = 1
     name            = "port w/ poe"
     port_profile_id = unifi_port_profile.poe.id
+    poe_mode        = "auto" # auto, pasv24, passthrough, off
   }
 
   port_override {
-    number          = 2
+    index           = 2
     name            = "disabled"
     port_profile_id = data.unifi_port_profile.disabled.id
   }
 
-  # port aggregation for ports 11 and 12
+  # Link aggregation: port 11 is the aggregate lead, bonding member port 12.
   port_override {
-    number              = 11
-    op_mode             = "aggregate"
-    aggregate_num_ports = 2
+    index             = 11
+    op_mode           = "aggregate" # switch, mirror, aggregate
+    aggregate_members = [12]
   }
 }
 ```
@@ -74,7 +75,7 @@ resource "unifi_device" "us_24_poe" {
 - `jumboframe_enabled` (Boolean) Enable jumbo frames.
 - `lcm_brightness` (Number) LCM brightness (1-100).
 - `lcm_brightness_override` (Boolean) Override LCM brightness.
-- `lcm_idle_timeout` (Number) LCM idle timeout in seconds (10-3600).
+- `lcm_idle_timeout` (String) LCM idle timeout, as a Go duration string (e.g. `10m`, `600s`).
 - `lcm_idle_timeout_override` (Boolean) Override LCM idle timeout.
 - `lcm_night_mode_begins` (String) LCM night mode begin time (HH:MM format).
 - `lcm_night_mode_ends` (String) LCM night mode end time (HH:MM format).
@@ -83,18 +84,20 @@ resource "unifi_device" "us_24_poe" {
 - `led_override_color_brightness` (Number) LED brightness (0-100).
 - `locked` (Boolean) Specifies whether the device is locked.
 - `mac` (String) The MAC address of the device. This can be specified so that the provider can take control of a device (since devices are created through adoption).
-- `mgmt_network_id` (String) Management network ID.
+- `mesh_sta_vap_enabled` (Boolean) Enable the mesh station VAP (the UI "Mesh Connect" toggle), letting this AP uplink wirelessly to a mesh parent.
+- `mgmt_network_id` (String) Management network ID. The network this device uses for its own management traffic (the UI's Network Override). When set, the device tags its management onto this network's VLAN, so that VLAN must already be tagged on the device's upstream switch port(s) before this attribute is applied. Otherwise the device loses its management path, drops off, and the apply fails with an inconsistent-result error. Apply in two steps: tag the VLAN on the uplink (a port_override tagged_networkconf_ids entry) first, then set mgmt_network_id. Leave unset to manage on the uplink's native (untagged) network.
 - `name` (String) The name of the device.
 - `outdoor_mode_override` (String) Outdoor mode override; valid values are `default`, `on`, and `off`.
 - `outlet_enabled` (Boolean) Enable outlet control.
 - `outlet_overrides` (Attributes List) Outlet configuration overrides. (see [below for nested schema](#nestedatt--outlet_overrides))
 - `poe_mode` (String) PoE mode; valid values are `auto`, `pasv24`, `passthrough`, and `off`.
-- `port_override` (Block Set) Settings overrides for specific switch ports. (see [below for nested schema](#nestedblock--port_override))
+- `port_override` (Block Set) Per-port settings overrides, applied only to the ports you declare. Ports without a `port_override` block keep their existing controller-side configuration — the provider merges your declared ports (by `index`) into the device's current overrides rather than replacing the whole set. Removing a block stops managing that port but does not reset it; clear a port by overriding it back to the defaults instead. (see [below for nested schema](#nestedblock--port_override))
 - `radio_table` (Attributes List) Radio configuration table. (see [below for nested schema](#nestedatt--radio_table))
 - `site` (String) The name of the site to associate the device with.
 - `stp_priority` (Number) STP priority.
 - `stp_version` (String) STP version; valid values are `stp`, `rstp`, and `disabled`.
 - `switch_vlan_enabled` (Boolean) Enable VLAN support on the switch.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `volume` (Number) Volume level (0-100).
 - `x_baresip_password` (String, Sensitive) Baresip password.
 
@@ -147,10 +150,10 @@ Optional:
 - `aggregate_members` (List of Number) Port indices that make up this link-aggregation (LAG) group. Only takes effect when `op_mode` is `aggregate` on this port.
 - `autoneg` (Boolean) Enable auto-negotiation for port speed.
 - `dot1x_ctrl` (String) 802.1X control mode.
-- `dot1x_idle_timeout` (Number) 802.1X idle timeout in seconds.
+- `dot1x_idle_timeout` (String) 802.1X idle timeout, as a Go duration string (e.g. `5m`, `300s`).
 - `egress_rate_limit_kbps` (Number) Egress rate limit in kbps.
 - `egress_rate_limit_kbps_enabled` (Boolean) Enable egress rate limiting.
-- `excluded_networkconf_ids` (List of String) List of network IDs to exclude from this port.
+- `excluded_networkconf_ids` (Set of String) List of network IDs to exclude from this port.
 - `fec_mode` (String) Forward Error Correction mode.
 - `flow_control_enabled` (Boolean) Enable flow control.
 - `forward` (String) Forwarding mode.
@@ -159,7 +162,7 @@ Optional:
 - `lldpmed_enabled` (Boolean) Enable LLDP-MED.
 - `lldpmed_notify_enabled` (Boolean) Enable LLDP-MED notifications.
 - `mirror_port_idx` (Number) Mirror port index.
-- `multicast_router_networkconf_ids` (List of String) List of network IDs for multicast router.
+- `multicast_router_networkconf_ids` (Set of String) List of network IDs for multicast router.
 - `name` (String) Human-readable name of the port.
 - `native_networkconf_id` (String) Native network ID (VLAN).
 - `op_mode` (String) Operating mode of the port: `switch` (default), `mirror`, or `aggregate`. Set `aggregate` on the lead port of an SFP+/link-aggregation (LAG) group and list the member ports in `aggregate_members`. Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.
@@ -185,7 +188,7 @@ Optional:
 - `stormctrl_ucast_level` (Number) Unicast storm control level.
 - `stormctrl_ucast_rate` (Number) Unicast storm control rate.
 - `stp_port_mode` (Boolean) STP port mode.
-- `tagged_networkconf_ids` (List of String) List of network IDs to tag on this port.
+- `tagged_networkconf_ids` (Set of String) List of network IDs to tag on this port.
 - `tagged_vlan_mgmt` (String) Tagged VLAN management.
 - `voice_networkconf_id` (String) Voice network ID.
 
@@ -214,3 +217,14 @@ Optional:
 - `tx_power` (String) Transmit power or 'auto'.
 - `tx_power_mode` (String) Transmit power mode (auto, medium, high, low, custom).
 - `vwire_enabled` (Boolean) Enable virtual wire.
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

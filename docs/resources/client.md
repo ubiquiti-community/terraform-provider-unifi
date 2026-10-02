@@ -50,7 +50,7 @@ resource "unifi_client" "test" {
 - `blocked` (Boolean) Specifies whether this client should be blocked from the network.
 - `display_name` (String) The display name of the client.
 - `fixed_ap_mac` (String) The MAC address of the access point to which this client should be fixed.
-- `fixed_ip` (String) A fixed IPv4 address for this client.
+- `fixed_ip` (String) A fixed IPv4 address for this client. Set to an empty string to clear a previously assigned fixed IP.
 - `groups` (List of String) List of network members group names for this client.
 - `local_dns_record` (String) Specifies the local DNS record for this client.
 - `name` (String) The name of the client.
@@ -59,11 +59,13 @@ resource "unifi_client" "test" {
 - `qos_rate` (Attributes) QoS rate limiting configuration. Controls the client group (usergroup) used for bandwidth limits. (see [below for nested schema](#nestedatt--qos_rate))
 - `site` (String) The name of the site to associate the client with.
 - `skip_forget_on_destroy` (Boolean) Specifies whether this resource should tell the controller to "forget" the client on destroy.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `hostname` (String) The hostname of the client.
 - `id` (String) The ID of the client.
+- `last_ip` (String) The most recent IP address the controller has seen for this client (read-only).
 
 <a id="nestedatt--qos_rate"></a>
 ### Nested Schema for `qos_rate`
@@ -74,3 +76,14 @@ Optional:
 - `max_down` (Number) Maximum download rate in kbps.
 - `max_up` (Number) Maximum upload rate in kbps.
 - `name` (String) The name of the client group. If set, the group is looked up or created by name.
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

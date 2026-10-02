@@ -12,12 +12,47 @@ Manages a zone-based firewall zone (UniFi OS 8.x+). Create a zone and attach net
 ## Example Usage
 
 ```terraform
-# A zone-based firewall zone (UniFi OS 8.x+) grouping one or more networks.
-# Reference its id from unifi_firewall_policy source/destination zone_id.
+# Zone-based firewall zones (UniFi OS 8.x+) group one or more networks.
+# Reference a zone's id from unifi_firewall_policy source/destination zone_id.
+
+# Networks to place into the zones below.
+resource "unifi_network" "dmz" {
+  name   = "dmz"
+  subnet = "10.0.20.1/24"
+  vlan   = 20
+
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.20.6"
+    stop    = "10.0.20.254"
+  }
+}
+
+resource "unifi_network" "iot" {
+  name   = "iot"
+  subnet = "10.0.30.1/24"
+  vlan   = 30
+
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.30.6"
+    stop    = "10.0.30.254"
+  }
+}
+
+# A DMZ zone containing the DMZ network.
 resource "unifi_firewall_zone" "dmz" {
   name = "DMZ"
   network_ids = [
     unifi_network.dmz.id,
+  ]
+}
+
+# A second zone for IoT devices.
+resource "unifi_firewall_zone" "iot" {
+  name = "IoT"
+  network_ids = [
+    unifi_network.iot.id,
   ]
 }
 ```
@@ -33,6 +68,7 @@ resource "unifi_firewall_zone" "dmz" {
 
 - `network_ids` (List of String) IDs of the networks assigned to this zone.
 - `site` (String) The name of the site the zone belongs to.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -40,13 +76,27 @@ resource "unifi_firewall_zone" "dmz" {
 - `id` (String) The ID of the firewall zone.
 - `zone_key` (String) The controller-assigned key of the zone.
 
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
 ## Import
 
 Import is supported using the following syntax:
 
-The [` + "`" + `terraform import` + "`" + ` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 # Firewall zones can be imported using the zone ID, or site:id for a non-default site.
 terraform import unifi_firewall_zone.dmz 5f3e9b2c4ee8cb0f1f4a1234
+
+# Built-in zones (e.g. Hotspot, Internal) can also be imported by name, which
+# resolves the controller-assigned ID for you. Prefix with "site:" for a non-default site.
+terraform import unifi_firewall_zone.hotspot name=Hotspot
 ```

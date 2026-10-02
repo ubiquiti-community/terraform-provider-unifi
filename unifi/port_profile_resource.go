@@ -3,31 +3,51 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &portProfileResource{}
-	_ resource.ResourceWithImportState = &portProfileResource{}
+	_ resource.Resource                 = &portProfileResource{}
+	_ resource.ResourceWithImportState  = &portProfileResource{}
+	_ resource.ResourceWithIdentity     = &portProfileResource{}
+	_ resource.ResourceWithUpgradeState = &portProfileResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &portProfileResource{}
+	_ list.ListResourceWithConfigure = &portProfileResource{}
 )
 
 func NewPortProfileFrameworkResource() resource.Resource {
+	return &portProfileResource{}
+}
+
+func NewPortProfileListResource() list.ListResource {
 	return &portProfileResource{}
 }
 
@@ -36,50 +56,69 @@ type portProfileResource struct {
 	client *Client
 }
 
+// portProfileIdentityModel describes the resource identity data model.
+type portProfileIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
+// portProfileListConfigModel describes the list configuration model.
+type portProfileListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// portProfileListFilterModel represents a single name/value filter entry.
+type portProfileListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
 // portProfileResourceModel describes the resource data model.
 type portProfileResourceModel struct {
-	ID                         types.String `tfsdk:"id"`
-	Site                       types.String `tfsdk:"site"`
-	Autoneg                    types.Bool   `tfsdk:"autoneg"`
-	Dot1XCtrl                  types.String `tfsdk:"dot1x_ctrl"`
-	Dot1XIdleTimeout           types.Int64  `tfsdk:"dot1x_idle_timeout"`
-	EgressRateLimitKbps        types.Int64  `tfsdk:"egress_rate_limit_kbps"`
-	EgressRateLimitKbpsEnabled types.Bool   `tfsdk:"egress_rate_limit_kbps_enabled"`
-	Forward                    types.String `tfsdk:"forward"`
-	FullDuplex                 types.Bool   `tfsdk:"full_duplex"`
-	Isolation                  types.Bool   `tfsdk:"isolation"`
-	LLDPMedEnabled             types.Bool   `tfsdk:"lldpmed_enabled"`
-	LLDPMedNotifyEnabled       types.Bool   `tfsdk:"lldpmed_notify_enabled"`
-	NativeNetworkConfID        types.String `tfsdk:"native_networkconf_id"`
-	Name                       types.String `tfsdk:"name"`
-	OpMode                     types.String `tfsdk:"op_mode"`
-	PoeMode                    types.String `tfsdk:"poe_mode"`
-	PortSecurityEnabled        types.Bool   `tfsdk:"port_security_enabled"`
-	PortSecurityMacAddress     types.Set    `tfsdk:"port_security_mac_address"`
-	PriorityQueue1Level        types.Int64  `tfsdk:"priority_queue1_level"`
-	PriorityQueue2Level        types.Int64  `tfsdk:"priority_queue2_level"`
-	PriorityQueue3Level        types.Int64  `tfsdk:"priority_queue3_level"`
-	PriorityQueue4Level        types.Int64  `tfsdk:"priority_queue4_level"`
-	Speed                      types.Int64  `tfsdk:"speed"`
-	StormctrlBcastEnabled      types.Bool   `tfsdk:"stormctrl_bcast_enabled"`
-	StormctrlBcastLevel        types.Int64  `tfsdk:"stormctrl_bcast_level"`
-	StormctrlBcastRate         types.Int64  `tfsdk:"stormctrl_bcast_rate"`
-	StormctrlMcastEnabled      types.Bool   `tfsdk:"stormctrl_mcast_enabled"`
-	StormctrlMcastLevel        types.Int64  `tfsdk:"stormctrl_mcast_level"`
-	StormctrlMcastRate         types.Int64  `tfsdk:"stormctrl_mcast_rate"`
-	StormctrlType              types.String `tfsdk:"stormctrl_type"`
-	StormctrlUcastEnabled      types.Bool   `tfsdk:"stormctrl_ucast_enabled"`
-	StormctrlUcastLevel        types.Int64  `tfsdk:"stormctrl_ucast_level"`
-	StormctrlUcastRate         types.Int64  `tfsdk:"stormctrl_ucast_rate"`
-	STPPortMode                types.Bool   `tfsdk:"stp_port_mode"`
-	TaggedNetworkConfIDs       types.Set    `tfsdk:"tagged_networkconf_ids"`
-	VoiceNetworkConfID         types.String `tfsdk:"voice_networkconf_id"`
-	ExcludedNetworkConfIDs     types.Set    `tfsdk:"excluded_networkconf_ids"`
-	MulticastRouterNetworkIDs  types.Set    `tfsdk:"multicast_router_networkconf_ids"`
-	TaggedVLANMgmt             types.String `tfsdk:"tagged_vlan_mgmt"`
-	FecMode                    types.String `tfsdk:"fec_mode"`
-	SettingPreference          types.String `tfsdk:"setting_preference"`
-	PortKeepaliveEnabled       types.Bool   `tfsdk:"port_keepalive_enabled"`
+	ID                         types.String         `tfsdk:"id"`
+	Site                       types.String         `tfsdk:"site"`
+	Autoneg                    types.Bool           `tfsdk:"autoneg"`
+	Dot1XCtrl                  types.String         `tfsdk:"dot1x_ctrl"`
+	Dot1XIdleTimeout           timetypes.GoDuration `tfsdk:"dot1x_idle_timeout"`
+	EgressRateLimitKbps        types.Int64          `tfsdk:"egress_rate_limit_kbps"`
+	EgressRateLimitKbpsEnabled types.Bool           `tfsdk:"egress_rate_limit_kbps_enabled"`
+	Forward                    types.String         `tfsdk:"forward"`
+	FullDuplex                 types.Bool           `tfsdk:"full_duplex"`
+	Isolation                  types.Bool           `tfsdk:"isolation"`
+	LLDPMedEnabled             types.Bool           `tfsdk:"lldpmed_enabled"`
+	LLDPMedNotifyEnabled       types.Bool           `tfsdk:"lldpmed_notify_enabled"`
+	NativeNetworkConfID        types.String         `tfsdk:"native_networkconf_id"`
+	Name                       types.String         `tfsdk:"name"`
+	OpMode                     types.String         `tfsdk:"op_mode"`
+	PoeMode                    types.String         `tfsdk:"poe_mode"`
+	PortSecurityEnabled        types.Bool           `tfsdk:"port_security_enabled"`
+	PortSecurityMacAddress     types.Set            `tfsdk:"port_security_mac_address"`
+	PriorityQueue1Level        types.Int64          `tfsdk:"priority_queue1_level"`
+	PriorityQueue2Level        types.Int64          `tfsdk:"priority_queue2_level"`
+	PriorityQueue3Level        types.Int64          `tfsdk:"priority_queue3_level"`
+	PriorityQueue4Level        types.Int64          `tfsdk:"priority_queue4_level"`
+	Speed                      types.Int64          `tfsdk:"speed"`
+	StormctrlBcastEnabled      types.Bool           `tfsdk:"stormctrl_bcast_enabled"`
+	StormctrlBcastLevel        types.Int64          `tfsdk:"stormctrl_bcast_level"`
+	StormctrlBcastRate         types.Int64          `tfsdk:"stormctrl_bcast_rate"`
+	StormctrlMcastEnabled      types.Bool           `tfsdk:"stormctrl_mcast_enabled"`
+	StormctrlMcastLevel        types.Int64          `tfsdk:"stormctrl_mcast_level"`
+	StormctrlMcastRate         types.Int64          `tfsdk:"stormctrl_mcast_rate"`
+	StormctrlType              types.String         `tfsdk:"stormctrl_type"`
+	StormctrlUcastEnabled      types.Bool           `tfsdk:"stormctrl_ucast_enabled"`
+	StormctrlUcastLevel        types.Int64          `tfsdk:"stormctrl_ucast_level"`
+	StormctrlUcastRate         types.Int64          `tfsdk:"stormctrl_ucast_rate"`
+	STPPortMode                types.Bool           `tfsdk:"stp_port_mode"`
+	TaggedNetworkConfIDs       types.Set            `tfsdk:"tagged_networkconf_ids"`
+	VoiceNetworkConfID         types.String         `tfsdk:"voice_networkconf_id"`
+	ExcludedNetworkConfIDs     types.Set            `tfsdk:"excluded_networkconf_ids"`
+	MulticastRouterNetworkIDs  types.Set            `tfsdk:"multicast_router_networkconf_ids"`
+	TaggedVLANMgmt             types.String         `tfsdk:"tagged_vlan_mgmt"`
+	FecMode                    types.String         `tfsdk:"fec_mode"`
+	SettingPreference          types.String         `tfsdk:"setting_preference"`
+	PortKeepaliveEnabled       types.Bool           `tfsdk:"port_keepalive_enabled"`
+	Timeouts                   timeouts.Value       `tfsdk:"timeouts"`
 }
 
 func (r *portProfileResource) Metadata(
@@ -90,12 +129,41 @@ func (r *portProfileResource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_port_profile"
 }
 
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *portProfileResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *portProfileResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
+}
+
 func (r *portProfileResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: dot1x_idle_timeout changed from Int64 (seconds) to a GoDuration string.
+		Version:     1,
 		Description: "`unifi_port_profile` manages a port profile for use on network switches.",
 
 		Attributes: map[string]schema.Attribute{
@@ -136,13 +204,16 @@ func (r *portProfileResource) Schema(
 					),
 				},
 			},
-			"dot1x_idle_timeout": schema.Int64Attribute{
-				Description: "The timeout, in seconds, to use when using the MAC Based 802.1X control. Can be between 0 and 65535",
-				Optional:    true,
-				Computed:    true,
-				Default:     int64default.StaticInt64(300),
-				Validators: []validator.Int64{
-					int64validator.Between(0, 65535),
+			"dot1x_idle_timeout": schema.StringAttribute{
+				Description: "The idle timeout to use when using MAC Based 802.1X control, as a " +
+					"Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s`.",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Computed:   true,
+				Default:    stringdefault.StaticString("5m0s"),
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 65535*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
 				},
 			},
 			"egress_rate_limit_kbps": schema.Int64Attribute{
@@ -349,8 +420,12 @@ func (r *portProfileResource) Schema(
 				},
 			},
 			"stp_port_mode": schema.BoolAttribute{
-				Description: "Enable Spanning Tree Protocol (STP) for the port profile.",
+				Description: "Enable Spanning Tree Protocol (STP) for the port profile. Computed from the controller when not set.",
 				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"tagged_networkconf_ids": schema.SetAttribute{
 				Description: "The IDs of networks to tag traffic with for the port profile.",
@@ -362,9 +437,13 @@ func (r *portProfileResource) Schema(
 				Optional:    true,
 			},
 			"excluded_networkconf_ids": schema.SetAttribute{
-				Description: "The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`).",
+				Description: "The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`). Computed from the controller when not set.",
 				Optional:    true,
+				Computed:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"multicast_router_networkconf_ids": schema.SetAttribute{
 				Description: "The IDs of networks designated as multicast routers for the port profile.",
@@ -399,6 +478,46 @@ func (r *portProfileResource) Schema(
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(false),
+			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (dot1x_idle_timeout stored as integer seconds)
+// to v1 (a GoDuration string).
+func (r *portProfileResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "dot1x_idle_timeout", time.Second)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade port profile state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -440,9 +559,36 @@ func (r *portProfileResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	site := plan.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
+	}
+
+	// #383 made go-unifi always serialize native_networkconf_id (no omitempty)
+	// so an explicit "" can clear the native network. On create with the
+	// attribute unset (unknown), that would send "" — which some controllers
+	// (e.g. Network 10.0 demo mode) store as-is and answer by flipping forward
+	// to "customize" instead of auto-assigning the default network. Resolve the
+	// site's default network up front so the create body carries the same
+	// concrete native ID the controller would have auto-assigned.
+	// Unknown covers both omitted and explicitly-null config (the attribute is
+	// Optional+Computed); the null check is defensive so an explicit null can
+	// never fall through and serialize as a clearing "".
+	if plan.NativeNetworkConfID.IsUnknown() || plan.NativeNetworkConfID.IsNull() {
+		defaultNetworkID, d := r.defaultNativeNetworkID(ctx, site)
+		resp.Diagnostics.Append(d...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.NativeNetworkConfID = types.StringValue(defaultNetworkID)
 	}
 
 	// Convert model to API request
@@ -464,8 +610,12 @@ func (r *portProfileResource) Create(
 	// Set state
 	plan.ID = types.StringValue(apiPortProfile.ID)
 	plan.Site = types.StringValue(site)
-	r.setResourceData(ctx, apiPortProfile, &plan, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &plan, site)...)
 
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+		ID:   plan.ID,
+		Site: plan.Site,
+	})...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 }
@@ -480,6 +630,31 @@ func (r *portProfileResource) Read(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Fall back to the resource identity when the state carries no ID (e.g.
+	// old states, or a state written by an identity-based import).
+	if state.ID.IsNull() || state.ID.IsUnknown() {
+		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+			var identity portProfileIdentityModel
+			resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			state.ID = identity.ID
+			if (state.Site.IsNull() || state.Site.IsUnknown()) &&
+				identity.Site.ValueString() != "" {
+				state.Site = identity.Site
+			}
+		}
 	}
 
 	id := state.ID.ValueString()
@@ -502,8 +677,17 @@ func (r *portProfileResource) Read(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, portProfile, &state, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, portProfile, &state, site)...)
 
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -526,6 +710,14 @@ func (r *portProfileResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	site := plan.Site.ValueString()
 	if site == "" {
@@ -570,8 +762,19 @@ func (r *portProfileResource) Update(
 	}
 
 	// Update state from API response
-	r.setResourceData(ctx, apiPortProfile, &state, site)
+	resp.Diagnostics.Append(r.portProfileToModel(ctx, apiPortProfile, &state, site)...)
 
+	state.Timeouts = plan.Timeouts
+
+	// A stored identity must be passed through unchanged: Terraform treats
+	// any modification of a non-null identity (including filling a null
+	// attribute) as an error. Only derive identity from state when none exists.
+	if req.Identity == nil || req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
+			ID:   state.ID,
+			Site: state.Site,
+		})...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -587,6 +790,14 @@ func (r *portProfileResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	id := state.ID.ValueString()
 	site := state.Site.ValueString()
@@ -612,6 +823,23 @@ func (r *portProfileResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity portProfileIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
+	// Import by ID string: "id" or "site:id".
 	idParts, diags := util.ParseImportID(req.ID, 1, 2)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -620,14 +848,55 @@ func (r *portProfileResource) ImportState(
 
 	if site := idParts["site"]; site != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
 	}
 
 	if id := idParts["id"]; id != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
 	}
 }
 
 // Helper methods
+
+// defaultNativeNetworkID returns the network the controller would auto-assign
+// as a port profile's native network: the site's default (undeletable)
+// corporate network, falling back to the first corporate network.
+func (r *portProfileResource) defaultNativeNetworkID(
+	ctx context.Context,
+	site string,
+) (string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	networks, err := r.client.ListNetwork(ctx, site)
+	if err != nil {
+		diags.AddError(
+			"Error Listing Networks",
+			fmt.Sprintf("Could not resolve the default native network: %s", err),
+		)
+		return "", diags
+	}
+
+	fallback := ""
+	for _, network := range networks {
+		if network.Purpose != "corporate" {
+			continue
+		}
+		if network.NoDelete {
+			return network.ID, diags
+		}
+		if fallback == "" {
+			fallback = network.ID
+		}
+	}
+	if fallback == "" {
+		diags.AddError(
+			"No Native Network Found",
+			"Could not find a corporate network to use as the port profile's native network; set native_networkconf_id explicitly.",
+		)
+	}
+	return fallback, diags
+}
 
 func (r *portProfileResource) modelToAPIPortProfile(
 	ctx context.Context,
@@ -656,7 +925,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 		portProfile.Dot1XCtrl = model.Dot1XCtrl.ValueString()
 	}
 
-	portProfile.Dot1XIDleTimeout = model.Dot1XIdleTimeout.ValueInt64Pointer()
+	portProfile.Dot1XIDleTimeout = util.DurationUnitsPtr(model.Dot1XIdleTimeout, time.Second)
 
 	if !model.Forward.IsNull() && !model.Forward.IsUnknown() {
 		portProfile.Forward = model.Forward.ValueString()
@@ -707,6 +976,7 @@ func (r *portProfileResource) modelToAPIPortProfile(
 		portProfile.SettingPreference = model.SettingPreference.ValueString()
 	}
 	portProfile.PortKeepaliveEnabled = model.PortKeepaliveEnabled.ValueBool()
+	portProfile.StpPortMode = model.STPPortMode.ValueBool()
 
 	if !model.ExcludedNetworkConfIDs.IsNull() && !model.ExcludedNetworkConfIDs.IsUnknown() {
 		var ids []string
@@ -734,6 +1004,27 @@ func (r *portProfileResource) setResourceData(
 	model *portProfileResourceModel,
 	site string,
 ) {
+	r.portProfileToModel(ctx, portProfile, model, site)
+}
+
+// portProfileToModel populates the resource model from the API struct, setting
+// every schema field. It is the reusable API->model converter shared by Read
+// and List. It only performs API->model field population; plan/state
+// reconciliation (applyPlanToState) is intentionally left to the callers.
+func (r *portProfileResource) portProfileToModel(
+	ctx context.Context,
+	api *unifi.PortProfile,
+	model *portProfileResourceModel,
+	site string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	portProfile := api
+
+	if portProfile.ID != "" {
+		model.ID = types.StringValue(portProfile.ID)
+	}
+
 	model.Site = types.StringValue(site)
 
 	if portProfile.Name == "" {
@@ -750,7 +1041,7 @@ func (r *portProfileResource) setResourceData(
 		model.Dot1XCtrl = types.StringValue(portProfile.Dot1XCtrl)
 	}
 
-	model.Dot1XIdleTimeout = types.Int64PointerValue(portProfile.Dot1XIDleTimeout)
+	model.Dot1XIdleTimeout = util.DurationPtrValue(portProfile.Dot1XIDleTimeout, time.Second)
 
 	if portProfile.Forward == "" {
 		model.Forward = types.StringValue("native")
@@ -771,11 +1062,13 @@ func (r *portProfileResource) setResourceData(
 		model.LLDPMedNotifyEnabled = types.BoolNull()
 	}
 
-	if portProfile.NATiveNetworkID != "" {
-		model.NativeNetworkConfID = types.StringValue(portProfile.NATiveNetworkID)
-	} else {
-		model.NativeNetworkConfID = types.StringNull()
-	}
+	// #383: the controller reports "" when the native network is explicitly set to
+	// None. Surface that as a known empty string (not null) so an explicit
+	// native_networkconf_id = "" round-trips and actually clears the native network,
+	// instead of triggering an inconsistent-result-after-apply. A profile that never
+	// set it gets the controller-assigned ID here (non-empty). Requires the go-unifi
+	// fix that stops dropping the empty value from the request body.
+	model.NativeNetworkConfID = types.StringValue(portProfile.NATiveNetworkID)
 
 	if portProfile.OpMode == "" {
 		model.OpMode = types.StringValue("switch")
@@ -791,16 +1084,21 @@ func (r *portProfileResource) setResourceData(
 
 	model.PortSecurityEnabled = types.BoolValue(portProfile.PortSecurityEnabled)
 
-	// Convert port security MAC addresses
-	if len(portProfile.PortSecurityMACAddress) == 0 {
-		model.PortSecurityMacAddress = types.SetNull(types.StringType)
-	} else {
+	// An empty allowlist with port security on is how the controller stores a disabled port, so an
+	// explicitly empty set is meaningful and nulling it fails the apply as an inconsistent result.
+	macExplicitlyEmpty := !model.PortSecurityMacAddress.IsNull() &&
+		!model.PortSecurityMacAddress.IsUnknown() &&
+		len(model.PortSecurityMacAddress.Elements()) == 0
+	if len(portProfile.PortSecurityMACAddress) > 0 {
 		macAddressList := make([]types.String, len(portProfile.PortSecurityMACAddress))
 		for i, mac := range portProfile.PortSecurityMACAddress {
 			macAddressList[i] = types.StringValue(mac)
 		}
-		macAddressSet, _ := types.SetValueFrom(ctx, types.StringType, macAddressList)
+		macAddressSet, d := types.SetValueFrom(ctx, types.StringType, macAddressList)
+		diags.Append(d...)
 		model.PortSecurityMacAddress = macAddressSet
+	} else if !macExplicitlyEmpty {
+		model.PortSecurityMacAddress = types.SetNull(types.StringType)
 	}
 
 	// Only set speed if it was in the plan or if it's non-zero
@@ -837,14 +1135,16 @@ func (r *portProfileResource) setResourceData(
 	model.PortKeepaliveEnabled = types.BoolValue(portProfile.PortKeepaliveEnabled)
 
 	if len(portProfile.ExcludedNetworkIDs) > 0 {
-		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		diags.Append(d...)
 		model.ExcludedNetworkConfIDs = s
 	} else {
 		model.ExcludedNetworkConfIDs = types.SetNull(types.StringType)
 	}
 
 	if len(portProfile.MulticastRouterNetworkIDs) > 0 {
-		s, _ := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		diags.Append(d...)
 		model.MulticastRouterNetworkIDs = s
 	} else {
 		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
@@ -867,7 +1167,9 @@ func (r *portProfileResource) setResourceData(
 	model.StormctrlUcastEnabled = types.BoolValue(false)
 	model.StormctrlUcastLevel = types.Int64Null()
 	model.StormctrlUcastRate = types.Int64Null()
-	model.STPPortMode = types.BoolNull()
+	model.STPPortMode = types.BoolValue(portProfile.StpPortMode)
+
+	return diags
 }
 
 func (r *portProfileResource) applyPlanToState(
@@ -951,5 +1253,123 @@ func (r *portProfileResource) applyPlanToState(
 	if !plan.PortKeepaliveEnabled.IsNull() && !plan.PortKeepaliveEnabled.IsUnknown() {
 		state.PortKeepaliveEnabled = plan.PortKeepaliveEnabled
 	}
+	if !plan.STPPortMode.IsNull() && !plan.STPPortMode.IsUnknown() {
+		state.STPPortMode = plan.STPPortMode
+	}
 	// Apply other fields as needed...
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *portProfileResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List port profiles in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list port profiles from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *portProfileResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config portProfileListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []portProfileListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	profiles, err := r.client.ListPortProfile(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError(
+			"Error Listing Port Profiles",
+			"Could not list port profiles: "+err.Error(),
+		)
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, profile := range profiles {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if profile.Name != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if profile.Name != "" {
+				result.DisplayName = profile.Name
+			} else {
+				result.DisplayName = profile.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(result.Identity.Set(ctx, portProfileIdentityModel{
+				ID:   types.StringValue(profile.ID),
+				Site: types.StringValue(site),
+			})...)
+
+			// Convert to model.
+			var model portProfileResourceModel
+			result.Diagnostics.Append(
+				r.portProfileToModel(ctx, &profile, &model, site)...,
+			)
+			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

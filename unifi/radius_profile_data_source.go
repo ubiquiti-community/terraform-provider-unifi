@@ -3,11 +3,15 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 var _ datasource.DataSource = &radiusProfileDataSource{}
@@ -21,16 +25,18 @@ type radiusProfileDataSource struct {
 }
 
 type radiusProfileDataSourceModel struct {
-	ID                    types.String `tfsdk:"id"`
-	Site                  types.String `tfsdk:"site"`
-	Name                  types.String `tfsdk:"name"`
-	AccountingEnabled     types.Bool   `tfsdk:"accounting_enabled"`
-	InterimUpdateEnabled  types.Bool   `tfsdk:"interim_update_enabled"`
-	InterimUpdateInterval types.Int64  `tfsdk:"interim_update_interval"`
-	UseUSGAcctServer      types.Bool   `tfsdk:"use_usg_acct_server"`
-	UseUSGAuthServer      types.Bool   `tfsdk:"use_usg_auth_server"`
-	VlanEnabled           types.Bool   `tfsdk:"vlan_enabled"`
-	VlanWlanMode          types.String `tfsdk:"vlan_wlan_mode"`
+	ID                    types.String         `tfsdk:"id"`
+	Site                  types.String         `tfsdk:"site"`
+	Name                  types.String         `tfsdk:"name"`
+	AccountingEnabled     types.Bool           `tfsdk:"accounting_enabled"`
+	InterimUpdateEnabled  types.Bool           `tfsdk:"interim_update_enabled"`
+	InterimUpdateInterval timetypes.GoDuration `tfsdk:"interim_update_interval"`
+	UseUSGAcctServer      types.Bool           `tfsdk:"use_usg_acct_server"`
+	UseUSGAuthServer      types.Bool           `tfsdk:"use_usg_auth_server"`
+	VlanEnabled           types.Bool           `tfsdk:"vlan_enabled"`
+	VlanWlanMode          types.String         `tfsdk:"vlan_wlan_mode"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (d *radiusProfileDataSource) Metadata(
@@ -71,8 +77,9 @@ func (d *radiusProfileDataSource) Schema(
 				MarkdownDescription: "Whether interim updates are enabled.",
 				Computed:            true,
 			},
-			"interim_update_interval": schema.Int64Attribute{
-				MarkdownDescription: "The interim update interval.",
+			"interim_update_interval": schema.StringAttribute{
+				MarkdownDescription: "The interim update interval, as a Go duration string.",
+				CustomType:          timetypes.GoDurationType{},
 				Computed:            true,
 			},
 			"use_usg_acct_server": schema.BoolAttribute{
@@ -91,6 +98,7 @@ func (d *radiusProfileDataSource) Schema(
 				MarkdownDescription: "The VLAN WLAN mode.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx),
 		},
 	}
 }
@@ -131,6 +139,14 @@ func (d *radiusProfileDataSource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
 	site := data.Site.ValueString()
 	if site == "" {
 		site = d.client.Site
@@ -169,7 +185,10 @@ func (d *radiusProfileDataSource) Read(
 	data.Name = types.StringValue(radiusProfile.Name)
 	data.AccountingEnabled = types.BoolValue(radiusProfile.AccountingEnabled)
 	data.InterimUpdateEnabled = types.BoolValue(radiusProfile.InterimUpdateEnabled)
-	data.InterimUpdateInterval = types.Int64PointerValue(radiusProfile.InterimUpdateInterval)
+	data.InterimUpdateInterval = util.DurationPtrValue(
+		radiusProfile.InterimUpdateInterval,
+		time.Second,
+	)
 	data.UseUSGAcctServer = types.BoolValue(radiusProfile.UseUsgAcctServer)
 	data.UseUSGAuthServer = types.BoolValue(radiusProfile.UseUsgAuthServer)
 	data.VlanEnabled = types.BoolValue(radiusProfile.VLANEnabled)

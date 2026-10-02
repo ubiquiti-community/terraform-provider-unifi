@@ -5,37 +5,61 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &wlanFrameworkResource{}
-	_ resource.ResourceWithImportState = &wlanFrameworkResource{}
+	_ resource.Resource                 = &wlanFrameworkResource{}
+	_ resource.ResourceWithImportState  = &wlanFrameworkResource{}
+	_ resource.ResourceWithIdentity     = &wlanFrameworkResource{}
+	_ resource.ResourceWithUpgradeState = &wlanFrameworkResource{}
+	_ resource.ResourceWithModifyPlan   = &wlanFrameworkResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &wlanFrameworkResource{}
+	_ list.ListResourceWithConfigure = &wlanFrameworkResource{}
 )
 
 func NewWLANFrameworkResource() resource.Resource {
+	return &wlanFrameworkResource{}
+}
+
+func NewWLANListResource() list.ListResource {
 	return &wlanFrameworkResource{}
 }
 
@@ -46,11 +70,11 @@ type wlanFrameworkResource struct {
 
 // wlanScheduleModel represents a schedule block for WLAN.
 type wlanScheduleModel struct {
-	DayOfWeek   types.String `tfsdk:"day_of_week"`
-	StartHour   types.Int64  `tfsdk:"start_hour"`
-	StartMinute types.Int64  `tfsdk:"start_minute"`
-	Duration    types.Int64  `tfsdk:"duration"`
-	Name        types.String `tfsdk:"name"`
+	DayOfWeek   types.String         `tfsdk:"day_of_week"`
+	StartHour   types.Int64          `tfsdk:"start_hour"`
+	StartMinute types.Int64          `tfsdk:"start_minute"`
+	Duration    timetypes.GoDuration `tfsdk:"duration"`
+	Name        types.String         `tfsdk:"name"`
 }
 
 // wlanMacFilterModel represents the MAC filter configuration for WLAN.
@@ -96,6 +120,7 @@ type wlanFrameworkResourceModel struct {
 	VLAN                        types.Int64  `tfsdk:"vlan"`
 	WLANBand                    types.String `tfsdk:"wlan_band"`
 	WLANBands                   types.Set    `tfsdk:"wlan_bands"`
+	BandsteeringMode            types.String `tfsdk:"bandsteering_mode"`
 	MulticastEnhance            types.Bool   `tfsdk:"multicast_enhance"`
 	MacFilter                   types.Object `tfsdk:"mac_filter"`
 	PrivatePresharedKeysEnabled types.Bool   `tfsdk:"private_preshared_keys_enabled"`
@@ -133,6 +158,20 @@ type wlanFrameworkResourceModel struct {
 	Hotspot2ConfEnabled  types.Bool  `tfsdk:"hotspot2conf_enabled"`
 	MloEnabled           types.Bool  `tfsdk:"mlo_enabled"`
 	BroadcastFilterList  types.Set   `tfsdk:"bc_filter_list"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
+}
+
+// wlanListConfigModel describes the list configuration model.
+type wlanListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// wlanListFilterModel represents a single name/value filter entry.
+type wlanListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 func (r *wlanFrameworkResource) Metadata(
@@ -143,12 +182,47 @@ func (r *wlanFrameworkResource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_wlan"
 }
 
+// wlanIdentityModel describes the resource identity data model.
+type wlanIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *wlanFrameworkResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *wlanFrameworkResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
+}
+
 func (r *wlanFrameworkResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: schedule[].duration changed from Int64 (minutes) to a GoDuration string.
+		Version:             1,
 		MarkdownDescription: "Manages a WiFi network / SSID in UniFi Controller",
 
 		Attributes: map[string]schema.Attribute{
@@ -292,6 +366,19 @@ func (r *wlanFrameworkResource) Schema(
 					setvalidator.ValueStringsAre(stringvalidator.OneOf("2g", "5g", "6g")),
 				},
 			},
+			"bandsteering_mode": schema.StringAttribute{
+				MarkdownDescription: "Per-SSID band steering mode. Steers dual-band capable " +
+					"clients toward the less congested / higher-throughput band. Valid values " +
+					"are `off`, `equal` and `prefer_5g`. Requires a controller that exposes " +
+					"per-SSID band steering on the WLAN (Network 9/10.x; on WiFi 6/7 access " +
+					"points this replaces the legacy device-level control). Left unset, the " +
+					"controller default applies.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("off", "equal", "prefer_5g"),
+				},
+			},
 			"multicast_enhance": schema.BoolAttribute{
 				MarkdownDescription: "Indicates whether or not Multicast Enhance is turned of for the network.",
 				Optional:            true,
@@ -361,8 +448,13 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"radius_profile_id": schema.StringAttribute{
-				MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`.",
-				Optional:            true,
+				MarkdownDescription: "ID of the RADIUS profile to use when security `wpaeap`. " +
+					"The controller may assign a default profile, so this is computed when unset.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"nas_identifier_type": schema.StringAttribute{
 				MarkdownDescription: "NAS identifier type for RADIUS.",
@@ -410,10 +502,14 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"minimum_data_rate_2g_kbps": schema.Int64Attribute{
-				MarkdownDescription: "Minimum data rate for 2G clients in Kbps.",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(0),
+				MarkdownDescription: "Minimum data rate for 2G clients in Kbps. " +
+					"When unset, the controller assigns a value (e.g. `1000` in `auto` mode), " +
+					"so this is computed rather than defaulted to `0`.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.OneOf(
 						0,
@@ -433,10 +529,14 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"minimum_data_rate_5g_kbps": schema.Int64Attribute{
-				MarkdownDescription: "Minimum data rate for 5G clients in Kbps.",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(0),
+				MarkdownDescription: "Minimum data rate for 5G clients in Kbps. " +
+					"When unset, the controller assigns a value (e.g. `6000` in `auto` mode), " +
+					"so this is computed rather than defaulted to `0`.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.OneOf(0, 6000, 9000, 12000, 18000, 24000, 36000, 48000, 54000),
 				},
@@ -478,24 +578,36 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"dtim_ng": schema.Int64Attribute{
-				MarkdownDescription: "DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				MarkdownDescription: "DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(1, 255),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"dtim_na": schema.Int64Attribute{
-				MarkdownDescription: "DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				MarkdownDescription: "DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(1, 255),
 				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"dtim_6e": schema.Int64Attribute{
-				MarkdownDescription: "DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`.",
+				MarkdownDescription: "DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
 					int64validator.Between(1, 255),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"group_rekey": schema.Int64Attribute{
@@ -505,10 +617,12 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             int64default.StaticInt64(3600),
 			},
 			"iapp_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable Inter-Access Point Protocol (802.11f) for faster roaming.",
+				MarkdownDescription: "Enable Inter-Access Point Protocol (802.11f) for faster roaming. Computed from the controller when not set.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"wpa3_fast_roaming": schema.BoolAttribute{
 				MarkdownDescription: "Enable WPA3 fast roaming (802.11r).",
@@ -529,10 +643,14 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"enhanced_iot": schema.BoolAttribute{
-				MarkdownDescription: "Enable enhanced IoT connectivity.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Enable enhanced IoT connectivity. When `true`, the " +
+					"controller forces `iapp_enabled = true`, `wpa3_support = false`, " +
+					"`wpa3_transition = false`, `pmf_mode = \"disabled\"` and `dtim_ng = 1`; " +
+					"the provider pins those fields to match, so any conflicting values you " +
+					"set for them are ignored (this disables WPA3 on the SSID).",
+				Optional: true,
+				Computed: true,
+				Default:  booldefault.StaticBool(false),
 			},
 			"hotspot2conf_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Enable Hotspot 2.0 configuration.",
@@ -547,13 +665,24 @@ func (r *wlanFrameworkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"bc_filter_list": schema.SetAttribute{
-				MarkdownDescription: "List of MAC addresses for the broadcast filter.",
-				Optional:            true,
-				ElementType:         types.StringType,
+				MarkdownDescription: "List of MAC addresses for the broadcast filter. " +
+					"The controller may populate this on its own, so it is computed when unset.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Set{
 					setvalidator.ValueStringsAre(validators.MACAddressValidator()),
 				},
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Create: true,
+				Read:   true,
+				Update: true,
+				Delete: true,
+			}),
 		},
 
 		Blocks: map[string]schema.Block{
@@ -592,11 +721,16 @@ func (r *wlanFrameworkResource) Schema(
 								int64validator.Between(0, 59),
 							},
 						},
-						"duration": schema.Int64Attribute{
-							MarkdownDescription: "Length of the block in minutes.",
-							Required:            true,
-							Validators: []validator.Int64{
-								int64validator.AtLeast(1),
+						"duration": schema.StringAttribute{
+							MarkdownDescription: "Length of the block, as a Go duration string. " +
+								"The controller stores this value with one-minute resolution, so the " +
+								"duration must be at least `1m` and a whole multiple of one minute " +
+								"(e.g. `30m`, `2h`).",
+							CustomType: timetypes.GoDurationType{},
+							Required:   true,
+							Validators: []validator.String{
+								validators.GoDurationBetween(time.Minute, 7*24*time.Hour),
+								validators.GoDurationMultipleOf(time.Minute),
 							},
 						},
 						"name": schema.StringAttribute{
@@ -605,6 +739,48 @@ func (r *wlanFrameworkResource) Schema(
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (schedule[].duration stored as integer minutes)
+// to v1 (GoDuration strings).
+func (r *wlanFrameworkResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						if scheds, ok := state["schedule"].([]any); ok {
+							for _, s := range scheds {
+								if sm, ok := s.(map[string]any); ok {
+									util.SetDurationField(sm, "duration", time.Minute)
+								}
+							}
+						}
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade WLAN state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -632,6 +808,49 @@ func (r *wlanFrameworkResource) Configure(
 	}
 
 	r.client = client
+}
+
+// ModifyPlan reconciles the fields the controller forces when enhanced IoT is
+// enabled. With `enhanced_iot = true` the controller silently overrides
+// iapp_enabled, wpa3_support, wpa3_transition, pmf_mode and dtim_ng with fixed
+// values, so a plan that kept the configured/default values would fail the
+// post-apply consistency check (and re-propose them on every plan). Pin those
+// fields to what the controller will return. When enhanced_iot is false (the
+// common case) this is a no-op, so non-IoT WLANs are unaffected. See #283.
+func (r *wlanFrameworkResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	// No plan on destroy.
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan wlanFrameworkResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if applyEnhancedIotOverrides(&plan) {
+		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
+	}
+}
+
+// applyEnhancedIotOverrides pins the fields the controller forces when
+// enhanced IoT is enabled. Returns true if it changed the model. A no-op when
+// enhanced_iot is not true.
+func applyEnhancedIotOverrides(plan *wlanFrameworkResourceModel) bool {
+	if !plan.EnhancedIot.ValueBool() {
+		return false
+	}
+	plan.IappEnabled = types.BoolValue(true)
+	plan.WPA3Support = types.BoolValue(false)
+	plan.WPA3Transition = types.BoolValue(false)
+	plan.PMFMode = types.StringValue("disabled")
+	plan.DTIMNg = types.Int64Value(1)
+	return true
 }
 
 // setDefaultWLANGroupID populates wlan.WLANGroupID when it is empty. go-unifi
@@ -677,6 +896,14 @@ func (r *wlanFrameworkResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	site := plan.Site.ValueString()
 	if site == "" {
@@ -741,6 +968,11 @@ func (r *wlanFrameworkResource) Create(
 		return
 	}
 
+	// #406: some controllers silently drop "6g" from wlan_bands on the
+	// initial create, yet accept the identical payload on a subsequent
+	// update. Re-assert the intended band list once before giving up.
+	createdWLAN = reassertWLANBands(ctx, r.client, site, wlan, createdWLAN)
+
 	// Convert response back to model
 	diags = r.wlanToModel(ctx, createdWLAN, &plan, site)
 	resp.Diagnostics.Append(diags...)
@@ -754,8 +986,92 @@ func (r *wlanFrameworkResource) Create(
 		plan.Passphrase = types.StringNull()
 	}
 
+	identity := wlanIdentityModel{
+		ID:   plan.ID,
+		Site: types.StringValue(site),
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
+
+	// If the controller still refuses a requested band after the re-assert,
+	// fail with an actionable message instead of letting Terraform surface a
+	// generic "Provider produced inconsistent result after apply". State was
+	// set above, so the created WLAN is tracked (and tainted) rather than
+	// orphaned on the controller (#406).
+	if still := missingWLANBands(wlan.WLANBands, createdWLAN.WLANBands); len(still) > 0 {
+		resp.Diagnostics.AddError(
+			"Controller Refused Requested WLAN Band(s)",
+			fmt.Sprintf(
+				"WLAN %q was created, but the controller dropped the requested band(s) %v from "+
+					"wlan_bands (it kept %v) and refused them again on an immediate follow-up "+
+					"update. Controllers gate the 6GHz band on the WLAN's security settings "+
+					"(WPA3/SAE with Protected Management Frames) and on the site having "+
+					"6GHz-capable access points — adjust those, or remove the refused band(s) "+
+					"from wlan_bands. The WLAN is recorded in state and marked tainted.",
+				createdWLAN.Name, still, createdWLAN.WLANBands,
+			),
+		)
+	}
+}
+
+// wlanUpdater is the narrow slice of the UniFi client that reassertWLANBands
+// needs, so the retry can be unit-tested without a live controller.
+type wlanUpdater interface {
+	UpdateWLAN(ctx context.Context, site string, d *unifi.WLAN) (*unifi.WLAN, error)
+}
+
+// reassertWLANBands handles the controller-side half of #406: some controllers
+// (observed on Network 10.4.x) silently drop "6g" from wlan_bands on the
+// initial create, yet accept the identical payload on a subsequent update —
+// which is exactly the manual workaround the issue reporter confirmed (create
+// without 6g, then add it). The provider marshals the full requested band list
+// on both paths, so when the create response comes back missing a requested
+// band, re-assert the intended configuration once with an immediate update
+// instead of failing the apply with a cryptic "inconsistent result" error.
+// When the retry cannot help (update error or still-missing bands), the create
+// response is kept and Create raises an actionable diagnostic.
+func reassertWLANBands(
+	ctx context.Context,
+	client wlanUpdater,
+	site string,
+	requested *unifi.WLAN,
+	created *unifi.WLAN,
+) *unifi.WLAN {
+	missing := missingWLANBands(requested.WLANBands, created.WLANBands)
+	if len(missing) == 0 {
+		return created
+	}
+
+	tflog.Warn(ctx, "Controller dropped requested wlan_bands on create; re-asserting via update",
+		map[string]any{"wlan": created.Name, "missing_bands": missing})
+
+	requested.ID = created.ID
+	reasserted, err := client.UpdateWLAN(ctx, site, requested)
+	if err != nil || reasserted == nil {
+		if err != nil {
+			tflog.Warn(ctx, "Re-asserting wlan_bands failed; keeping the create response",
+				map[string]any{"wlan": created.Name, "error": err.Error()})
+		}
+		return created
+	}
+	return reasserted
+}
+
+// missingWLANBands returns the bands in requested that are absent from actual.
+// A nil result means the controller kept every requested band (#406).
+func missingWLANBands(requested, actual []string) []string {
+	have := make(map[string]bool, len(actual))
+	for _, band := range actual {
+		have[band] = true
+	}
+	var missing []string
+	for _, band := range requested {
+		if !have[band] {
+			missing = append(missing, band)
+		}
+	}
+	return missing
 }
 
 func (r *wlanFrameworkResource) Read(
@@ -769,6 +1085,35 @@ func (r *wlanFrameworkResource) Read(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Read identity, falling back to state for resources created before
+	// identity support (or refreshed from a string import).
+	var identity wlanIdentityModel
+	identityStored := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
+	if identityStored {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	if (state.ID.IsNull() || state.ID.IsUnknown()) &&
+		!identity.ID.IsNull() && identity.ID.ValueString() != "" {
+		// Identity-only state (e.g. the refresh right after an identity-based
+		// import of an old state): look the WLAN up by the identity id.
+		state.ID = identity.ID
+	}
+	if (state.Site.IsNull() || state.Site.IsUnknown()) &&
+		!identity.Site.IsNull() && identity.Site.ValueString() != "" {
+		state.Site = identity.Site
 	}
 
 	site := state.Site.ValueString()
@@ -799,6 +1144,14 @@ func (r *wlanFrameworkResource) Read(
 		}
 	}
 
+	// #392: passphrase is an Optional (non-computed) secret. When it is managed via
+	// the write-only passphrase_wo attribute (or not managed at all) it is null in
+	// config and state, yet the controller echoes the stored secret on read.
+	// Persisting that echo makes every subsequent plan show
+	// `passphrase = (sensitive) -> null`. Preserve the prior null so the write-only
+	// workflow stays stable; a config-managed passphrase keeps round-tripping normally.
+	priorPassphraseNull := state.Passphrase.IsNull()
+
 	// Convert API response to model
 	diags = r.wlanToModel(ctx, wlan, &state, site)
 	resp.Diagnostics.Append(diags...)
@@ -806,6 +1159,21 @@ func (r *wlanFrameworkResource) Read(
 		return
 	}
 
+	if priorPassphraseNull {
+		state.Passphrase = types.StringNull()
+	}
+
+	// Terraform rejects any modification of a stored identity (even filling a
+	// previously-null attribute), so pass a stored identity through untouched
+	// (resp.Identity is pre-populated from it) and only derive a fresh one
+	// from state when none exists yet.
+	if !identityStored {
+		identity = wlanIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	diags = resp.State.Set(ctx, state)
 	resp.Diagnostics.Append(diags...)
 }
@@ -830,8 +1198,17 @@ func (r *wlanFrameworkResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
+	state.Timeouts = plan.Timeouts
 
 	site := state.Site.ValueString()
 	if site == "" {
@@ -884,6 +1261,15 @@ func (r *wlanFrameworkResource) Update(
 		state.Passphrase = types.StringNull()
 	}
 
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		identity := wlanIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -956,6 +1342,9 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	}
 	if !plan.WLANBands.IsNull() && !plan.WLANBands.IsUnknown() {
 		state.WLANBands = plan.WLANBands
+	}
+	if !plan.BandsteeringMode.IsNull() && !plan.BandsteeringMode.IsUnknown() {
+		state.BandsteeringMode = plan.BandsteeringMode
 	}
 	if !plan.MulticastEnhance.IsNull() && !plan.MulticastEnhance.IsUnknown() {
 		state.MulticastEnhance = plan.MulticastEnhance
@@ -1066,6 +1455,14 @@ func (r *wlanFrameworkResource) Delete(
 		return
 	}
 
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -1088,9 +1485,38 @@ func (r *wlanFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform
+	// 1.12+). ImportStatePassthroughID leaves the state empty on this path, so
+	// copy the identity attributes into state by hand.
+	if req.ID == "" {
+		var identity wlanIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"WLAN identity must have `id` set.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
+	// Import by ID string (terraform import CLI, or import block with id set):
+	// `[site:]id`, `[site:]name=<name>`, or `[site:]<name>`.
+	site := ""
 	idParts := strings.Split(req.ID, ":")
 	if len(idParts) == 2 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), idParts[0])...)
+		site = idParts[0]
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		req.ID = idParts[1]
 	}
 
@@ -1101,7 +1527,20 @@ func (r *wlanFrameworkResource) ImportState(
 		rootAttributeName = "id"
 	}
 
-	resource.ImportStatePassthroughID(ctx, path.Root(rootAttributeName), req, resp)
+	resp.Diagnostics.Append(
+		resp.State.SetAttribute(ctx, path.Root(rootAttributeName), req.ID)...)
+	if rootAttributeName == "id" {
+		// Mirror the import values into the resource identity; a name-based
+		// import leaves the identity to be filled in by the first Read (the
+		// id is not known yet, and a partially-null identity would otherwise
+		// be locked in by the identity passthrough on refresh).
+		resp.Diagnostics.Append(
+			resp.Identity.SetAttribute(ctx, path.Root("id"), req.ID)...)
+		if site != "" {
+			resp.Diagnostics.Append(
+				resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
+		}
+	}
 }
 
 // Helper functions for conversion and merging
@@ -1113,30 +1552,33 @@ func (r *wlanFrameworkResource) planToWLAN(
 	var diags diag.Diagnostics
 
 	wlan := &unifi.WLAN{
-		ID:                       plan.ID.ValueString(),
-		Name:                     plan.Name.ValueString(),
-		NetworkID:                plan.NetworkID.ValueString(),
-		UserGroupID:              plan.UserGroupID.ValueString(),
-		Security:                 plan.Security.ValueString(),
-		WPA3Support:              plan.WPA3Support.ValueBool(),
-		WPA3Transition:           plan.WPA3Transition.ValueBool(),
-		PMFMode:                  plan.PMFMode.ValueString(),
-		Passphrase:               plan.Passphrase.ValueString(),
-		HideSSID:                 plan.HideSSID.ValueBool(),
-		IsGuest:                  plan.IsGuest.ValueBool(),
-		Enabled:                  plan.Enabled.ValueBool(),
-		ApGroupMode:              plan.ApGroupMode.ValueString(),
-		VLANEnabled:              plan.VLANEnabled.ValueBool(),
-		VLAN:                     plan.VLAN.ValueInt64Pointer(),
-		MulticastEnhanceEnabled:  plan.MulticastEnhance.ValueBool(),
-		RADIUSProfileID:          plan.RadiusProfileID.ValueString(),
-		NasIDentifierType:        plan.NasIDentifierType.ValueString(),
-		No2GhzOui:                plan.No2GhzOui.ValueBool(),
-		L2Isolation:              plan.L2Isolation.ValueBool(),
-		ProxyArp:                 plan.ProxyArp.ValueBool(),
-		BssTransition:            plan.BssTransition.ValueBool(),
-		UapsdEnabled:             plan.Uapsd.ValueBool(),
-		FastRoamingEnabled:       plan.FastRoamingEnabled.ValueBool(),
+		ID:                      plan.ID.ValueString(),
+		Name:                    plan.Name.ValueString(),
+		NetworkID:               plan.NetworkID.ValueString(),
+		UserGroupID:             plan.UserGroupID.ValueString(),
+		Security:                plan.Security.ValueString(),
+		WPA3Support:             plan.WPA3Support.ValueBool(),
+		WPA3Transition:          plan.WPA3Transition.ValueBool(),
+		PMFMode:                 plan.PMFMode.ValueString(),
+		Passphrase:              plan.Passphrase.ValueString(),
+		HideSSID:                plan.HideSSID.ValueBool(),
+		IsGuest:                 plan.IsGuest.ValueBool(),
+		Enabled:                 plan.Enabled.ValueBool(),
+		ApGroupMode:             plan.ApGroupMode.ValueString(),
+		VLANEnabled:             plan.VLANEnabled.ValueBool(),
+		VLAN:                    plan.VLAN.ValueInt64Pointer(),
+		MulticastEnhanceEnabled: plan.MulticastEnhance.ValueBool(),
+		RADIUSProfileID:         plan.RadiusProfileID.ValueString(),
+		NasIDentifierType:       plan.NasIDentifierType.ValueString(),
+		No2GhzOui:               plan.No2GhzOui.ValueBool(),
+		L2Isolation:             plan.L2Isolation.ValueBool(),
+		ProxyArp:                plan.ProxyArp.ValueBool(),
+		BssTransition:           plan.BssTransition.ValueBool(),
+		UapsdEnabled:            plan.Uapsd.ValueBool(),
+		FastRoamingEnabled:      plan.FastRoamingEnabled.ValueBool(),
+		// Unknown/null → "" → omitempty keeps it off the wire, so controllers
+		// without per-SSID band steering are never sent the key (#388).
+		BandsteeringMode:         plan.BandsteeringMode.ValueString(),
 		MinrateSettingPreference: plan.MinrateSettingPreference.ValueString(),
 		MinrateNgEnabled:         plan.MinimumDataRate2GKbps.ValueInt64() > 0,
 		MinrateNgDataRateKbps:    plan.MinimumDataRate2GKbps.ValueInt64Pointer(),
@@ -1282,7 +1724,7 @@ func (r *wlanFrameworkResource) planToWLAN(
 					StartDaysOfWeek: []string{sched.DayOfWeek.ValueString()},
 					StartHour:       sched.StartHour.ValueInt64Pointer(),
 					StartMinute:     sched.StartMinute.ValueInt64Pointer(),
-					DurationMinutes: sched.Duration.ValueInt64Pointer(),
+					DurationMinutes: util.DurationUnitsPtr(sched.Duration, time.Minute),
 					Name:            sched.Name.ValueString(),
 				},
 			)
@@ -1300,8 +1742,75 @@ func (r *wlanFrameworkResource) planToWLAN(
 	return wlan, diags
 }
 
+func privatePresharedKeysState(
+	ctx context.Context,
+	wlan *unifi.WLAN,
+	prior types.List,
+) (types.List, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
+
+	// Disabled PPSK has no key state.
+	if !wlan.PrivatePresharedKeysEnabled {
+		return types.ListNull(ppskType), diags
+	}
+	if len(wlan.PrivatePresharedKeys) == 0 {
+		return types.ListNull(ppskType), diags
+	}
+
+	// Build the state used for imports and real controller-side changes.
+	values := make([]wlanPrivatePresharedKeyModel, len(wlan.PrivatePresharedKeys))
+	for i, key := range wlan.PrivatePresharedKeys {
+		values[i] = wlanPrivatePresharedKeyModel{
+			NetworkID: types.StringValue(key.NetworkID),
+			Password:  types.StringValue(key.Password),
+		}
+	}
+	remote, d := types.ListValueFrom(ctx, ppskType, values)
+	diags.Append(d...)
+	if prior.IsNull() || prior.IsUnknown() || len(values) != len(prior.Elements()) {
+		return remote, diags
+	}
+
+	// Keep prior secrets when the same bindings return in another order or without passwords.
+	var keys []wlanPrivatePresharedKeyModel
+	diags.Append(prior.ElementsAs(ctx, &keys, false)...)
+	if diags.HasError() {
+		return remote, diags
+	}
+
+	matched := make([]bool, len(keys))
+	match := func(current unifi.WLANPrivatePresharedKeys) bool {
+		for i, old := range keys {
+			if matched[i] || old.NetworkID.ValueString() != current.NetworkID {
+				continue
+			}
+			if current.Password != "" && old.Password.ValueString() != current.Password {
+				continue
+			}
+			matched[i] = true
+			return true
+		}
+		return false
+	}
+
+	// Match visible passwords before an omitted password can consume their entry.
+	for _, current := range wlan.PrivatePresharedKeys {
+		if current.Password != "" && !match(current) {
+			return remote, diags
+		}
+	}
+	for _, current := range wlan.PrivatePresharedKeys {
+		if current.Password == "" && !match(current) {
+			return remote, diags
+		}
+	}
+
+	return prior, diags
+}
+
 func (r *wlanFrameworkResource) wlanToModel(
-	_ context.Context,
+	ctx context.Context,
 	wlan *unifi.WLAN,
 	model *wlanFrameworkResourceModel,
 	site string,
@@ -1353,6 +1862,18 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.WLANBand = types.StringValue("both")
 	}
 
+	// Per-SSID band steering (#388). Controllers without the feature never
+	// echo the key: keep the model's existing value in that case — the
+	// declared value on create/update, the prior state on read — so a config
+	// on an unsupporting controller doesn't fail the apply with an
+	// inconsistent-result error or produce perpetual drift. An Unknown value
+	// (never configured, nothing stored) resolves to null.
+	if wlan.BandsteeringMode != "" {
+		model.BandsteeringMode = types.StringValue(wlan.BandsteeringMode)
+	} else if model.BandsteeringMode.IsUnknown() {
+		model.BandsteeringMode = types.StringNull()
+	}
+
 	model.MulticastEnhance = types.BoolValue(wlan.MulticastEnhanceEnabled)
 
 	// Handle MAC filter
@@ -1396,26 +1917,8 @@ func (r *wlanFrameworkResource) wlanToModel(
 	// refresh and import.
 	model.PrivatePresharedKeysEnabled = types.BoolValue(wlan.PrivatePresharedKeysEnabled)
 
-	ppskType := types.ObjectType{AttrTypes: wlanPrivatePresharedKeyModel{}.AttributeTypes()}
-	if len(wlan.PrivatePresharedKeys) > 0 {
-		ppskValues := make([]attr.Value, len(wlan.PrivatePresharedKeys))
-		for i, ppsk := range wlan.PrivatePresharedKeys {
-			obj, d := types.ObjectValue(
-				wlanPrivatePresharedKeyModel{}.AttributeTypes(),
-				map[string]attr.Value{
-					"network_id": types.StringValue(ppsk.NetworkID),
-					"password":   types.StringValue(ppsk.Password),
-				},
-			)
-			diags.Append(d...)
-			ppskValues[i] = obj
-		}
-		ppskList, d := types.ListValue(ppskType, ppskValues)
-		diags.Append(d...)
-		model.PrivatePresharedKeys = ppskList
-	} else {
-		model.PrivatePresharedKeys = types.ListNull(ppskType)
-	}
+	model.PrivatePresharedKeys, d = privatePresharedKeysState(ctx, wlan, model.PrivatePresharedKeys)
+	diags.Append(d...)
 
 	if wlan.RADIUSProfileID != "" {
 		model.RadiusProfileID = types.StringValue(wlan.RADIUSProfileID)
@@ -1532,14 +2035,14 @@ func (r *wlanFrameworkResource) wlanToModel(
 						"day_of_week":  types.StringType,
 						"start_hour":   types.Int64Type,
 						"start_minute": types.Int64Type,
-						"duration":     types.Int64Type,
+						"duration":     timetypes.GoDurationType{},
 						"name":         types.StringType,
 					},
 					map[string]attr.Value{
 						"day_of_week":  types.StringValue(dow),
 						"start_hour":   types.Int64PointerValue(sched.StartHour),
 						"start_minute": types.Int64PointerValue(sched.StartMinute),
-						"duration":     types.Int64PointerValue(sched.DurationMinutes),
+						"duration":     util.DurationPtrValue(sched.DurationMinutes, time.Minute),
 						"name":         types.StringValue(sched.Name),
 					},
 				)
@@ -1553,7 +2056,7 @@ func (r *wlanFrameworkResource) wlanToModel(
 					"day_of_week":  types.StringType,
 					"start_hour":   types.Int64Type,
 					"start_minute": types.Int64Type,
-					"duration":     types.Int64Type,
+					"duration":     timetypes.GoDurationType{},
 					"name":         types.StringType,
 				},
 			},
@@ -1567,11 +2070,133 @@ func (r *wlanFrameworkResource) wlanToModel(
 				"day_of_week":  types.StringType,
 				"start_hour":   types.Int64Type,
 				"start_minute": types.Int64Type,
-				"duration":     types.Int64Type,
+				"duration":     timetypes.GoDurationType{},
 				"name":         types.StringType,
 			},
 		})
 	}
 
 	return diags
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *wlanFrameworkResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List WLANs in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list WLANs from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *wlanFrameworkResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config wlanListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []wlanListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	wlans, err := r.client.ListWLAN(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing WLANs", "Could not list WLANs: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, wlan := range wlans {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if wlan.Name != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", wlan.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+			result.DisplayName = wlan.Name
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(wlan.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
+				)...,
+			)
+
+			// Convert to model.
+			var model wlanFrameworkResourceModel
+			result.Diagnostics.Append(r.wlanToModel(ctx, &wlan, &model, site)...)
+			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
+				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+			}
+
+			if !push(result) {
+				return
+			}
+		}
+	}
 }

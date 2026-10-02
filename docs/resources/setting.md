@@ -43,12 +43,20 @@ resource "unifi_setting" "combined" {
     accounting_enabled      = true
     auth_port               = 1812
     acct_port               = 1813
-    interim_update_interval = 600
+    interim_update_interval = "10m"
     secret                  = "my-radius-secret"
   }
 
   usg = {
-    multicast_dns_enabled = true
+    broadcast_ping = false
+    upnp_enabled   = true
+    ftp_module     = false
+
+    # DNS verification is a nested object on the USG/gateway settings.
+    dns_verification = {
+      domain             = "example.com"
+      primary_dns_server = "1.1.1.1"
+    }
   }
 }
 
@@ -68,17 +76,42 @@ resource "unifi_setting" "radius_only" {
 
 ### Optional
 
+- `auto_speedtest` (Attributes) Periodic automated internet speed test settings. (see [below for nested schema](#nestedatt--auto_speedtest))
+- `country` (Attributes) Regulatory country settings. (see [below for nested schema](#nestedatt--country))
 - `doh` (Attributes) Encrypted DNS (DNS-over-HTTPS) settings. (see [below for nested schema](#nestedatt--doh))
+- `dpi` (Attributes) Deep Packet Inspection (DPI) settings. (see [below for nested schema](#nestedatt--dpi))
 - `igmp_snooping` (Attributes) Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates. (see [below for nested schema](#nestedatt--igmp_snooping))
 - `ips` (Attributes) Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset. (see [below for nested schema](#nestedatt--ips))
+- `lcm` (Attributes) LCD/display (LCM) settings for devices with a screen. (see [below for nested schema](#nestedatt--lcm))
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
+- `network_optimization` (Attributes) Automated network optimization settings. (see [below for nested schema](#nestedatt--network_optimization))
+- `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
 - `site` (String) The name of the site to associate the settings with.
+- `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `usg` (Attributes) USG settings. (see [below for nested schema](#nestedatt--usg))
 
 ### Read-Only
 
 - `id` (String) The ID of the settings.
+
+<a id="nestedatt--auto_speedtest"></a>
+### Nested Schema for `auto_speedtest`
+
+Optional:
+
+- `cron_expr` (String) Cron expression controlling when the speed test runs (e.g. `0 * * * *`).
+- `enabled` (Boolean) Whether periodic automated speed tests are enabled.
+
+
+<a id="nestedatt--country"></a>
+### Nested Schema for `country`
+
+Required:
+
+- `code` (Number) Regulatory country code (ISO 3166-1 numeric).
+
 
 <a id="nestedatt--doh"></a>
 ### Nested Schema for `doh`
@@ -101,6 +134,15 @@ Optional:
 
 - `enabled` (Boolean) Enable this custom server. Defaults to true.
 
+
+
+<a id="nestedatt--dpi"></a>
+### Nested Schema for `dpi`
+
+Optional:
+
+- `enabled` (Boolean) Whether DPI is enabled.
+- `fingerprinting_enabled` (Boolean) Whether device fingerprinting is enabled.
 
 
 <a id="nestedatt--igmp_snooping"></a>
@@ -126,6 +168,7 @@ Optional:
 - `ips_mode` (String) IPS operating mode: ids (detect only), ips (detect and block), ipsInline, or disabled.
 - `memory_optimized` (Boolean) Use memory-optimized IPS ruleset (reduced rule set for low-memory devices).
 - `restrict_torrents` (Boolean) Block BitTorrent traffic.
+- `suppression_alerts` (Attributes List) IPS signature alert suppression entries — silence specific signatures or categories. (see [below for nested schema](#nestedatt--ips--suppression_alerts))
 - `suppression_whitelist` (Attributes List) IPS suppression whitelist entries — sources/destinations to exclude from inspection. (see [below for nested schema](#nestedatt--ips--suppression_whitelist))
 
 <a id="nestedatt--ips--honeypot"></a>
@@ -136,6 +179,29 @@ Required:
 - `ip_address` (String) IP address to use as a honeypot.
 - `network_id` (String) Network ID this honeypot IP belongs to.
 - `version` (String) IP version: v4 or v6.
+
+
+<a id="nestedatt--ips--suppression_alerts"></a>
+### Nested Schema for `ips.suppression_alerts`
+
+Optional:
+
+- `category` (String) Alert suppression signature category.
+- `gid` (Number) Signature Generator ID (GID).
+- `id` (Number) Signature ID.
+- `signature` (String) Suppression signature name.
+- `tracking` (Attributes List) Tracking specifications (used when `type` is `track`). (see [below for nested schema](#nestedatt--ips--suppression_alerts--tracking))
+- `type` (String) Suppression type: `all` (everywhere) or `track` (only the tracked sources/destinations).
+
+<a id="nestedatt--ips--suppression_alerts--tracking"></a>
+### Nested Schema for `ips.suppression_alerts.tracking`
+
+Required:
+
+- `direction` (String) Match direction: both, src, or dest.
+- `mode` (String) Match mode: ip, subnet, or network.
+- `value` (String) IP address, CIDR subnet, or network ID to match.
+
 
 
 <a id="nestedatt--ips--suppression_whitelist"></a>
@@ -149,14 +215,35 @@ Required:
 
 
 
+<a id="nestedatt--lcm"></a>
+### Nested Schema for `lcm`
+
+Optional:
+
+- `brightness` (Number) Display brightness (1-100).
+- `enabled` (Boolean) Whether the device display is enabled.
+- `idle_timeout` (Number) Seconds of inactivity before the display turns off (10-3600).
+- `sync` (Boolean) Sync display settings across devices.
+- `touch_event` (Boolean) Whether touch events on the display are enabled.
+
+
 <a id="nestedatt--mgmt"></a>
 ### Nested Schema for `mgmt`
 
 Optional:
 
+- `advanced_feature_enabled` (Boolean) Enable advanced features.
 - `auto_upgrade` (Boolean) Automatically upgrade device firmware.
+- `auto_upgrade_hour` (Number) Hour of day (0-23) for automatic firmware upgrades.
+- `debug_tools_enabled` (Boolean) Enable debug tools.
+- `direct_connect_enabled` (Boolean) Enable Direct Connect (remote access).
+- `ssh_auth_password_enabled` (Boolean) Allow SSH password authentication (in addition to keys).
 - `ssh_enabled` (Boolean) Enable SSH authentication.
 - `ssh_keys` (Attributes List) SSH keys. (see [below for nested schema](#nestedatt--mgmt--ssh_keys))
+- `ssh_password` (String, Sensitive) SSH password for device access. Sensitive — the controller stores only a hash, so this value is kept from configuration and not read back.
+- `ssh_username` (String) SSH username for device access.
+- `unifi_idp_enabled` (Boolean) Enable the UniFi Identity Provider.
+- `wifiman_enabled` (Boolean) Enable WiFiman.
 
 <a id="nestedatt--mgmt--ssh_keys"></a>
 ### Nested Schema for `mgmt.ssh_keys`
@@ -173,6 +260,26 @@ Optional:
 
 
 
+<a id="nestedatt--network_optimization"></a>
+### Nested Schema for `network_optimization`
+
+Optional:
+
+- `enabled` (Boolean) Whether automated network optimization is enabled.
+
+
+<a id="nestedatt--ntp"></a>
+### Nested Schema for `ntp`
+
+Optional:
+
+- `ntp_server_1` (String) Primary NTP server.
+- `ntp_server_2` (String) Second NTP server.
+- `ntp_server_3` (String) Third NTP server.
+- `ntp_server_4` (String) Fourth NTP server.
+- `setting_preference` (String) Configuration mode: `auto` or `manual`.
+
+
 <a id="nestedatt--radius"></a>
 ### Nested Schema for `radius`
 
@@ -181,8 +288,37 @@ Optional:
 - `accounting_enabled` (Boolean) Enable RADIUS accounting.
 - `acct_port` (Number) RADIUS accounting port.
 - `auth_port` (Number) RADIUS authentication port.
-- `interim_update_interval` (Number) Interim update interval in seconds.
+- `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
 - `secret` (String, Sensitive) RADIUS shared secret.
+
+
+<a id="nestedatt--syslog"></a>
+### Nested Schema for `syslog`
+
+Optional:
+
+- `contents` (List of String) Logged facilities (e.g. `device`, `client`, `firewall_default_policy`, `triggers`, `updates`, `admin_activity`, `critical`, `security_detections`, `vpn`).
+- `debug` (Boolean) Enable debug logging.
+- `enabled` (Boolean) Whether remote syslog is enabled.
+- `ip` (String) Remote syslog server IP address.
+- `log_all_contents` (Boolean) Log all available facilities.
+- `netconsole_enabled` (Boolean) Whether netconsole logging is enabled.
+- `netconsole_host` (String) Netconsole host.
+- `netconsole_port` (Number) Netconsole port (1-65535).
+- `port` (Number) Remote syslog server port (1-65535).
+- `this_controller` (Boolean) Also log this controller's events.
+- `this_controller_encrypted_only` (Boolean) Only send this controller's logs over an encrypted channel.
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 
 <a id="nestedatt--usg"></a>
@@ -199,29 +335,29 @@ Optional:
 - `geo_ip_filtering_traffic_direction` (String) Geo IP filtering traffic direction: both, ingress, or egress.
 - `gre_module` (Boolean) Enable GRE module.
 - `h323_module` (Boolean) Enable H.323 module.
-- `icmp_timeout` (Number) ICMP connection timeout in seconds.
+- `icmp_timeout` (String) ICMP connection timeout, as a Go duration string (e.g. `30s`, `1m`).
 - `mss_clamp` (String) MSS clamping mode: auto, custom, or disabled.
 - `offload_accounting` (Boolean) Enable hardware offload for accounting.
 - `offload_l2_blocking` (Boolean) Enable hardware offload for L2 blocking.
 - `offload_sch` (Boolean) Enable hardware offload for scheduling.
-- `other_timeout` (Number) Other connections timeout in seconds.
+- `other_timeout` (String) Other connections timeout, as a Go duration string (e.g. `600s`, `10m`).
 - `pptp_module` (Boolean) Enable PPTP module.
 - `receive_redirects` (Boolean) Accept ICMP redirects.
 - `send_redirects` (Boolean) Send ICMP redirects.
 - `sip_module` (Boolean) Enable SIP module.
 - `syn_cookies` (Boolean) Enable SYN cookies.
-- `tcp_close_timeout` (Number) TCP close timeout in seconds.
-- `tcp_close_wait_timeout` (Number) TCP close wait timeout in seconds.
-- `tcp_established_timeout` (Number) TCP established connection timeout in seconds.
-- `tcp_fin_wait_timeout` (Number) TCP fin wait timeout in seconds.
-- `tcp_last_ack_timeout` (Number) TCP last ACK timeout in seconds.
-- `tcp_syn_recv_timeout` (Number) TCP SYN received timeout in seconds.
-- `tcp_syn_sent_timeout` (Number) TCP SYN sent timeout in seconds.
-- `tcp_time_wait_timeout` (Number) TCP time wait timeout in seconds.
+- `tcp_close_timeout` (String) TCP close timeout, as a Go duration string (e.g. `10s`).
+- `tcp_close_wait_timeout` (String) TCP close wait timeout, as a Go duration string (e.g. `60s`, `1m`).
+- `tcp_established_timeout` (String) TCP established connection timeout, as a Go duration string (e.g. `7440s`, `2h4m`).
+- `tcp_fin_wait_timeout` (String) TCP fin wait timeout, as a Go duration string (e.g. `120s`, `2m`).
+- `tcp_last_ack_timeout` (String) TCP last ACK timeout, as a Go duration string (e.g. `30s`).
+- `tcp_syn_recv_timeout` (String) TCP SYN received timeout, as a Go duration string (e.g. `60s`, `1m`).
+- `tcp_syn_sent_timeout` (String) TCP SYN sent timeout, as a Go duration string (e.g. `120s`, `2m`).
+- `tcp_time_wait_timeout` (String) TCP time wait timeout, as a Go duration string (e.g. `120s`, `2m`).
 - `tftp_module` (Boolean) Enable TFTP module.
 - `timeout_setting_preference` (String) Timeout setting preference: auto or manual.
-- `udp_other_timeout` (Number) UDP other timeout in seconds.
-- `udp_stream_timeout` (Number) UDP stream timeout in seconds.
+- `udp_other_timeout` (String) UDP other timeout, as a Go duration string (e.g. `30s`).
+- `udp_stream_timeout` (String) UDP stream timeout, as a Go duration string (e.g. `180s`, `3m`).
 - `unbind_wan_monitors` (Boolean) Unbind WAN monitors.
 - `upnp_enabled` (Boolean) Enable UPnP.
 - `upnp_nat_pmp_enabled` (Boolean) Enable UPnP NAT-PMP.

@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
@@ -22,11 +25,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -59,10 +64,6 @@ func NewClientListResource() list.ListResource {
 // clientResource defines the resource implementation.
 type clientResource struct {
 	client *Client
-
-	// Cache group name → ID lookups per site to avoid repeated API calls during List.
-	groupCacheMu sync.Mutex
-	groupCache   map[string]map[string]string // site → (name → id)
 }
 
 // qosRateModel describes the nested qos_rate attribute.
@@ -84,19 +85,19 @@ func (m qosRateModel) AttributeTypes() map[string]attr.Type {
 
 // clientResourceModel describes the resource data model.
 type clientResourceModel struct {
-	ID             types.String `tfsdk:"id"`
-	Site           types.String `tfsdk:"site"`
-	MAC            types.String `tfsdk:"mac"`
-	Name           types.String `tfsdk:"name"`
-	DisplayName    types.String `tfsdk:"display_name"`
-	QOSRate        types.Object `tfsdk:"qos_rate"`
-	Note           types.String `tfsdk:"note"`
-	FixedIP        types.String `tfsdk:"fixed_ip"`
-	FixedApMAC     types.String `tfsdk:"fixed_ap_mac"`
-	NetworkID      types.String `tfsdk:"network_id"`
-	Groups         types.List   `tfsdk:"groups"`
-	Blocked        types.Bool   `tfsdk:"blocked"`
-	LocalDNSRecord types.String `tfsdk:"local_dns_record"`
+	ID             types.String       `tfsdk:"id"`
+	Site           types.String       `tfsdk:"site"`
+	MAC            hwtypes.MACAddress `tfsdk:"mac"`
+	Name           types.String       `tfsdk:"name"`
+	DisplayName    types.String       `tfsdk:"display_name"`
+	QOSRate        types.Object       `tfsdk:"qos_rate"`
+	Note           types.String       `tfsdk:"note"`
+	FixedIP        types.String       `tfsdk:"fixed_ip"`
+	FixedApMAC     hwtypes.MACAddress `tfsdk:"fixed_ap_mac"`
+	NetworkID      types.String       `tfsdk:"network_id"`
+	Groups         types.List         `tfsdk:"groups"`
+	Blocked        types.Bool         `tfsdk:"blocked"`
+	LocalDNSRecord types.String       `tfsdk:"local_dns_record"`
 
 	// These control import and create behavior to allow the resource to take over existing clients instead of erroring, and to allow it to just be removed from Terraform management without deleting in UniFi.
 	AllowExisting       types.Bool `tfsdk:"allow_existing"`
@@ -104,10 +105,13 @@ type clientResourceModel struct {
 
 	// Computed attributes
 	Hostname types.String `tfsdk:"hostname"`
+	LastIP   types.String `tfsdk:"last_ip"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 type clientIdentityModel struct {
-	MAC types.String `tfsdk:"mac"`
+	MAC hwtypes.MACAddress `tfsdk:"mac"`
 }
 
 // clientListConfigModel describes the list configuration model.
@@ -140,6 +144,7 @@ func (r *clientResource) IdentitySchema(
 	resp.IdentitySchema = identityschema.Schema{
 		Attributes: map[string]identityschema.Attribute{
 			"mac": identityschema.StringAttribute{
+				CustomType:        hwtypes.MACAddressType{},
 				RequiredForImport: true,
 			},
 		},
@@ -175,6 +180,7 @@ Clients are created in the controller when observed on the network, so the resou
 			},
 			"mac": schema.StringAttribute{
 				MarkdownDescription: "The MAC address of the client.",
+				CustomType:          hwtypes.MACAddressType{},
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -235,15 +241,27 @@ Clients are created in the controller when observed on the network, so the resou
 				},
 			},
 			"fixed_ip": schema.StringAttribute{
-				MarkdownDescription: "A fixed IPv4 address for this client.",
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "A fixed IPv4 address for this client. " +
+					"Set to an empty string to clear a previously assigned fixed IP.",
+				Optional: true,
+				Computed: true,
+				// #386: keep validating the IPv4 format but also accept an empty
+				// string, which is the documented way to clear the fixed IP. A typed
+				// IPv4 custom type rejects "" outright, so a plain string with an
+				// empty-or-IPv4 validator is used instead.
+				Validators: []validator.String{
+					stringvalidator.Any(
+						stringvalidator.OneOf(""),
+						validators.IPv4Validator(),
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"fixed_ap_mac": schema.StringAttribute{
 				MarkdownDescription: "The MAC address of the access point to which this client should be fixed.",
+				CustomType:          hwtypes.MACAddressType{},
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
@@ -302,13 +320,28 @@ Clients are created in the controller when observed on the network, so the resou
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			// last_ip and hostname are purely observed values reported by the
+			// controller, not derived from any configured attribute. The
+			// controller can legitimately report a new value between plan and
+			// apply (e.g. the client re-associates or renews its lease), so
+			// UseStateForUnknown must NOT be used here: pinning the plan to the
+			// prior state value causes "Provider produced inconsistent result
+			// after apply" whenever the observed value actually changes during
+			// an otherwise-unrelated update. Leaving these as plain Computed
+			// attributes lets them show as (known after apply) on update, so
+			// the real post-apply value is always accepted.
+			"last_ip": schema.StringAttribute{
+				MarkdownDescription: "The most recent IP address the controller has seen for this client (read-only).",
+				Computed:            true,
+			},
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "The hostname of the client.",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -348,6 +381,14 @@ func (r *clientResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	createTimeout, timeoutDiags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	// Initialize identity from plan
 	id := clientIdentityModel{
@@ -436,6 +477,14 @@ func (r *clientResource) Read(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	readTimeout, timeoutDiags := state.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
 	// Get identity (MAC address)
 	id := clientIdentityModel{}
@@ -596,6 +645,14 @@ func (r *clientResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -642,11 +699,14 @@ func (r *clientResource) Update(
 			if resp.Diagnostics.HasError() {
 				return
 			}
+			r.applyPlanToState(ctx, &plan, &state)
 
 			// Update identity with MAC
 			identityModel := clientIdentityModel{
 				MAC: state.MAC,
 			}
+
+			state.Timeouts = plan.Timeouts
 
 			resp.Diagnostics.Append(resp.Identity.Set(ctx, identityModel)...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -685,18 +745,21 @@ func (r *clientResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.applyPlanToState(ctx, &plan, &state)
 
 	// Update identity with MAC
 	identityModel := clientIdentityModel{
 		MAC: state.MAC,
 	}
 
+	state.Timeouts = plan.Timeouts
+
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, identityModel)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *clientResource) applyPlanToState( //nolint:unused
+func (r *clientResource) applyPlanToState(
 	_ context.Context,
 	plan *clientResourceModel,
 	state *clientResourceModel,
@@ -757,6 +820,14 @@ func (r *clientResource) Delete(
 		return
 	}
 
+	deleteTimeout, timeoutDiags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
 	site := state.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
@@ -798,29 +869,35 @@ func (r *clientResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// ImportStatePassthroughWithIdentity only supports plain string attributes,
+	// but mac uses the custom hwtypes.MACAddressType (in both the resource and
+	// identity schemas). Setting/reading it as a string triggers a value
+	// conversion error, so handle the passthrough manually for both the
+	// id-string and resource-identity import paths.
+
+	// Import by ID string (terraform import CLI, or import block with id set).
 	if req.ID != "" {
 		if !strings.Contains(req.ID, ":") {
 			resp.Diagnostics.AddError(
 				"Invalid import ID",
 				"Client can only be imported using a MAC address",
 			)
-		}
-		// Set identity with the MAC
-		idModel := clientIdentityModel{MAC: types.StringValue(req.ID)}
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
-		if resp.Diagnostics.HasError() {
 			return
 		}
+
+		mac := hwtypes.NewMACAddressValue(req.ID)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("mac"), mac)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("mac"), mac)...)
+		return
 	}
 
-	// Import the state using MAC attribute
-	resource.ImportStatePassthroughWithIdentity(
-		ctx,
-		path.Root("mac"),
-		path.Root("mac"),
-		req,
-		resp,
-	)
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	var mac hwtypes.MACAddress
+	resp.Diagnostics.Append(req.Identity.GetAttribute(ctx, path.Root("mac"), &mac)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("mac"), mac)...)
 }
 
 // Helper functions for conversion and merging
@@ -986,12 +1063,20 @@ func (r *clientResource) clientToModel(
 
 	model.ID = util.StringValueOrNull(client.ID)
 	model.Site = util.StringValueOrNull(site)
-	model.MAC = util.StringValueOrNull(client.MAC)
+	model.MAC = util.MACValueOrNull(client.MAC)
 	model.Name = util.StringValueOrNull(client.Name)
 	model.DisplayName = util.StringValueOrNull(client.DisplayName)
 	model.Note = util.StringValueOrNull(client.Note)
-	model.FixedIP = util.StringValueOrNull(client.FixedIP)
-	model.FixedApMAC = util.StringValueOrNull(client.FixedApMAC)
+	// #386: when the fixed IP is disabled the controller keeps echoing the stale
+	// address. Mirror it as a known empty string so an explicit fixed_ip = "" (the
+	// documented way to clear it) round-trips, instead of resending the old IP with
+	// use_fixedip=true (which the controller rejects with api.err.DuplicateFixedIP).
+	if client.UseFixedIP {
+		model.FixedIP = util.StringValueOrNull(client.FixedIP)
+	} else {
+		model.FixedIP = types.StringValue("")
+	}
+	model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
 	model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
 
 	// Populate qos_rate from the client's UserGroupID by looking up the client group.
@@ -1040,10 +1125,21 @@ func (r *clientResource) clientToModel(
 	// (false) instead of null; otherwise the schema's Default(false) makes the next
 	// plan propose false → a spurious diff on every create/import.
 	model.Blocked = types.BoolValue(client.Blocked != nil && *client.Blocked)
-	model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
+
+	// #387: when the local DNS record is disabled the controller keeps echoing the
+	// stale record string, so trusting it produces an inconsistent-result-after-apply
+	// against an explicit `local_dns_record = ""` (the documented way to clear it).
+	// Mirror the disabled state as a known empty string instead of the echoed value,
+	// so `""` round-trips cleanly and enabling still surfaces the real record.
+	if client.LocalDNSRecordEnabled {
+		model.LocalDNSRecord = util.StringValueOrNull(client.LocalDNSRecord)
+	} else {
+		model.LocalDNSRecord = types.StringValue("")
+	}
 
 	// Computed attributes
 	model.Hostname = util.StringValueOrNull(client.Hostname)
+	model.LastIP = util.StringValueOrNull(client.LastIP)
 
 	return diags
 }
@@ -1128,15 +1224,15 @@ func (r *clientResource) resolveGroupNames(
 	site string,
 	ids []string,
 ) ([]string, error) {
-	r.groupCacheMu.Lock()
-	defer r.groupCacheMu.Unlock()
+	r.client.groupCacheMu.Lock()
+	defer r.client.groupCacheMu.Unlock()
 
-	if r.groupCache == nil {
-		r.groupCache = make(map[string]map[string]string)
+	if r.client.groupCache == nil {
+		r.client.groupCache = make(map[string]map[string]string)
 	}
 
 	// Ensure cache is populated for this site.
-	if _, ok := r.groupCache[site]; !ok {
+	if _, ok := r.client.groupCache[site]; !ok {
 		groups, err := r.client.ListNetworkMembersGroups(ctx, site)
 		if err != nil {
 			return nil, fmt.Errorf("listing network members groups: %w", err)
@@ -1145,11 +1241,11 @@ func (r *clientResource) resolveGroupNames(
 		for _, g := range groups {
 			siteCache[g.Name] = g.ID
 		}
-		r.groupCache[site] = siteCache
+		r.client.groupCache[site] = siteCache
 	}
 
 	// Build reverse map id → name from cache.
-	siteCache := r.groupCache[site]
+	siteCache := r.client.groupCache[site]
 	idToName := make(map[string]string, len(siteCache))
 	for name, id := range siteCache {
 		idToName[id] = name
@@ -1172,14 +1268,14 @@ func (r *clientResource) resolveGroupID(
 	ctx context.Context,
 	site, groupName string,
 ) (string, error) {
-	r.groupCacheMu.Lock()
-	defer r.groupCacheMu.Unlock()
+	r.client.groupCacheMu.Lock()
+	defer r.client.groupCacheMu.Unlock()
 
-	if r.groupCache == nil {
-		r.groupCache = make(map[string]map[string]string)
+	if r.client.groupCache == nil {
+		r.client.groupCache = make(map[string]map[string]string)
 	}
 
-	if siteCache, ok := r.groupCache[site]; ok {
+	if siteCache, ok := r.client.groupCache[site]; ok {
 		if id, ok := siteCache[groupName]; ok {
 			return id, nil
 		}
@@ -1195,7 +1291,7 @@ func (r *clientResource) resolveGroupID(
 	for _, g := range groups {
 		siteCache[g.Name] = g.ID
 	}
-	r.groupCache[site] = siteCache
+	r.client.groupCache[site] = siteCache
 
 	id, ok := siteCache[groupName]
 	if ok {
@@ -1491,6 +1587,7 @@ func (r *clientResource) List(
 			var model clientResourceModel
 			result.Diagnostics.Append(r.clientToModel(ctx, &client, &model, site)...)
 			if !result.Diagnostics.HasError() {
+				model.Timeouts = timeoutsNullValue()
 				result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
 			}
 

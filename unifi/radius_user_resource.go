@@ -4,12 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -24,9 +29,20 @@ import (
 var (
 	_ resource.Resource                = &radiusUserResource{}
 	_ resource.ResourceWithImportState = &radiusUserResource{}
+	_ resource.ResourceWithIdentity    = &radiusUserResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &radiusUserResource{}
+	_ list.ListResourceWithConfigure = &radiusUserResource{}
 )
 
 func NewRadiusUserResource() resource.Resource {
+	return &radiusUserResource{}
+}
+
+func NewRadiusUserListResource() list.ListResource {
 	return &radiusUserResource{}
 }
 
@@ -37,15 +53,34 @@ type radiusUserResource struct {
 
 // radiusUserResourceModel describes the resource data model.
 type radiusUserResourceModel struct {
-	ID               types.String `tfsdk:"id"`
-	Site             types.String `tfsdk:"site"`
-	Name             types.String `tfsdk:"name"`
-	Password         types.String `tfsdk:"password"`
-	TunnelType       types.Int64  `tfsdk:"tunnel_type"`
-	TunnelMediumType types.Int64  `tfsdk:"tunnel_medium_type"`
-	NetworkID        types.String `tfsdk:"network_id"`
-	VLAN             types.Int64  `tfsdk:"vlan"`
-	TunnelConfigType types.String `tfsdk:"tunnel_config_type"`
+	ID               types.String   `tfsdk:"id"`
+	Site             types.String   `tfsdk:"site"`
+	Name             types.String   `tfsdk:"name"`
+	Password         types.String   `tfsdk:"password"`
+	TunnelType       types.Int64    `tfsdk:"tunnel_type"`
+	TunnelMediumType types.Int64    `tfsdk:"tunnel_medium_type"`
+	NetworkID        types.String   `tfsdk:"network_id"`
+	VLAN             types.Int64    `tfsdk:"vlan"`
+	TunnelConfigType types.String   `tfsdk:"tunnel_config_type"`
+	Timeouts         timeouts.Value `tfsdk:"timeouts"`
+}
+
+// radiusUserIdentityModel describes the resource identity data model.
+type radiusUserIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
+// radiusUserListConfigModel describes the list configuration model.
+type radiusUserListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// radiusUserListFilterModel represents a single name/value filter entry.
+type radiusUserListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 func (r *radiusUserResource) Metadata(
@@ -54,6 +89,33 @@ func (r *radiusUserResource) Metadata(
 	resp *resource.MetadataResponse,
 ) {
 	resp.TypeName = req.ProviderTypeName + "_radius_user"
+}
+
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *radiusUserResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *radiusUserResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
 }
 
 func (r *radiusUserResource) Schema(
@@ -138,6 +200,10 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 					stringvalidator.OneOf("vpn", "802.1x", "custom"),
 				},
 			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -179,6 +245,14 @@ func (r *radiusUserResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	// Convert to unifi.Account
 	account := r.modelToRadiusUser(ctx, &data)
 
@@ -209,6 +283,11 @@ func (r *radiusUserResource) Create(
 	r.radiusUserToModel(ctx, createdAccount, &data, site)
 
 	// Save data into Terraform state
+	identity := radiusUserIdentityModel{
+		ID:   data.ID,
+		Site: types.StringValue(site),
+	}
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -225,13 +304,45 @@ func (r *radiusUserResource) Read(
 		return
 	}
 
-	site := data.Site.ValueString()
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Read identity, falling back to state for resources created before
+	// identity support (or refreshed from a string import).
+	var identity radiusUserIdentityModel
+	identityStored := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
+	if identityStored {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+		identity.ID = data.ID
+	}
+	if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+		identity.Site = data.Site
+	}
+
+	id := data.ID.ValueString()
+	if id == "" {
+		// Identity-only state (e.g. the refresh right after an identity-based
+		// import of an old state): look the account up by the identity id.
+		id = identity.ID.ValueString()
+	}
+
+	site := identity.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
 
 	// Get the account from the API
-	account, err := r.client.GetAccount(ctx, site, data.ID.ValueString())
+	account, err := r.client.GetAccount(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -239,7 +350,7 @@ func (r *radiusUserResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Radius User",
-			"Could not read radius user with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read radius user with ID "+id+": "+err.Error(),
 		)
 		return
 	}
@@ -247,7 +358,17 @@ func (r *radiusUserResource) Read(
 	// Convert to model
 	r.radiusUserToModel(ctx, account, &data, site)
 
-	// Save updated data into Terraform state
+	// Terraform rejects any modification of a stored identity (even filling a
+	// previously-null attribute), so pass a stored identity through untouched
+	// (resp.Identity is pre-populated from it) and only derive a fresh one
+	// from state when none exists yet.
+	if !identityStored {
+		identity = radiusUserIdentityModel{
+			ID:   data.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -271,8 +392,17 @@ func (r *radiusUserResource) Update(
 		return
 	}
 
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
+	state.Timeouts = plan.Timeouts
 
 	site := state.Site.ValueString()
 	if site == "" {
@@ -304,7 +434,15 @@ func (r *radiusUserResource) Update(
 	// Step 5: Update state with API response
 	r.radiusUserToModel(ctx, updatedAccount, &state, site)
 
-	// Save updated data into Terraform state
+	// Pass a stored identity through untouched; derive it from state only for
+	// resources created before identity support.
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
+		identity := radiusUserIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		}
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -320,6 +458,14 @@ func (r *radiusUserResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -342,6 +488,29 @@ func (r *radiusUserResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
+	// Import by resource identity (import block with identity, Terraform 1.12+).
+	if req.ID == "" {
+		var identity radiusUserIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"RADIUS user identity must have `id` set.",
+			)
+			return
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		if !identity.Site.IsNull() && identity.Site.ValueString() != "" {
+			resp.Diagnostics.Append(
+				resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		}
+		return
+	}
+
 	// Import format: "site:id" or just "id" for default site
 	idParts := strings.Split(req.ID, ":")
 
@@ -352,12 +521,15 @@ func (r *radiusUserResource) ImportState(
 
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), site)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), id)...)
 		return
 	}
 
 	if len(idParts) == 1 {
 		// Just id, use default site
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+		resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("id"), req.ID)...)
 		return
 	}
 
@@ -488,5 +660,123 @@ func (r *radiusUserResource) radiusUserToModel(
 		model.TunnelConfigType = types.StringValue(account.TunnelConfigType)
 	} else {
 		model.TunnelConfigType = types.StringNull()
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *radiusUserResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List RADIUS user accounts in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list RADIUS users from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *radiusUserResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config radiusUserListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []radiusUserListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	accounts, err := r.client.ListAccount(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing RADIUS Users", "Could not list radius users: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, account := range accounts {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if account.Name != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer name, fall back to ID.
+			if account.Name != "" {
+				result.DisplayName = account.Name
+			} else {
+				result.DisplayName = account.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("id"),
+					types.StringValue(account.ID),
+				)...,
+			)
+			result.Diagnostics.Append(
+				result.Identity.SetAttribute(
+					ctx,
+					path.Root("site"),
+					types.StringValue(site),
+				)...,
+			)
+
+			// Convert to model.
+			var model radiusUserResourceModel
+			r.radiusUserToModel(ctx, &account, &model, site)
+			model.Timeouts = timeoutsNullValue()
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

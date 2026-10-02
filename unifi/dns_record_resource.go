@@ -4,11 +4,18 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/list"
+	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -16,15 +23,29 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &dnsRecordFrameworkResource{}
-	_ resource.ResourceWithImportState = &dnsRecordFrameworkResource{}
+	_ resource.Resource                 = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithImportState  = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithIdentity     = &dnsRecordFrameworkResource{}
+	_ resource.ResourceWithUpgradeState = &dnsRecordFrameworkResource{}
+)
+
+// Ensure provider defined types fully satisfy list interfaces.
+var (
+	_ list.ListResource              = &dnsRecordFrameworkResource{}
+	_ list.ListResourceWithConfigure = &dnsRecordFrameworkResource{}
 )
 
 func NewDNSRecordFrameworkResource() resource.Resource {
+	return &dnsRecordFrameworkResource{}
+}
+
+func NewDNSRecordListResource() list.ListResource {
 	return &dnsRecordFrameworkResource{}
 }
 
@@ -35,16 +56,35 @@ type dnsRecordFrameworkResource struct {
 
 // dnsRecordFrameworkResourceModel describes the resource data model.
 type dnsRecordFrameworkResourceModel struct {
-	ID         types.String `tfsdk:"id"`
-	Site       types.String `tfsdk:"site"`
-	Name       types.String `tfsdk:"name"`
-	Enabled    types.Bool   `tfsdk:"enabled"`
-	Port       types.Int64  `tfsdk:"port"`
-	Priority   types.Int64  `tfsdk:"priority"`
-	RecordType types.String `tfsdk:"record_type"`
-	TTL        types.Int64  `tfsdk:"ttl"`
-	Value      types.String `tfsdk:"value"`
-	Weight     types.Int64  `tfsdk:"weight"`
+	ID         types.String         `tfsdk:"id"`
+	Site       types.String         `tfsdk:"site"`
+	Name       types.String         `tfsdk:"name"`
+	Enabled    types.Bool           `tfsdk:"enabled"`
+	Port       types.Int64          `tfsdk:"port"`
+	Priority   types.Int64          `tfsdk:"priority"`
+	RecordType types.String         `tfsdk:"record_type"`
+	TTL        timetypes.GoDuration `tfsdk:"ttl"`
+	Value      types.String         `tfsdk:"value"`
+	Weight     types.Int64          `tfsdk:"weight"`
+	Timeouts   timeouts.Value       `tfsdk:"timeouts"`
+}
+
+// dnsRecordIdentityModel describes the resource identity data model.
+type dnsRecordIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Site types.String `tfsdk:"site"`
+}
+
+// dnsRecordFrameworkListConfigModel describes the list configuration model.
+type dnsRecordFrameworkListConfigModel struct {
+	Site   types.String `tfsdk:"site"`
+	Filter types.List   `tfsdk:"filter"`
+}
+
+// dnsRecordFrameworkListFilterModel represents a single name/value filter entry.
+type dnsRecordFrameworkListFilterModel struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 func (r *dnsRecordFrameworkResource) Metadata(
@@ -55,12 +95,45 @@ func (r *dnsRecordFrameworkResource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_dns_record"
 }
 
+// IdentitySchema implements [resource.ResourceWithIdentity].
+func (r *dnsRecordFrameworkResource) IdentitySchema(
+	_ context.Context,
+	_ resource.IdentitySchemaRequest,
+	resp *resource.IdentitySchemaResponse,
+) {
+	resp.IdentitySchema = identityschema.Schema{
+		Version: 1,
+		// The optional "site" attribute defaults to the provider site on
+		// import. Identities stored by older provider versions ({id} only)
+		// are version 0 and go through siteIdentityUpgraders, which fills
+		// site from the provider's configured site.
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				RequiredForImport: true,
+			},
+			"site": identityschema.StringAttribute{
+				OptionalForImport: true,
+			},
+		},
+	}
+}
+
+// UpgradeIdentity implements [resource.ResourceWithUpgradeIdentity]. See
+// siteIdentityUpgraders.
+func (r *dnsRecordFrameworkResource) UpgradeIdentity(
+	_ context.Context,
+) map[int64]resource.IdentityUpgrader {
+	return siteIdentityUpgraders(func() *Client { return r.client })
+}
+
 func (r *dnsRecordFrameworkResource) Schema(
 	ctx context.Context,
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
 	resp.Schema = schema.Schema{
+		// v1: ttl changed from Int64 (seconds) to a GoDuration string.
+		Version:             1,
 		MarkdownDescription: "Manages DNS record settings for different providers.",
 
 		Attributes: map[string]schema.Attribute{
@@ -108,17 +181,21 @@ func (r *dnsRecordFrameworkResource) Schema(
 				},
 			},
 			"record_type": schema.StringAttribute{
-				MarkdownDescription: "The type of the DNS record. One of `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV` or `PTR`.",
+				MarkdownDescription: "The type of the DNS record. One of `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`, `PTR` or `NS`.",
 				Required:            true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("A", "AAAA", "CNAME", "MX", "TXT", "SRV", "PTR"),
+					stringvalidator.OneOf("A", "AAAA", "CNAME", "MX", "TXT", "SRV", "PTR", "NS"),
 				},
 			},
-			"ttl": schema.Int64Attribute{
-				MarkdownDescription: "The TTL of the DNS record.",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.AtMost(65535),
+			"ttl": schema.StringAttribute{
+				MarkdownDescription: "The TTL of the DNS record, as a Go duration string " +
+					"(e.g. `1h`, `300s`). The controller stores this value as whole seconds " +
+					"in the range 0–65535s (≈18h12m15s).",
+				CustomType: timetypes.GoDurationType{},
+				Optional:   true,
+				Validators: []validator.String{
+					validators.GoDurationBetween(0, 65535*time.Second),
+					validators.GoDurationMultipleOf(time.Second),
 				},
 			},
 			"value": schema.StringAttribute{
@@ -131,6 +208,46 @@ func (r *dnsRecordFrameworkResource) Schema(
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
 				},
+			},
+			"timeouts": timeouts.Attributes(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
+		},
+	}
+}
+
+// UpgradeState migrates v0 state (ttl stored as integer seconds) to v1
+// (a GoDuration string).
+func (r *dnsRecordFrameworkResource) UpgradeState(
+	ctx context.Context,
+) map[int64]resource.StateUpgrader {
+	var schemaResp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	return map[int64]resource.StateUpgrader{
+		0: {
+			StateUpgrader: func(
+				ctx context.Context,
+				req resource.UpgradeStateRequest,
+				resp *resource.UpgradeStateResponse,
+			) {
+				if req.RawState == nil {
+					return
+				}
+				dv, err := util.UpgradeDurationRawState(
+					schemaType,
+					req.RawState.JSON,
+					func(state map[string]any) {
+						util.SetDurationField(state, "ttl", time.Second)
+					},
+				)
+				if err != nil {
+					resp.Diagnostics.AddError("Failed to upgrade DNS record state", err.Error())
+					return
+				}
+				resp.DynamicValue = dv
 			},
 		},
 	}
@@ -173,6 +290,14 @@ func (r *dnsRecordFrameworkResource) Create(
 		return
 	}
 
+	createTimeout, timeoutDiags := data.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
 	// Convert to unifi.DNSRecord
 	dnsRecord := r.modelToDNSRecord(ctx, &data)
 
@@ -195,6 +320,10 @@ func (r *dnsRecordFrameworkResource) Create(
 	r.dnsRecordToModel(ctx, createdDNSRecord, &data, site)
 
 	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+		ID:   data.ID,
+		Site: types.StringValue(site),
+	})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -211,13 +340,41 @@ func (r *dnsRecordFrameworkResource) Read(
 		return
 	}
 
+	readTimeout, timeoutDiags := data.Timeouts.Read(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	// Get the resource identity, tolerating null/empty identities (state
+	// written by older provider versions).
+	var identity dnsRecordIdentityModel
+	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	site := data.Site.ValueString()
+	if site == "" {
+		site = identity.Site.ValueString()
+	}
 	if site == "" {
 		site = r.client.Site
 	}
 
+	// Prefer the state ID; fall back to the identity ID (the post-import
+	// refresh may run from an identity-only state).
+	lookupID := data.ID.ValueString()
+	if lookupID == "" {
+		lookupID = identity.ID.ValueString()
+	}
+
 	// Get the DNS record from the API
-	dnsRecord, err := r.client.GetDNSRecord(ctx, site, data.ID.ValueString())
+	dnsRecord, err := r.client.GetDNSRecord(ctx, site, lookupID)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			resp.State.RemoveResource(ctx)
@@ -225,7 +382,7 @@ func (r *dnsRecordFrameworkResource) Read(
 		}
 		resp.Diagnostics.AddError(
 			"Error Reading Dns Record",
-			"Could not read DNS record with ID "+data.ID.ValueString()+": "+err.Error(),
+			"Could not read DNS record with ID "+lookupID+": "+err.Error(),
 		)
 		return
 	}
@@ -233,7 +390,15 @@ func (r *dnsRecordFrameworkResource) Read(
 	// Convert to model
 	r.dnsRecordToModel(ctx, dnsRecord, &data, site)
 
-	// Save updated data into Terraform state
+	// Terraform rejects any modification of an existing stored identity
+	// (including filling a null attribute), so pass an incoming identity
+	// through unchanged and only derive one when none is stored yet.
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+			ID:   data.ID,
+			Site: types.StringValue(site),
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -256,6 +421,14 @@ func (r *dnsRecordFrameworkResource) Update(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
 	// Step 2: Apply the plan changes to the state object
 	r.applyPlanToState(ctx, &plan, &state)
@@ -282,7 +455,16 @@ func (r *dnsRecordFrameworkResource) Update(
 	// Step 5: Update state with API response
 	r.dnsRecordToModel(ctx, updatedDNSRecord, &state, site)
 
-	// Save updated data into Terraform state
+	state.Timeouts = plan.Timeouts
+
+	// Pass an existing identity through unchanged; only derive one when
+	// none is stored yet (see Read).
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+			ID:   state.ID,
+			Site: types.StringValue(site),
+		})...)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -298,6 +480,14 @@ func (r *dnsRecordFrameworkResource) Delete(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	deleteTimeout, timeoutDiags := data.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(timeoutDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -320,29 +510,63 @@ func (r *dnsRecordFrameworkResource) ImportState(
 	req resource.ImportStateRequest,
 	resp *resource.ImportStateResponse,
 ) {
-	// Import format: "site:id" or just "id" for default site
+	// Identity-based import (Terraform 1.12+ import block with identity).
+	if req.ID == "" {
+		if req.Identity == nil {
+			resp.Diagnostics.AddError(
+				"Invalid Import Request",
+				"Importing a DNS record requires either an import ID or a resource identity.",
+			)
+			return
+		}
+		var identity dnsRecordIdentityModel
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if identity.ID.IsNull() || identity.ID.ValueString() == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Import Identity",
+				"The `id` identity attribute is required to import a DNS record.",
+			)
+			return
+		}
+		if identity.Site.IsNull() || identity.Site.ValueString() == "" {
+			identity.Site = types.StringValue(r.client.Site)
+		}
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("id"), identity.ID)...)
+		resp.Diagnostics.Append(
+			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
+		return
+	}
+
+	// Classic string import: "site:id" or just "id" for the default site.
 	idParts := strings.Split(req.ID, ":")
 
-	if len(idParts) == 2 {
-		// site:id format
-		site := idParts[0]
-		id := idParts[1]
-
+	site := r.client.Site
+	id := ""
+	switch len(idParts) {
+	case 2:
+		site = idParts[0]
+		id = idParts[1]
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	case 1:
+		id = req.ID
+	default:
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			"Import ID must be in format 'site:id' or 'id'",
+		)
 		return
 	}
 
-	if len(idParts) == 1 {
-		// Just id, use default site
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-		return
-	}
-
-	resp.Diagnostics.AddError(
-		"Invalid Import ID",
-		"Import ID must be in format 'site:id' or 'id'",
-	)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, dnsRecordIdentityModel{
+		ID:   types.StringValue(id),
+		Site: types.StringValue(site),
+	})...)
 }
 
 // applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
@@ -388,25 +612,25 @@ func (r *dnsRecordFrameworkResource) modelToDNSRecord(
 		Value: model.Value.ValueString(),
 	}
 
-	if !model.Enabled.IsNull() {
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
 		dnsRecord.Enabled = model.Enabled.ValueBool()
 	}
 
 	dnsRecord.Port = model.Port.ValueInt64Pointer()
 
-	if !model.Priority.IsNull() {
+	if !model.Priority.IsNull() && !model.Priority.IsUnknown() {
 		dnsRecord.Priority = model.Priority.ValueInt64()
 	}
 
-	if !model.RecordType.IsNull() {
+	if !model.RecordType.IsNull() && !model.RecordType.IsUnknown() {
 		dnsRecord.RecordType = model.RecordType.ValueString()
 	}
 
-	if !model.TTL.IsNull() {
-		dnsRecord.Ttl = model.TTL.ValueInt64()
+	if !model.TTL.IsNull() && !model.TTL.IsUnknown() {
+		dnsRecord.Ttl = util.DurationUnits(model.TTL, time.Second)
 	}
 
-	if !model.Weight.IsNull() {
+	if !model.Weight.IsNull() && !model.Weight.IsUnknown() {
 		dnsRecord.Weight = model.Weight.ValueInt64()
 	}
 
@@ -446,14 +670,139 @@ func (r *dnsRecordFrameworkResource) dnsRecordToModel(
 	}
 
 	if dnsRecord.Ttl != 0 {
-		model.TTL = types.Int64Value(dnsRecord.Ttl)
+		model.TTL = util.DurationValue(dnsRecord.Ttl, time.Second)
 	} else {
-		model.TTL = types.Int64Null()
+		model.TTL = timetypes.NewGoDurationNull()
 	}
 
 	if dnsRecord.Weight != 0 {
 		model.Weight = types.Int64Value(dnsRecord.Weight)
 	} else {
 		model.Weight = types.Int64Null()
+	}
+}
+
+// ListResourceConfigSchema implements [list.ListResource].
+func (r *dnsRecordFrameworkResource) ListResourceConfigSchema(
+	_ context.Context,
+	_ list.ListResourceSchemaRequest,
+	resp *list.ListResourceSchemaResponse,
+) {
+	resp.Schema = listschema.Schema{
+		MarkdownDescription: "List DNS records in a site.",
+		Attributes: map[string]listschema.Attribute{
+			"site": listschema.StringAttribute{
+				MarkdownDescription: "The name of the site to list DNS records from.",
+				Optional:            true,
+			},
+		},
+		Blocks: map[string]listschema.Block{
+			"filter": listschema.ListNestedBlock{
+				NestedObject: listschema.NestedBlockObject{
+					Attributes: map[string]listschema.Attribute{
+						"name": listschema.StringAttribute{
+							MarkdownDescription: "The name of the filter to apply. Supported values are: `name`, `record_type`, `enabled`.",
+							Required:            true,
+						},
+						"value": listschema.StringAttribute{
+							MarkdownDescription: "The value to filter by.",
+							Required:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// List implements [list.ListResource].
+func (r *dnsRecordFrameworkResource) List(
+	ctx context.Context,
+	req list.ListRequest,
+	stream *list.ListResultsStream,
+) {
+	var config dnsRecordFrameworkListConfigModel
+
+	diags := req.Config.Get(ctx, &config)
+	if diags.HasError() {
+		stream.Results = list.ListResultsStreamDiagnostics(diags)
+		return
+	}
+
+	site := config.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+
+	// Process filter blocks.
+	var filters []dnsRecordFrameworkListFilterModel
+	if !config.Filter.IsNull() && !config.Filter.IsUnknown() {
+		config.Filter.ElementsAs(ctx, &filters, false)
+	}
+
+	postFilters := make(map[string]string)
+	for _, f := range filters {
+		postFilters[f.Name.ValueString()] = f.Value.ValueString()
+	}
+
+	records, err := r.client.ListDNSRecord(ctx, site)
+	if err != nil {
+		var d diag.Diagnostics
+		d.AddError("Error Listing DNS Records", "Could not list DNS records: "+err.Error())
+		stream.Results = list.ListResultsStreamDiagnostics(d)
+		return
+	}
+
+	stream.Results = func(push func(list.ListResult) bool) {
+		for _, record := range records {
+			// Apply name filter.
+			if val, ok := postFilters["name"]; ok {
+				if record.Key != val {
+					continue
+				}
+			}
+
+			// Apply record_type filter.
+			if val, ok := postFilters["record_type"]; ok {
+				if record.RecordType != val {
+					continue
+				}
+			}
+
+			// Apply enabled filter.
+			if val, ok := postFilters["enabled"]; ok {
+				enabled := fmt.Sprintf("%t", record.Enabled)
+				if enabled != val {
+					continue
+				}
+			}
+
+			result := req.NewListResult(ctx)
+
+			// Display name: prefer key, fall back to ID.
+			if record.Key != "" {
+				result.DisplayName = record.Key
+			} else {
+				result.DisplayName = record.ID
+			}
+
+			// Set identity.
+			result.Diagnostics.Append(
+				result.Identity.Set(ctx, dnsRecordIdentityModel{
+					ID:   types.StringValue(record.ID),
+					Site: types.StringValue(site),
+				})...,
+			)
+
+			// Convert to model.
+			var model dnsRecordFrameworkResourceModel
+			r.dnsRecordToModel(ctx, &record, &model, site)
+			model.Timeouts = timeoutsNullValue()
+			result.Diagnostics.Append(result.Resource.Set(ctx, model)...)
+
+			if !push(result) {
+				return
+			}
+		}
 	}
 }

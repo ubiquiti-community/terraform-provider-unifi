@@ -12,7 +12,21 @@ Data source for access point groups.
 ## Example Usage
 
 ```terraform
+# Look up an existing access point group by name. The group ID and the list of
+# member device MAC addresses are computed, making this useful for referencing a
+# group from other resources (e.g. WLAN ap_group_ids) or auditing membership.
 data "unifi_ap_group" "default" {
+  name = "Default"
+}
+
+output "ap_group_id" {
+  description = "The ID of the AP group, for use in other resources."
+  value       = data.unifi_ap_group.default.id
+}
+
+output "ap_group_device_macs" {
+  description = "MAC addresses of the access points in the group."
+  value       = data.unifi_ap_group.default.device_macs
 }
 ```
 
@@ -26,8 +40,16 @@ data "unifi_ap_group" "default" {
 ### Optional
 
 - `site` (String) The name of the site the AP group is associated with.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
 - `device_macs` (List of String) List of device MAC addresses in the AP group.
 - `id` (String) The ID of this AP group.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).

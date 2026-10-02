@@ -1,0 +1,71 @@
+# Codecov configuration.
+# Coverage is split into two flags/components so unit and acceptance test
+# results can be tracked independently. Unit tests run on every PR/push
+# (ci.yaml) while acceptance tests run on a schedule/release (acctest.yaml),
+# so carryforward keeps the most recent coverage for whichever flag did not
+# run in a given upload.
+#
+# NOTE: codecov path filters match the *source* files in the coverage profile.
+# Go's -coverprofile never instruments *_test.go files, so filtering on test
+# files would match nothing — these globs target the implementation files.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: unit
+      carryforward: true
+    - name: acceptance
+      carryforward: true
+      # Acceptance tests (TF_ACC) drive the live provider end-to-end, so they
+      # are only credited for the terraform-plugin-framework implementation
+      # files: the provider wiring plus every framework component kind —
+      # resources (which also register their list resources), data sources
+      # (incl. list data sources), actions, ephemeral resources and functions.
+      # The pure-Go helper packages (util, models, validators) and helpers
+      # (logger, wireguard_config) are covered by unit tests instead.
+      paths:
+        - unifi/provider.go
+        - unifi/account_deprecated.go
+        - unifi/radius_user_move_state.go
+        - unifi/*_resource.go
+        - unifi/*_data_source.go
+        - unifi/*_action.go
+        - unifi/*_ephemeral.go
+        - unifi/*_ephemeral_resource.go
+        - unifi/*_function.go
+
+component_management:
+  individual_components:
+    - component_id: unit
+      name: Unit Tests
+      flag_regexes:
+        - unit
+    - component_id: acceptance
+      name: Acceptance Tests
+      flag_regexes:
+        - acceptance
+      # Keep the component view scoped to the same framework paths as the flag.
+      paths:
+        - unifi/provider.go
+        - unifi/account_deprecated.go
+        - unifi/radius_user_move_state.go
+        - unifi/*_resource.go
+        - unifi/*_data_source.go
+        - unifi/*_action.go
+        - unifi/*_ephemeral.go
+        - unifi/*_ephemeral_resource.go
+        - unifi/*_function.go
+
+comment:
+  layout: "header, diff, flags, components, files"
