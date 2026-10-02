@@ -68,3 +68,16 @@ resource "unifi_setting" "global_switch" {
     dot1x_portctrl_enabled = false
   }
 }
+
+# Turn Wireless Meshing off on a fully wired site. Besides freeing the standby
+# mesh radio, this doubles the per-band SSID budget: with meshing on, APs
+# reserve a hidden backhaul SSID and allow 4 SSIDs per band instead of 8, so a
+# site rebuilt from code can otherwise fail to create its fifth WLAN. The
+# controller-generated mesh SSID and pre-shared key are left untouched.
+resource "unifi_setting" "wired_site" {
+  site = "default"
+
+  connectivity = {
+    enabled = false
+  }
+}
