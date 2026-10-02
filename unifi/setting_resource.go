@@ -250,6 +250,7 @@ type settingResourceModel struct {
 	USG           types.Object   `tfsdk:"usg"`
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
 	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
+	Connectivity  types.Object   `tfsdk:"connectivity"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
 }
 
@@ -264,6 +265,20 @@ type settingGlobalSwitchModel struct {
 	DHCPSnoop            types.Bool   `tfsdk:"dhcp_snoop"`
 	JumboframeEnabled    types.Bool   `tfsdk:"jumboframe_enabled"`
 	Dot1XPortctrlEnabled types.Bool   `tfsdk:"dot1x_portctrl_enabled"`
+}
+
+// settingConnectivityModel is the nested connectivity block (Settings > WiFi >
+// Wireless Meshing). Besides freeing the standby mesh radio, disabling meshing
+// doubles the per-band SSID budget: with meshing on, APs reserve a hidden
+// backhaul SSID and allow 4 SSIDs per band instead of 8, so a site rebuilt
+// from code can fail to create its fifth WLAN before this toggle is managed
+// (#518). The controller-generated mesh credentials (x_mesh_essid, x_mesh_psk)
+// are deliberately not exposed and are preserved by the partial write.
+type settingConnectivityModel struct {
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	MloMeshEnabled types.Bool   `tfsdk:"mlo_mesh_enabled"`
+	UplinkType     types.String `tfsdk:"uplink_type"`
+	UplinkHost     types.String `tfsdk:"uplink_host"`
 }
 
 // settingIgmpSnoopingModel is the nested igmp_snooping block. On UniFi 10.3.x the
@@ -405,6 +420,13 @@ var (
 		"dhcp_snoop":             types.BoolType,
 		"jumboframe_enabled":     types.BoolType,
 		"dot1x_portctrl_enabled": types.BoolType,
+	}
+
+	connectivityAttrTypes = map[string]attr.Type{
+		"enabled":          types.BoolType,
+		"mlo_mesh_enabled": types.BoolType,
+		"uplink_type":      types.StringType,
+		"uplink_host":      types.StringType,
 	}
 )
 
@@ -1320,6 +1342,56 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"connectivity": schema.SingleNestedAttribute{
+				MarkdownDescription: "Wireless meshing and uplink connectivity " +
+					"(Settings > WiFi > Wireless Meshing). Disabling meshing frees the " +
+					"standby mesh radio and doubles the per-band SSID budget: with " +
+					"meshing on, APs reserve a hidden backhaul SSID and allow 4 SSIDs " +
+					"per band instead of 8. The controller-generated mesh SSID and " +
+					"pre-shared key are not exposed and are preserved across updates, " +
+					"as are any options this block does not model.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable Wireless Meshing for the site.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"mlo_mesh_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable Multi-Link Operation (MLO) for the " +
+							"mesh backhaul. Requires WiFi 7 hardware.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"uplink_type": schema.StringAttribute{
+						MarkdownDescription: "How the site reaches the controller: " +
+							"`gateway` or `internet`.",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("gateway", "internet"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"uplink_host": schema.StringAttribute{
+						MarkdownDescription: "Host the site uses to verify connectivity " +
+							"when `uplink_type` is `internet`.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+				},
+			},
 			"global_switch": schema.SingleNestedAttribute{
 				MarkdownDescription: "Site-wide switch settings (Settings > Networks > Global Switch Settings). " +
 					"On current controllers jumbo frames are only honored here, not via `unifi_device.jumboframe_enabled`. " +
@@ -1709,6 +1781,11 @@ func (r *settingResource) Create(
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
 	r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
+
+	var connectivityConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
+	r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2043,6 +2120,11 @@ func (r *settingResource) Update(
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
 	r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
+
+	var connectivityConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
+	r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2523,6 +2605,27 @@ func (r *settingResource) readSettings(
 		data.IgmpSnooping = objValue
 	} else {
 		data.IgmpSnooping = types.ObjectNull(igmpSnoopingAttrTypes)
+	}
+
+	// Connectivity (wireless meshing)
+	if !data.Connectivity.IsNull() && !data.Connectivity.IsUnknown() {
+		_, connSetting, err := ui.GetSetting[*settings.Connectivity](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Connectivity Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx,
+			connectivityAttrTypes,
+			r.connectivitySettingToModel(connSetting),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Connectivity = objValue
+	} else {
+		data.Connectivity = types.ObjectNull(connectivityAttrTypes)
 	}
 
 	// Global switch settings
@@ -3358,6 +3461,73 @@ func (r *settingResource) globalSwitchSettingToModel(
 		DHCPSnoop:            types.BoolValue(setting.DHCPSnoop),
 		JumboframeEnabled:    types.BoolValue(setting.JumboframeEnabled),
 		Dot1XPortctrlEnabled: types.BoolValue(setting.Dot1XPortctrlEnabled),
+	}
+}
+
+// Connectivity conversion functions.
+
+// persistConnectivity writes the connectivity fields set in config, if any.
+// obj must come from config, not the plan: UseStateForUnknown fills omitted
+// fields in the plan from state, and those must not be re-sent. The controller
+// merges this partial PUT into the stored setting, so the generated mesh
+// credentials (x_mesh_essid / x_mesh_psk) and anything else not modelled here
+// survive untouched (#518).
+func (r *settingResource) persistConnectivity(
+	ctx context.Context,
+	site string,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) {
+	if obj.IsNull() || obj.IsUnknown() {
+		return
+	}
+	var model settingConnectivityModel
+	diags.Append(obj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return
+	}
+
+	setting := connectivityRawSetting(&model)
+	if len(setting.Data) == 0 {
+		return
+	}
+	if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		diags.AddError("Error Updating Connectivity Setting", err.Error())
+	}
+}
+
+const connectivitySettingKey = "connectivity"
+
+// connectivityRawSetting builds a partial connectivity payload containing only
+// the fields set in the model.
+func connectivityRawSetting(model *settingConnectivityModel) *settings.RawSetting {
+	data := map[string]any{}
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		data["enabled"] = model.Enabled.ValueBool()
+	}
+	if !model.MloMeshEnabled.IsNull() && !model.MloMeshEnabled.IsUnknown() {
+		data["mlo_mesh_enabled"] = model.MloMeshEnabled.ValueBool()
+	}
+	if !model.UplinkType.IsNull() && !model.UplinkType.IsUnknown() {
+		data["uplink_type"] = model.UplinkType.ValueString()
+	}
+	if !model.UplinkHost.IsNull() && !model.UplinkHost.IsUnknown() {
+		data["uplink_host"] = model.UplinkHost.ValueString()
+	}
+	return &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: connectivitySettingKey},
+		Data:        data,
+	}
+}
+
+func (r *settingResource) connectivitySettingToModel(
+	setting *settings.Connectivity,
+) *settingConnectivityModel {
+	return &settingConnectivityModel{
+		Enabled:        types.BoolValue(setting.Enabled),
+		MloMeshEnabled: types.BoolValue(setting.MloMeshEnabled),
+		UplinkType:     stringOrNull(setting.UplinkType),
+		UplinkHost:     stringOrNull(setting.UplinkHost),
 	}
 }
 
