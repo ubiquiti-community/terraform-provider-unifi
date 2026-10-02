@@ -173,6 +173,112 @@ resource "unifi_wireguard_peer" "test" {
 `
 }
 
+// TestWireguardPeerPresharedKey covers #490. The peer endpoints are full
+// replaces: verified on Network 10.6.106 that a PUT omitting preshared_key
+// destroys a stored one, so the attribute must stay off the wire when it is
+// not managed, or an apply silently drops a key set in the UI.
+func TestWireguardPeerPresharedKey(t *testing.T) {
+	r := &wireguardPeerResource{}
+	ctx := context.Background()
+
+	base := func() *wireguardPeerResourceModel {
+		return &wireguardPeerResourceModel{
+			Name:           types.StringValue("laptop"),
+			InterfaceIP:    types.StringValue("10.8.0.7"),
+			PublicKey:      types.StringValue("pub"),
+			AllowedIPs:     types.ListNull(types.StringType),
+			PresharedKey:   types.StringNull(),
+			PresharedKeyWO: types.StringNull(),
+		}
+	}
+
+	t.Run("unmanaged key stays off the wire", func(t *testing.T) {
+		peer, diags := r.modelToPeer(ctx, base())
+		if diags.HasError() {
+			t.Fatalf("modelToPeer: %v", diags)
+		}
+		if peer.PresharedKey != nil {
+			t.Errorf(
+				"PresharedKey = %q, want nil so a key set out of band survives",
+				*peer.PresharedKey,
+			)
+		}
+	})
+
+	t.Run("configured key travels", func(t *testing.T) {
+		model := base()
+		model.PresharedKey = types.StringValue("psk-value")
+		peer, diags := r.modelToPeer(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToPeer: %v", diags)
+		}
+		if peer.PresharedKey == nil || *peer.PresharedKey != "psk-value" {
+			t.Errorf("PresharedKey = %v, want psk-value", peer.PresharedKey)
+		}
+	})
+
+	t.Run("write-only key travels but never reaches state", func(t *testing.T) {
+		model := base()
+		model.PresharedKeyWO = types.StringValue("ephemeral-psk")
+		peer, diags := r.modelToPeer(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("modelToPeer: %v", diags)
+		}
+		if peer.PresharedKey == nil || *peer.PresharedKey != "ephemeral-psk" {
+			t.Errorf("PresharedKey = %v, want ephemeral-psk", peer.PresharedKey)
+		}
+
+		// A read must not mirror the controller's value into preshared_key
+		// while the write-only attribute is the one in use.
+		psk := "ephemeral-psk"
+		api := &unifi.WireGuardPeer{
+			ID:           "p1",
+			Name:         "laptop",
+			InterfaceIP:  "10.8.0.7",
+			PublicKey:    "pub",
+			PresharedKey: &psk,
+		}
+		if diags := r.peerToModel(ctx, api, model, "default"); diags.HasError() {
+			t.Fatalf("peerToModel: %v", diags)
+		}
+		if !model.PresharedKey.IsNull() {
+			t.Errorf(
+				"preshared_key = %v, want null with preshared_key_wo in use",
+				model.PresharedKey,
+			)
+		}
+	})
+
+	t.Run("read adopts the controller key for the stateful attribute", func(t *testing.T) {
+		model := base()
+		psk := "from-controller"
+		api := &unifi.WireGuardPeer{
+			ID:           "p1",
+			Name:         "laptop",
+			InterfaceIP:  "10.8.0.7",
+			PublicKey:    "pub",
+			PresharedKey: &psk,
+		}
+		if diags := r.peerToModel(ctx, api, model, "default"); diags.HasError() {
+			t.Fatalf("peerToModel: %v", diags)
+		}
+		if model.PresharedKey.ValueString() != "from-controller" {
+			t.Errorf("preshared_key = %v, want from-controller", model.PresharedKey)
+		}
+
+		// A peer without a key reads back null, not "".
+		model2 := base()
+		if diags := r.peerToModel(ctx, &unifi.WireGuardPeer{
+			ID: "p2", Name: "n", InterfaceIP: "10.8.0.8", PublicKey: "pub2",
+		}, model2, "default"); diags.HasError() {
+			t.Fatalf("peerToModel: %v", diags)
+		}
+		if !model2.PresharedKey.IsNull() {
+			t.Errorf("preshared_key = %v, want null", model2.PresharedKey)
+		}
+	})
+}
+
 func TestNewWireguardPeerResource(t *testing.T) {
 	r := NewWireguardPeerResource()
 	if r == nil {
