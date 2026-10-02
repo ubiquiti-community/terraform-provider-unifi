@@ -326,10 +326,26 @@ resource "unifi_setting" "test" {
 }
 `,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.stp_version", "stp"),
-					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dhcp_snoop", "true"),
-					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.jumboframe_enabled", "true"),
-					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dot1x_portctrl_enabled", "false"),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"global_switch.stp_version",
+						"stp",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"global_switch.dhcp_snoop",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"global_switch.jumboframe_enabled",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"global_switch.dot1x_portctrl_enabled",
+						"false",
+					),
 					testAccCheckGlobalSwitchRaw(t, ctx, &client, site, map[string]any{
 						"stp_version":           "stp",
 						"jumboframe_enabled":    true,
@@ -346,9 +362,21 @@ resource "unifi_setting" "test" {
 }
 `,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.jumboframe_enabled", "false"),
-					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.stp_version", "stp"),
-					resource.TestCheckResourceAttr("unifi_setting.test", "global_switch.dhcp_snoop", "true"),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"global_switch.jumboframe_enabled",
+						"false",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"global_switch.stp_version",
+						"stp",
+					),
+					resource.TestCheckResourceAttr(
+						"unifi_setting.test",
+						"global_switch.dhcp_snoop",
+						"true",
+					),
 					testAccCheckGlobalSwitchRaw(t, ctx, &client, site, map[string]any{
 						"stp_version":           "stp",
 						"dhcp_snoop":            true,
@@ -1573,7 +1601,11 @@ func Test_settingResource_globalSwitchSettingToModel(t *testing.T) {
 	if got.Dot1XPortctrlEnabled.IsNull() || got.Dot1XPortctrlEnabled.ValueBool() {
 		t.Error("Dot1XPortctrlEnabled should be a known false")
 	}
-	if _, d := types.ObjectValueFrom(context.Background(), globalSwitchAttrTypes, got); d.HasError() {
+	if _, d := types.ObjectValueFrom(
+		context.Background(),
+		globalSwitchAttrTypes,
+		got,
+	); d.HasError() {
 		t.Fatalf("model does not match globalSwitchAttrTypes: %v", d)
 	}
 }
@@ -1590,7 +1622,11 @@ func TestSettingGlobalSwitchUseStateForUnknown(t *testing.T) {
 		t.Fatal("global_switch is not a SingleNestedAttribute")
 	}
 	if len(gs.Attributes) != len(globalSwitchAttrTypes) {
-		t.Fatalf("global_switch has %d attributes, want %d", len(gs.Attributes), len(globalSwitchAttrTypes))
+		t.Fatalf(
+			"global_switch has %d attributes, want %d",
+			len(gs.Attributes),
+			len(globalSwitchAttrTypes),
+		)
 	}
 
 	for key, a := range gs.Attributes {
@@ -1615,10 +1651,18 @@ func TestSettingGlobalSwitchUseStateForUnknown(t *testing.T) {
 				req.PlanValue = modified.PlanValue
 			}
 			if modified.Diagnostics.HasError() {
-				t.Errorf("global_switch.%s plan modifier returned errors: %v", key, modified.Diagnostics)
+				t.Errorf(
+					"global_switch.%s plan modifier returned errors: %v",
+					key,
+					modified.Diagnostics,
+				)
 			}
 			if modified.PlanValue.IsUnknown() || modified.PlanValue.ValueString() != "rstp" {
-				t.Errorf("global_switch.%s plan = %v, want prior state \"rstp\"", key, modified.PlanValue)
+				t.Errorf(
+					"global_switch.%s plan = %v, want prior state \"rstp\"",
+					key,
+					modified.PlanValue,
+				)
 			}
 		case schema.BoolAttribute:
 			if len(v.PlanModifiers) == 0 {
@@ -1637,10 +1681,18 @@ func TestSettingGlobalSwitchUseStateForUnknown(t *testing.T) {
 				req.PlanValue = modified.PlanValue
 			}
 			if modified.Diagnostics.HasError() {
-				t.Errorf("global_switch.%s plan modifier returned errors: %v", key, modified.Diagnostics)
+				t.Errorf(
+					"global_switch.%s plan modifier returned errors: %v",
+					key,
+					modified.Diagnostics,
+				)
 			}
 			if modified.PlanValue.IsUnknown() || !modified.PlanValue.ValueBool() {
-				t.Errorf("global_switch.%s plan = %v, want prior state true", key, modified.PlanValue)
+				t.Errorf(
+					"global_switch.%s plan = %v, want prior state true",
+					key,
+					modified.PlanValue,
+				)
 			}
 		default:
 			t.Errorf("global_switch.%s has unexpected type %T", key, a)
