@@ -3631,12 +3631,12 @@ func (r *settingResource) readRawSettingData(
 // ipsSuppressionFromRaw decodes the alerts/whitelist payload of a raw
 // ips_suppression setting into the nested suppression struct the ips
 // conversion functions already understand.
-func ipsSuppressionFromRaw(data map[string]any) (*settings.SettingIpsSuppression, error) {
+func ipsSuppressionFromRaw(data map[string]any) (*settings.IpsSuppression, error) {
 	buf, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
 	}
-	supp := &settings.SettingIpsSuppression{}
+	supp := &settings.IpsSuppression{}
 	if err := json.Unmarshal(buf, supp); err != nil {
 		return nil, err
 	}
@@ -3646,14 +3646,14 @@ func ipsSuppressionFromRaw(data map[string]any) (*settings.SettingIpsSuppression
 // ipsSuppressionRawSetting builds the standalone ips_suppression setting
 // payload from the suppression entries of an ips setting. Nil slices are sent
 // as empty arrays so clearing the last entry actually clears the controller.
-func ipsSuppressionRawSetting(suppression *settings.SettingIpsSuppression) *settings.RawSetting {
+func ipsSuppressionRawSetting(suppression *settings.IpsSuppression) *settings.RawSetting {
 	alerts := suppression.Alerts
 	if alerts == nil {
-		alerts = []settings.SettingIpsAlerts{}
+		alerts = []settings.SettingIpsSuppressionAlerts{}
 	}
 	whitelist := suppression.Whitelist
 	if whitelist == nil {
-		whitelist = []settings.SettingIpsWhitelist{}
+		whitelist = []settings.SettingIpsSuppressionWhitelist{}
 	}
 	return &settings.RawSetting{
 		BaseSetting: settings.BaseSetting{Key: ipsSuppressionSettingKey},
@@ -3772,12 +3772,12 @@ func (r *settingResource) ipsModelToSetting(
 			return setting
 		}
 		if setting.Suppression == nil {
-			setting.Suppression = &settings.SettingIpsSuppression{}
+			setting.Suppression = &settings.IpsSuppression{}
 		}
 		for _, w := range whitelist {
 			setting.Suppression.Whitelist = append(
 				setting.Suppression.Whitelist,
-				settings.SettingIpsWhitelist{
+				settings.SettingIpsSuppressionWhitelist{
 					Direction: w.Direction.ValueString(),
 					Mode:      w.Mode.ValueString(),
 					Value:     w.Value.ValueString(),
@@ -3792,10 +3792,10 @@ func (r *settingResource) ipsModelToSetting(
 			return setting
 		}
 		if setting.Suppression == nil {
-			setting.Suppression = &settings.SettingIpsSuppression{}
+			setting.Suppression = &settings.IpsSuppression{}
 		}
 		for _, a := range alerts {
-			alert := settings.SettingIpsAlerts{
+			alert := settings.SettingIpsSuppressionAlerts{
 				Category:  a.Category.ValueString(),
 				Signature: a.Signature.ValueString(),
 				Type:      a.Type.ValueString(),
@@ -3811,7 +3811,7 @@ func (r *settingResource) ipsModelToSetting(
 				var tracking []settingIpsTrackingModel
 				diags.Append(a.Tracking.ElementsAs(ctx, &tracking, false)...)
 				for _, t := range tracking {
-					alert.Tracking = append(alert.Tracking, settings.SettingIpsTracking{
+					alert.Tracking = append(alert.Tracking, settings.SettingIpsSuppressionTracking{
 						Direction: t.Direction.ValueString(),
 						Mode:      t.Mode.ValueString(),
 						Value:     t.Value.ValueString(),
@@ -3920,7 +3920,7 @@ func (r *settingResource) ipsSettingToModel(
 
 	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
 	if !plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown() {
-		var whitelist []settings.SettingIpsWhitelist
+		var whitelist []settings.SettingIpsSuppressionWhitelist
 		if setting.Suppression != nil {
 			whitelist = setting.Suppression.Whitelist
 		}
@@ -3942,7 +3942,7 @@ func (r *settingResource) ipsSettingToModel(
 	trackingType := types.ObjectType{AttrTypes: ipsTrackingAttrTypes}
 	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
 	if !plan.SuppressionAlerts.IsNull() && !plan.SuppressionAlerts.IsUnknown() {
-		var alerts []settings.SettingIpsAlerts
+		var alerts []settings.SettingIpsSuppressionAlerts
 		if setting.Suppression != nil {
 			alerts = setting.Suppression.Alerts
 		}
