@@ -1205,15 +1205,18 @@ func Test_reassertWLANBands(t *testing.T) {
 // #388: per-SSID band steering (bandsteering_mode)
 // ---------------------------------------------------------------------------
 
-// Test_planToWLAN_bandsteeringMode verifies the write path for #388: a
-// declared value travels to the controller, and an unset (null or unknown)
-// value stays off the wire entirely — controllers without per-SSID band
-// steering must never be sent the key.
-func Test_planToWLAN_bandsteeringMode(t *testing.T) {
+// Test_bandsteeringMode_deprecated covers the removal of per-SSID band
+// steering: UniFi dropped bandsteering_mode from the WLAN object (absent from
+// WlanConf.json on 10.6.106, still present on Device.json), so go-unifi no
+// longer carries it. A declared value must not reach the controller, and the
+// attribute must read back null rather than echoing whatever the plan held -
+// otherwise a configuration keeping the attribute would show a value the
+// controller never stored. The setting now lives on unifi_device.
+func Test_bandsteeringMode_deprecated(t *testing.T) {
 	ctx := context.Background()
 	r := &wlanFrameworkResource{}
 
-	t.Run("declared value is sent", func(t *testing.T) {
+	t.Run("declared value never reaches the wire", func(t *testing.T) {
 		plan := wlanFrameworkResourceModel{
 			Name:             types.StringValue("w"),
 			BandsteeringMode: types.StringValue("prefer_5g"),
@@ -1222,84 +1225,31 @@ func Test_planToWLAN_bandsteeringMode(t *testing.T) {
 		if diags.HasError() {
 			t.Fatalf("planToWLAN: %v", diags)
 		}
-		if wlan.BandsteeringMode != "prefer_5g" {
-			t.Errorf("BandsteeringMode = %q, want prefer_5g", wlan.BandsteeringMode)
-		}
 		raw, err := json.Marshal(wlan)
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
 		}
-		if !strings.Contains(string(raw), `"bandsteering_mode":"prefer_5g"`) {
-			t.Errorf("payload missing bandsteering_mode: %s", raw)
+		if strings.Contains(string(raw), "bandsteering_mode") {
+			t.Errorf("deprecated bandsteering_mode leaked into payload: %s", raw)
 		}
 	})
 
-	for name, value := range map[string]types.String{
-		"null stays off the wire":    types.StringNull(),
-		"unknown stays off the wire": types.StringUnknown(),
+	for name, declared := range map[string]types.String{
+		"declared reads back null": types.StringValue("prefer_5g"),
+		"null stays null":          types.StringNull(),
+		"unknown resolves to null": types.StringUnknown(),
 	} {
 		t.Run(name, func(t *testing.T) {
-			plan := wlanFrameworkResourceModel{
-				Name:             types.StringValue("w"),
-				BandsteeringMode: value,
+			model := wlanFrameworkResourceModel{BandsteeringMode: declared}
+			wlan := &unifi.WLAN{ID: "id", Name: "w"}
+			if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
+				t.Fatalf("wlanToModel: %v", diags)
 			}
-			wlan, diags := r.planToWLAN(ctx, plan)
-			if diags.HasError() {
-				t.Fatalf("planToWLAN: %v", diags)
-			}
-			raw, err := json.Marshal(wlan)
-			if err != nil {
-				t.Fatalf("marshal: %v", err)
-			}
-			if strings.Contains(string(raw), "bandsteering_mode") {
-				t.Errorf("unset bandsteering_mode leaked into payload: %s", raw)
+			if !model.BandsteeringMode.IsNull() {
+				t.Errorf("BandsteeringMode = %v, want null", model.BandsteeringMode)
 			}
 		})
 	}
-}
-
-// Test_wlanToModel_bandsteeringMode verifies the read path for #388:
-// controller echo wins; a missing key keeps the model's existing value (the
-// declared value on create/update, prior state on read) so controllers
-// without per-SSID band steering neither fail the apply with an
-// inconsistent-result error nor produce perpetual drift; and Unknown resolves
-// to null when the controller has nothing stored.
-func Test_wlanToModel_bandsteeringMode(t *testing.T) {
-	ctx := context.Background()
-	r := &wlanFrameworkResource{}
-
-	t.Run("controller echo wins", func(t *testing.T) {
-		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringValue("off")}
-		wlan := &unifi.WLAN{ID: "id", Name: "w", BandsteeringMode: "equal"}
-		if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
-			t.Fatalf("wlanToModel: %v", diags)
-		}
-		if model.BandsteeringMode.ValueString() != "equal" {
-			t.Errorf("BandsteeringMode = %v, want controller echo equal", model.BandsteeringMode)
-		}
-	})
-
-	t.Run("missing key keeps the declared value", func(t *testing.T) {
-		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringValue("prefer_5g")}
-		wlan := &unifi.WLAN{ID: "id", Name: "w"}
-		if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
-			t.Fatalf("wlanToModel: %v", diags)
-		}
-		if model.BandsteeringMode.ValueString() != "prefer_5g" {
-			t.Errorf("BandsteeringMode = %v, want declared prefer_5g kept", model.BandsteeringMode)
-		}
-	})
-
-	t.Run("missing key resolves unknown to null", func(t *testing.T) {
-		model := wlanFrameworkResourceModel{BandsteeringMode: types.StringUnknown()}
-		wlan := &unifi.WLAN{ID: "id", Name: "w"}
-		if diags := r.wlanToModel(ctx, wlan, &model, "default"); diags.HasError() {
-			t.Fatalf("wlanToModel: %v", diags)
-		}
-		if !model.BandsteeringMode.IsNull() {
-			t.Errorf("BandsteeringMode = %v, want null", model.BandsteeringMode)
-		}
-	})
 }
 
 // TestAccWLANFramework_bandsteeringMode exercises #388 end to end against the
