@@ -774,14 +774,26 @@ func (r *deviceResource) Schema(
 							Computed:    true,
 						},
 						"assisted_roaming_enabled": schema.BoolAttribute{
-							Description: "Enable assisted roaming.",
-							Optional:    true,
-							Computed:    true,
+							Description: "Deprecated and no longer applied. UniFi " +
+								"removed 802.11k assisted roaming from the radio " +
+								"table; the field is absent from the controller API " +
+								"and from the firmware's own field definitions as of " +
+								"Network 10.6, so the provider can neither read nor " +
+								"write it. Always null.",
+							DeprecationMessage: "assisted_roaming_enabled is no longer " +
+								"supported by the controller and is ignored. Remove it " +
+								"from your configuration.",
+							Optional: true,
+							Computed: true,
 						},
 						"assisted_roaming_rssi": schema.Int64Attribute{
-							Description: "Assisted roaming RSSI threshold.",
-							Optional:    true,
-							Computed:    true,
+							Description: "Deprecated and no longer applied. See " +
+								"`assisted_roaming_enabled`. Always null.",
+							DeprecationMessage: "assisted_roaming_rssi is no longer " +
+								"supported by the controller and is ignored. Remove it " +
+								"from your configuration.",
+							Optional: true,
+							Computed: true,
 						},
 						"dfs": schema.BoolAttribute{
 							Description: "Enable DFS (Dynamic Frequency Selection).",
@@ -3258,17 +3270,21 @@ func (r *deviceResource) radioTableToFramework(
 	elements := make([]attr.Value, 0, len(radios))
 	for _, radio := range radios {
 		model := radioTableModel{
-			Radio:                  stringOrNull(radio.Radio),
-			Channel:                stringOrNull(radio.Channel),
-			Ht:                     types.Int64PointerValue(radio.Ht),
-			TxPower:                stringOrNull(radio.TxPower),
-			TxPowerMode:            stringOrNull(radio.TxPowerMode),
-			MinRssiEnabled:         types.BoolValue(radio.MinRssiEnabled),
-			MinRssi:                types.Int64PointerValue(radio.MinRssi),
-			AntennaGain:            types.Int64PointerValue(radio.AntennaGain),
-			AntennaID:              types.Int64PointerValue(radio.AntennaID),
-			AssistedRoamingEnabled: types.BoolValue(radio.AssistedRoamingEnabled),
-			AssistedRoamingRssi:    types.Int64PointerValue(radio.AssistedRoamingRssi),
+			Radio:          stringOrNull(radio.Radio),
+			Channel:        stringOrNull(radio.Channel),
+			Ht:             types.Int64PointerValue(radio.Ht),
+			TxPower:        stringOrNull(radio.TxPower),
+			TxPowerMode:    stringOrNull(radio.TxPowerMode),
+			MinRssiEnabled: types.BoolValue(radio.MinRssiEnabled),
+			MinRssi:        types.Int64PointerValue(radio.MinRssi),
+			AntennaGain:    types.Int64PointerValue(radio.AntennaGain),
+			AntennaID:      types.Int64PointerValue(radio.AntennaID),
+			// Deprecated: UniFi removed 802.11k assisted roaming from the
+			// radio table (absent from the API and from the firmware's own
+			// field definitions as of Network 10.6), so go-unifi no longer
+			// carries these. Always null.
+			AssistedRoamingEnabled: types.BoolNull(),
+			AssistedRoamingRssi:    types.Int64Null(),
 			Dfs:                    types.BoolValue(radio.Dfs),
 			HardNoiseFloorEnabled:  types.BoolValue(radio.HardNoiseFloorEnabled),
 			LoadbalanceEnabled:     types.BoolValue(radio.LoadbalanceEnabled),
@@ -3625,13 +3641,6 @@ func sanitizeRadioForUpdate(radioName string, radio *unifi.DeviceRadioTable) dia
 	if !radio.SensLevelEnabled || !inRange(radio.SensLevel, -90, -50) {
 		radio.SensLevel = nil
 	}
-	if radio.AssistedRoamingEnabled && radio.AssistedRoamingRssi != nil &&
-		!inRange(radio.AssistedRoamingRssi, -80, -60) {
-		warnDropped("assisted_roaming_rssi", *radio.AssistedRoamingRssi, -80, -60)
-	}
-	if !radio.AssistedRoamingEnabled || !inRange(radio.AssistedRoamingRssi, -80, -60) {
-		radio.AssistedRoamingRssi = nil
-	}
 
 	return diags
 }
@@ -3662,25 +3671,23 @@ func (r *deviceResource) frameworkToRadioTable(
 		}
 
 		radio := unifi.DeviceRadioTable{
-			Radio:                  model.Radio.ValueString(),
-			Channel:                model.Channel.ValueString(),
-			Ht:                     int64PointerIfKnown(model.Ht),
-			TxPower:                model.TxPower.ValueString(),
-			TxPowerMode:            model.TxPowerMode.ValueString(),
-			MinRssiEnabled:         model.MinRssiEnabled.ValueBool(),
-			MinRssi:                int64PointerIfKnown(model.MinRssi),
-			AntennaGain:            int64PointerIfKnown(model.AntennaGain),
-			AntennaID:              int64PointerIfKnown(model.AntennaID),
-			AssistedRoamingEnabled: model.AssistedRoamingEnabled.ValueBool(),
-			AssistedRoamingRssi:    int64PointerIfKnown(model.AssistedRoamingRssi),
-			Dfs:                    model.Dfs.ValueBool(),
-			HardNoiseFloorEnabled:  model.HardNoiseFloorEnabled.ValueBool(),
-			LoadbalanceEnabled:     model.LoadbalanceEnabled.ValueBool(),
-			Maxsta:                 int64PointerIfKnown(model.Maxsta),
-			Name:                   model.Name.ValueString(),
-			SensLevel:              int64PointerIfKnown(model.SensLevel),
-			SensLevelEnabled:       model.SensLevelEnabled.ValueBool(),
-			VwireEnabled:           model.VwireEnabled.ValueBool(),
+			Radio:                 model.Radio.ValueString(),
+			Channel:               model.Channel.ValueString(),
+			Ht:                    int64PointerIfKnown(model.Ht),
+			TxPower:               model.TxPower.ValueString(),
+			TxPowerMode:           model.TxPowerMode.ValueString(),
+			MinRssiEnabled:        model.MinRssiEnabled.ValueBool(),
+			MinRssi:               int64PointerIfKnown(model.MinRssi),
+			AntennaGain:           int64PointerIfKnown(model.AntennaGain),
+			AntennaID:             int64PointerIfKnown(model.AntennaID),
+			Dfs:                   model.Dfs.ValueBool(),
+			HardNoiseFloorEnabled: model.HardNoiseFloorEnabled.ValueBool(),
+			LoadbalanceEnabled:    model.LoadbalanceEnabled.ValueBool(),
+			Maxsta:                int64PointerIfKnown(model.Maxsta),
+			Name:                  model.Name.ValueString(),
+			SensLevel:             int64PointerIfKnown(model.SensLevel),
+			SensLevelEnabled:      model.SensLevelEnabled.ValueBool(),
+			VwireEnabled:          model.VwireEnabled.ValueBool(),
 		}
 
 		diags.Append(sanitizeRadioForUpdate(radio.Radio, &radio)...)

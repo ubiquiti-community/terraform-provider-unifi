@@ -76,21 +76,10 @@ func TestSanitizeRadioForUpdate(t *testing.T) {
 			unifi.DeviceRadioTable{SensLevelEnabled: true, SensLevel: i64(-70)},
 			func(r unifi.DeviceRadioTable) bool { return r.SensLevel != nil },
 		},
-		{
-			"assisted_roaming_rssi 0 dropped when disabled",
-			unifi.DeviceRadioTable{AssistedRoamingEnabled: false, AssistedRoamingRssi: i64(0)},
-			func(r unifi.DeviceRadioTable) bool { return r.AssistedRoamingRssi == nil },
-		},
-		{
-			"assisted_roaming_rssi out-of-range (-10) dropped even if enabled",
-			unifi.DeviceRadioTable{AssistedRoamingEnabled: true, AssistedRoamingRssi: i64(-10)},
-			func(r unifi.DeviceRadioTable) bool { return r.AssistedRoamingRssi == nil },
-		},
-		{
-			"assisted_roaming_rssi in-range (-70) kept when enabled",
-			unifi.DeviceRadioTable{AssistedRoamingEnabled: true, AssistedRoamingRssi: i64(-70)},
-			func(r unifi.DeviceRadioTable) bool { return r.AssistedRoamingRssi != nil },
-		},
+		// assisted_roaming_rssi cases removed: UniFi dropped 802.11k assisted
+		// roaming from the radio table (absent from the firmware's own field
+		// definitions as of Network 10.6), so the provider no longer sends or
+		// validates it. See the deprecation on the schema attribute.
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -161,18 +150,6 @@ func TestSanitizeRadioForUpdate_WarnsWhenEnabledAndOutOfRange(t *testing.T) {
 		{
 			"sens_level disabled+out-of-range silent",
 			unifi.DeviceRadioTable{SensLevelEnabled: false, SensLevel: i64(-10)},
-			false,
-			"",
-		},
-		{
-			"assisted_roaming_rssi enabled+out-of-range warns",
-			unifi.DeviceRadioTable{AssistedRoamingEnabled: true, AssistedRoamingRssi: i64(-10)},
-			true,
-			"assisted_roaming_rssi",
-		},
-		{
-			"assisted_roaming_rssi disabled+out-of-range silent",
-			unifi.DeviceRadioTable{AssistedRoamingEnabled: false, AssistedRoamingRssi: i64(-10)},
 			false,
 			"",
 		},
