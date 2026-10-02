@@ -973,12 +973,19 @@ func (r *networkResource) ModifyPlan(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if stateZone.IsNull() && configZone.IsNull() && planZone.IsUnknown() {
+		// When the config declares no zone, the applied value is whatever the
+		// prior state already holds: null on a controller without zone-based
+		// firewalling, or the zone the controller assigned on first apply.
+		// Either way, pinning the plan to the state value keeps the attribute
+		// out of the diff. Only a null state used to be handled, so on a ZBF
+		// controller - where the zone is always populated - every plan still
+		// showed `firewall_zone_id = "..." -> (known after apply)` (#519).
+		if configZone.IsNull() && planZone.IsUnknown() {
 			resp.Diagnostics.Append(
 				resp.Plan.SetAttribute(
 					ctx,
 					path.Root("firewall_zone_id"),
-					types.StringNull(),
+					stateZone,
 				)...)
 			if resp.Diagnostics.HasError() {
 				return
