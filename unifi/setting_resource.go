@@ -1590,7 +1590,7 @@ func (r *settingResource) Create(
 			return
 		}
 
-		setting := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
+		setting, suppression := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -1600,7 +1600,7 @@ func (r *settingResource) Create(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, setting, &resp.Diagnostics)
+		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -1926,7 +1926,7 @@ func (r *settingResource) Update(
 			return
 		}
 
-		setting := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
+		setting, suppression := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -1936,7 +1936,7 @@ func (r *settingResource) Update(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, setting, &resp.Diagnostics)
+		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2281,11 +2281,11 @@ func (r *settingResource) readSettings(
 			return
 		}
 
-		// Newer controllers store suppression under the standalone
-		// ips_suppression setting instead of nested in ips: graft it so
-		// configured entries refresh from where the controller actually
-		// keeps them (#381).
-		if ipsSetting.Suppression == nil && ipsSuppressionConfigured(&planIps) {
+		// Suppression lives in the standalone ips_suppression setting (#381).
+		// go-unifi v1.34.1 removed Ips.Suppression entirely, so read it as its
+		// own document and carry it alongside.
+		var ipsSuppression *settings.IpsSuppression
+		if ipsSuppressionConfigured(&planIps) {
 			rawData, found, err := r.readRawSettingData(ctx, site, ipsSuppressionSettingKey)
 			if err != nil {
 				diags.AddError("Error Reading IPS Suppression Setting", err.Error())
@@ -2297,11 +2297,11 @@ func (r *settingResource) readSettings(
 					diags.AddError("Error Reading IPS Suppression Setting", err.Error())
 					return
 				}
-				ipsSetting.Suppression = supp
+				ipsSuppression = supp
 			}
 		}
 
-		ipsModel := r.ipsSettingToModel(ctx, ipsSetting, &planIps, diags)
+		ipsModel := r.ipsSettingToModel(ctx, ipsSetting, &planIps, diags, ipsSuppression)
 		objValue, d := types.ObjectValueFrom(ctx, ipsAttrTypes, ipsModel)
 		diags.Append(d...)
 		if diags.HasError() {
@@ -2391,10 +2391,10 @@ func (r *settingResource) readSettings(
 			return
 		}
 
-		// Newer controllers store Region Blocking under the standalone
-		// usg_geo setting: when the controller has one it is authoritative
-		// for the geo fields, so mirror it into the usg struct before
-		// conversion (#374).
+		// Region Blocking lives in the standalone usg_geo setting, which is
+		// authoritative for these four values (#374). go-unifi v1.34.1 removed
+		// them from settings.Usg altogether, so carry them separately.
+		var geo usgGeoIPFiltering
 		if usgGeoConfigured(&planUSG) {
 			rawData, found, err := r.readRawSettingData(ctx, site, usgGeoSettingKey)
 			if err != nil {
@@ -2402,11 +2402,11 @@ func (r *settingResource) readSettings(
 				return
 			}
 			if found {
-				applyUsgGeoIPFiltering(usgSetting, rawData)
+				applyUsgGeoIPFiltering(&geo, rawData)
 			}
 		}
 
-		usgModel := r.usgSettingToModel(ctx, usgSetting, &planUSG)
+		usgModel := r.usgSettingToModel(ctx, usgSetting, &planUSG, &geo)
 		objValue, d := types.ObjectValueFrom(ctx, map[string]attr.Type{
 			"broadcast_ping": types.BoolType,
 			"dns_verification": types.ObjectType{
@@ -2779,23 +2779,35 @@ func usgGeoRawSetting(model *settingUSGModel) *settings.RawSetting {
 	}
 }
 
-// applyUsgGeoIPFiltering overrides the usg setting's geo fields with the
-// values from a usg_geo setting's ip_filtering payload, which is
-// authoritative whenever the controller stores one.
-func applyUsgGeoIPFiltering(setting *settings.Usg, data map[string]any) {
+// usgGeoIPFiltering carries the four Region Blocking values between the
+// standalone usg_geo setting and the model. go-unifi v1.34.1 removed the
+// geo_ip_filtering_* fields from settings.Usg: newer controllers keep the live
+// configuration under usg_geo.ip_filtering, which the provider already reads
+// and writes as raw JSON (#374), so settings.Usg was only ever a vehicle for
+// them.
+type usgGeoIPFiltering struct {
+	Enabled          bool
+	Block            string
+	Countries        string
+	TrafficDirection string
+}
+
+// applyUsgGeoIPFiltering fills geo from a usg_geo setting's ip_filtering
+// payload, which is authoritative whenever the controller stores one.
+func applyUsgGeoIPFiltering(geo *usgGeoIPFiltering, data map[string]any) {
 	ipf, ok := data["ip_filtering"].(map[string]any)
 	if !ok {
 		return
 	}
 	if v, ok := ipf["enabled"].(bool); ok {
-		setting.GeoIPFilteringEnabled = v
+		geo.Enabled = v
 	}
 	if v, ok := ipf["action"].(string); ok {
-		setting.GeoIPFilteringBlock = v
+		geo.Block = v
 	}
 	switch v := ipf["countries"].(type) {
 	case string:
-		setting.GeoIPFilteringCountries = v
+		geo.Countries = v
 	case []any:
 		// Defensive: tolerate a list-of-codes shape by normalizing to the
 		// comma-separated form the schema exposes.
@@ -2805,10 +2817,10 @@ func applyUsgGeoIPFiltering(setting *settings.Usg, data map[string]any) {
 				codes = append(codes, s)
 			}
 		}
-		setting.GeoIPFilteringCountries = strings.Join(codes, ",")
+		geo.Countries = strings.Join(codes, ",")
 	}
 	if v, ok := ipf["traffic_direction"].(string); ok {
-		setting.GeoIPFilteringTrafficDirection = v
+		geo.TrafficDirection = v
 	}
 }
 
@@ -2870,18 +2882,9 @@ func (r *settingResource) usgModelToSetting(
 	if !model.FtpModule.IsNull() {
 		setting.FtpModule = model.FtpModule.ValueBool()
 	}
-	if !model.GeoIPFilteringBlock.IsNull() {
-		setting.GeoIPFilteringBlock = model.GeoIPFilteringBlock.ValueString()
-	}
-	if !model.GeoIPFilteringCountries.IsNull() {
-		setting.GeoIPFilteringCountries = model.GeoIPFilteringCountries.ValueString()
-	}
-	if !model.GeoIPFilteringEnabled.IsNull() {
-		setting.GeoIPFilteringEnabled = model.GeoIPFilteringEnabled.ValueBool()
-	}
-	if !model.GeoIPFilteringTrafficDirection.IsNull() {
-		setting.GeoIPFilteringTrafficDirection = model.GeoIPFilteringTrafficDirection.ValueString()
-	}
+	// The geo_ip_filtering_* fields are no longer on settings.Usg: Region
+	// Blocking is written to the standalone usg_geo setting by
+	// persistUsgGeoFiltering / usgGeoRawSetting instead.
 	if !model.GreModule.IsNull() {
 		setting.GreModule = model.GreModule.ValueBool()
 	}
@@ -2980,6 +2983,7 @@ func (r *settingResource) usgSettingToModel(
 	ctx context.Context,
 	setting *settings.Usg,
 	plan *settingUSGModel,
+	geo *usgGeoIPFiltering,
 ) *settingUSGModel {
 	model := &settingUSGModel{}
 
@@ -3020,8 +3024,8 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.GeoIPFilteringBlock.IsNull() && !plan.GeoIPFilteringBlock.IsUnknown() {
-		if setting.GeoIPFilteringBlock != "" {
-			model.GeoIPFilteringBlock = types.StringValue(setting.GeoIPFilteringBlock)
+		if geo.Block != "" {
+			model.GeoIPFilteringBlock = types.StringValue(geo.Block)
 		} else {
 			model.GeoIPFilteringBlock = types.StringNull()
 		}
@@ -3030,8 +3034,8 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.GeoIPFilteringCountries.IsNull() && !plan.GeoIPFilteringCountries.IsUnknown() {
-		if setting.GeoIPFilteringCountries != "" {
-			model.GeoIPFilteringCountries = types.StringValue(setting.GeoIPFilteringCountries)
+		if geo.Countries != "" {
+			model.GeoIPFilteringCountries = types.StringValue(geo.Countries)
 		} else {
 			model.GeoIPFilteringCountries = types.StringNull()
 		}
@@ -3040,16 +3044,16 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.GeoIPFilteringEnabled.IsNull() && !plan.GeoIPFilteringEnabled.IsUnknown() {
-		model.GeoIPFilteringEnabled = types.BoolValue(setting.GeoIPFilteringEnabled)
+		model.GeoIPFilteringEnabled = types.BoolValue(geo.Enabled)
 	} else {
 		model.GeoIPFilteringEnabled = types.BoolNull()
 	}
 
 	if !plan.GeoIPFilteringTrafficDirection.IsNull() &&
 		!plan.GeoIPFilteringTrafficDirection.IsUnknown() {
-		if setting.GeoIPFilteringTrafficDirection != "" {
+		if geo.TrafficDirection != "" {
 			model.GeoIPFilteringTrafficDirection = types.StringValue(
-				setting.GeoIPFilteringTrafficDirection,
+				geo.TrafficDirection,
 			)
 		} else {
 			model.GeoIPFilteringTrafficDirection = types.StringNull()
@@ -3680,31 +3684,23 @@ func ipsSuppressionConfigured(plan *settingIpsModel) bool {
 func (r *settingResource) persistIpsSuppression(
 	ctx context.Context,
 	site string,
-	sent *settings.Ips,
+	suppression *settings.IpsSuppression,
 	diags *diag.Diagnostics,
 ) {
-	if sent.Suppression == nil {
+	if suppression == nil {
 		return
 	}
 
-	// Controllers that store suppression nested in ips echo it back: nothing
-	// more to do.
-	_, current, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
-	if err != nil {
-		diags.AddError("Error Reading IPS Setting", err.Error())
-		return
-	}
-	if current.Suppression != nil {
-		return
-	}
-
-	raw := ipsSuppressionRawSetting(sent.Suppression)
+	// The nested ips.suppression variant is gone from go-unifi v1.34.1, so
+	// there is no echo-back case left to probe for: suppression always goes to
+	// the standalone document.
+	raw := ipsSuppressionRawSetting(suppression)
 	if err := r.client.UpdateSetting(ctx, site, raw); err != nil {
 		// Controllers without the standalone key reject it with
 		// api.err.Invalid; when nothing is configured there is nothing to
 		// persist, so that rejection is not an error.
 		var apiErr *ui.APIError
-		if len(sent.Suppression.Alerts) == 0 && len(sent.Suppression.Whitelist) == 0 &&
+		if len(suppression.Alerts) == 0 && len(suppression.Whitelist) == 0 &&
 			errors.As(err, &apiErr) && apiErr.Message == "api.err.Invalid" {
 			return
 		}
@@ -3712,12 +3708,17 @@ func (r *settingResource) persistIpsSuppression(
 	}
 }
 
+// ipsModelToSetting returns the ips setting plus, separately, the suppression
+// entries the configuration manages. go-unifi v1.34.1 removed
+// Ips.Suppression: the controller keeps suppression in its own
+// ips_suppression document, which persistIpsSuppression writes (#381).
 func (r *settingResource) ipsModelToSetting(
 	ctx context.Context,
 	model *settingIpsModel,
 	diags *diag.Diagnostics,
-) *settings.Ips {
+) (*settings.Ips, *settings.IpsSuppression) {
 	setting := &settings.Ips{}
+	var suppression *settings.IpsSuppression
 
 	if !model.IPSMode.IsNull() && !model.IPSMode.IsUnknown() {
 		setting.IPsMode = model.IPSMode.ValueString()
@@ -3742,20 +3743,20 @@ func (r *settingResource) ipsModelToSetting(
 	if !model.EnabledCategories.IsNull() && !model.EnabledCategories.IsUnknown() {
 		diags.Append(model.EnabledCategories.ElementsAs(ctx, &setting.EnabledCategories, false)...)
 		if diags.HasError() {
-			return setting
+			return setting, suppression
 		}
 	}
 	if !model.EnabledNetworks.IsNull() && !model.EnabledNetworks.IsUnknown() {
 		diags.Append(model.EnabledNetworks.ElementsAs(ctx, &setting.EnabledNetworks, false)...)
 		if diags.HasError() {
-			return setting
+			return setting, suppression
 		}
 	}
 	if !model.Honeypot.IsNull() && !model.Honeypot.IsUnknown() {
 		var honeypots []settingIpsHoneypotModel
 		diags.Append(model.Honeypot.ElementsAs(ctx, &honeypots, false)...)
 		if diags.HasError() {
-			return setting
+			return setting, suppression
 		}
 		for _, h := range honeypots {
 			setting.Honeypot = append(setting.Honeypot, settings.SettingIpsHoneypot{
@@ -3769,14 +3770,14 @@ func (r *settingResource) ipsModelToSetting(
 		var whitelist []settingIpsWhitelistModel
 		diags.Append(model.SuppressionWhitelist.ElementsAs(ctx, &whitelist, false)...)
 		if diags.HasError() {
-			return setting
+			return setting, suppression
 		}
-		if setting.Suppression == nil {
-			setting.Suppression = &settings.IpsSuppression{}
+		if suppression == nil {
+			suppression = &settings.IpsSuppression{}
 		}
 		for _, w := range whitelist {
-			setting.Suppression.Whitelist = append(
-				setting.Suppression.Whitelist,
+			suppression.Whitelist = append(
+				suppression.Whitelist,
 				settings.SettingIpsSuppressionWhitelist{
 					Direction: w.Direction.ValueString(),
 					Mode:      w.Mode.ValueString(),
@@ -3789,10 +3790,10 @@ func (r *settingResource) ipsModelToSetting(
 		var alerts []settingIpsAlertModel
 		diags.Append(model.SuppressionAlerts.ElementsAs(ctx, &alerts, false)...)
 		if diags.HasError() {
-			return setting
+			return setting, suppression
 		}
-		if setting.Suppression == nil {
-			setting.Suppression = &settings.IpsSuppression{}
+		if suppression == nil {
+			suppression = &settings.IpsSuppression{}
 		}
 		for _, a := range alerts {
 			alert := settings.SettingIpsSuppressionAlerts{
@@ -3818,11 +3819,11 @@ func (r *settingResource) ipsModelToSetting(
 					})
 				}
 			}
-			setting.Suppression.Alerts = append(setting.Suppression.Alerts, alert)
+			suppression.Alerts = append(suppression.Alerts, alert)
 		}
 	}
 
-	return setting
+	return setting, suppression
 }
 
 func (r *settingResource) ipsSettingToModel(
@@ -3830,6 +3831,7 @@ func (r *settingResource) ipsSettingToModel(
 	setting *settings.Ips,
 	plan *settingIpsModel,
 	diags *diag.Diagnostics,
+	suppression *settings.IpsSuppression,
 ) *settingIpsModel {
 	model := &settingIpsModel{}
 
@@ -3921,8 +3923,8 @@ func (r *settingResource) ipsSettingToModel(
 	whitelistType := types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}
 	if !plan.SuppressionWhitelist.IsNull() && !plan.SuppressionWhitelist.IsUnknown() {
 		var whitelist []settings.SettingIpsSuppressionWhitelist
-		if setting.Suppression != nil {
-			whitelist = setting.Suppression.Whitelist
+		if suppression != nil {
+			whitelist = suppression.Whitelist
 		}
 		entries := make([]settingIpsWhitelistModel, 0, len(whitelist))
 		for _, w := range whitelist {
@@ -3943,8 +3945,8 @@ func (r *settingResource) ipsSettingToModel(
 	alertType := types.ObjectType{AttrTypes: ipsAlertAttrTypes}
 	if !plan.SuppressionAlerts.IsNull() && !plan.SuppressionAlerts.IsUnknown() {
 		var alerts []settings.SettingIpsSuppressionAlerts
-		if setting.Suppression != nil {
-			alerts = setting.Suppression.Alerts
+		if suppression != nil {
+			alerts = suppression.Alerts
 		}
 		entries := make([]settingIpsAlertModel, 0, len(alerts))
 		for _, a := range alerts {
