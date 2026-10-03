@@ -878,9 +878,9 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		IPSecLocalIP:        optStr(model.LocalIP),
 		IPSecKeyExchange:    optStr(model.KeyExchange),
 		IPSecProfile:        optStr(model.Profile),
-		IPSecEncryption:     optStr(model.IKEEncryption),
-		IPSecHash:           optStr(model.IKEHash),
-		IPSecDhGroup:        optInt64(model.IKEDhGroup),
+		IPSecIkeEncryption:  optStr(model.IKEEncryption),
+		IPSecIkeHash:        optStr(model.IKEHash),
+		IPSecIkeDhGroup:     optInt64(model.IKEDhGroup),
 		IPSecIkeLifetime:    util.DurationUnitsPtr(model.IKELifetime, time.Second),
 		IPSecEspEncryption:  optStr(model.ESPEncryption),
 		IPSecEspHash:        optStr(model.ESPHash),
@@ -935,9 +935,9 @@ func (r *siteToSiteVPNResource) networkToModel(
 	model.LocalIP = util.IPv4PtrValueOrNull(network.IPSecLocalIP)
 	model.KeyExchange = stringPtrOrNull(network.IPSecKeyExchange)
 	model.Profile = stringPtrOrNull(network.IPSecProfile)
-	model.IKEEncryption = stringPtrOrNull(network.IPSecEncryption)
-	model.IKEHash = stringPtrOrNull(network.IPSecHash)
-	model.IKEDhGroup = types.Int64PointerValue(network.IPSecDhGroup)
+	model.IKEEncryption = stringPtrOrNull(network.IPSecIkeEncryption)
+	model.IKEHash = stringPtrOrNull(network.IPSecIkeHash)
+	model.IKEDhGroup = types.Int64PointerValue(network.IPSecIkeDhGroup)
 	model.IKELifetime = util.DurationPtrValue(network.IPSecIkeLifetime, time.Second)
 	model.ESPEncryption = stringPtrOrNull(network.IPSecEspEncryption)
 	model.ESPHash = stringPtrOrNull(network.IPSecEspHash)
