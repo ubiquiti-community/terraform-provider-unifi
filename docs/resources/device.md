@@ -91,7 +91,9 @@ resource "unifi_device" "us_24_poe" {
 - `outlet_enabled` (Boolean) Enable outlet control.
 - `outlet_overrides` (Attributes List) Outlet configuration overrides. (see [below for nested schema](#nestedatt--outlet_overrides))
 - `poe_mode` (String) PoE mode; valid values are `auto`, `pasv24`, `passthrough`, and `off`.
-- `port_override` (Block Set) Per-port settings overrides, applied only to the ports you declare. Ports without a `port_override` block keep their existing controller-side configuration — the provider merges your declared ports (by `index`) into the device's current overrides rather than replacing the whole set. Removing a block stops managing that port but does not reset it; clear a port by overriding it back to the defaults instead. (see [below for nested schema](#nestedblock--port_override))
+- `port_override` (Block Set) Per-port settings overrides, applied only to the ports you declare. Ports without a `port_override` block keep their existing controller-side configuration — the provider merges your declared ports (by `index`) into the device's current overrides rather than replacing the whole set. Removing a block stops managing that port but does not reset it; clear a port by overriding it back to the defaults instead.
+
+**Note:** not compatible with the standalone `unifi_device_port` resource - do not declare a `port_override` block for the same `index` a `unifi_device_port` also manages for this device. The two write to the same controller-side field independently, so whichever applies last wins and the other's plan immediately shows drift. `unifi_device_port`'s advantage over this SetNestedBlock is that it can be imported directly (a SetNestedBlock has no per-element import ID); manage a given port through exactly one of the two. (see [below for nested schema](#nestedblock--port_override))
 - `radio_table` (Attributes List) Radio configuration table. (see [below for nested schema](#nestedatt--radio_table))
 - `site` (String) The name of the site to associate the device with.
 - `stp_priority` (Number) STP priority.
