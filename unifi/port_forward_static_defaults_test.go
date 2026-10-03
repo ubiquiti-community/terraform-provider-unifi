@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // #544: an Optional+Computed attribute that also carries a static Default is
@@ -63,5 +64,44 @@ func TestPortForwardNoStaticDefaultsOnAdoptedAttributes(t *testing.T) {
 	}
 	if len(protocol.PlanModifiers) == 0 {
 		t.Error("protocol needs UseStateForUnknown so the controller's value is held")
+	}
+}
+
+// Companion to the schema guard above, covering the CREATE path, which has no
+// controller value to hold: a rule created without declaring `enabled` must
+// still be written disabled, so omitting the attribute never opens a port.
+//
+// This holds because unifi.PortForward.Enabled is a plain bool with no
+// omitempty, and ValueBool() on an unknown value yields false - so the create
+// body carries "enabled": false. Measured on a live controller by creating a
+// probe rule with the attribute undeclared: the controller stored
+// enabled=false. The test pins the serialization rather than the measurement.
+func TestPortForwardCreateWithoutEnabledIsDisabled(t *testing.T) {
+	r := &portForwardResource{}
+
+	model := &portForwardResourceModel{
+		Name: types.StringValue("probe"),
+		// Enabled left unknown, as an undeclared Optional+Computed attribute
+		// is during Create.
+		Enabled:        types.BoolUnknown(),
+		Protocol:       types.StringUnknown(),
+		Logging:        types.BoolUnknown(),
+		Wan:            types.ObjectNull(portForwardWanModel{}.AttributeTypes()),
+		Forward:        types.ObjectNull(portForwardForwardModel{}.AttributeTypes()),
+		SourceLimiting: types.ObjectNull(portForwardSourceLimitingModel{}.AttributeTypes()),
+		DestinationIPs: types.ListNull(
+			types.ObjectType{AttrTypes: portForwardDestinationIPModel{}.AttributeTypes()},
+		),
+	}
+
+	pf, diags := r.modelToPortForward(context.Background(), model)
+	if diags.HasError() {
+		t.Fatalf("modelToPortForward: %v", diags)
+	}
+	if pf.Enabled {
+		t.Error(
+			"a rule created without declaring enabled must be written disabled: " +
+				"omitting the attribute must never open a WAN port (#544)",
+		)
 	}
 }

@@ -336,8 +336,9 @@ func (r *portForwardResource) Schema(
 					"and a rule you no longer want is better deleted than left declared and disabled. " +
 					"Keeping it declared as `enabled = false` is still supported and still correct for " +
 					"a rule you reopen periodically (maintenance access, for instance). Removing just " +
-					"the attribute while keeping the resource is safe as of #544: the controller's " +
-					"value is then held, so a disabled rule stays disabled.",
+					"the attribute while keeping the resource is safe as of #544: an existing rule's " +
+					"value is held, and a newly created rule is written disabled, so no port is " +
+					"opened by omission either way.",
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
