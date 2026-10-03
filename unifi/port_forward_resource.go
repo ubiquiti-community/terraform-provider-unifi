@@ -324,7 +324,20 @@ func (r *portForwardResource) Schema(
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
-				DeprecationMessage: "This attribute will be removed in a future release. Instead of disabling a port forwarding rule you can remove it from your configuration.",
+				// The previous wording - "instead of disabling a port forwarding
+				// rule you can remove it from your configuration" - reads as
+				// advice to delete the `enabled = false` line, whose failure
+				// mode is a WAN port reopening. It also does not fit a site
+				// where disabled rules already exist, such as maintenance
+				// access that is reopened periodically rather than rewritten
+				// each time. Keeping the attribute declared is a legitimate
+				// choice, so say what is actually deprecated and what is safe.
+				DeprecationMessage: "Deprecated: this attribute may be removed in a future release, " +
+					"and a rule you no longer want is better deleted than left declared and disabled. " +
+					"Keeping it declared as `enabled = false` is still supported and still correct for " +
+					"a rule you reopen periodically (maintenance access, for instance). Removing just " +
+					"the attribute while keeping the resource is safe as of #544: the controller's " +
+					"value is then held, so a disabled rule stays disabled.",
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
