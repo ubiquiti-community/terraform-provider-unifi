@@ -30,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
@@ -525,12 +526,18 @@ func (r *firewallPolicyResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"ip_version": schema.StringAttribute{
-				MarkdownDescription: "The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("IPV4"),
+				MarkdownDescription: "The IP version to match: `BOTH`, `IPV4`, or " +
+					"`IPV6`. Defaults to `IPV4` for a newly created policy; an " +
+					"existing policy keeps whatever the controller holds, so adopting " +
+					"a dual-stack policy does not narrow it to IPv4 (#544). The " +
+					"controller requires this field, so it is always sent.",
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("BOTH", "IPV4", "IPV6"),
+				},
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("IPV4"),
 				},
 			},
 			"connection_state_type": schema.StringAttribute{
