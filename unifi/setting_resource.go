@@ -497,10 +497,9 @@ func (r *settingResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether periodic automated speed tests are enabled.",
+						MarkdownDescription: "Whether periodic automated speed tests are enabled. Taken from the controller when not set (#544).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"cron_expr": schema.StringAttribute{
 						MarkdownDescription: "Cron expression controlling when the speed test runs (e.g. `0 * * * *`).",
@@ -532,10 +531,9 @@ func (r *settingResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether DPI is enabled.",
+						MarkdownDescription: "Whether DPI is enabled. Taken from the controller when not set, so declaring the `dpi` block for one attribute no longer turns deep packet inspection off (#544).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"fingerprinting_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Whether device fingerprinting is enabled.",
@@ -572,10 +570,9 @@ func (r *settingResource) Schema(
 						Validators:          []validator.Int64{int64validator.Between(10, 3600)},
 					},
 					"sync": schema.BoolAttribute{
-						MarkdownDescription: "Sync display settings across devices.",
+						MarkdownDescription: "Sync display settings across devices. Taken from the controller when not set (#544).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"touch_event": schema.BoolAttribute{
 						MarkdownDescription: "Whether touch events on the display are enabled.",
@@ -660,10 +657,9 @@ func (r *settingResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether remote syslog is enabled.",
+						MarkdownDescription: "Whether remote syslog is enabled. Taken from the controller when not set, so declaring the `syslog` block to manage its server address no longer disables logging (#544).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"ip": schema.StringAttribute{
 						MarkdownDescription: "Remote syslog server IP address.",
@@ -686,10 +682,9 @@ func (r *settingResource) Schema(
 						},
 					},
 					"log_all_contents": schema.BoolAttribute{
-						MarkdownDescription: "Log all available facilities.",
+						MarkdownDescription: "Log all available facilities. Taken from the controller when not set (#544).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"debug": schema.BoolAttribute{
 						MarkdownDescription: "Enable debug logging.",
