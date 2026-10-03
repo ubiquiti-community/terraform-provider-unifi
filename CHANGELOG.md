@@ -35,6 +35,9 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **`unifi_port_profile`: `forward = "customize"` on an untagged native network now fails at plan time instead of leaving the resource tainted.** The controller accepts such a profile and then stores `forward = "all"`, so the post-apply read disagreed with the plan: Create failed with `Provider produced inconsistent result after apply`, the resource was marked tainted, and every later apply destroyed, recreated and failed identically - the configuration could never converge. The provider now checks the native network's VLAN id while planning and rejects the combination with the reason and both ways out (set `forward = "all"`, or point `native_networkconf_id` at a tagged network). A lookup failure does not block the plan, and an unresolved native network is left to the apply (#496)
+
+
 - **`unifi_setting`: managing part of the `ips` or `usg` block no longer disables everything else in it.** Both blocks built their outgoing document from the Terraform model alone, and every boolean on go-unifi's `settings.Ips` and `settings.Usg` serializes without `omitempty` - so an attribute the configuration did not manage was written as `false`. Managing only `ips_mode` therefore switched off an existing honeypot, the content-filtering blocking page, memory optimisation and torrent restriction, and the `usg` block did the same across twenty flags (FTP/GRE/H.323 helpers, broadcast ping, LLDP, mDNS and the rest). Both write paths now read the live setting document first and overlay only the attributes present in configuration, so unmanaged options keep their controller values (#493)
 
 
