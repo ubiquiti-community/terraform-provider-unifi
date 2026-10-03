@@ -1662,7 +1662,14 @@ func (r *settingResource) Create(
 			return
 		}
 
-		setting, suppression := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
+		// Read the live document so unmanaged attributes are carried over
+		// rather than written as false (#493).
+		_, currentIps, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading IPS Setting", err.Error())
+			return
+		}
+		setting, suppression := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics, currentIps)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -1735,7 +1742,14 @@ func (r *settingResource) Create(
 			return
 		}
 
-		setting := r.usgModelToSetting(ctx, &usg)
+		// Read the live document so unmanaged attributes are carried over
+		// rather than written as false (#493).
+		_, currentUsg, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading USG Setting", err.Error())
+			return
+		}
+		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating USG Setting", err.Error())
 			return
@@ -2003,7 +2017,14 @@ func (r *settingResource) Update(
 			return
 		}
 
-		setting, suppression := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics)
+		// Read the live document so unmanaged attributes are carried over
+		// rather than written as false (#493).
+		_, currentIps, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading IPS Setting", err.Error())
+			return
+		}
+		setting, suppression := r.ipsModelToSetting(ctx, &ips, &resp.Diagnostics, currentIps)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2076,7 +2097,14 @@ func (r *settingResource) Update(
 			return
 		}
 
-		setting := r.usgModelToSetting(ctx, &usg)
+		// Read the live document so unmanaged attributes are carried over
+		// rather than written as false (#493).
+		_, currentUsg, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Reading USG Setting", err.Error())
+			return
+		}
+		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating USG Setting", err.Error())
 			return
@@ -2966,8 +2994,16 @@ func (r *settingResource) persistUsgGeoFiltering(
 func (r *settingResource) usgModelToSetting(
 	ctx context.Context,
 	model *settingUSGModel,
+	base *settings.Usg,
 ) *settings.Usg {
+	// Start from the controller's current document: twenty bools on
+	// settings.Usg serialize without omitempty, so a freshly built struct
+	// writes false for every attribute the configuration does not manage
+	// (#493). base is nil only when the live document could not be read.
 	setting := &settings.Usg{}
+	if base != nil {
+		*setting = *base
+	}
 
 	if !model.BroadcastPing.IsNull() {
 		setting.BroadcastPing = model.BroadcastPing.ValueBool()
@@ -3886,8 +3922,18 @@ func (r *settingResource) ipsModelToSetting(
 	ctx context.Context,
 	model *settingIpsModel,
 	diags *diag.Diagnostics,
+	base *settings.Ips,
 ) (*settings.Ips, *settings.IpsSuppression) {
+	// Start from the controller's current document rather than a zero value.
+	// Every bool on settings.Ips is serialized without omitempty, so a freshly
+	// built struct sends false for every attribute the configuration does not
+	// manage - disabling an existing honeypot or content-filtering blocking
+	// page as a side effect of an unrelated change (#493). base is nil only
+	// when the live document could not be read.
 	setting := &settings.Ips{}
+	if base != nil {
+		*setting = *base
+	}
 	var suppression *settings.IpsSuppression
 
 	if !model.IPSMode.IsNull() && !model.IPSMode.IsUnknown() {
