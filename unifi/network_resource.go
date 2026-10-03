@@ -402,12 +402,14 @@ func (r *networkResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"setting_preference": schema.StringAttribute{
-				MarkdownDescription: "Setting preference. Must be one of `auto` or `manual`.",
+				MarkdownDescription: "Setting preference. Must be one of `auto` or `manual`. Taken from the controller when not set; an adopted network keeps its own preference, so importing a `manual` network no longer proposes `auto` - which would also reset DHCP guarding (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("auto"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "manual"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"internet_access": schema.BoolAttribute{
@@ -445,12 +447,14 @@ func (r *networkResource) Schema(
 				},
 			},
 			"ipv6_interface_type": schema.StringAttribute{
-				MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`.",
+				MarkdownDescription: "Specifies which type of IPv6 connection to use. Must be one of `none`, `pd`, or `static`. Taken from the controller when not set; an adopted network keeps the type it already has (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("none"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("none", "pd", "static"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"ipv6_client_address_assignment": schema.StringAttribute{
