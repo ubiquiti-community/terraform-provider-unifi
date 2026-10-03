@@ -943,9 +943,9 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 	// Nested proposal groups. A null/unknown group contributes nothing, exactly
 	// as its flat attributes did when unset.
 	if ike, ok, d := util.ObjectAs[siteToSiteVPNProposalModel](ctx, model.IKE); ok {
-		network.IPSecEncryption = optStr(ike.Encryption)
-		network.IPSecHash = optStr(ike.Hash)
-		network.IPSecDhGroup = optInt64(ike.DhGroup)
+		network.IPSecIkeEncryption = optStr(ike.Encryption)
+		network.IPSecIkeHash = optStr(ike.Hash)
+		network.IPSecIkeDhGroup = optInt64(ike.DhGroup)
 		network.IPSecIkeLifetime = util.DurationUnitsPtr(ike.Lifetime, time.Second)
 	} else {
 		diags.Append(d...)
@@ -1005,9 +1005,9 @@ func (r *siteToSiteVPNResource) networkToModel(
 	model.Profile = stringPtrOrNull(network.IPSecProfile)
 	ike, ikeDiags := siteToSiteVPNProposalToFramework(
 		ctx,
-		network.IPSecEncryption,
-		network.IPSecHash,
-		network.IPSecDhGroup,
+		network.IPSecIkeEncryption,
+		network.IPSecIkeHash,
+		network.IPSecIkeDhGroup,
 		network.IPSecIkeLifetime,
 	)
 	diags.Append(ikeDiags...)

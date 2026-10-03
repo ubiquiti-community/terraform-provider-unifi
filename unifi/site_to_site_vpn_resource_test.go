@@ -71,8 +71,8 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 	if network.IPSecPreSharedKey == nil || *network.IPSecPreSharedKey != "s3cret-psk" {
 		t.Errorf("IPSecPreSharedKey not set")
 	}
-	if network.IPSecDhGroup == nil || *network.IPSecDhGroup != 14 {
-		t.Errorf("IPSecDhGroup = %v, want 14", network.IPSecDhGroup)
+	if network.IPSecIkeDhGroup == nil || *network.IPSecIkeDhGroup != 14 {
+		t.Errorf("IPSecIkeDhGroup = %v, want 14", network.IPSecIkeDhGroup)
 	}
 	if !network.IPSecPfs {
 		t.Error("IPSecPfs = false, want true")
@@ -571,15 +571,15 @@ func TestSiteToSiteVPNProposals_wireAndReadBack(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("modelToNetwork: %v", diags)
 	}
-	if network.IPSecEncryption == nil || *network.IPSecEncryption != "aes256" ||
-		network.IPSecHash == nil || *network.IPSecHash != "sha256" ||
-		network.IPSecDhGroup == nil || *network.IPSecDhGroup != 14 ||
+	if network.IPSecIkeEncryption == nil || *network.IPSecIkeEncryption != "aes256" ||
+		network.IPSecIkeHash == nil || *network.IPSecIkeHash != "sha256" ||
+		network.IPSecIkeDhGroup == nil || *network.IPSecIkeDhGroup != 14 ||
 		network.IPSecIkeLifetime == nil || *network.IPSecIkeLifetime != 28800 {
 		t.Errorf(
 			"ike wired as %v %v %v %v",
-			network.IPSecEncryption,
-			network.IPSecHash,
-			network.IPSecDhGroup,
+			network.IPSecIkeEncryption,
+			network.IPSecIkeHash,
+			network.IPSecIkeDhGroup,
 			network.IPSecIkeLifetime,
 		)
 	}
@@ -635,8 +635,8 @@ func TestSiteToSiteVPNProposals_wireAndReadBack(t *testing.T) {
 			if diags.HasError() {
 				t.Fatalf("modelToNetwork: %v", diags)
 			}
-			if network.IPSecEncryption != nil || network.IPSecHash != nil ||
-				network.IPSecDhGroup != nil || network.IPSecIkeLifetime != nil ||
+			if network.IPSecIkeEncryption != nil || network.IPSecIkeHash != nil ||
+				network.IPSecIkeDhGroup != nil || network.IPSecIkeLifetime != nil ||
 				network.IPSecEspEncryption != nil || network.IPSecEspHash != nil ||
 				network.IPSecEspDhGroup != nil || network.IPSecEspLifetime != nil {
 				t.Errorf("%s group leaked into the request: %+v", name, network)
@@ -824,10 +824,10 @@ func Test_siteToSiteVPNResource_modelToNetwork(t *testing.T) {
 		if network.IPSecInterface != nil {
 			t.Errorf("IPSecInterface should be nil for null input, got %v", network.IPSecInterface)
 		}
-		if network.IPSecEncryption != nil {
+		if network.IPSecIkeEncryption != nil {
 			t.Errorf(
-				"IPSecEncryption should be nil for null input, got %v",
-				network.IPSecEncryption,
+				"IPSecIkeEncryption should be nil for null input, got %v",
+				network.IPSecIkeEncryption,
 			)
 		}
 	})
@@ -874,9 +874,9 @@ func Test_siteToSiteVPNResource_networkToModel(t *testing.T) {
 
 	t.Run("nil pointer fields produce null values", func(t *testing.T) {
 		network := &unifi.Network{
-			ID:              "net-99",
-			IPSecInterface:  nil,
-			IPSecEncryption: nil,
+			ID:                 "net-99",
+			IPSecInterface:     nil,
+			IPSecIkeEncryption: nil,
 		}
 		model := &siteToSiteVPNResourceModel{}
 		diags := r.networkToModel(ctx, network, model, "default")
