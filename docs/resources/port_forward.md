@@ -112,11 +112,11 @@ resource "unifi_port_forward" "game_server" {
 ### Optional
 
 - `destination_ips` (Attributes List) Additional destination IP/interface pairs for the port forwarding rule, used for multi-WAN setups. (see [below for nested schema](#nestedatt--destination_ips))
-- `enabled` (Boolean, Deprecated) Specifies whether the port forwarding rule is enabled or not.
+- `enabled` (Boolean, Deprecated) Specifies whether the port forwarding rule is enabled or not. Taken from the controller when not set: a rule disabled on the controller stays disabled, rather than being re-enabled by a plan that does not mention it (#544).
 - `forward` (Attributes) Forward destination configuration. (see [below for nested schema](#nestedatt--forward))
 - `logging` (Boolean) Specifies whether to enable syslog logging for forwarded traffic.
 - `name` (String) The name of the port forwarding rule.
-- `protocol` (String) The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`.
+- `protocol` (String) The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`. Taken from the controller when not set, so adopting a `tcp`-only rule does not widen it to UDP (#544).
 - `site` (String) The name of the site to associate the port forwarding rule with.
 - `source_limiting` (Attributes) Source limiting configuration for the port forwarding rule. (see [below for nested schema](#nestedatt--source_limiting))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
