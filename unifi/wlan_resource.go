@@ -562,12 +562,16 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"wpa_enc": schema.StringAttribute{
-				MarkdownDescription: "WPA encryption. Can be one of `auto`, `ccmp`, `gcmp`, `ccmp-256`, or `gcmp-256`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("ccmp"),
+				MarkdownDescription: "WPA encryption. Can be one of `auto`, `ccmp`, " +
+					"`gcmp`, `ccmp-256`, or `gcmp-256`. Computed from the controller " +
+					"when not set.",
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "ccmp", "gcmp", "ccmp-256", "gcmp-256"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"dtim_mode": schema.StringAttribute{
@@ -613,10 +617,13 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"group_rekey": schema.Int64Attribute{
-				MarkdownDescription: "Group rekey interval in seconds (0 to disable).",
-				Optional:            true,
-				Computed:            true,
-				Default:             int64default.StaticInt64(3600),
+				MarkdownDescription: "Group rekey interval in seconds (0 to disable). " +
+					"Computed from the controller when not set.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"iapp_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Enable Inter-Access Point Protocol (802.11f) for faster roaming. Computed from the controller when not set.",

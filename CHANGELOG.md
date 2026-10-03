@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_wlan`: `group_rekey` and `wpa_enc` no longer overwrite the controller's value on an adopted SSID.** Both were `Optional + Computed` and also carried a static `Default`, and the two contracts conflict: `Optional + Computed` means "take the controller's value when unset", `Default` means "plan this constant", and `Default` wins. So an undeclared attribute was planned at the constant and written on apply. Measured on a six-SSID site, five stored `group_rekey = 0` against a default of `3600` and two stored a `wpa_enc` other than `ccmp`, so a plan proposed turning group rekeying on where it was deliberately disabled and changing the encryption mode - with nothing in the configuration asking for it. Both defaults are dropped, keeping `UseStateForUnknown`, matching the neighbouring attributes. A configuration relying on the old defaults for a **new** SSID must now set them explicitly (#543)
+
+---
+
 ## [v0.58.0] - 2026-10-03
 
 ### ✨ Features
