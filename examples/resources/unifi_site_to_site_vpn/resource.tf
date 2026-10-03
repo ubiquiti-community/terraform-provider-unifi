@@ -35,3 +35,19 @@ resource "unifi_site_to_site_vpn" "dynamic" {
   dynamic_routing = true
   remote_subnets  = []
 }
+
+# A peer behind dynamic DNS, with IKE identifier authentication. peer_ip accepts
+# a hostname as well as an address, which is how the controller stores such a
+# peer. Setting an identifier enables it, matching the UI; declare the _enabled
+# flag only to override that.
+resource "unifi_site_to_site_vpn" "branch_dyndns" {
+  name           = "HQ-to-Branch"
+  interface      = "wan"
+  peer_ip        = "branch.dyndns.example"
+  key_exchange   = "ikev2"
+  pre_shared_key = var.branch_psk
+  remote_subnets = ["192.0.2.0/24"]
+
+  local_identifier  = "hq.example.com"
+  remote_identifier = "branch.example.com"
+}
