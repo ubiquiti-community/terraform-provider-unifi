@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_port_forward`: a disabled rule is no longer re-enabled, and a `tcp` rule no longer widened to UDP.** The sharpest instance of the #544 class, because here the wrong default *opens* a hole instead of closing one. `enabled` defaulted to `true` and `protocol` to `tcp_udp`, and the framework applies defaults (`TransformDefaults`) *before* it runs plan modifiers (`SchemaModifyPlan`), so both overwrote the controller's value for an undeclared attribute. Measured on a live site with eight rules: 3 of 8 are disabled on the controller and 5 of 8 are `tcp`-only. Verified live on a rule that is **disabled and forwards to SSH** - importing it without declaring `enabled` planned `false -> true`, so an apply would have reopened the port to the internet, with `tcp -> tcp_udp` alongside it. Both defaults are dropped in favour of `UseStateForUnknown`. Note `enabled` is deprecated in favour of removing the rule, but deprecation never protected anyone here: the attribute still works and its default still won (#544)
+
+---
+
 ## [v0.59.0] - 2026-10-03
 
 Five fixes to one defect class, each measured against a live controller rather
