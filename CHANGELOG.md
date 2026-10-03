@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting`: five attributes no longer turn off features the controller has enabled, including DPI and remote syslog.** Same defect as #543/#544 elsewhere, and `unifi_setting` is where it hurts most: one resource fronts many site-level settings as nested blocks, so declaring a block to manage a *single* attribute pulls in every static `Default` in that block - and the framework applies defaults (`TransformDefaults`) *before* it runs plan modifiers (`SchemaModifyPlan`), so each one overwrites what the controller holds. Measured against a live site, `dpi.enabled`, `syslog.enabled`, `syslog.log_all_contents`, `auto_speedtest.enabled` and `lcm.sync` all read `true` on the controller against a `false` default. The syslog pair is the sharpest: a configuration declaring the `syslog` block only to set the server address was writing `enabled = false` alongside it, **disabling the very logging it was configuring**; `dpi.enabled` likewise switched off deep packet inspection. Verified live by reproducing exactly that configuration - the plan wrote `enabled = false` and `log_all_contents = false` before the fix, and leaves both to the controller after. All five defaults are dropped; the attributes stay `Optional + Computed`, matching their neighbours (#544)
+
+---
+
 ## [v0.59.0] - 2026-10-03
 
 Five fixes to one defect class, each measured against a live controller rather
