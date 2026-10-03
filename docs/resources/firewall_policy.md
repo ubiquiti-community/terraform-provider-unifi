@@ -205,7 +205,7 @@ resource "unifi_firewall_policy" "block_regions" {
 - `create_allow_respond` (Boolean) When `true`, UniFi automatically creates a matching rule to allow established/related return traffic. Recommended for `ALLOW` policies. Defaults to `false`.
 - `description` (String) A description for the policy.
 - `enabled` (Boolean) Whether the policy is enabled. Defaults to `true`.
-- `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4`.
+- `ip_version` (String) The IP version to match: `BOTH`, `IPV4`, or `IPV6`. Defaults to `IPV4` for a newly created policy; an existing policy keeps whatever the controller holds, so adopting a dual-stack policy does not narrow it to IPv4 (#544). The controller requires this field, so it is always sent.
 - `logging` (Boolean) Whether to log packets matching this policy. Defaults to `false`.
 - `match_opposite_protocol` (Boolean) Invert the protocol match: when `true`, the policy matches every protocol **except** `protocol`. Corresponds to the "Match Opposite" toggle next to the protocol selector in the UniFi UI. Defaults to `false`.
 - `protocol` (String) The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, `icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` policies the controller rejects `create_allow_respond = true` (`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it `false` and add an explicit reverse policy if you need the reply.
