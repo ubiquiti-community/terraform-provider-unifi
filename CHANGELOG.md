@@ -2,7 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.59.0] - 2026-10-03
+
+Five fixes to one defect class, each measured against a live controller rather
+than inferred from the schema: an `Optional + Computed` attribute that also
+carries a static `Default` overwrites whatever the controller holds. The
+framework applies defaults (`TransformDefaults`) *before* it runs plan
+modifiers (`SchemaModifyPlan`), so the `Default` wins and pairing it with
+`UseStateForUnknown` does **not** protect an adopted resource - a point worth
+remembering beyond these attributes (#544 tracks the remaining ones).
+
+**If you create resources without declaring these attributes, read the entries
+below**: thirteen attributes on `unifi_wlan` and `unifi_network` no longer fall
+back to a provider-side constant, so a new SSID or network that relied on one
+must now set it explicitly. `unifi_firewall_policy.ip_version` is the exception
+- the controller rejects a create without it, so it still defaults to `IPV4`,
+but only when the policy is being created. Nothing changes for an existing
+resource except that the provider stops proposing to overwrite it.
 
 ### 🐛 Bug Fixes
 
