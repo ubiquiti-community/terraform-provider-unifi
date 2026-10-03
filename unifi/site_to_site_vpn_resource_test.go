@@ -63,8 +63,8 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 	if network.IPSecPreSharedKey == nil || *network.IPSecPreSharedKey != "s3cret-psk" {
 		t.Errorf("IPSecPreSharedKey not set")
 	}
-	if network.IPSecDhGroup == nil || *network.IPSecDhGroup != 14 {
-		t.Errorf("IPSecDhGroup = %v, want 14", network.IPSecDhGroup)
+	if network.IPSecIkeDhGroup == nil || *network.IPSecIkeDhGroup != 14 {
+		t.Errorf("IPSecIkeDhGroup = %v, want 14", network.IPSecIkeDhGroup)
 	}
 	if !network.IPSecPfs {
 		t.Error("IPSecPfs = false, want true")
