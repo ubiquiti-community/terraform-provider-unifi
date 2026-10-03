@@ -1524,12 +1524,14 @@ func Test_settingResource_igmpSnoopingModelToSetting(t *testing.T) {
 
 func Test_globalSwitchRawSetting(t *testing.T) {
 	t.Run("only set fields are sent", func(t *testing.T) {
-		got := globalSwitchRawSetting(&settingGlobalSwitchModel{
+		var d diag.Diagnostics
+		got := globalSwitchRawSetting(context.Background(), &settingGlobalSwitchModel{
 			StpVersion:           types.StringNull(),
 			DHCPSnoop:            types.BoolUnknown(),
 			JumboframeEnabled:    types.BoolValue(true),
 			Dot1XPortctrlEnabled: types.BoolNull(),
-		})
+			AclDeviceIsolation:   types.ListNull(types.StringType),
+		}, &d)
 		if got.Key != "global_switch" {
 			t.Errorf("Key = %q, want global_switch", got.Key)
 		}
@@ -1539,12 +1541,14 @@ func Test_globalSwitchRawSetting(t *testing.T) {
 	})
 
 	t.Run("false values are sent", func(t *testing.T) {
-		got := globalSwitchRawSetting(&settingGlobalSwitchModel{
+		var d diag.Diagnostics
+		got := globalSwitchRawSetting(context.Background(), &settingGlobalSwitchModel{
 			StpVersion:           types.StringValue("disabled"),
 			DHCPSnoop:            types.BoolValue(false),
 			JumboframeEnabled:    types.BoolNull(),
 			Dot1XPortctrlEnabled: types.BoolValue(false),
-		})
+			AclDeviceIsolation:   types.ListNull(types.StringType),
+		}, &d)
 		want := map[string]any{
 			"stp_version":            "disabled",
 			"dhcp_snoop":             false,
@@ -1561,12 +1565,14 @@ func Test_globalSwitchRawSetting(t *testing.T) {
 	})
 
 	t.Run("marshals with key and fields", func(t *testing.T) {
-		got := globalSwitchRawSetting(&settingGlobalSwitchModel{
+		var d diag.Diagnostics
+		got := globalSwitchRawSetting(context.Background(), &settingGlobalSwitchModel{
 			StpVersion:           types.StringNull(),
 			DHCPSnoop:            types.BoolNull(),
 			JumboframeEnabled:    types.BoolValue(false),
 			Dot1XPortctrlEnabled: types.BoolNull(),
-		})
+			AclDeviceIsolation:   types.ListNull(types.StringType),
+		}, &d)
 		b, err := json.Marshal(got)
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
@@ -1645,6 +1651,102 @@ func TestConnectivityRawSetting(t *testing.T) {
 	})
 }
 
+// #509: Client Device Isolation is the acl_device_isolation list on the
+// global_switch setting - a switch ACL, so unlike unifi_wlan.l2_isolation it
+// covers same-network traffic across access points. The list must round-trip,
+// and an unmanaged one must stay off the wire so isolation configured in the UI
+// survives an unrelated change to the block.
+func TestGlobalSwitchAclDeviceIsolation(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("configured networks are sent", func(t *testing.T) {
+		ids, d := types.ListValueFrom(ctx, types.StringType, []string{"net-a", "net-b"})
+		if d.HasError() {
+			t.Fatalf("building the list: %v", d)
+		}
+		var diags diag.Diagnostics
+		raw := globalSwitchRawSetting(ctx, &settingGlobalSwitchModel{
+			AclDeviceIsolation:   ids,
+			StpVersion:           types.StringNull(),
+			DHCPSnoop:            types.BoolNull(),
+			JumboframeEnabled:    types.BoolNull(),
+			Dot1XPortctrlEnabled: types.BoolNull(),
+		}, &diags)
+		if diags.HasError() {
+			t.Fatalf("conversion: %v", diags)
+		}
+		got, ok := raw.Data["acl_device_isolation"].([]string)
+		if !ok {
+			t.Fatalf(
+				"acl_device_isolation = %#v, want a []string",
+				raw.Data["acl_device_isolation"],
+			)
+		}
+		if len(got) != 2 || got[0] != "net-a" || got[1] != "net-b" {
+			t.Errorf("acl_device_isolation = %v, want [net-a net-b]", got)
+		}
+	})
+
+	t.Run("an explicitly empty list clears the setting", func(t *testing.T) {
+		empty, d := types.ListValueFrom(ctx, types.StringType, []string{})
+		if d.HasError() {
+			t.Fatalf("building the list: %v", d)
+		}
+		var diags diag.Diagnostics
+		raw := globalSwitchRawSetting(ctx, &settingGlobalSwitchModel{
+			AclDeviceIsolation:   empty,
+			StpVersion:           types.StringNull(),
+			DHCPSnoop:            types.BoolNull(),
+			JumboframeEnabled:    types.BoolNull(),
+			Dot1XPortctrlEnabled: types.BoolNull(),
+		}, &diags)
+		if diags.HasError() {
+			t.Fatalf("conversion: %v", diags)
+		}
+		got, ok := raw.Data["acl_device_isolation"].([]string)
+		if !ok || got == nil {
+			t.Fatalf("want an empty []string, got %#v", raw.Data["acl_device_isolation"])
+		}
+		if len(got) != 0 {
+			t.Errorf("acl_device_isolation = %v, want empty", got)
+		}
+	})
+
+	t.Run("an unmanaged list stays off the wire", func(t *testing.T) {
+		var diags diag.Diagnostics
+		raw := globalSwitchRawSetting(ctx, &settingGlobalSwitchModel{
+			AclDeviceIsolation:   types.ListNull(types.StringType),
+			StpVersion:           types.StringNull(),
+			DHCPSnoop:            types.BoolNull(),
+			JumboframeEnabled:    types.BoolNull(),
+			Dot1XPortctrlEnabled: types.BoolNull(),
+		}, &diags)
+		if diags.HasError() {
+			t.Fatalf("conversion: %v", diags)
+		}
+		if _, present := raw.Data["acl_device_isolation"]; present {
+			t.Error("an unmanaged acl_device_isolation must not be sent")
+		}
+	})
+
+	t.Run("the controller list is read back", func(t *testing.T) {
+		r := &settingResource{}
+		var diags diag.Diagnostics
+		got := r.globalSwitchSettingToModel(ctx, &settings.GlobalSwitch{
+			AclDeviceIsolation: []string{"net-a"},
+			StpVersion:         "rstp",
+		}, &diags)
+		if diags.HasError() {
+			t.Fatalf("conversion: %v", diags)
+		}
+		var ids []string
+		got.AclDeviceIsolation.ElementsAs(ctx, &ids, false)
+		if len(ids) != 1 || ids[0] != "net-a" {
+			t.Errorf("acl_device_isolation = %v, want [net-a]", ids)
+		}
+	})
+}
+
 func Test_settingResource_connectivitySettingToModel(t *testing.T) {
 	r := &settingResource{}
 	got := r.connectivitySettingToModel(&settings.Connectivity{
@@ -1679,12 +1781,13 @@ func Test_settingResource_connectivitySettingToModel(t *testing.T) {
 
 func Test_settingResource_globalSwitchSettingToModel(t *testing.T) {
 	r := &settingResource{}
-	got := r.globalSwitchSettingToModel(&settings.GlobalSwitch{
+	var gsDiags diag.Diagnostics
+	got := r.globalSwitchSettingToModel(context.Background(), &settings.GlobalSwitch{
 		StpVersion:           "stp",
 		DHCPSnoop:            true,
 		JumboframeEnabled:    true,
 		Dot1XPortctrlEnabled: false,
-	})
+	}, &gsDiags)
 	if got.StpVersion.ValueString() != "stp" {
 		t.Errorf("StpVersion = %q, want stp", got.StpVersion.ValueString())
 	}
@@ -1783,6 +1886,45 @@ func TestSettingGlobalSwitchUseStateForUnknown(t *testing.T) {
 			if modified.PlanValue.IsUnknown() || !modified.PlanValue.ValueBool() {
 				t.Errorf(
 					"global_switch.%s plan = %v, want prior state true",
+					key,
+					modified.PlanValue,
+				)
+			}
+		case schema.ListAttribute:
+			prior, d := types.ListValueFrom(
+				ctx,
+				types.StringType,
+				[]string{"net-1"},
+			)
+			if d.HasError() {
+				t.Fatalf("building the prior list: %v", d)
+			}
+			req := planmodifier.ListRequest{
+				ConfigValue: types.ListNull(types.StringType),
+				PlanValue:   types.ListUnknown(types.StringType),
+				State: tfsdk.State{Raw: tftypes.NewValue(
+					tftypes.List{ElementType: tftypes.String},
+					[]tftypes.Value{tftypes.NewValue(tftypes.String, "net-1")},
+				)},
+				StateValue: prior,
+			}
+			modified := &planmodifier.ListResponse{PlanValue: req.PlanValue}
+			for _, m := range v.PlanModifiers {
+				m.PlanModifyList(ctx, req, modified)
+				req.PlanValue = modified.PlanValue
+			}
+			if modified.Diagnostics.HasError() {
+				t.Errorf(
+					"global_switch.%s plan modifier returned errors: %v",
+					key,
+					modified.Diagnostics,
+				)
+			}
+			if modified.PlanValue.IsUnknown() || modified.PlanValue.Equal(
+				types.ListNull(types.StringType),
+			) {
+				t.Errorf(
+					"global_switch.%s plan = %v, want the prior state list",
 					key,
 					modified.PlanValue,
 				)

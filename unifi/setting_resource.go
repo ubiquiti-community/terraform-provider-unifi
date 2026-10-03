@@ -261,6 +261,12 @@ type settingResourceModel struct {
 // payload, which keeps fields not exposed here (ACL isolation, switch
 // exclusions, PoE staging, ...) intact.
 type settingGlobalSwitchModel struct {
+	// Network IDs with Client Device Isolation on (Settings > Networks >
+	// "Device Isolation (ACL)"). This is a switch ACL, so unlike
+	// unifi_wlan.l2_isolation it blocks same-network traffic across access
+	// points rather than within one, and unlike unifi_network.network_isolation
+	// it acts inside a network rather than between networks (#509).
+	AclDeviceIsolation   types.List   `tfsdk:"acl_device_isolation"`
 	StpVersion           types.String `tfsdk:"stp_version"`
 	DHCPSnoop            types.Bool   `tfsdk:"dhcp_snoop"`
 	JumboframeEnabled    types.Bool   `tfsdk:"jumboframe_enabled"`
@@ -416,6 +422,7 @@ var (
 		"network_ids": types.ListType{ElemType: types.StringType},
 	}
 	globalSwitchAttrTypes = map[string]attr.Type{
+		"acl_device_isolation":   types.ListType{ElemType: types.StringType},
 		"stp_version":            types.StringType,
 		"dhcp_snoop":             types.BoolType,
 		"jumboframe_enabled":     types.BoolType,
@@ -1398,6 +1405,24 @@ func (r *settingResource) Schema(
 					"Options not exposed by this block are preserved across updates.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
+					"acl_device_isolation": schema.ListAttribute{
+						MarkdownDescription: "Network IDs with Client Device Isolation " +
+							"enabled (Settings > Networks > \"Device Isolation (ACL)\"), " +
+							"which blocks all communication between devices in the same " +
+							"network. This is a switch ACL: it covers same-network " +
+							"traffic across access points, which `unifi_wlan.l2_isolation` " +
+							"(one access point) and `unifi_network.network_isolation` " +
+							"(between networks) do not. The controller only offers it for " +
+							"networks routed by a UniFi gateway or L3 switch, and some " +
+							"switch models do not support ACLs at all - it rejects an " +
+							"unsupported network rather than silently ignoring it.",
+						ElementType: types.StringType,
+						Optional:    true,
+						Computed:    true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+					},
 					"stp_version": schema.StringAttribute{
 						MarkdownDescription: "Spanning Tree Protocol mode for all switches: `stp`, `rstp`, or `disabled`.",
 						Optional:            true,
@@ -2666,7 +2691,7 @@ func (r *settingResource) readSettings(
 		objValue, d := types.ObjectValueFrom(
 			ctx,
 			globalSwitchAttrTypes,
-			r.globalSwitchSettingToModel(gsSetting),
+			r.globalSwitchSettingToModel(ctx, gsSetting, diags),
 		)
 		diags.Append(d...)
 		if diags.HasError() {
@@ -3456,7 +3481,10 @@ func (r *settingResource) persistGlobalSwitch(
 		return
 	}
 
-	setting := globalSwitchRawSetting(&model)
+	setting := globalSwitchRawSetting(ctx, &model, diags)
+	if diags.HasError() {
+		return
+	}
 	if len(setting.Data) == 0 {
 		return
 	}
@@ -3469,8 +3497,22 @@ const globalSwitchSettingKey = "global_switch"
 
 // globalSwitchRawSetting builds a partial global_switch payload containing only
 // the fields set in the model.
-func globalSwitchRawSetting(model *settingGlobalSwitchModel) *settings.RawSetting {
+func globalSwitchRawSetting(
+	ctx context.Context,
+	model *settingGlobalSwitchModel,
+	diags *diag.Diagnostics,
+) *settings.RawSetting {
 	data := map[string]any{}
+	if !model.AclDeviceIsolation.IsNull() && !model.AclDeviceIsolation.IsUnknown() {
+		var ids []string
+		diags.Append(model.AclDeviceIsolation.ElementsAs(ctx, &ids, false)...)
+		if ids == nil {
+			// An explicitly empty list must clear the setting, so send [] rather
+			// than nil - which would marshal as null and be rejected.
+			ids = []string{}
+		}
+		data["acl_device_isolation"] = ids
+	}
 	if !model.StpVersion.IsNull() && !model.StpVersion.IsUnknown() {
 		data["stp_version"] = model.StpVersion.ValueString()
 	}
@@ -3490,9 +3532,14 @@ func globalSwitchRawSetting(model *settingGlobalSwitchModel) *settings.RawSettin
 }
 
 func (r *settingResource) globalSwitchSettingToModel(
+	ctx context.Context,
 	setting *settings.GlobalSwitch,
+	diags *diag.Diagnostics,
 ) *settingGlobalSwitchModel {
+	isolation, d := types.ListValueFrom(ctx, types.StringType, setting.AclDeviceIsolation)
+	diags.Append(d...)
 	return &settingGlobalSwitchModel{
+		AclDeviceIsolation:   isolation,
 		StpVersion:           types.StringValue(setting.StpVersion),
 		DHCPSnoop:            types.BoolValue(setting.DHCPSnoop),
 		JumboframeEnabled:    types.BoolValue(setting.JumboframeEnabled),
