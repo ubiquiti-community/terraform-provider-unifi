@@ -14,6 +14,54 @@ It is not recommended to use your own account for management of your controller.
 Terraform is recommended. You can create a **Limited Admin** with **Local Access Only** and
 provide that information for authentication. Two-factor authentication is not supported in the provider.
 
+## Misplaced attributes inside a nested block
+
+Terraform and OpenTofu **silently discard keys they do not recognise inside an
+object-typed attribute**. A misplaced argument at the top level of a resource
+fails with `An argument named "x" is not expected here`, but the same mistake one
+level down produces no diagnostic at all: the key simply never reaches the
+provider.
+
+The usual symptom is a plan that keeps proposing to unset something you did
+configure, for example:
+
+```hcl
+resource "unifi_network" "lan" {
+  name = "LAN"
+
+  dhcp_server = {
+    enabled            = true
+    start              = "10.0.0.2"
+    stop               = "10.0.0.255"
+    subnet             = "10.0.0.1/16" # WRONG: a root attribute of unifi_network
+    setting_preference = "manual"      # WRONG: likewise
+  }
+}
+```
+
+Here `subnet` and `setting_preference` belong to the resource, not to
+`dhcp_server`. The provider never sees them, so it writes the controller's
+defaults instead and the plan shows `subnet = "10.0.0.1/16" -> null` on every
+run. Moving them out of the block fixes it:
+
+```hcl
+resource "unifi_network" "lan" {
+  name               = "LAN"
+  subnet             = "10.0.0.1/16"
+  setting_preference = "manual"
+
+  dhcp_server = {
+    enabled = true
+    start   = "10.0.0.2"
+    stop    = "10.0.0.255"
+  }
+}
+```
+
+If a plan insists on clearing a value you have set, check the indentation
+against the schema below before anything else. The provider cannot detect or
+warn about this.
+
 ## Example Usage
 
 ```terraform
