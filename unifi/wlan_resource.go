@@ -26,7 +26,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -265,19 +264,25 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Enable WPA 3 support (security must be `wpapsk` and PMF must be turned on).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"wpa3_transition": schema.BoolAttribute{
 				MarkdownDescription: "Enable WPA 3 and WPA 2 support (security must be `wpapsk` and `wpa3_support` must be true).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"pmf_mode": schema.StringAttribute{
 				MarkdownDescription: "Enable Protected Management Frames. This cannot be disabled if using WPA 3.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("disabled"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("required", "optional", "disabled"),
 				},
@@ -303,7 +308,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Indicates whether or not to hide the SSID from broadcast.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"is_guest": schema.BoolAttribute{
 				MarkdownDescription: "Indicates that this is a guest WLAN and should use guest behaviors.",
@@ -348,7 +355,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "WLAN band.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("both"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("2g", "5g", "both"),
 				},
@@ -357,11 +366,10 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "List of WLAN bands.",
 				Optional:            true,
 				Computed:            true,
-				Default: setdefault.StaticValue(types.SetValueMust(types.StringType, []attr.Value{
-					types.StringValue("2g"),
-					types.StringValue("5g"),
-				})),
-				ElementType: types.StringType,
+				ElementType:         types.StringType,
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Set{
 					setvalidator.ValueStringsAre(stringvalidator.OneOf("2g", "5g", "6g")),
 				},
@@ -471,7 +479,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Connect high performance clients to 5 GHz only.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"l2_isolation": schema.BoolAttribute{
 				MarkdownDescription: "Isolates stations on layer 2 (ethernet) level.",
@@ -489,7 +499,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Improves client roaming by providing connection details of nearby APs.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"uapsd": schema.BoolAttribute{
 				MarkdownDescription: "Enable Unscheduled Automatic Power Save Delivery.",
@@ -659,7 +671,9 @@ func (r *wlanFrameworkResource) Schema(
 					"set for them are ignored (this disables WPA3 on the SSID).",
 				Optional: true,
 				Computed: true,
-				Default:  booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"hotspot2conf_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Enable Hotspot 2.0 configuration.",
