@@ -65,30 +65,39 @@ type siteToSiteVPNResource struct {
 // purpose="site-vpn", vpn_type="ipsec-vpn" network — the UniFi manual
 // site-to-site IPsec VPN.
 type siteToSiteVPNResourceModel struct {
-	ID             types.String         `tfsdk:"id"`
-	Site           types.String         `tfsdk:"site"`
-	Name           types.String         `tfsdk:"name"`
-	Enabled        types.Bool           `tfsdk:"enabled"`
-	Interface      types.String         `tfsdk:"interface"`
-	PeerIP         iptypes.IPv4Address  `tfsdk:"peer_ip"`
-	LocalIP        iptypes.IPv4Address  `tfsdk:"local_ip"`
-	KeyExchange    types.String         `tfsdk:"key_exchange"`
-	PreSharedKey   types.String         `tfsdk:"pre_shared_key"`
-	PreSharedKeyWO types.String         `tfsdk:"pre_shared_key_wo"`
-	RemoteSubnets  types.List           `tfsdk:"remote_subnets"`
-	Profile        types.String         `tfsdk:"profile"`
-	IKEEncryption  types.String         `tfsdk:"ike_encryption"`
-	IKEHash        types.String         `tfsdk:"ike_hash"`
-	IKEDhGroup     types.Int64          `tfsdk:"ike_dh_group"`
-	IKELifetime    timetypes.GoDuration `tfsdk:"ike_lifetime"`
-	ESPEncryption  types.String         `tfsdk:"esp_encryption"`
-	ESPHash        types.String         `tfsdk:"esp_hash"`
-	ESPDhGroup     types.Int64          `tfsdk:"esp_dh_group"`
-	ESPLifetime    timetypes.GoDuration `tfsdk:"esp_lifetime"`
-	PFS            types.Bool           `tfsdk:"pfs"`
-	DynamicRouting types.Bool           `tfsdk:"dynamic_routing"`
-	RouteDistance  types.Int64          `tfsdk:"route_distance"`
-	Timeouts       timeouts.Value       `tfsdk:"timeouts"`
+	ID        types.String `tfsdk:"id"`
+	Site      types.String `tfsdk:"site"`
+	Name      types.String `tfsdk:"name"`
+	Enabled   types.Bool   `tfsdk:"enabled"`
+	Interface types.String `tfsdk:"interface"`
+	// The controller stores whatever the UI accepted here, including a
+	// dynamic-DNS hostname, so this cannot be an IPv4-only type: a hostname
+	// peer failed to even refresh (#484).
+	PeerIP types.String `tfsdk:"peer_ip"`
+
+	// IKE peer-authentication identifiers.
+	LocalIdentifier         types.String         `tfsdk:"local_identifier"`
+	LocalIdentifierEnabled  types.Bool           `tfsdk:"local_identifier_enabled"`
+	RemoteIdentifier        types.String         `tfsdk:"remote_identifier"`
+	RemoteIdentifierEnabled types.Bool           `tfsdk:"remote_identifier_enabled"`
+	LocalIP                 iptypes.IPv4Address  `tfsdk:"local_ip"`
+	KeyExchange             types.String         `tfsdk:"key_exchange"`
+	PreSharedKey            types.String         `tfsdk:"pre_shared_key"`
+	PreSharedKeyWO          types.String         `tfsdk:"pre_shared_key_wo"`
+	RemoteSubnets           types.List           `tfsdk:"remote_subnets"`
+	Profile                 types.String         `tfsdk:"profile"`
+	IKEEncryption           types.String         `tfsdk:"ike_encryption"`
+	IKEHash                 types.String         `tfsdk:"ike_hash"`
+	IKEDhGroup              types.Int64          `tfsdk:"ike_dh_group"`
+	IKELifetime             timetypes.GoDuration `tfsdk:"ike_lifetime"`
+	ESPEncryption           types.String         `tfsdk:"esp_encryption"`
+	ESPHash                 types.String         `tfsdk:"esp_hash"`
+	ESPDhGroup              types.Int64          `tfsdk:"esp_dh_group"`
+	ESPLifetime             timetypes.GoDuration `tfsdk:"esp_lifetime"`
+	PFS                     types.Bool           `tfsdk:"pfs"`
+	DynamicRouting          types.Bool           `tfsdk:"dynamic_routing"`
+	RouteDistance           types.Int64          `tfsdk:"route_distance"`
+	Timeouts                timeouts.Value       `tfsdk:"timeouts"`
 }
 
 // siteToSiteVPNIdentityModel describes the resource identity data model.
@@ -201,11 +210,55 @@ func (r *siteToSiteVPNResource) Schema(
 				},
 			},
 			"peer_ip": schema.StringAttribute{
-				MarkdownDescription: "The public IP address of the remote VPN gateway (peer).",
-				CustomType:          iptypes.IPv4AddressType{},
-				Required:            true,
+				MarkdownDescription: "The public IP address **or hostname** of the remote " +
+					"VPN gateway (peer). The controller accepts and stores a hostname, " +
+					"which is how a peer behind dynamic DNS is configured.",
+				Required: true,
 				Validators: []validator.String{
-					validators.IPv4Validator(),
+					stringvalidator.Any(
+						validators.IPv4Validator(),
+						validators.DomainNameValidator(),
+					),
+				},
+			},
+			"local_identifier": schema.StringAttribute{
+				MarkdownDescription: "IKE local identifier used for peer authentication " +
+					"(the UI's \"Local Identifier\"). Setting it also enables identifier " +
+					"authentication; left unset, the attribute is not written and " +
+					"whatever the controller holds is preserved.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"local_identifier_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether the local identifier is used for " +
+					"authentication. Set automatically when `local_identifier` is " +
+					"configured; declare it explicitly to enable identifier " +
+					"authentication without pinning a value.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"remote_identifier": schema.StringAttribute{
+				MarkdownDescription: "IKE remote identifier used for peer authentication " +
+					"(the UI's \"Remote Identifier\"). See `local_identifier`.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"remote_identifier_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether the remote identifier is used for " +
+					"authentication. See `local_identifier_enabled`.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"local_ip": schema.StringAttribute{
@@ -788,6 +841,16 @@ func (r *siteToSiteVPNResource) applyPreSharedKeyWO(
 	return true
 }
 
+// identifierEnabled resolves an IKE identifier's enabled flag. A declared flag
+// wins; otherwise configuring the identifier itself enables it, which is what
+// the UI does and spares the operator from setting both.
+func identifierEnabled(flag types.Bool, identifier types.String) bool {
+	if !flag.IsNull() && !flag.IsUnknown() {
+		return flag.ValueBool()
+	}
+	return !identifier.IsNull() && !identifier.IsUnknown() && identifier.ValueString() != ""
+}
+
 // modelToNetwork converts the Terraform model to the go-unifi Network struct.
 // The pre-shared key from config (pre_shared_key) is set here; the write-only
 // variant is applied separately in Create/Update.
@@ -798,12 +861,20 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 	var diags diag.Diagnostics
 
 	network := &unifi.Network{
-		Purpose:             unifi.PurposeSiteVPN,
-		Name:                util.Ptr(model.Name.ValueString()),
-		Enabled:             model.Enabled.ValueBool(),
-		VPNType:             util.Ptr("ipsec-vpn"),
-		IPSecInterface:      optStr(model.Interface),
-		IPSecPeerIP:         optStr(model.PeerIP),
+		Purpose:               unifi.PurposeSiteVPN,
+		Name:                  util.Ptr(model.Name.ValueString()),
+		Enabled:               model.Enabled.ValueBool(),
+		VPNType:               util.Ptr("ipsec-vpn"),
+		IPSecInterface:        optStr(model.Interface),
+		IPSecPeerIP:           optStr(model.PeerIP),
+		IPSecLocalIDentifier:  optStr(model.LocalIdentifier),
+		IPSecRemoteIDentifier: optStr(model.RemoteIdentifier),
+		IPSecLocalIDentifierEnabled: identifierEnabled(
+			model.LocalIdentifierEnabled, model.LocalIdentifier,
+		),
+		IPSecRemoteIDentifierEnabled: identifierEnabled(
+			model.RemoteIdentifierEnabled, model.RemoteIdentifier,
+		),
 		IPSecLocalIP:        optStr(model.LocalIP),
 		IPSecKeyExchange:    optStr(model.KeyExchange),
 		IPSecProfile:        optStr(model.Profile),
@@ -850,7 +921,17 @@ func (r *siteToSiteVPNResource) networkToModel(
 	}
 	model.Enabled = types.BoolValue(network.Enabled)
 	model.Interface = stringPtrOrNull(network.IPSecInterface)
-	model.PeerIP = util.IPv4PtrValueOrNull(network.IPSecPeerIP)
+	// Verbatim: the controller may hold a hostname, which an IPv4 type rejects.
+	if network.IPSecPeerIP != nil && *network.IPSecPeerIP != "" {
+		model.PeerIP = types.StringValue(*network.IPSecPeerIP)
+	} else {
+		model.PeerIP = types.StringNull()
+	}
+
+	model.LocalIdentifier = stringPtrOrNull(network.IPSecLocalIDentifier)
+	model.LocalIdentifierEnabled = types.BoolValue(network.IPSecLocalIDentifierEnabled)
+	model.RemoteIdentifier = stringPtrOrNull(network.IPSecRemoteIDentifier)
+	model.RemoteIdentifierEnabled = types.BoolValue(network.IPSecRemoteIDentifierEnabled)
 	model.LocalIP = util.IPv4PtrValueOrNull(network.IPSecLocalIP)
 	model.KeyExchange = stringPtrOrNull(network.IPSecKeyExchange)
 	model.Profile = stringPtrOrNull(network.IPSecProfile)

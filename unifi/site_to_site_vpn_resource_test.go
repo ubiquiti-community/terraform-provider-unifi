@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
@@ -38,7 +37,7 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 		Name:          types.StringValue("HQ-to-Branch"),
 		Enabled:       types.BoolValue(true),
 		Interface:     types.StringValue("wan"),
-		PeerIP:        iptypes.NewIPv4AddressValue("203.0.113.9"),
+		PeerIP:        types.StringValue("203.0.113.9"),
 		KeyExchange:   types.StringValue("ikev2"),
 		PreSharedKey:  types.StringValue("s3cret-psk"),
 		RemoteSubnets: subnets,
@@ -541,7 +540,7 @@ func Test_siteToSiteVPNResource_modelToNetwork(t *testing.T) {
 			Name:          types.StringValue("test-vpn"),
 			Enabled:       types.BoolValue(true),
 			Interface:     types.StringValue("wan"),
-			PeerIP:        iptypes.NewIPv4AddressValue("1.2.3.4"),
+			PeerIP:        types.StringValue("1.2.3.4"),
 			KeyExchange:   types.StringValue("ikev2"),
 			PreSharedKey:  types.StringValue("psk"),
 			RemoteSubnets: subnets,
@@ -573,7 +572,7 @@ func Test_siteToSiteVPNResource_modelToNetwork(t *testing.T) {
 		model := &siteToSiteVPNResourceModel{
 			Name:          types.StringValue("vpn"),
 			Interface:     types.StringNull(),
-			PeerIP:        iptypes.NewIPv4AddressNull(),
+			PeerIP:        types.StringNull(),
 			IKEEncryption: types.StringNull(),
 			RemoteSubnets: subnets,
 		}
