@@ -81,3 +81,20 @@ resource "unifi_setting" "wired_site" {
     enabled = false
   }
 }
+
+# Client Device Isolation (Settings > Networks > "Device Isolation (ACL)") is a
+# switch ACL listing the networks whose devices may not talk to each other. It
+# covers same-network traffic across access points, which unifi_wlan's
+# l2_isolation (one access point) and unifi_network's network_isolation (between
+# networks) do not. The controller only offers it for networks routed by a UniFi
+# gateway or L3 switch.
+resource "unifi_setting" "device_isolation" {
+  site = "default"
+
+  global_switch = {
+    acl_device_isolation = [
+      unifi_network.guest.id,
+      unifi_network.quarantine.id,
+    ]
+  }
+}
