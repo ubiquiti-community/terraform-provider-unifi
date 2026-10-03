@@ -55,6 +55,19 @@ resource "unifi_setting" "combined" {
   }
 }
 
+# Configure only SNMP settings (v1/v2c community plus an SNMPv3 user)
+resource "unifi_setting" "snmp_only" {
+  site = "default"
+
+  snmp = {
+    enabled    = true
+    community  = "my-snmp-community"
+    enabled_v3 = true
+    username   = "monitor"
+    password   = "my-snmpv3-password"
+  }
+}
+
 # Configure only RADIUS settings
 resource "unifi_setting" "radius_only" {
   site = "default"
