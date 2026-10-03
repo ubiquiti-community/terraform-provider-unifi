@@ -69,6 +69,19 @@ resource "unifi_setting" "combined" {
   }
 }
 
+# Configure only SNMP settings (v1/v2c community plus an SNMPv3 user)
+resource "unifi_setting" "snmp_only" {
+  site = "default"
+
+  snmp = {
+    enabled    = true
+    community  = "my-snmp-community"
+    enabled_v3 = true
+    username   = "monitor"
+    password   = "my-snmpv3-password"
+  }
+}
+
 # Configure only RADIUS settings
 resource "unifi_setting" "radius_only" {
   site = "default"
@@ -162,6 +175,7 @@ resource "unifi_setting" "device_isolation" {
 - `radius_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `radius.secret` (Terraform 1.11+). Used at apply time but never written to state. It sits at the root rather than inside `radius` because Terraform does not allow a write-only attribute inside a computed nested attribute. Requires the `radius` block (`radius = {}` is enough) and is mutually exclusive with `radius.secret`. Because nothing is stored, a secret changed outside Terraform produces no diff; increment `radius_secret_wo_version` to send a new value.
 - `radius_secret_wo_version` (Number) Version counter for `radius_secret_wo`. Increment this value to trigger a RADIUS secret update.
 - `site` (String) The name of the site to associate the settings with.
+- `snmp` (Attributes) SNMP agent settings (Settings > System > SNMP): a v1/v2c community and a single SNMPv3 user. (see [below for nested schema](#nestedatt--snmp))
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `usg` (Attributes) USG settings. (see [below for nested schema](#nestedatt--usg))
@@ -426,6 +440,18 @@ Optional:
 - `auth_port` (Number) RADIUS authentication port.
 - `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
 - `secret` (String, Sensitive) RADIUS shared secret. Stored in state; use the root-level `radius_secret_wo` to avoid persisting the secret.
+
+
+<a id="nestedatt--snmp"></a>
+### Nested Schema for `snmp`
+
+Optional:
+
+- `community` (String, Sensitive) SNMP v1/v2c community string.
+- `enabled` (Boolean) Enable SNMP v1/v2c.
+- `enabled_v3` (Boolean) Enable SNMPv3.
+- `password` (String, Sensitive) SNMPv3 password.
+- `username` (String) SNMPv3 username.
 
 
 <a id="nestedatt--syslog"></a>
