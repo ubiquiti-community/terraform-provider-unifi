@@ -1417,7 +1417,7 @@ func Test_settingResource_usgModelToSetting(t *testing.T) {
 			BroadcastPing:   types.BoolNull(),
 			DNSVerification: types.ObjectNull(nil),
 		}
-		got := r.usgModelToSetting(ctx, model)
+		got := r.usgModelToSetting(ctx, model, nil)
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
@@ -1432,7 +1432,7 @@ func Test_settingResource_usgModelToSetting(t *testing.T) {
 			BroadcastPing:   types.BoolNull(),
 			DNSVerification: types.ObjectNull(nil),
 		}
-		got := r.usgModelToSetting(ctx, model)
+		got := r.usgModelToSetting(ctx, model, nil)
 		if got == nil {
 			t.Fatal("expected non-nil result")
 		}
@@ -1928,7 +1928,7 @@ func Test_settingResource_ipsModelToSetting(t *testing.T) {
 			RestrictTorrents: types.BoolNull(),
 		}
 		var diags diag.Diagnostics
-		got, _ := r.ipsModelToSetting(ctx, model, &diags)
+		got, _ := r.ipsModelToSetting(ctx, model, &diags, nil)
 		if diags.HasError() {
 			t.Fatalf("unexpected diags: %v", diags)
 		}
@@ -1947,7 +1947,7 @@ func Test_settingResource_ipsModelToSetting(t *testing.T) {
 			HoneypotEnabled:  types.BoolNull(),
 		}
 		var diags diag.Diagnostics
-		got, _ := r.ipsModelToSetting(ctx, model, &diags)
+		got, _ := r.ipsModelToSetting(ctx, model, &diags, nil)
 		if diags.HasError() {
 			t.Fatalf("unexpected diags: %v", diags)
 		}
@@ -2225,7 +2225,7 @@ func TestIpsSuppressionAlertsRoundTrip(t *testing.T) {
 		SuppressionWhitelist: types.ListNull(types.ObjectType{AttrTypes: ipsWhitelistAttrTypes}),
 		SuppressionAlerts:    alerts,
 	}
-	setting, suppression := r.ipsModelToSetting(ctx, model, &diags)
+	setting, suppression := r.ipsModelToSetting(ctx, model, &diags, nil)
 	if diags.HasError() {
 		t.Fatalf("modelToSetting: %v", diags)
 	}
