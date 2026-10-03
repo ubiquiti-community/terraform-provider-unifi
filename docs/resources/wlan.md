@@ -87,7 +87,7 @@ resource "unifi_wlan" "wifi" {
 - `enabled` (Boolean) Enable or disable the WLAN.
 - `enhanced_iot` (Boolean) Enable enhanced IoT connectivity. When `true`, the controller forces `iapp_enabled = true`, `wpa3_support = false`, `wpa3_transition = false`, `pmf_mode = "disabled"` and `dtim_ng = 1`; the provider pins those fields to match, so any conflicting values you set for them are ignored (this disables WPA3 on the SSID).
 - `fast_roaming_enabled` (Boolean) Enable fast roaming, aka 802.11r.
-- `group_rekey` (Number) Group rekey interval in seconds (0 to disable).
+- `group_rekey` (Number) Group rekey interval in seconds (0 to disable). Computed from the controller when not set.
 - `hide_ssid` (Boolean) Indicates whether or not to hide the SSID from broadcast.
 - `hotspot2conf_enabled` (Boolean) Enable Hotspot 2.0 configuration.
 - `iapp_enabled` (Boolean) Enable Inter-Access Point Protocol (802.11f) for faster roaming. Computed from the controller when not set.
@@ -122,7 +122,7 @@ resource "unifi_wlan" "wifi" {
 - `wpa3_fast_roaming` (Boolean) Enable WPA3 fast roaming (802.11r).
 - `wpa3_support` (Boolean) Enable WPA 3 support (security must be `wpapsk` and PMF must be turned on).
 - `wpa3_transition` (Boolean) Enable WPA 3 and WPA 2 support (security must be `wpapsk` and `wpa3_support` must be true).
-- `wpa_enc` (String) WPA encryption. Can be one of `auto`, `ccmp`, `gcmp`, `ccmp-256`, or `gcmp-256`.
+- `wpa_enc` (String) WPA encryption. Can be one of `auto`, `ccmp`, `gcmp`, `ccmp-256`, or `gcmp-256`. Computed from the controller when not set.
 - `wpa_mode` (String) WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`.
 
 ### Read-Only
