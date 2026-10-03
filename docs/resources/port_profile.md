@@ -48,7 +48,7 @@ resource "unifi_port_profile" "poe_disabled" {
 - `egress_rate_limit_kbps_enabled` (Boolean) Enable egress rate limiting for the port profile.
 - `excluded_networkconf_ids` (Set of String) The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`). Computed from the controller when not set.
 - `fec_mode` (String) Forward Error Correction mode. Can be `rs-fec`, `fc-fec`, `default`, or `disabled`.
-- `forward` (String) The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`.
+- `forward` (String) The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`. `customize` requires a native network that carries a VLAN id: the controller silently stores `all` for a profile whose native network is untagged, which the provider rejects at plan time rather than letting the apply leave the resource tainted.
 - `full_duplex` (Boolean) Enable full duplex for the port profile.
 - `isolation` (Boolean) Enable port isolation for the port profile.
 - `lldpmed_enabled` (Boolean) Enable LLDP-MED for the port profile.

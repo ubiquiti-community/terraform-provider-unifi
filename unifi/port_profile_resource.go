@@ -35,6 +35,7 @@ var (
 	_ resource.ResourceWithImportState  = &portProfileResource{}
 	_ resource.ResourceWithIdentity     = &portProfileResource{}
 	_ resource.ResourceWithUpgradeState = &portProfileResource{}
+	_ resource.ResourceWithModifyPlan   = &portProfileResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -230,10 +231,15 @@ func (r *portProfileResource) Schema(
 				Default:     booldefault.StaticBool(false),
 			},
 			"forward": schema.StringAttribute{
-				Description: "The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("all"),
+				Description: "The type forwarding to use for the port profile. Can be " +
+					"`all`, `native`, `customize` or `disabled`. `customize` requires a " +
+					"native network that carries a VLAN id: the controller silently " +
+					"stores `all` for a profile whose native network is untagged, which " +
+					"the provider rejects at plan time rather than letting the apply " +
+					"leave the resource tainted.",
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("all"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("all", "native", "customize", "disabled"),
 				},
@@ -862,6 +868,87 @@ func (r *portProfileResource) ImportState(
 // defaultNativeNetworkID returns the network the controller would auto-assign
 // as a port profile's native network: the site's default (undeletable)
 // corporate network, falling back to the first corporate network.
+// ModifyPlan rejects forward = "customize" on a profile whose native network
+// has no VLAN id. The controller accepts such a write and then stores
+// forward = "all" instead, so the post-apply read disagrees with the plan:
+// Create fails with "Provider produced inconsistent result after apply", leaves
+// the resource tainted, and every later apply destroys, recreates and fails
+// identically - the configuration can never converge (#496).
+//
+// Failing at plan time with the reason is the only outcome that lets the
+// operator act. Adopting the controller's value instead would hide a silent
+// divergence between configuration and state, and retrying cannot help: the
+// controller is not going to change its mind.
+func (r *portProfileResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return // resource is being destroyed
+	}
+	if r.client == nil {
+		return // not configured yet (e.g. during validation)
+	}
+
+	var forward, nativeID, site types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("forward"), &forward)...)
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("native_networkconf_id"), &nativeID)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("site"), &site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if forward.IsNull() || forward.IsUnknown() || forward.ValueString() != "customize" {
+		return
+	}
+	// An unknown native network is resolved at apply time to the site default,
+	// which is a corporate network and may well be untagged - but the plan
+	// cannot know which, so leave it to the apply rather than guess.
+	if nativeID.IsNull() || nativeID.IsUnknown() || nativeID.ValueString() == "" {
+		return
+	}
+
+	siteName := site.ValueString()
+	if siteName == "" {
+		siteName = r.client.Site
+	}
+
+	network, err := r.client.GetNetwork(ctx, siteName, nativeID.ValueString())
+	if err != nil {
+		// Do not fail the plan on a lookup problem: the apply will surface a
+		// real error, and a transient read must not block an unrelated change.
+		return
+	}
+	if network.VLAN != nil && *network.VLAN != 0 {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeError(
+		path.Root("forward"),
+		"forward = \"customize\" requires a native network with a VLAN id",
+		fmt.Sprintf(
+			"The native network %q has no VLAN id, and the controller silently stores "+
+				"forward = \"all\" for such a profile instead of \"customize\". The "+
+				"post-apply read would then disagree with the plan, failing with "+
+				"\"Provider produced inconsistent result after apply\" and leaving the "+
+				"resource tainted.\n\n"+
+				"Either set forward = \"all\" for this profile, or point "+
+				"native_networkconf_id at a network that carries a VLAN id.",
+			networkName(network),
+		),
+	)
+}
+
+// networkName returns a network's name for diagnostics, falling back to its ID.
+func networkName(n *unifi.Network) string {
+	if n.Name != nil && *n.Name != "" {
+		return *n.Name
+	}
+	return n.ID
+}
+
 func (r *portProfileResource) defaultNativeNetworkID(
 	ctx context.Context,
 	site string,
