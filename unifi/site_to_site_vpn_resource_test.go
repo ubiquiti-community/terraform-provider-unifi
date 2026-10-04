@@ -482,6 +482,33 @@ func TestSiteToSiteVPNRemoteSubnetsValid(t *testing.T) {
 	}
 }
 
+func TestTunnelIPEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		flag     types.Bool
+		tunnelIP types.String
+		want     bool
+	}{
+		// A declared flag always wins.
+		{"flag true, no ip", types.BoolValue(true), types.StringNull(), true},
+		{"flag false, ip set", types.BoolValue(false), types.StringValue("169.254.0.1/30"), false},
+		// Unset flag: configuring the tunnel IP implicitly enables it.
+		{"flag unset, ip set", types.BoolNull(), types.StringValue("169.254.0.1/30"), true},
+		{"flag unset, no ip", types.BoolNull(), types.StringNull(), false},
+		{"flag unset, empty ip", types.BoolNull(), types.StringValue(""), false},
+		{"flag unknown, ip set", types.BoolUnknown(), types.StringValue("169.254.0.1/30"), true},
+		{"flag unknown, ip unknown", types.BoolUnknown(), types.StringUnknown(), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tunnelIPEnabled(tt.flag, tt.tunnelIP); got != tt.want {
+				t.Errorf("tunnelIPEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_siteToSiteVPNResource_Configure(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
