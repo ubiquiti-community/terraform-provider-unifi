@@ -411,9 +411,7 @@ func (r *siteToSiteVPNResource) Schema(
 				MarkdownDescription: "Whether dynamic subnets are enabled for the VPN tunnel.",
 				Optional:            true,
 				Computed:            true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 		},
 	}
