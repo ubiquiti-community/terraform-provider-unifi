@@ -76,28 +76,29 @@ type siteToSiteVPNResourceModel struct {
 	PeerIP types.String `tfsdk:"peer_ip"`
 
 	// IKE peer-authentication identifiers.
-	LocalIdentifier         types.String         `tfsdk:"local_identifier"`
-	LocalIdentifierEnabled  types.Bool           `tfsdk:"local_identifier_enabled"`
-	RemoteIdentifier        types.String         `tfsdk:"remote_identifier"`
-	RemoteIdentifierEnabled types.Bool           `tfsdk:"remote_identifier_enabled"`
-	LocalIP                 iptypes.IPv4Address  `tfsdk:"local_ip"`
-	KeyExchange             types.String         `tfsdk:"key_exchange"`
-	PreSharedKey            types.String         `tfsdk:"pre_shared_key"`
-	PreSharedKeyWO          types.String         `tfsdk:"pre_shared_key_wo"`
-	RemoteSubnets           types.List           `tfsdk:"remote_subnets"`
-	Profile                 types.String         `tfsdk:"profile"`
-	IKEEncryption           types.String         `tfsdk:"ike_encryption"`
-	IKEHash                 types.String         `tfsdk:"ike_hash"`
-	IKEDhGroup              types.Int64          `tfsdk:"ike_dh_group"`
-	IKELifetime             timetypes.GoDuration `tfsdk:"ike_lifetime"`
-	ESPEncryption           types.String         `tfsdk:"esp_encryption"`
-	ESPHash                 types.String         `tfsdk:"esp_hash"`
-	ESPDhGroup              types.Int64          `tfsdk:"esp_dh_group"`
-	ESPLifetime             timetypes.GoDuration `tfsdk:"esp_lifetime"`
-	PFS                     types.Bool           `tfsdk:"pfs"`
-	DynamicRouting          types.Bool           `tfsdk:"dynamic_routing"`
-	RouteDistance           types.Int64          `tfsdk:"route_distance"`
-	Timeouts                timeouts.Value       `tfsdk:"timeouts"`
+	LocalIdentifier                types.String         `tfsdk:"local_identifier"`
+	LocalIdentifierEnabled         types.Bool           `tfsdk:"local_identifier_enabled"`
+	RemoteIdentifier               types.String         `tfsdk:"remote_identifier"`
+	RemoteIdentifierEnabled        types.Bool           `tfsdk:"remote_identifier_enabled"`
+	LocalIP                        iptypes.IPv4Address  `tfsdk:"local_ip"`
+	KeyExchange                    types.String         `tfsdk:"key_exchange"`
+	PreSharedKey                   types.String         `tfsdk:"pre_shared_key"`
+	PreSharedKeyWO                 types.String         `tfsdk:"pre_shared_key_wo"`
+	RemoteSubnets                  types.List           `tfsdk:"remote_subnets"`
+	Profile                        types.String         `tfsdk:"profile"`
+	IKEEncryption                  types.String         `tfsdk:"ike_encryption"`
+	IKEHash                        types.String         `tfsdk:"ike_hash"`
+	IKEDhGroup                     types.Int64          `tfsdk:"ike_dh_group"`
+	IKELifetime                    timetypes.GoDuration `tfsdk:"ike_lifetime"`
+	ESPEncryption                  types.String         `tfsdk:"esp_encryption"`
+	ESPHash                        types.String         `tfsdk:"esp_hash"`
+	ESPDhGroup                     types.Int64          `tfsdk:"esp_dh_group"`
+	ESPLifetime                    timetypes.GoDuration `tfsdk:"esp_lifetime"`
+	PFS                            types.Bool           `tfsdk:"pfs"`
+	DynamicRouting                 types.Bool           `tfsdk:"dynamic_routing"`
+	RouteDistance                  types.Int64          `tfsdk:"route_distance"`
+	Timeouts                       timeouts.Value       `tfsdk:"timeouts"`
+	RemoteVPNDynamicSubnetsEnabled types.Bool           `tfsdk:"remote_vpn_dynamic_subnets_enabled"`
 }
 
 // siteToSiteVPNIdentityModel describes the resource identity data model.
@@ -406,6 +407,14 @@ func (r *siteToSiteVPNResource) Schema(
 				ctx,
 				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
 			),
+			"remote_vpn_dynamic_subnets_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether dynamic subnets are enabled for the VPN tunnel.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -875,20 +884,21 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		IPSecRemoteIDentifierEnabled: identifierEnabled(
 			model.RemoteIdentifierEnabled, model.RemoteIdentifier,
 		),
-		IPSecLocalIP:        optStr(model.LocalIP),
-		IPSecKeyExchange:    optStr(model.KeyExchange),
-		IPSecProfile:        optStr(model.Profile),
-		IPSecEncryption:     optStr(model.IKEEncryption),
-		IPSecHash:           optStr(model.IKEHash),
-		IPSecDhGroup:        optInt64(model.IKEDhGroup),
-		IPSecIkeLifetime:    util.DurationUnitsPtr(model.IKELifetime, time.Second),
-		IPSecEspEncryption:  optStr(model.ESPEncryption),
-		IPSecEspHash:        optStr(model.ESPHash),
-		IPSecEspDhGroup:     optInt64(model.ESPDhGroup),
-		IPSecEspLifetime:    util.DurationUnitsPtr(model.ESPLifetime, time.Second),
-		IPSecPfs:            model.PFS.ValueBool(),
-		IPSecDynamicRouting: model.DynamicRouting.ValueBool(),
-		RouteDistance:       optInt64(model.RouteDistance),
+		IPSecLocalIP:                   optStr(model.LocalIP),
+		IPSecKeyExchange:               optStr(model.KeyExchange),
+		IPSecProfile:                   optStr(model.Profile),
+		IPSecEncryption:                optStr(model.IKEEncryption),
+		IPSecHash:                      optStr(model.IKEHash),
+		IPSecDhGroup:                   optInt64(model.IKEDhGroup),
+		IPSecIkeLifetime:               util.DurationUnitsPtr(model.IKELifetime, time.Second),
+		IPSecEspEncryption:             optStr(model.ESPEncryption),
+		IPSecEspHash:                   optStr(model.ESPHash),
+		IPSecEspDhGroup:                optInt64(model.ESPDhGroup),
+		IPSecEspLifetime:               util.DurationUnitsPtr(model.ESPLifetime, time.Second),
+		IPSecPfs:                       model.PFS.ValueBool(),
+		IPSecDynamicRouting:            model.DynamicRouting.ValueBool(),
+		RouteDistance:                  optInt64(model.RouteDistance),
+		RemoteVPNDynamicSubnetsEnabled: model.RemoteVPNDynamicSubnetsEnabled.ValueBool(),
 	}
 
 	if !model.PreSharedKey.IsNull() && !model.PreSharedKey.IsUnknown() {
@@ -946,6 +956,7 @@ func (r *siteToSiteVPNResource) networkToModel(
 	model.PFS = types.BoolValue(network.IPSecPfs)
 	model.DynamicRouting = types.BoolValue(network.IPSecDynamicRouting)
 	model.RouteDistance = types.Int64PointerValue(network.RouteDistance)
+	model.RemoteVPNDynamicSubnetsEnabled = types.BoolValue(network.RemoteVPNDynamicSubnetsEnabled)
 
 	subnets, subnetDiags := types.ListValueFrom(ctx, types.StringType, network.RemoteVPNSubnets)
 	diags.Append(subnetDiags...)
