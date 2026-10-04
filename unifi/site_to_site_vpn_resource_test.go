@@ -180,6 +180,7 @@ func Test_siteToSiteVPNResource_IdentitySchema(t *testing.T) {
 // siteToSiteVPNImportHarness builds the empty state and null identity
 // containers the framework hands to ImportState, so the import logic can be
 // unit tested without a live controller.
+
 func siteToSiteVPNImportHarness(t *testing.T) (tfsdk.State, tfsdk.ResourceIdentity) {
 	t.Helper()
 	ctx := context.Background()
@@ -210,6 +211,7 @@ func siteToSiteVPNImportHarness(t *testing.T) (tfsdk.State, tfsdk.ResourceIdenti
 
 // siteToSiteVPNIdentityValue builds a populated identity container for
 // identity-based import requests. Pass "" to leave site null.
+
 func siteToSiteVPNIdentityValue(t *testing.T, id, site string) tfsdk.ResourceIdentity {
 	t.Helper()
 	ctx := context.Background()
@@ -420,6 +422,7 @@ func Test_siteToSiteVPNResource_UpgradeState(t *testing.T) {
 // the flat ike_*/esp_* attributes move into the nested `ike`/`esp` objects.
 // v1 state already stores lifetimes as duration strings; v0 state stores
 // integer seconds, which must be rewritten before nesting.
+
 func TestSiteToSiteVPNUpgradeState_nestsProposals(t *testing.T) {
 	ctx := context.Background()
 	r := &siteToSiteVPNResource{}
@@ -546,6 +549,7 @@ func TestSiteToSiteVPNUpgradeState_nestsProposals(t *testing.T) {
 // TestSiteToSiteVPNProposals_wireAndReadBack checks that the nested ike/esp
 // objects are written to and read back from the API network, and that a null
 // or unknown group contributes nothing (as the unset flat attributes did).
+
 func TestSiteToSiteVPNProposals_wireAndReadBack(t *testing.T) {
 	ctx := context.Background()
 	r := &siteToSiteVPNResource{}
@@ -755,15 +759,22 @@ func TestTunnelIPEnabled(t *testing.T) {
 // buildDynamicSubnetsConfig builds a tfsdk.Config for the resource schema with
 // every attribute null except dynamic_routing and remote_subnets, for driving
 // the dynamicSubnetsValidator end-to-end.
+
 func buildDynamicSubnetsConfig(
+	t *testing.T,
 	ctx context.Context,
 	dynamicRouting types.Bool,
 	remoteSubnets types.List,
 ) tfsdk.Config {
+	t.Helper()
+
 	var schemaResp fwresource.SchemaResponse
 	(&siteToSiteVPNResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
 
-	objType := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatalf("schema terraform type is not an object")
+	}
 	vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
 	for name, at := range objType.AttributeTypes {
 		vals[name] = tftypes.NewValue(at, nil)
@@ -796,8 +807,20 @@ func TestDynamicSubnetsValidator_ValidateBool(t *testing.T) {
 		wantErr        bool
 	}{
 		{"disabled while forced on", types.BoolValue(false), types.BoolValue(true), empty, true},
-		{"disabled, dynamic routing with subnet", types.BoolValue(false), types.BoolValue(true), nonEmpty, false},
-		{"disabled, dynamic routing off", types.BoolValue(false), types.BoolValue(false), empty, false},
+		{
+			"disabled, dynamic routing with subnet",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			nonEmpty,
+			false,
+		},
+		{
+			"disabled, dynamic routing off",
+			types.BoolValue(false),
+			types.BoolValue(false),
+			empty,
+			false,
+		},
 		{"enabled while forced on", types.BoolValue(true), types.BoolValue(true), empty, false},
 		{"unset while forced on", types.BoolNull(), types.BoolValue(true), empty, false},
 	}
@@ -806,14 +829,19 @@ func TestDynamicSubnetsValidator_ValidateBool(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := validator.BoolRequest{
 				Path:        path.Root("remote_vpn_dynamic_subnets_enabled"),
-				Config:      buildDynamicSubnetsConfig(ctx, tt.dynamicRouting, tt.remoteSubnets),
+				Config:      buildDynamicSubnetsConfig(t, ctx, tt.dynamicRouting, tt.remoteSubnets),
 				ConfigValue: tt.flag,
 			}
 			resp := &validator.BoolResponse{}
 			dynamicSubnetsValidator{}.ValidateBool(ctx, req, resp)
 
 			if got := resp.Diagnostics.HasError(); got != tt.wantErr {
-				t.Errorf("ValidateBool() HasError = %v, want %v: %v", got, tt.wantErr, resp.Diagnostics)
+				t.Errorf(
+					"ValidateBool() HasError = %v, want %v: %v",
+					got,
+					tt.wantErr,
+					resp.Diagnostics,
+				)
 			}
 		})
 	}
@@ -835,23 +863,71 @@ func TestDynamicSubnetsPlanModifier_PlanModifyBool(t *testing.T) {
 		want           types.Bool
 	}{
 		// Forced on regardless of the configured value.
-		{"forced on when disabled", types.BoolValue(false), types.BoolValue(true), empty, types.BoolValue(true)},
-		{"forced on when unset", types.BoolNull(), types.BoolValue(true), empty, types.BoolValue(true)},
+		{
+			"forced on when disabled",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			empty,
+			types.BoolValue(true),
+		},
+		{
+			"forced on when unset",
+			types.BoolNull(),
+			types.BoolValue(true),
+			empty,
+			types.BoolValue(true),
+		},
 		// Not forced: the configured value wins.
-		{"manual enable, routing off", types.BoolValue(true), types.BoolValue(false), empty, types.BoolValue(true)},
-		{"manual disable, routing off", types.BoolValue(false), types.BoolValue(false), empty, types.BoolValue(false)},
-		{"not forced, routing with subnet", types.BoolValue(false), types.BoolValue(true), nonEmpty, types.BoolValue(false)},
-		{"unset, routing off", types.BoolNull(), types.BoolValue(false), empty, types.BoolValue(false)},
+		{
+			"manual enable, routing off",
+			types.BoolValue(true),
+			types.BoolValue(false),
+			empty,
+			types.BoolValue(true),
+		},
+		{
+			"manual disable, routing off",
+			types.BoolValue(false),
+			types.BoolValue(false),
+			empty,
+			types.BoolValue(false),
+		},
+		{
+			"not forced, routing with subnet",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			nonEmpty,
+			types.BoolValue(false),
+		},
+		{
+			"unset, routing off",
+			types.BoolNull(),
+			types.BoolValue(false),
+			empty,
+			types.BoolValue(false),
+		},
 		// Unknown siblings defer: the planned (unknown) value is left untouched.
-		{"deferred when routing unknown", types.BoolNull(), types.BoolUnknown(), empty, types.BoolUnknown()},
-		{"deferred when subnets unknown", types.BoolNull(), types.BoolValue(true), types.ListUnknown(types.StringType), types.BoolUnknown()},
+		{
+			"deferred when routing unknown",
+			types.BoolNull(),
+			types.BoolUnknown(),
+			empty,
+			types.BoolUnknown(),
+		},
+		{
+			"deferred when subnets unknown",
+			types.BoolNull(),
+			types.BoolValue(true),
+			types.ListUnknown(types.StringType),
+			types.BoolUnknown(),
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := planmodifier.BoolRequest{
 				Path:        path.Root("remote_vpn_dynamic_subnets_enabled"),
-				Plan:        buildDynamicSubnetsPlan(ctx, tt.dynamicRouting, tt.remoteSubnets),
+				Plan:        buildDynamicSubnetsPlan(t, ctx, tt.dynamicRouting, tt.remoteSubnets),
 				ConfigValue: tt.configValue,
 			}
 			// The attribute is computed, so it arrives unknown before the modifier runs.
@@ -871,15 +947,22 @@ func TestDynamicSubnetsPlanModifier_PlanModifyBool(t *testing.T) {
 // buildDynamicSubnetsPlan builds a tfsdk.Plan for the resource schema with
 // every attribute null except dynamic_routing and remote_subnets, for driving
 // the dynamicSubnetsPlanModifier.
+
 func buildDynamicSubnetsPlan(
+	t *testing.T,
 	ctx context.Context,
 	dynamicRouting types.Bool,
 	remoteSubnets types.List,
 ) tfsdk.Plan {
+	t.Helper()
+
 	var schemaResp fwresource.SchemaResponse
 	(&siteToSiteVPNResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
 
-	objType := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatalf("schema terraform type is not an object")
+	}
 	vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
 	for name, at := range objType.AttributeTypes {
 		vals[name] = tftypes.NewValue(at, nil)
@@ -1336,3 +1419,7 @@ func TestSiteToSiteVPNDynamicSubnetsValid(t *testing.T) {
 		})
 	}
 }
+
+// buildDynamicSubnetsConfig builds a tfsdk.Config for the resource schema with
+// every attribute null except dynamic_routing and remote_subnets, for driving
+// the dynamicSubnetsValidator end-to-end.
