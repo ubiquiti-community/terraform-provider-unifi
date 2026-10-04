@@ -78,24 +78,25 @@ type siteToSiteVPNResourceModel struct {
 	PeerIP types.String `tfsdk:"peer_ip"`
 
 	// IKE peer-authentication identifiers.
-	LocalIdentifier         types.String        `tfsdk:"local_identifier"`
-	LocalIdentifierEnabled  types.Bool          `tfsdk:"local_identifier_enabled"`
-	RemoteIdentifier        types.String        `tfsdk:"remote_identifier"`
-	RemoteIdentifierEnabled types.Bool          `tfsdk:"remote_identifier_enabled"`
-	LocalIP                 iptypes.IPv4Address `tfsdk:"local_ip"`
-	TunnelIP                types.String        `tfsdk:"tunnel_ip"`
-	TunnelIPEnabled         types.Bool          `tfsdk:"tunnel_ip_enabled"`
-	KeyExchange             types.String        `tfsdk:"key_exchange"`
-	PreSharedKey            types.String        `tfsdk:"pre_shared_key"`
-	PreSharedKeyWO          types.String        `tfsdk:"pre_shared_key_wo"`
-	RemoteSubnets           types.List          `tfsdk:"remote_subnets"`
-	Profile                 types.String        `tfsdk:"profile"`
-	IKE                     types.Object        `tfsdk:"ike"`
-	ESP                     types.Object        `tfsdk:"esp"`
-	PFS                     types.Bool          `tfsdk:"pfs"`
-	DynamicRouting          types.Bool          `tfsdk:"dynamic_routing"`
-	RouteDistance           types.Int64         `tfsdk:"route_distance"`
-	Timeouts                timeouts.Value      `tfsdk:"timeouts"`
+	LocalIdentifier                types.String        `tfsdk:"local_identifier"`
+	LocalIdentifierEnabled         types.Bool          `tfsdk:"local_identifier_enabled"`
+	RemoteIdentifier               types.String        `tfsdk:"remote_identifier"`
+	RemoteIdentifierEnabled        types.Bool          `tfsdk:"remote_identifier_enabled"`
+	LocalIP                        iptypes.IPv4Address `tfsdk:"local_ip"`
+	TunnelIP                       types.String        `tfsdk:"tunnel_ip"`
+	TunnelIPEnabled                types.Bool          `tfsdk:"tunnel_ip_enabled"`
+	KeyExchange                    types.String        `tfsdk:"key_exchange"`
+	PreSharedKey                   types.String        `tfsdk:"pre_shared_key"`
+	PreSharedKeyWO                 types.String        `tfsdk:"pre_shared_key_wo"`
+	RemoteSubnets                  types.List          `tfsdk:"remote_subnets"`
+	Profile                        types.String        `tfsdk:"profile"`
+	IKE                            types.Object        `tfsdk:"ike"`
+	ESP                            types.Object        `tfsdk:"esp"`
+	PFS                            types.Bool          `tfsdk:"pfs"`
+	DynamicRouting                 types.Bool          `tfsdk:"dynamic_routing"`
+	RouteDistance                  types.Int64         `tfsdk:"route_distance"`
+	Timeouts                       timeouts.Value      `tfsdk:"timeouts"`
+	RemoteVPNDynamicSubnetsEnabled types.Bool          `tfsdk:"remote_vpn_dynamic_subnets_enabled"`
 }
 
 // siteToSiteVPNProposalModel is the shape shared by the `ike` (phase 1) and
@@ -451,6 +452,14 @@ func (r *siteToSiteVPNResource) Schema(
 				ctx,
 				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
 			),
+			"remote_vpn_dynamic_subnets_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether dynamic subnets are enabled for the VPN tunnel.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -973,11 +982,12 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		IPSecTunnelIPEnabled: tunnelIPEnabled(
 			model.TunnelIPEnabled, model.TunnelIP,
 		),
-		IPSecKeyExchange:    optStr(model.KeyExchange),
-		IPSecProfile:        optStr(model.Profile),
-		IPSecPfs:            model.PFS.ValueBool(),
-		IPSecDynamicRouting: model.DynamicRouting.ValueBool(),
-		RouteDistance:       optInt64(model.RouteDistance),
+		IPSecKeyExchange:               optStr(model.KeyExchange),
+		IPSecProfile:                   optStr(model.Profile),
+		IPSecPfs:                       model.PFS.ValueBool(),
+		IPSecDynamicRouting:            model.DynamicRouting.ValueBool(),
+		RouteDistance:                  optInt64(model.RouteDistance),
+		RemoteVPNDynamicSubnetsEnabled: model.RemoteVPNDynamicSubnetsEnabled.ValueBool(),
 	}
 
 	// Nested proposal groups. A null/unknown group contributes nothing, exactly
@@ -1066,6 +1076,7 @@ func (r *siteToSiteVPNResource) networkToModel(
 	model.PFS = types.BoolValue(network.IPSecPfs)
 	model.DynamicRouting = types.BoolValue(network.IPSecDynamicRouting)
 	model.RouteDistance = types.Int64PointerValue(network.RouteDistance)
+	model.RemoteVPNDynamicSubnetsEnabled = types.BoolValue(network.RemoteVPNDynamicSubnetsEnabled)
 
 	subnets, subnetDiags := types.ListValueFrom(ctx, types.StringType, network.RemoteVPNSubnets)
 	diags.Append(subnetDiags...)
