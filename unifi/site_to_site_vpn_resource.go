@@ -28,6 +28,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
@@ -394,7 +395,10 @@ func (r *siteToSiteVPNResource) Schema(
 				MarkdownDescription: "Whether IPsec dynamic routing is enabled.",
 				Optional:            true,
 				Computed:            true,
-				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.RequiresReplace(),
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"route_distance": schema.Int64Attribute{
 				MarkdownDescription: "The route distance (administrative metric) for tunnel routes (1-255).",
@@ -408,10 +412,17 @@ func (r *siteToSiteVPNResource) Schema(
 				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
 			),
 			"remote_vpn_dynamic_subnets_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether dynamic subnets are enabled for the VPN tunnel.",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+				MarkdownDescription: "Whether the tunnel advertises dynamically learned " +
+					"subnets. It can be enabled manually, but it is forced on (and cannot " +
+					"be disabled) when `dynamic_routing` is enabled and `remote_subnets` " +
+					"is empty, since the tunnel then relies entirely on learned routes.",
+				Optional:   true,
+				Computed:   true,
+				Validators: []validator.Bool{dynamicSubnetsValidator{}},
+				PlanModifiers: []planmodifier.Bool{
+					dynamicSubnetsPlanModifier{},
+					boolplanmodifier.RequiresReplace(),
+				},
 			},
 		},
 	}
@@ -519,6 +530,66 @@ func siteToSiteVPNRemoteSubnetsValid(
 		return true
 	}
 	return !dynamicRouting.IsNull() && dynamicRouting.ValueBool()
+}
+
+// dynamicSubnetsValidator mirrors remoteVPNDynamicSubnetsEnabled: the flag is
+// forced on when dynamic routing is enabled with no static remote_subnets, so
+// rejecting an explicit false there surfaces the conflict as a config error
+// rather than silently overriding it.
+type dynamicSubnetsValidator struct{}
+
+func (v dynamicSubnetsValidator) Description(_ context.Context) string {
+	return "cannot be false when dynamic routing is enabled with no remote_subnets"
+}
+
+func (v dynamicSubnetsValidator) MarkdownDescription(_ context.Context) string {
+	return "cannot be `false` when `dynamic_routing` is enabled and `remote_subnets` is empty"
+}
+
+func (v dynamicSubnetsValidator) ValidateBool(
+	ctx context.Context,
+	req validator.BoolRequest,
+	resp *validator.BoolResponse,
+) {
+	var dynamicRouting types.Bool
+	var remoteSubnets types.List
+
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("dynamic_routing"), &dynamicRouting)...,
+	)
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("remote_subnets"), &remoteSubnets)...,
+	)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if siteToSiteVPNDynamicSubnetsValid(req.ConfigValue, dynamicRouting, remoteSubnets) {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeError(
+		req.Path,
+		"Dynamic Subnets Forced On",
+		"remote_vpn_dynamic_subnets_enabled cannot be false when dynamic_routing is "+
+			"enabled and remote_subnets is empty; the tunnel relies entirely on learned routes.",
+	)
+}
+
+// siteToSiteVPNDynamicSubnetsValid reports whether the configured flag is
+// compatible with the forced-on rule. Unknown inputs defer validation.
+func siteToSiteVPNDynamicSubnetsValid(
+	flag types.Bool,
+	dynamicRouting types.Bool,
+	remoteSubnets types.List,
+) bool {
+	if flag.IsNull() || flag.IsUnknown() || flag.ValueBool() {
+		return true
+	}
+	if dynamicRouting.IsUnknown() || remoteSubnets.IsUnknown() {
+		return true
+	}
+	return !remoteVPNDynamicSubnetsEnabled(flag, dynamicRouting, remoteSubnets)
 }
 
 func (r *siteToSiteVPNResource) Configure(
@@ -858,6 +929,18 @@ func identifierEnabled(flag types.Bool, identifier types.String) bool {
 	return !identifier.IsNull() && !identifier.IsUnknown() && identifier.ValueString() != ""
 }
 
+// remoteVPNDynamicSubnetsEnabled resolves the dynamic-subnets flag: it
+// can be turned on manually, but it cannot be turned off while dynamic routing
+// is on with no static remote_subnets, since the tunnel then relies entirely on
+// learned routes.
+func remoteVPNDynamicSubnetsEnabled(flag types.Bool, dynamicRouting types.Bool, remoteSubnets types.List) bool {
+	opts := basetypes.CollectionLengthOptions{UnhandledNullAsZero: true, UnhandledUnknownAsZero: true}
+	if dynamicRouting.ValueBool() && remoteSubnets.Length(opts) == 0 {
+		return true
+	}
+	return flag.ValueBool()
+}
+
 // modelToNetwork converts the Terraform model to the go-unifi Network struct.
 // The pre-shared key from config (pre_shared_key) is set here; the write-only
 // variant is applied separately in Create/Update.
@@ -882,21 +965,23 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		IPSecRemoteIDentifierEnabled: identifierEnabled(
 			model.RemoteIdentifierEnabled, model.RemoteIdentifier,
 		),
-		IPSecLocalIP:                   optStr(model.LocalIP),
-		IPSecKeyExchange:               optStr(model.KeyExchange),
-		IPSecProfile:                   optStr(model.Profile),
-		IPSecEncryption:                optStr(model.IKEEncryption),
-		IPSecHash:                      optStr(model.IKEHash),
-		IPSecDhGroup:                   optInt64(model.IKEDhGroup),
-		IPSecIkeLifetime:               util.DurationUnitsPtr(model.IKELifetime, time.Second),
-		IPSecEspEncryption:             optStr(model.ESPEncryption),
-		IPSecEspHash:                   optStr(model.ESPHash),
-		IPSecEspDhGroup:                optInt64(model.ESPDhGroup),
-		IPSecEspLifetime:               util.DurationUnitsPtr(model.ESPLifetime, time.Second),
-		IPSecPfs:                       model.PFS.ValueBool(),
-		IPSecDynamicRouting:            model.DynamicRouting.ValueBool(),
-		RouteDistance:                  optInt64(model.RouteDistance),
-		RemoteVPNDynamicSubnetsEnabled: model.RemoteVPNDynamicSubnetsEnabled.ValueBool(),
+		IPSecLocalIP:        optStr(model.LocalIP),
+		IPSecKeyExchange:    optStr(model.KeyExchange),
+		IPSecProfile:        optStr(model.Profile),
+		IPSecEncryption:     optStr(model.IKEEncryption),
+		IPSecHash:           optStr(model.IKEHash),
+		IPSecDhGroup:        optInt64(model.IKEDhGroup),
+		IPSecIkeLifetime:    util.DurationUnitsPtr(model.IKELifetime, time.Second),
+		IPSecEspEncryption:  optStr(model.ESPEncryption),
+		IPSecEspHash:        optStr(model.ESPHash),
+		IPSecEspDhGroup:     optInt64(model.ESPDhGroup),
+		IPSecEspLifetime:    util.DurationUnitsPtr(model.ESPLifetime, time.Second),
+		IPSecPfs:            model.PFS.ValueBool(),
+		IPSecDynamicRouting: model.DynamicRouting.ValueBool(),
+		RouteDistance:       optInt64(model.RouteDistance),
+		RemoteVPNDynamicSubnetsEnabled: remoteVPNDynamicSubnetsEnabled(
+			model.RemoteVPNDynamicSubnetsEnabled, model.DynamicRouting, model.RemoteSubnets,
+		),
 	}
 
 	if !model.PreSharedKey.IsNull() && !model.PreSharedKey.IsUnknown() {
@@ -1116,4 +1201,30 @@ func (r *siteToSiteVPNResource) List(
 			}
 		}
 	}
+}
+
+type dynamicSubnetsPlanModifier struct{}
+
+func (m dynamicSubnetsPlanModifier) Description(_ context.Context) string {
+	return "Forces the value on when dynamic_routing is enabled with an empty remote_subnets; otherwise uses the configured value."
+}
+func (m dynamicSubnetsPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m dynamicSubnetsPlanModifier) PlanModifyBool(
+	ctx context.Context,
+	req planmodifier.BoolRequest,
+	resp *planmodifier.BoolResponse,
+) {
+	var dynamicRouting types.Bool
+	var remoteSubnets types.List
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("dynamic_routing"), &dynamicRouting)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("remote_subnets"), &remoteSubnets)...)
+	if resp.Diagnostics.HasError() || dynamicRouting.IsUnknown() || remoteSubnets.IsUnknown() {
+		return // leave as unknown; can't resolve yet
+	}
+	resp.PlanValue = types.BoolValue(
+		remoteVPNDynamicSubnetsEnabled(req.ConfigValue, dynamicRouting, remoteSubnets),
+	)
 }

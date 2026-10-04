@@ -482,6 +482,93 @@ func TestSiteToSiteVPNRemoteSubnetsValid(t *testing.T) {
 	}
 }
 
+func TestRemoteVPNDynamicSubnetsEnabled(t *testing.T) {
+	empty := types.ListValueMust(types.StringType, nil)
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	tests := []struct {
+		name           string
+		flag           types.Bool
+		dynamicRouting types.Bool
+		remoteSubnets  types.List
+		want           bool
+	}{
+		// Manual control when not forced on.
+		{"manually enabled, static tunnel with subnet", types.BoolValue(true), types.BoolValue(false), nonEmpty, true},
+		{"manually disabled, static tunnel with subnet", types.BoolValue(false), types.BoolValue(false), nonEmpty, false},
+		{"unset, static tunnel with subnet", types.BoolNull(), types.BoolValue(false), nonEmpty, false},
+		{"manually enabled, dynamic routing off", types.BoolValue(true), types.BoolValue(false), empty, true},
+		{"unset, dynamic routing off", types.BoolNull(), types.BoolValue(false), empty, false},
+		{"unknown, dynamic routing off", types.BoolUnknown(), types.BoolValue(false), empty, false},
+		// Not forced on: dynamic routing but static subnets present.
+		{"manually disabled, dynamic routing with subnet", types.BoolValue(false), types.BoolValue(true), nonEmpty, false},
+		{"manually enabled, dynamic routing with subnet", types.BoolValue(true), types.BoolValue(true), nonEmpty, true},
+		// Forced on: dynamic routing with no static subnets cannot be disabled.
+		{"forced on despite disable, dynamic routing without subnets", types.BoolValue(false), types.BoolValue(true), empty, true},
+		{"forced on when unset, dynamic routing without subnets", types.BoolNull(), types.BoolValue(true), empty, true},
+		{"forced on, dynamic routing with null subnets", types.BoolValue(false), types.BoolValue(true), types.ListNull(types.StringType), true},
+		{"forced on, dynamic routing with unknown subnets", types.BoolValue(false), types.BoolValue(true), types.ListUnknown(types.StringType), true},
+		// Routing mode null/unknown is treated as off, so no forcing.
+		{"routing mode omitted, no subnets, disabled", types.BoolValue(false), types.BoolNull(), empty, false},
+		{"routing mode unknown, no subnets, disabled", types.BoolValue(false), types.BoolUnknown(), empty, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := remoteVPNDynamicSubnetsEnabled(
+				tt.flag,
+				tt.dynamicRouting,
+				tt.remoteSubnets,
+			); got != tt.want {
+				t.Errorf("remoteVPNDynamicSubnetsEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSiteToSiteVPNDynamicSubnetsValid(t *testing.T) {
+	empty := types.ListValueMust(types.StringType, nil)
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	tests := []struct {
+		name           string
+		flag           types.Bool
+		dynamicRouting types.Bool
+		remoteSubnets  types.List
+		want           bool
+	}{
+		// Only an explicit false that would be forced on is invalid.
+		{"disabled while forced on", types.BoolValue(false), types.BoolValue(true), empty, false},
+		{"disabled, dynamic routing with subnet", types.BoolValue(false), types.BoolValue(true), nonEmpty, true},
+		{"disabled, dynamic routing off", types.BoolValue(false), types.BoolValue(false), empty, true},
+		// Enabled or unset is always fine.
+		{"enabled while forced on", types.BoolValue(true), types.BoolValue(true), empty, true},
+		{"unset while forced on", types.BoolNull(), types.BoolValue(true), empty, true},
+		{"unknown while forced on", types.BoolUnknown(), types.BoolValue(true), empty, true},
+		// Unknown siblings defer validation.
+		{"disabled, routing unknown", types.BoolValue(false), types.BoolUnknown(), empty, true},
+		{"disabled, subnets unknown", types.BoolValue(false), types.BoolValue(true), types.ListUnknown(types.StringType), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := siteToSiteVPNDynamicSubnetsValid(
+				tt.flag,
+				tt.dynamicRouting,
+				tt.remoteSubnets,
+			); got != tt.want {
+				t.Errorf("siteToSiteVPNDynamicSubnetsValid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_siteToSiteVPNResource_Configure(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
