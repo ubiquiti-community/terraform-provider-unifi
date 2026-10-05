@@ -70,18 +70,40 @@ func ruleScheduleSchemaAttribute() schema.SingleNestedAttribute {
 				ElementType:         types.StringType,
 				Optional:            true,
 			},
-			"time_all_day":     schema.BoolAttribute{MarkdownDescription: "Active the whole day.", Optional: true},
-			"time_range_start": schema.StringAttribute{MarkdownDescription: "Start time, `HH:MM`.", Optional: true},
-			"time_range_end":   schema.StringAttribute{MarkdownDescription: "End time, `HH:MM`.", Optional: true},
-			"date":             schema.StringAttribute{MarkdownDescription: "Date for `ONE_TIME_ONLY`, `YYYY-MM-DD`.", Optional: true},
-			"date_start":       schema.StringAttribute{MarkdownDescription: "First date, `YYYY-MM-DD`.", Optional: true},
-			"date_end":         schema.StringAttribute{MarkdownDescription: "Last date, `YYYY-MM-DD`.", Optional: true},
+			"time_all_day": schema.BoolAttribute{
+				MarkdownDescription: "Active the whole day.",
+				Optional:            true,
+			},
+			"time_range_start": schema.StringAttribute{
+				MarkdownDescription: "Start time, `HH:MM`.",
+				Optional:            true,
+			},
+			"time_range_end": schema.StringAttribute{
+				MarkdownDescription: "End time, `HH:MM`.",
+				Optional:            true,
+			},
+			"date": schema.StringAttribute{
+				MarkdownDescription: "Date for `ONE_TIME_ONLY`, `YYYY-MM-DD`.",
+				Optional:            true,
+			},
+			"date_start": schema.StringAttribute{
+				MarkdownDescription: "First date, `YYYY-MM-DD`.",
+				Optional:            true,
+			},
+			"date_end": schema.StringAttribute{
+				MarkdownDescription: "Last date, `YYYY-MM-DD`.",
+				Optional:            true,
+			},
 		},
 	}
 }
 
 // scheduleFromObject converts the schedule attribute; null or unknown means always.
-func scheduleFromObject(ctx context.Context, obj types.Object, diags *diag.Diagnostics) ruleSchedule {
+func scheduleFromObject(
+	ctx context.Context,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) ruleSchedule {
 	if !isKnown(obj) {
 		return ruleSchedule{Mode: "ALWAYS"}
 	}

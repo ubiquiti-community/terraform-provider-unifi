@@ -25,10 +25,16 @@ func Test_contentFilterResource_roundTrip(t *testing.T) {
 	r, ctx := &contentFilterResource{}, context.Background()
 	// As UniFi Network 10.6 returns it: unused lists come back empty.
 	live := unifi.ContentFiltering{
-		ID: "6ab63bde417220a6e4272d49", Name: "adblocking", Enabled: true,
-		NetworkIDs: []string{"66ec38ab34dbcb19dce4a67f"}, Categories: []string{"ADVERTISEMENT"},
-		ClientMACs: []string{}, AllowList: []string{}, BlockList: []string{}, SafeSearch: []string{},
-		Schedule: &unifi.ContentFilteringSchedule{Mode: "ALWAYS"},
+		ID:         "6ab63bde417220a6e4272d49",
+		Name:       "adblocking",
+		Enabled:    true,
+		NetworkIDs: []string{"66ec38ab34dbcb19dce4a67f"},
+		Categories: []string{"ADVERTISEMENT"},
+		ClientMACs: []string{},
+		AllowList:  []string{},
+		BlockList:  []string{},
+		SafeSearch: []string{},
+		Schedule:   &unifi.ContentFilteringSchedule{Mode: "ALWAYS"},
 	}
 	var diags diag.Diagnostics
 	var m contentFilterModel
