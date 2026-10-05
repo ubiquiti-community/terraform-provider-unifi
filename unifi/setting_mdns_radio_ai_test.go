@@ -40,7 +40,8 @@ func Test_settingResource_mdnsRoundTrip(t *testing.T) {
 	var diags diag.Diagnostics
 
 	model := r.mdnsSettingToModel(ctx, liveMdns(), &diags)
-	got := r.mdnsModelToSetting(ctx, &model, &settings.Mdns{}, &diags)
+	// enabled_for_network_ids is read-only: the stored list is sent back as is.
+	got := r.mdnsModelToSetting(ctx, &model, liveMdns(), &diags)
 	if diags.HasError() {
 		t.Fatalf("unexpected diags: %v", diags)
 	}

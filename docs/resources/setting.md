@@ -303,10 +303,13 @@ Optional:
 Optional:
 
 - `custom_services` (Attributes List) Additional services reflected in `custom` mode. (see [below for nested schema](#nestedatt--mdns--custom_services))
-- `enabled_for` (String) Networks mDNS is enabled for: `all`, `some` (the networks in `enabled_for_network_ids`), or `none`.
-- `enabled_for_network_ids` (List of String) IDs of the networks mDNS is enabled for when `enabled_for` is `some`.
+- `enabled_for` (String) Networks mDNS is enabled for: `all`, `some` (the networks with `multicast_dns` enabled on `unifi_network`), or `none`.
 - `mode` (String) Which services are reflected: `all`, `auto`, or `custom` (only `predefined_services` and `custom_services`).
 - `predefined_services` (List of String) Codes of the predefined services reflected in `custom` mode, e.g. `google_chromecast`, `apple_airPlay`, `printers`.
+
+Read-Only:
+
+- `enabled_for_network_ids` (List of String) IDs of the networks mDNS is enabled for when `enabled_for` is `some`. Read-only: the controller derives this list from each network's `mdns_enabled` flag and ignores writes to it, so choose the networks with `multicast_dns` on `unifi_network`.
 
 <a id="nestedatt--mdns--custom_services"></a>
 ### Nested Schema for `mdns.custom_services`

@@ -69,19 +69,20 @@ func mdnsSchemaAttribute() schema.Attribute {
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"enabled_for": schema.StringAttribute{
-				MarkdownDescription: "Networks mDNS is enabled for: `all`, `some` (the networks in " +
-					"`enabled_for_network_ids`), or `none`.",
+				MarkdownDescription: "Networks mDNS is enabled for: `all`, `some` (the networks " +
+					"with `multicast_dns` enabled on `unifi_network`), or `none`.",
 				Optional:      true,
 				Computed:      true,
 				Validators:    []validator.String{stringvalidator.OneOf("all", "some", "none")},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"enabled_for_network_ids": schema.ListAttribute{
-				MarkdownDescription: "IDs of the networks mDNS is enabled for when `enabled_for` is `some`.",
-				ElementType:         types.StringType,
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				MarkdownDescription: "IDs of the networks mDNS is enabled for when `enabled_for` is " +
+					"`some`. Read-only: the controller derives this list from each network's " +
+					"`mdns_enabled` flag and ignores writes to it, so choose the networks with " +
+					"`multicast_dns` on `unifi_network`.",
+				ElementType: types.StringType,
+				Computed:    true,
 			},
 			"predefined_services": schema.ListAttribute{
 				MarkdownDescription: "Codes of the predefined services reflected in `custom` mode, e.g. " +
@@ -126,11 +127,8 @@ func (r *settingResource) mdnsModelToSetting(
 	if isKnown(m.EnabledFor) {
 		s.EnabledFor = m.EnabledFor.ValueString()
 	}
-	if isKnown(m.EnabledForNetworkIDs) {
-		var ids []string
-		diags.Append(m.EnabledForNetworkIDs.ElementsAs(ctx, &ids, false)...)
-		s.EnabledForNetworkIDs = ids
-	}
+	// enabled_for_network_ids is derived from the networks' mdns_enabled flags;
+	// the stored value in base is sent back unchanged.
 	if isKnown(m.PredefinedServices) {
 		var codes []string
 		diags.Append(m.PredefinedServices.ElementsAs(ctx, &codes, false)...)

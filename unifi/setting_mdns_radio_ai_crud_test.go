@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 )
 
 // mdns and radio_ai as UniFi Network 10.6.106 stores them: numbers in lists
@@ -43,12 +44,14 @@ func storedMdnsRadioAi() []map[string]any {
 	}
 }
 
-func mdnsRadioAiConfig(networkIDs ...any) map[string]any {
+// mdnsRadioAiConfig is the planned value: enabled_for_network_ids is computed
+// and unknown until the controller reports it.
+func mdnsRadioAiConfig(enabledFor string) map[string]any {
 	return map[string]any{
 		"mdns": map[string]any{
 			"mode":                    "all",
-			"enabled_for":             "some",
-			"enabled_for_network_ids": networkIDs,
+			"enabled_for":             enabledFor,
+			"enabled_for_network_ids": tfUnknown,
 			"predefined_services":     []any{"airplay"},
 			"custom_services": []any{
 				map[string]any{"name": "Printer", "address": "_ipp._tcp.local"},
@@ -87,6 +90,18 @@ func stateModel(t *testing.T, resp *fwresource.CreateResponse) settingResourceMo
 	return m
 }
 
+// storedSettingSet changes a stored setting behind the provider's back.
+func storedSettingSet(t *testing.T, r *settingResource, key, field string, v any) {
+	t.Helper()
+	err := r.client.UpdateSetting(context.Background(), "default", &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: key},
+		Data:        map[string]any{field: v},
+	})
+	if err != nil {
+		t.Fatalf("changing stored %s: %v", key, err)
+	}
+}
+
 // storedSetting returns the setting as the controller holds it after the writes.
 func storedSetting(t *testing.T, r *settingResource, key string) map[string]any {
 	t.Helper()
@@ -111,7 +126,7 @@ func strAttr(o types.Object, name string) string {
 func Test_settingResource_createMdnsRadioAi(t *testing.T) {
 	r, puts := newSettingsFakeController(t, storedMdnsRadioAi())
 
-	resp := createSettings(t, r, mdnsRadioAiConfig("net-default", "net-iot"))
+	resp := createSettings(t, r, mdnsRadioAiConfig("some"))
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("Create: %v", resp.Diagnostics)
 	}
@@ -154,14 +169,14 @@ func Test_settingResource_createMdnsRadioAi(t *testing.T) {
 
 func Test_settingResource_updateAndReadMdns(t *testing.T) {
 	r, puts := newSettingsFakeController(t, storedMdnsRadioAi())
-	created := createSettings(t, r, mdnsRadioAiConfig("net-default", "net-iot"))
+	created := createSettings(t, r, mdnsRadioAiConfig("some"))
 	if created.Diagnostics.HasError() {
 		t.Fatalf("Create: %v", created.Diagnostics)
 	}
 	puts()
 
 	s := resourceSchema(t, r)
-	attrs := mdnsRadioAiConfig("net-default")
+	attrs := mdnsRadioAiConfig("all")
 	upd := &fwresource.UpdateResponse{State: created.State, Identity: created.Identity}
 	r.Update(context.Background(), fwresource.UpdateRequest{
 		Plan: tfPlan(t, s, attrs), Config: tfConfig(t, s, attrs), State: created.State,
@@ -169,13 +184,19 @@ func Test_settingResource_updateAndReadMdns(t *testing.T) {
 	if upd.Diagnostics.HasError() {
 		t.Fatalf("Update: %v", upd.Diagnostics)
 	}
-	if got := puts()["mdns"]["enabled_for_network_ids"]; !reflect.DeepEqual(
-		got,
-		[]any{"net-default"},
-	) {
-		t.Errorf("mdns enabled_for_network_ids written = %v", got)
+	written := puts()["mdns"]
+	if written["enabled_for"] != "all" {
+		t.Errorf("mdns enabled_for written = %v", written["enabled_for"])
+	}
+	// The list is the controller's; a write never changes it.
+	if ids, ok := written["enabled_for_network_ids"]; ok &&
+		!reflect.DeepEqual(ids, []any{"net-default", "net-iot"}) {
+		t.Errorf("mdns enabled_for_network_ids written = %v", ids)
 	}
 
+	// The controller re-derives the list when a network's mdns_enabled flag
+	// changes; a read picks that up.
+	storedSettingSet(t, r, "mdns", "enabled_for_network_ids", []any{"net-default"})
 	read := &fwresource.ReadResponse{State: upd.State, Identity: upd.Identity}
 	r.Read(
 		context.Background(),
@@ -200,7 +221,7 @@ func Test_settingResource_updateAndReadMdns(t *testing.T) {
 // an empty setting.
 func Test_settingResource_createMdnsRadioAiNotStored(t *testing.T) {
 	r, puts := newSettingsFakeController(t, nil)
-	resp := createSettings(t, r, mdnsRadioAiConfig("net-default"))
+	resp := createSettings(t, r, mdnsRadioAiConfig("some"))
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("Create: %v", resp.Diagnostics)
 	}
@@ -233,7 +254,7 @@ func Test_settingResource_mdnsRadioAiErrors(t *testing.T) {
 				}
 			}
 			r, _ := newSettingsFakeController(t, stored)
-			resp := createSettings(t, r, mdnsRadioAiConfig("net-default"))
+			resp := createSettings(t, r, mdnsRadioAiConfig("some"))
 			if !resp.Diagnostics.HasError() {
 				t.Fatal("Create succeeded, want an error")
 			}
@@ -248,14 +269,14 @@ func Test_settingResource_mdnsRadioAiErrors(t *testing.T) {
 func Test_settingResource_updateMdnsWriteError(t *testing.T) {
 	stored := storedMdnsRadioAi()
 	r, _ := newSettingsFakeController(t, stored)
-	created := createSettings(t, r, mdnsRadioAiConfig("net-default"))
+	created := createSettings(t, r, mdnsRadioAiConfig("some"))
 	if created.Diagnostics.HasError() {
 		t.Fatalf("Create: %v", created.Diagnostics)
 	}
 	stored[0]["_fail"] = "write"
 
 	s := resourceSchema(t, r)
-	attrs := mdnsRadioAiConfig("net-iot")
+	attrs := mdnsRadioAiConfig("all")
 	upd := &fwresource.UpdateResponse{State: created.State, Identity: created.Identity}
 	r.Update(context.Background(), fwresource.UpdateRequest{
 		Plan: tfPlan(t, s, attrs), Config: tfConfig(t, s, attrs), State: created.State,
@@ -270,7 +291,7 @@ func Test_settingResource_mdnsOrRadioAiAlone(t *testing.T) {
 	for _, block := range []string{"mdns", "radio_ai"} {
 		t.Run(block, func(t *testing.T) {
 			r, puts := newSettingsFakeController(t, storedMdnsRadioAi())
-			attrs := map[string]any{block: mdnsRadioAiConfig("net-default")[block]}
+			attrs := map[string]any{block: mdnsRadioAiConfig("some")[block]}
 			resp := createSettings(t, r, attrs)
 			if resp.Diagnostics.HasError() {
 				t.Fatalf("Create: %v", resp.Diagnostics)
