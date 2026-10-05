@@ -163,7 +163,11 @@ func (r *settingResource) mdnsSettingToModel(
 		EnabledFor: types.StringValue(s.EnabledFor),
 	}
 	var d diag.Diagnostics
-	m.EnabledForNetworkIDs, d = types.ListValueFrom(ctx, types.StringType, nonNilStrings(s.EnabledForNetworkIDs))
+	m.EnabledForNetworkIDs, d = types.ListValueFrom(
+		ctx,
+		types.StringType,
+		nonNilStrings(s.EnabledForNetworkIDs),
+	)
 	diags.Append(d...)
 
 	codes := make([]string, len(s.PredefinedServices))
@@ -283,20 +287,46 @@ func radioAiSchemaAttribute() schema.Attribute {
 		Attributes: map[string]schema.Attribute{
 			"enabled":      optBool("Whether Radio AI is enabled."),
 			"auto_enabled": optBool("Whether the scheduled (nightly) optimization runs."),
-			"cron_expr":    optStr("Cron expression for the scheduled optimization, e.g. `0 4 * * *`."),
+			"cron_expr": optStr(
+				"Cron expression for the scheduled optimization, e.g. `0 4 * * *`.",
+			),
 			"setting_preference": optStr("`auto` or `manual`.",
 				stringvalidator.OneOf("auto", "manual")),
 			"auto_channel_presets_type": optStr(
 				"Channel preset: `maximum_speed`, `conservative` or `custom` (the `channels_*` lists).",
-				stringvalidator.OneOf("maximum_speed", "conservative", "custom")),
-			"auto_adjust_channels_to_country": optBool("Restrict the channel lists to the site's country."),
-			"optimize":                        optList("What is optimized: `channel` and/or `power`.", types.StringType),
-			"radios":                          optList("Radio bands included: `ng`, `na`, `6e`.", types.StringType),
-			"channels_ng":                     optList("2.4 GHz channels Radio AI may use.", types.Int64Type),
-			"channels_na":                     optList("5 GHz channels Radio AI may use.", types.Int64Type),
-			"channels_6e":                     optList("6 GHz channels Radio AI may use.", types.Int64Type),
-			"ht_modes_ng":                     optList("2.4 GHz channel widths (MHz) Radio AI may use.", types.Int64Type),
-			"ht_modes_na":                     optList("5 GHz channel widths (MHz) Radio AI may use.", types.Int64Type),
+				stringvalidator.OneOf("maximum_speed", "conservative", "custom"),
+			),
+			"auto_adjust_channels_to_country": optBool(
+				"Restrict the channel lists to the site's country.",
+			),
+			"optimize": optList(
+				"What is optimized: `channel` and/or `power`.",
+				types.StringType,
+			),
+			"radios": optList(
+				"Radio bands included: `ng`, `na`, `6e`.",
+				types.StringType,
+			),
+			"channels_ng": optList(
+				"2.4 GHz channels Radio AI may use.",
+				types.Int64Type,
+			),
+			"channels_na": optList(
+				"5 GHz channels Radio AI may use.",
+				types.Int64Type,
+			),
+			"channels_6e": optList(
+				"6 GHz channels Radio AI may use.",
+				types.Int64Type,
+			),
+			"ht_modes_ng": optList(
+				"2.4 GHz channel widths (MHz) Radio AI may use.",
+				types.Int64Type,
+			),
+			"ht_modes_na": optList(
+				"5 GHz channel widths (MHz) Radio AI may use.",
+				types.Int64Type,
+			),
 			"exclude_devices": optList(
 				"MAC addresses of access points excluded from optimization.", types.StringType),
 			"high_priority_devices": optList(
@@ -311,8 +341,14 @@ func radioAiSchemaAttribute() schema.Attribute {
 						MarkdownDescription: "Band: `ng`, `na` or `6e`.", Required: true,
 						Validators: []validator.String{stringvalidator.OneOf("ng", "na", "6e")},
 					},
-					"channel":       schema.Int64Attribute{MarkdownDescription: "Channel number.", Required: true},
-					"channel_width": schema.Int64Attribute{MarkdownDescription: "Channel width in MHz.", Required: true},
+					"channel": schema.Int64Attribute{
+						MarkdownDescription: "Channel number.",
+						Required:            true,
+					},
+					"channel_width": schema.Int64Attribute{
+						MarkdownDescription: "Channel width in MHz.",
+						Required:            true,
+					},
 				}},
 			},
 			"radios_configuration": schema.ListNestedAttribute{
@@ -325,8 +361,14 @@ func radioAiSchemaAttribute() schema.Attribute {
 						MarkdownDescription: "Band: `ng`, `na` or `6e`.", Required: true,
 						Validators: []validator.String{stringvalidator.OneOf("ng", "na", "6e")},
 					},
-					"channel_width": schema.Int64Attribute{MarkdownDescription: "Channel width in MHz.", Required: true},
-					"dfs":           schema.BoolAttribute{MarkdownDescription: "Whether DFS channels may be used.", Required: true},
+					"channel_width": schema.Int64Attribute{
+						MarkdownDescription: "Channel width in MHz.",
+						Required:            true,
+					},
+					"dfs": schema.BoolAttribute{
+						MarkdownDescription: "Whether DFS channels may be used.",
+						Required:            true,
+					},
 				}},
 			},
 		},
@@ -504,7 +546,14 @@ func (r *settingResource) persistMdnsRadioAi(
 	if isKnown(plan.RadioAi) {
 		var m settingRadioAiModel
 		diags.Append(plan.RadioAi.As(ctx, &m, basetypes.ObjectAsOptions{})...)
-		base, ok := getSettingOrEmpty[*settings.RadioAi](ctx, r, site, &settings.RadioAi{}, "Radio AI", diags)
+		base, ok := getSettingOrEmpty[*settings.RadioAi](
+			ctx,
+			r,
+			site,
+			&settings.RadioAi{},
+			"Radio AI",
+			diags,
+		)
 		if !ok {
 			return
 		}
@@ -544,7 +593,11 @@ func (r *settingResource) readMdnsRadioAi(
 			diags.AddError("Error Reading Radio AI Setting", err.Error())
 			return
 		}
-		obj, d := types.ObjectValueFrom(ctx, radioAiAttrTypes, r.radioAiSettingToModel(ctx, s, diags))
+		obj, d := types.ObjectValueFrom(
+			ctx,
+			radioAiAttrTypes,
+			r.radioAiSettingToModel(ctx, s, diags),
+		)
 		diags.Append(d...)
 		data.RadioAi = keepNullAttributes(data.RadioAi, obj, diags)
 	} else {
