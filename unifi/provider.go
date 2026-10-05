@@ -348,6 +348,8 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewClientQosRateResource,
 		NewTrafficRouteResource,
 		NewTrafficMatchingListResource,
+		NewQOSRuleResource,
+		NewContentFilterResource,
 	}
 }
 
