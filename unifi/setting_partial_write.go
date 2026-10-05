@@ -20,7 +20,11 @@ import (
 // stored one, or when it is absent and the new value is not a zero value. An
 // absent key and a zero value are treated as equivalent. Unchanged secrets
 // (x_ssh_*, x_mgmt_key, ...) are not re-sent either.
-func (r *settingResource) writeSetting(ctx context.Context, site string, setting settings.Setting) error {
+func (r *settingResource) writeSetting(
+	ctx context.Context,
+	site string,
+	setting settings.Setting,
+) error {
 	key, err := settings.GetSettingKey(setting)
 	if err != nil {
 		return fmt.Errorf("failed to determine setting key: %w", err)
@@ -45,7 +49,10 @@ func (r *settingResource) writeSetting(ctx context.Context, site string, setting
 
 // storedSetting returns the raw stored setting for key, or nil if the
 // controller has never stored it.
-func (r *settingResource) storedSetting(ctx context.Context, site, key string) (map[string]any, error) {
+func (r *settingResource) storedSetting(
+	ctx context.Context,
+	site, key string,
+) (map[string]any, error) {
 	all, err := r.client.ListSettings(ctx, site)
 	if err != nil {
 		return nil, fmt.Errorf("reading stored %s setting: %w", key, err)
