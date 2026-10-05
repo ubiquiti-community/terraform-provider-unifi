@@ -40,6 +40,19 @@ func everySettingBlock(dpiEnabled bool) map[string]any {
 	}
 }
 
+// A controller stores every setting from the start, even if only with its key.
+func storedSettingKeys() []map[string]any {
+	keys := []string{
+		"auto_speedtest", "country", "doh", "dpi", "igmp_snooping", "ips", "lcm",
+		"mgmt", "network_optimization", "ntp", "radius", "rsyslogd", "usg",
+	}
+	stored := make([]map[string]any, len(keys))
+	for i, k := range keys {
+		stored[i] = map[string]any{"key": k}
+	}
+	return stored
+}
+
 func settingCreate(
 	t *testing.T,
 	r *settingResource,
@@ -78,7 +91,7 @@ func settingUpdate(
 // writes nothing: each block goes through writeSetting, which compares against
 // the stored setting.
 func Test_settingResource_createThenUnchangedUpdateWritesNothing(t *testing.T) {
-	r, puts := newSettingsFakeController(t, nil)
+	r, puts := newSettingsFakeController(t, storedSettingKeys())
 
 	created := settingCreate(t, r, everySettingBlock(true))
 	written := puts()
@@ -99,7 +112,7 @@ func Test_settingResource_createThenUnchangedUpdateWritesNothing(t *testing.T) {
 
 // An update sends only the block that changed, and only its changed key.
 func Test_settingResource_updateWritesOnlyTheChange(t *testing.T) {
-	r, puts := newSettingsFakeController(t, nil)
+	r, puts := newSettingsFakeController(t, storedSettingKeys())
 	created := settingCreate(t, r, everySettingBlock(true))
 	puts()
 
