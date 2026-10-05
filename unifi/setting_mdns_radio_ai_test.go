@@ -58,7 +58,9 @@ func Test_settingResource_mdnsOverlayKeepsUnsetFields(t *testing.T) {
 		EnabledFor:           types.StringValue("all"),
 		EnabledForNetworkIDs: types.ListUnknown(types.StringType),
 		PredefinedServices:   types.ListNull(types.StringType),
-		CustomServices:       types.ListNull(types.ObjectType{AttrTypes: mdnsCustomServiceAttrTypes}),
+		CustomServices: types.ListNull(
+			types.ObjectType{AttrTypes: mdnsCustomServiceAttrTypes},
+		),
 	}
 	got := r.mdnsModelToSetting(ctx, &model, liveMdns(), &diags)
 	if diags.HasError() {
@@ -132,7 +134,9 @@ func Test_settingResource_radioAiOverlayKeepsUnsetFields(t *testing.T) {
 		*l = types.ListNull(l.ElementType(ctx))
 	}
 	model.ChannelsBlacklist = types.ListNull(types.ObjectType{AttrTypes: radioAiBlacklistAttrTypes})
-	model.RadiosConfiguration = types.ListNull(types.ObjectType{AttrTypes: radioAiRadioConfigAttrTypes})
+	model.RadiosConfiguration = types.ListNull(
+		types.ObjectType{AttrTypes: radioAiRadioConfigAttrTypes},
+	)
 	model.Enabled, model.AutoEnabled = types.BoolNull(), types.BoolNull()
 	model.HtModesNa, _ = types.ListValueFrom(ctx, types.Int64Type, []int64{20, 40, 80})
 
@@ -172,7 +176,7 @@ func Test_keepNullAttributes(t *testing.T) {
 	if !attrs["predefined_services"].IsNull() {
 		t.Error("predefined_services should stay null")
 	}
-	if attrs["mode"].(types.String).ValueString() != "all" {
+	if mode, ok := attrs["mode"].(types.String); !ok || mode.ValueString() != "all" {
 		t.Error("mode should be refreshed from the controller")
 	}
 }
