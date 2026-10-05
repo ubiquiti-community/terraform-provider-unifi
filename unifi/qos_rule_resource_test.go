@@ -36,16 +36,28 @@ func liveQOSRules() []unifi.QOSRule {
 			Schedule: &unifi.QOSRuleSchedule{Mode: "ALWAYS", RepeatOnDays: []string{}},
 		},
 		{
-			ID: "68766e5b6fd99c15fed6f605", Name: "limit", Enabled: true, Index: ptrI64(10003),
-			Objective: "LIMIT", DownloadLimitKbps: ptrI64(40000), UploadLimitKbps: ptrI64(10000),
-			DownloadBurst: "OFF", UploadBurst: "OFF",
-			Source: &unifi.QOSRuleSource{MatchingTarget: "CLIENT", ClientMACs: []string{"9c:6b:00:39:f7:a6"}},
+			ID:                "68766e5b6fd99c15fed6f605",
+			Name:              "limit",
+			Enabled:           true,
+			Index:             ptrI64(10003),
+			Objective:         "LIMIT",
+			DownloadLimitKbps: ptrI64(40000),
+			UploadLimitKbps:   ptrI64(10000),
+			DownloadBurst:     "OFF",
+			UploadBurst:       "OFF",
+			Source: &unifi.QOSRuleSource{
+				MatchingTarget: "CLIENT",
+				ClientMACs:     []string{"9c:6b:00:39:f7:a6"},
+			},
 			Destination: &unifi.QOSRuleDestination{
 				MatchingTarget: "IP", MatchingTargetType: "SPECIFIC", IPs: []string{"10.0.0.0/8"},
 				PortMatchingType: "SPECIFIC", Port: "80,443",
 			},
 			Schedule: &unifi.QOSRuleSchedule{
-				Mode: "EVERY_WEEK", RepeatOnDays: []string{"mon"}, TimeRangeStart: "18:00", TimeRangeEnd: "23:00",
+				Mode:           "EVERY_WEEK",
+				RepeatOnDays:   []string{"mon"},
+				TimeRangeStart: "18:00",
+				TimeRangeEnd:   "23:00",
 			},
 		},
 	}
@@ -84,7 +96,8 @@ func Test_qosRuleResource_defaults(t *testing.T) {
 		t.Error("an unmatched port should read as null")
 	}
 	got := r.modelToAPI(ctx, &m, &diags)
-	if got.Source.MatchingTarget != "ANY" || got.Destination.PortMatchingType != "ANY" || got.Schedule.Mode != "ALWAYS" {
+	if got.Source.MatchingTarget != "ANY" || got.Destination.PortMatchingType != "ANY" ||
+		got.Schedule.Mode != "ALWAYS" {
 		t.Errorf("defaults not applied: %+v %+v %+v", got.Source, got.Destination, got.Schedule)
 	}
 }
