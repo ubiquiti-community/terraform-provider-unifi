@@ -127,7 +127,12 @@ func Test_carryUnwritableFields_carriesUnexposedFields(t *testing.T) {
 			)
 
 			want := reflect.ValueOf(current).FieldByIndex(f.Index).Interface()
-			if have := reflect.ValueOf(got[0]).FieldByIndex(f.Index).Interface(); !reflect.DeepEqual(have, want) {
+			if have := reflect.ValueOf(got[0]).
+				FieldByIndex(f.Index).
+				Interface(); !reflect.DeepEqual(
+				have,
+				want,
+			) {
 				t.Errorf("%s = %v after merge, want the controller's %v", name, have, want)
 			}
 			if got[0].Name != "Port 3" {
