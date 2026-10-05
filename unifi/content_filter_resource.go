@@ -85,7 +85,12 @@ func (r *contentFilterResource) Schema(
 	resp *resource.SchemaResponse,
 ) {
 	strSet := func(desc string, v ...validator.Set) schema.SetAttribute {
-		return schema.SetAttribute{MarkdownDescription: desc, ElementType: types.StringType, Optional: true, Validators: v}
+		return schema.SetAttribute{
+			MarkdownDescription: desc,
+			ElementType:         types.StringType,
+			Optional:            true,
+			Validators:          v,
+		}
 	}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "`unifi_content_filter` manages a content filter (Settings > Security > Content " +
@@ -119,16 +124,23 @@ func (r *contentFilterResource) Schema(
 			},
 			"network_ids": strSet("IDs of the networks the filter applies to."),
 			"client_macs": strSet("MAC addresses of the clients the filter applies to."),
-			"categories": strSet("Blocked categories, e.g. `ADVERTISEMENT`, `MALWARE`, `PHISHING`, " +
-				"`GAMBLING`, `ADULT`, or the presets `FAMILY` and `WORK`."),
+			"categories": strSet(
+				"Blocked categories, e.g. `ADVERTISEMENT`, `MALWARE`, `PHISHING`, " +
+					"`GAMBLING`, `ADULT`, or the presets `FAMILY` and `WORK`.",
+			),
 			"allow_list": strSet("Domains that are always allowed."),
 			"block_list": strSet("Domains that are always blocked."),
-			"safe_search": strSet("Search engines forced into safe search: `GOOGLE`, `YOUTUBE`, `BING`.",
-				setvalidator.ValueStringsAre(stringvalidator.OneOf("GOOGLE", "YOUTUBE", "BING"))),
+			"safe_search": strSet(
+				"Search engines forced into safe search: `GOOGLE`, `YOUTUBE`, `BING`.",
+				setvalidator.ValueStringsAre(stringvalidator.OneOf("GOOGLE", "YOUTUBE", "BING")),
+			),
 			"schedule": ruleScheduleSchemaAttribute(),
 		},
 		Blocks: map[string]schema.Block{
-			"timeouts": timeouts.Block(ctx, timeouts.Opts{Create: true, Read: true, Update: true, Delete: true}),
+			"timeouts": timeouts.Block(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -145,7 +157,10 @@ func (r *contentFilterResource) Configure(
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -159,7 +174,11 @@ func (r *contentFilterResource) site(m *contentFilterModel) string {
 	return r.client.Site
 }
 
-func (r *contentFilterResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *contentFilterResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan contentFilterModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -184,11 +203,19 @@ func (r *contentFilterResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 	r.apiToModel(ctx, created, &plan, site, &resp.Diagnostics)
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, contentFilterIdentityModel{ID: plan.ID, Site: types.StringValue(site)})...)
+	resp.Diagnostics.Append(
+		resp.Identity.Set(
+			ctx,
+			contentFilterIdentityModel{ID: plan.ID, Site: types.StringValue(site)},
+		)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *contentFilterResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *contentFilterResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state contentFilterModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -224,17 +251,28 @@ func (r *contentFilterResource) Read(ctx context.Context, req resource.ReadReque
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.AddError("Error Reading Content Filter", "Could not read content filter "+id+": "+err.Error())
+		resp.Diagnostics.AddError(
+			"Error Reading Content Filter",
+			"Could not read content filter "+id+": "+err.Error(),
+		)
 		return
 	}
 	r.apiToModel(ctx, f, &state, site, &resp.Diagnostics)
 	if req.Identity == nil || req.Identity.Raw.IsNull() {
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, contentFilterIdentityModel{ID: state.ID, Site: types.StringValue(site)})...)
+		resp.Diagnostics.Append(
+			resp.Identity.Set(
+				ctx,
+				contentFilterIdentityModel{ID: state.ID, Site: types.StringValue(site)},
+			)...)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *contentFilterResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *contentFilterResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var plan, state contentFilterModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -264,7 +302,11 @@ func (r *contentFilterResource) Update(ctx context.Context, req resource.UpdateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *contentFilterResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *contentFilterResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state contentFilterModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {

@@ -189,14 +189,18 @@ func (r *qosRuleResource) Schema(
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("OFF"),
-				Validators:          []validator.String{stringvalidator.OneOf("OFF", "SHORT", "LONG")},
+				Validators: []validator.String{
+					stringvalidator.OneOf("OFF", "SHORT", "LONG"),
+				},
 			},
 			"upload_burst": schema.StringAttribute{
 				MarkdownDescription: "Upload burst allowance: `OFF`, `SHORT` or `LONG`. Defaults to `OFF`.",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("OFF"),
-				Validators:          []validator.String{stringvalidator.OneOf("OFF", "SHORT", "LONG")},
+				Validators: []validator.String{
+					stringvalidator.OneOf("OFF", "SHORT", "LONG"),
+				},
 			},
 			"wan_or_vpn_network": schema.StringAttribute{
 				MarkdownDescription: "ID of the WAN or VPN network the rule applies to. Omit for all interfaces.",
@@ -216,7 +220,9 @@ func (r *qosRuleResource) Schema(
 					"matching_target": schema.StringAttribute{
 						MarkdownDescription: "`ANY`, `CLIENT` (`client_macs`) or `NETWORK` (`network_ids`).",
 						Required:            true,
-						Validators:          []validator.String{stringvalidator.OneOf("ANY", "CLIENT", "NETWORK")},
+						Validators: []validator.String{
+							stringvalidator.OneOf("ANY", "CLIENT", "NETWORK"),
+						},
 					},
 					"client_macs": schema.SetAttribute{
 						MarkdownDescription: "Client MAC addresses, for `CLIENT`.",
@@ -247,7 +253,9 @@ func (r *qosRuleResource) Schema(
 					"matching_target_type": schema.StringAttribute{
 						MarkdownDescription: "For `IP`/`WEB`: `SPECIFIC` (listed values) or `OBJECT` (a group ID).",
 						Optional:            true,
-						Validators:          []validator.String{stringvalidator.OneOf("SPECIFIC", "OBJECT")},
+						Validators: []validator.String{
+							stringvalidator.OneOf("SPECIFIC", "OBJECT"),
+						},
 					},
 					"app_ids": schema.SetAttribute{
 						MarkdownDescription: "DPI application IDs, for `APP`.",
@@ -289,7 +297,9 @@ func (r *qosRuleResource) Schema(
 					"port_matching_type": schema.StringAttribute{
 						MarkdownDescription: "`SPECIFIC` (`port`) or `OBJECT` (`port_group_id`). Omit for any port.",
 						Optional:            true,
-						Validators:          []validator.String{stringvalidator.OneOf("SPECIFIC", "OBJECT")},
+						Validators: []validator.String{
+							stringvalidator.OneOf("SPECIFIC", "OBJECT"),
+						},
 					},
 					"port": schema.StringAttribute{
 						MarkdownDescription: "Port or comma-separated ports, for `SPECIFIC`.",
@@ -304,7 +314,10 @@ func (r *qosRuleResource) Schema(
 			"schedule": ruleScheduleSchemaAttribute(),
 		},
 		Blocks: map[string]schema.Block{
-			"timeouts": timeouts.Block(ctx, timeouts.Opts{Create: true, Read: true, Update: true, Delete: true}),
+			"timeouts": timeouts.Block(
+				ctx,
+				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
+			),
 		},
 	}
 }
@@ -321,7 +334,10 @@ func (r *qosRuleResource) Configure(
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf(
+				"Expected *Client, got: %T. Please report this issue to the provider developers.",
+				req.ProviderData,
+			),
 		)
 		return
 	}
@@ -335,7 +351,11 @@ func (r *qosRuleResource) site(m *qosRuleModel) string {
 	return r.client.Site
 }
 
-func (r *qosRuleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *qosRuleResource) Create(
+	ctx context.Context,
+	req resource.CreateRequest,
+	resp *resource.CreateResponse,
+) {
 	var plan qosRuleModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -360,11 +380,16 @@ func (r *qosRuleResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 	r.apiToModel(ctx, created, &plan, site, &resp.Diagnostics)
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, qosRuleIdentityModel{ID: plan.ID, Site: types.StringValue(site)})...)
+	resp.Diagnostics.Append(
+		resp.Identity.Set(ctx, qosRuleIdentityModel{ID: plan.ID, Site: types.StringValue(site)})...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *qosRuleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *qosRuleResource) Read(
+	ctx context.Context,
+	req resource.ReadRequest,
+	resp *resource.ReadResponse,
+) {
 	var state qosRuleModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -400,17 +425,28 @@ func (r *qosRuleResource) Read(ctx context.Context, req resource.ReadRequest, re
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.AddError("Error Reading QoS Rule", "Could not read QoS rule "+id+": "+err.Error())
+		resp.Diagnostics.AddError(
+			"Error Reading QoS Rule",
+			"Could not read QoS rule "+id+": "+err.Error(),
+		)
 		return
 	}
 	r.apiToModel(ctx, rule, &state, site, &resp.Diagnostics)
 	if req.Identity == nil || req.Identity.Raw.IsNull() {
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, qosRuleIdentityModel{ID: state.ID, Site: types.StringValue(site)})...)
+		resp.Diagnostics.Append(
+			resp.Identity.Set(
+				ctx,
+				qosRuleIdentityModel{ID: state.ID, Site: types.StringValue(site)},
+			)...)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *qosRuleResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *qosRuleResource) Update(
+	ctx context.Context,
+	req resource.UpdateRequest,
+	resp *resource.UpdateResponse,
+) {
 	var plan, state qosRuleModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -444,7 +480,11 @@ func (r *qosRuleResource) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *qosRuleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *qosRuleResource) Delete(
+	ctx context.Context,
+	req resource.DeleteRequest,
+	resp *resource.DeleteResponse,
+) {
 	var state qosRuleModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -497,7 +537,11 @@ func (r *qosRuleResource) ImportState(
 	})...)
 }
 
-func (r *qosRuleResource) modelToAPI(ctx context.Context, m *qosRuleModel, diags *diag.Diagnostics) *unifi.QOSRule {
+func (r *qosRuleResource) modelToAPI(
+	ctx context.Context,
+	m *qosRuleModel,
+	diags *diag.Diagnostics,
+) *unifi.QOSRule {
 	rule := &unifi.QOSRule{
 		Name:              m.Name.ValueString(),
 		Enabled:           m.Enabled.ValueBool(),
@@ -580,7 +624,11 @@ func (r *qosRuleResource) apiToModel(
 			NetworkIDs:     setOrNull(ctx, rule.Source.NetworkIDs, diags),
 		}
 	} else {
-		src.ClientMACs, src.NetworkIDs = types.SetNull(types.StringType), types.SetNull(types.StringType)
+		src.ClientMACs, src.NetworkIDs = types.SetNull(
+			types.StringType,
+		), types.SetNull(
+			types.StringType,
+		)
 	}
 	obj, d := types.ObjectValueFrom(ctx, qosRuleSourceAttrTypes, src)
 	diags.Append(d...)
