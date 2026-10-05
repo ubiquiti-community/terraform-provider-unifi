@@ -11,13 +11,23 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
+// tfUnknownValue marks a value as unknown, as a plan has it for a computed
+// attribute that is only known after apply.
+type tfUnknownValue struct{}
+
+var tfUnknown = tfUnknownValue{}
+
 // tfValue builds a value of typ from a sparse Go value, the way a configuration
 // would: map[string]any for objects and maps, []any for lists and sets, string,
-// bool and int/int64/float64. Object attributes left out of the map are null.
+// bool and int/int64/float64, tfUnknown for an unknown value. Object
+// attributes left out of the map are null.
 func tfValue(t *testing.T, typ tftypes.Type, v any) tftypes.Value {
 	t.Helper()
 	if v == nil {
 		return tftypes.NewValue(typ, nil)
+	}
+	if v == tfUnknown {
+		return tftypes.NewValue(typ, tftypes.UnknownValue)
 	}
 	switch {
 	case typ.Is(tftypes.Object{}):
