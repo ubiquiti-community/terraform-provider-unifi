@@ -251,6 +251,8 @@ type settingResourceModel struct {
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
 	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
 	Connectivity  types.Object   `tfsdk:"connectivity"`
+	Mdns          types.Object   `tfsdk:"mdns"`
+	RadioAi       types.Object   `tfsdk:"radio_ai"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
 }
 
@@ -1329,6 +1331,8 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"mdns":     mdnsSchemaAttribute(),
+			"radio_ai": radioAiSchemaAttribute(),
 			"igmp_snooping": schema.SingleNestedAttribute{
 				MarkdownDescription: "Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates.",
 				Optional:            true,
@@ -1816,6 +1820,11 @@ func (r *settingResource) Create(
 		}
 	}
 
+	r.persistMdnsRadioAi(ctx, site, &data, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	var globalSwitchConfig types.Object
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
@@ -2167,6 +2176,11 @@ func (r *settingResource) Update(
 			resp.Diagnostics.AddError("Error Updating IGMP Snooping Setting", err.Error())
 			return
 		}
+	}
+
+	r.persistMdnsRadioAi(ctx, site, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	var globalSwitchConfig types.Object
@@ -2658,6 +2672,11 @@ func (r *settingResource) readSettings(
 		data.IgmpSnooping = objValue
 	} else {
 		data.IgmpSnooping = types.ObjectNull(igmpSnoopingAttrTypes)
+	}
+
+	r.readMdnsRadioAi(ctx, site, data, diags)
+	if diags.HasError() {
+		return
 	}
 
 	// Connectivity (wireless meshing)
