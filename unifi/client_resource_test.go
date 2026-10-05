@@ -1279,3 +1279,44 @@ func TestMergeClient_EmptyFixedApAndOverrideStayDisabled(t *testing.T) {
 		t.Errorf("fixed IP not applied: %v %q", got.UseFixedIP, got.FixedIP)
 	}
 }
+
+// Planning a pin or an override sets the value and switches it on.
+func TestMergeClient_PlannedFixedApAndOverrideAreEnabled(t *testing.T) {
+	r := &clientResource{}
+	existing := &unifi.Client{
+		MAC:                           "02:00:00:de:ad:0a",
+		FixedApMAC:                    "60:22:32:f0:ad:b5",
+		FixedApEnabled:                false,
+		VirtualNetworkOverrideEnabled: util.Ptr(false),
+	}
+	got := r.mergeClient(existing, &unifi.Client{
+		MAC:                      existing.MAC,
+		FixedApMAC:               "60:22:32:f0:ad:c6",
+		VirtualNetworkOverrideID: "6907ce251cc3313e9c5db72b",
+	})
+
+	if !got.FixedApEnabled || got.FixedApMAC != "60:22:32:f0:ad:c6" {
+		t.Errorf("fixed AP: want the planned AP enabled, got %q enabled=%v",
+			got.FixedApMAC, got.FixedApEnabled)
+	}
+	if got.VirtualNetworkOverrideEnabled == nil || !*got.VirtualNetworkOverrideEnabled ||
+		got.VirtualNetworkOverrideID != "6907ce251cc3313e9c5db72b" {
+		t.Errorf("override: want the planned network enabled, got %q enabled=%v",
+			got.VirtualNetworkOverrideID, got.VirtualNetworkOverrideEnabled)
+	}
+}
+
+// A disabled override stays disabled without anything planned; the flag is
+// left alone rather than written.
+func TestMergeClient_DisabledOverrideIsNotTouched(t *testing.T) {
+	r := &clientResource{}
+	existing := &unifi.Client{
+		MAC:                           "02:00:00:de:ad:0b",
+		VirtualNetworkOverrideID:      "6907ce251cc3313e9c5db72b",
+		VirtualNetworkOverrideEnabled: util.Ptr(false),
+	}
+	got := r.mergeClient(existing, &unifi.Client{MAC: existing.MAC})
+	if got.VirtualNetworkOverrideEnabled == nil || *got.VirtualNetworkOverrideEnabled {
+		t.Errorf("override: want it to stay disabled, got %v", got.VirtualNetworkOverrideEnabled)
+	}
+}
