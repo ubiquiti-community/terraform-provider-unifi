@@ -1725,12 +1725,9 @@ func (r *deviceResource) Update(
 	// the practitioner declared (#427).
 	plannedRadioTable := plan.RadioTable
 
-	// Save planned LED overrides too. The controller applies these to APs
-	// asynchronously, so the immediate post-update read can still report the old
-	// values, which would conflict with the plan (#337). Re-assert the planned
-	// value (when known) after the read; the next refresh reconciles state with
-	// the controller once the AP has applied it.
-	plannedLed := plan.Led
+	// Save the planned values the controller applies to APs asynchronously (see
+	// reassertAsyncApplied).
+	asyncPlanned := plan
 
 	// Update the device with only user-configured fields
 	diags = r.updateDevice(ctx, &plan)
@@ -1765,10 +1762,7 @@ func (r *deviceResource) Update(
 	}
 	plan.RadioTable = reconciledRadios
 
-	// Re-assert the planned LED values when the user configured them, so an
-	// asynchronously-applied controller value doesn't trip the consistency
-	// check (#337). The next Read converges state with the controller.
-	plan.Led = util.OverlayKnownObject(ctx, plannedLed, plan.Led)
+	reassertAsyncApplied(ctx, &plan, &asyncPlanned)
 	// allow_adoption / forget_on_destroy were resolved before the update and are
 	// not touched by setResourceData; ensure a concrete value (default true)
 	// rather than overwriting the planned value with prior state.
@@ -4148,5 +4142,21 @@ func (r *deviceResource) List(
 				return
 			}
 		}
+	}
+}
+
+// reassertAsyncApplied puts back the planned values of the attributes the
+// controller applies to access points asynchronously. The immediate
+// post-update read can still report the old value, which would conflict with
+// the plan and fail the apply with "inconsistent result after apply" although
+// the change was accepted; the next refresh reconciles state once the AP has
+// applied it. LED overrides behave this way (#337), and so does
+// bandsteering_mode: measured on a U6+ with Network 10.6.106, the read right
+// after the PUT still returned the old mode, the controller a minute later the
+// new one.
+func reassertAsyncApplied(ctx context.Context, read, planned *deviceResourceModel) {
+	read.Led = util.OverlayKnownObject(ctx, planned.Led, read.Led)
+	if !planned.BandsteeringMode.IsNull() && !planned.BandsteeringMode.IsUnknown() {
+		read.BandsteeringMode = planned.BandsteeringMode
 	}
 }
