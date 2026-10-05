@@ -56,7 +56,7 @@ func mdnsRadioAiConfig(networkIDs ...any) map[string]any {
 		},
 		"radio_ai": map[string]any{
 			"enabled":     true,
-			"cron_expr":   "0 4 * * *",
+			"cron_expr":   "0 3 * * *",
 			"radios":      []any{"ng", "na"},
 			"channels_ng": []any{1, 6, 11},
 			"ht_modes_na": []any{20, 40},
@@ -87,6 +87,22 @@ func stateModel(t *testing.T, resp *fwresource.CreateResponse) settingResourceMo
 	return m
 }
 
+// storedSetting returns the setting as the controller holds it after the writes.
+func storedSetting(t *testing.T, r *settingResource, key string) map[string]any {
+	t.Helper()
+	all, err := r.client.ListSettings(context.Background(), "default")
+	if err != nil {
+		t.Fatalf("listing settings: %v", err)
+	}
+	for _, s := range all {
+		if s.Key == key {
+			return s.Data
+		}
+	}
+	t.Fatalf("setting %s not stored", key)
+	return nil
+}
+
 func strAttr(o types.Object, name string) string {
 	s, _ := o.Attributes()[name].(types.String)
 	return s.ValueString()
@@ -109,11 +125,13 @@ func Test_settingResource_createMdnsRadioAi(t *testing.T) {
 	if !reflect.DeepEqual(mdns["custom_services"], wantCustom) {
 		t.Errorf("mdns custom_services = %v, want %v", mdns["custom_services"], wantCustom)
 	}
-	// Radio AI is written on top of the stored setting: what the configuration
-	// leaves out keeps the controller's value.
-	ai := written["radio_ai"]
+	if got := written["radio_ai"]["cron_expr"]; got != "0 3 * * *" {
+		t.Errorf("radio_ai cron_expr written = %v", got)
+	}
+	// What the configuration leaves out keeps the controller's value.
+	ai := storedSetting(t, r, "radio_ai")
 	if ai["auto_channel_presets_type"] != "custom" || ai["channels_blacklist"] == nil {
-		t.Errorf("radio_ai write dropped stored fields: %v", ai)
+		t.Errorf("radio_ai lost stored fields: %v", ai)
 	}
 
 	state := stateModel(t, resp)
@@ -129,7 +147,7 @@ func Test_settingResource_createMdnsRadioAi(t *testing.T) {
 	if v := state.RadioAi.Attributes()["channels_na"]; !v.IsNull() {
 		t.Errorf("state radio_ai.channels_na = %v, want null", v)
 	}
-	if got := strAttr(state.RadioAi, "cron_expr"); got != "0 4 * * *" {
+	if got := strAttr(state.RadioAi, "cron_expr"); got != "0 3 * * *" {
 		t.Errorf("state radio_ai.cron_expr = %q", got)
 	}
 }
