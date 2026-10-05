@@ -49,12 +49,12 @@ resource "unifi_client" "test" {
 - `allow_existing` (Boolean) Specifies whether this resource should just take over control of an existing client.
 - `blocked` (Boolean) Specifies whether this client should be blocked from the network.
 - `display_name` (String) The display name of the client.
-- `fixed_ap_mac` (String) The MAC address of the access point to which this client should be fixed.
+- `fixed_ap_mac` (String) The MAC address of the access point to which this client should be fixed. Read as null while AP pinning is disabled.
 - `fixed_ip` (String) A fixed IPv4 address for this client. Set to an empty string to clear a previously assigned fixed IP.
 - `groups` (List of String) List of network members group names for this client.
 - `local_dns_record` (String) Specifies the local DNS record for this client.
 - `name` (String) The name of the client.
-- `network_id` (String) The network ID for this client.
+- `network_id` (String) ID of the network this client is forced onto regardless of the SSID or port it connects through (UniFi's Network Override, `virtual_network_override_id`). This is not the network of `fixed_ip`: a fixed IP belongs to whichever network's subnet contains it. Read as null while the override is disabled.
 - `note` (String) A note with additional information for the client.
 - `qos_rate` (Attributes) QoS rate limiting configuration. Controls the client group (usergroup) used for bandwidth limits. (see [below for nested schema](#nestedatt--qos_rate))
 - `site` (String) The name of the site to associate the client with.
