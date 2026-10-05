@@ -3,10 +3,12 @@ package unifi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -114,6 +116,7 @@ func Test_jsonValuesEqual(t *testing.T) {
 		{float64(276), "276", true},
 		{[]any{"36"}, []any{"36", "40"}, false},
 		{[]any{"36"}, "36", false},
+		{map[string]any{"a": "1"}, map[string]any{"a": float64(1)}, true},
 		{map[string]any{"a": "1"}, map[string]any{"a": "1", "b": "2"}, false},
 		{map[string]any{"a": "1"}, map[string]any{"a": float64(2)}, false},
 		{map[string]any{"a": "1"}, []any{"1"}, false},
@@ -126,7 +129,8 @@ func Test_jsonValuesEqual(t *testing.T) {
 }
 
 // newSettingsFakeController serves the given stored settings and records every
-// setting PUT body by key.
+// setting PUT body by key. Like the controller, it merges a PUT into the stored
+// setting, so later reads see the write.
 func newSettingsFakeController(
 	t *testing.T,
 	stored []map[string]any,
@@ -134,6 +138,17 @@ func newSettingsFakeController(
 	t.Helper()
 	var mu sync.Mutex
 	puts := map[string]map[string]any{}
+	byKey := map[string]map[string]any{}
+	var order []string
+	for _, s := range stored {
+		k, _ := s["key"].(string)
+		byKey[k] = s
+		order = append(order, k)
+	}
+	reply := func(w http.ResponseWriter, data []any) {
+		_ = json.NewEncoder(w).
+			Encode(map[string]any{"meta": map[string]any{"rc": "ok"}, "data": data})
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -148,8 +163,23 @@ func newSettingsFakeController(
 		_, _ = w.Write([]byte(`{"meta":{"rc":"ok"},"data":[]}`))
 	})
 	mux.HandleFunc("/api/s/default/get/setting", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).
-			Encode(map[string]any{"meta": map[string]any{"rc": "ok"}, "data": stored})
+		mu.Lock()
+		defer mu.Unlock()
+		data := []any{}
+		for _, k := range order {
+			data = append(data, byKey[k])
+		}
+		reply(w, data)
+	})
+	mux.HandleFunc("/api/s/default/get/setting/", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		k := strings.TrimPrefix(r.URL.Path, "/api/s/default/get/setting/")
+		if s, ok := byKey[k]; ok {
+			reply(w, []any{s})
+			return
+		}
+		reply(w, []any{map[string]any{"key": k}})
 	})
 	mux.HandleFunc("/api/s/default/set/setting/", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
@@ -157,11 +187,18 @@ func newSettingsFakeController(
 		if err := json.Unmarshal(b, &body); err != nil {
 			t.Errorf("PUT body is not JSON: %v", err)
 		}
+		k := strings.TrimPrefix(r.URL.Path, "/api/s/default/set/setting/")
 		mu.Lock()
-		puts[r.URL.Path[len("/api/s/default/set/setting/"):]] = body
-		mu.Unlock()
-		_ = json.NewEncoder(w).
-			Encode(map[string]any{"meta": map[string]any{"rc": "ok"}, "data": []any{body}})
+		defer mu.Unlock()
+		puts[k] = body
+		if byKey[k] == nil {
+			byKey[k] = map[string]any{}
+			order = append(order, k)
+		}
+		for bk, bv := range body {
+			byKey[k][bk] = bv
+		}
+		reply(w, []any{byKey[k]})
 	})
 
 	srv := httptest.NewServer(mux)
@@ -176,7 +213,9 @@ func newSettingsFakeController(
 	return r, func() map[string]map[string]any {
 		mu.Lock()
 		defer mu.Unlock()
-		return puts
+		got := puts
+		puts = map[string]map[string]any{}
+		return got
 	}
 }
 
@@ -243,5 +282,47 @@ func Test_isZeroJSON(t *testing.T) {
 		if got := isZeroJSON(tt.v); got != tt.want {
 			t.Errorf("isZeroJSON(%#v) = %v, want %v", tt.v, got, tt.want)
 		}
+	}
+}
+
+// rawJSONSetting marshals to a fixed JSON text, to exercise settingChanges on
+// bodies the typed settings never produce.
+type rawJSONSetting struct {
+	settings.BaseSetting
+	json string
+}
+
+func (s *rawJSONSetting) MarshalJSON() ([]byte, error) {
+	if s.json == "" {
+		return nil, errors.New("cannot marshal")
+	}
+	return []byte(s.json), nil
+}
+
+func Test_settingChanges_errors(t *testing.T) {
+	if _, err := settingChanges(nil, &rawJSONSetting{}); err == nil {
+		t.Error("marshal failure: want error")
+	}
+	if _, err := settingChanges(nil, &rawJSONSetting{json: `["not", "an", "object"]`}); err == nil {
+		t.Error("non-object body: want error")
+	}
+}
+
+func Test_writeSetting_errors(t *testing.T) {
+	ctx := context.Background()
+
+	r, _ := newSettingsFakeController(t, nil)
+	if err := r.writeSetting(ctx, "default", &rawJSONSetting{json: `{}`}); err == nil {
+		t.Error("setting without a known key: want error")
+	}
+	if err := r.writeSetting(ctx, "default", &settings.Country{Code: ptrInt64(276)}); err != nil {
+		t.Errorf("baseline write failed: %v", err)
+	}
+	if err := r.writeSetting(
+		ctx,
+		"other-site",
+		&settings.Country{Code: ptrInt64(276)},
+	); err == nil {
+		t.Error("unreadable stored settings: want error")
 	}
 }
