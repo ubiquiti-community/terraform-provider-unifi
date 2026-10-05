@@ -16,8 +16,11 @@ import (
 // newSettingsFakeController serves the given stored settings for site
 // "default" and records every setting PUT body by key. Like the controller, it
 // merges a PUT into the stored setting, so later reads see the write, and
-// answers a read of a setting it has never stored with no data. A stored
-// setting with "_fail": true answers every read with HTTP 500.
+// answers a read of a setting it has never stored with no data.
+//
+// A stored setting can fail on purpose with HTTP 400 (not retried by the
+// client): "_fail": "read" fails every read of it, "write" every PUT, and
+// "readback" the reads after it has been written.
 //
 // The returned function hands out the PUTs since its last call.
 func newSettingsFakeController(
@@ -33,6 +36,10 @@ func newSettingsFakeController(
 		k, _ := s["key"].(string)
 		byKey[k] = s
 		order = append(order, k)
+	}
+	written := map[string]bool{}
+	fail := func(w http.ResponseWriter) {
+		http.Error(w, `{"meta":{"rc":"error","msg":"api.err.Invalid"}}`, http.StatusBadRequest)
 	}
 	reply := func(w http.ResponseWriter, data []any) {
 		_ = json.NewEncoder(w).
@@ -68,12 +75,8 @@ func newSettingsFakeController(
 		switch {
 		case !ok:
 			reply(w, []any{})
-		case s["_fail"] == true:
-			http.Error(
-				w,
-				`{"meta":{"rc":"error","msg":"api.err.Internal"}}`,
-				http.StatusInternalServerError,
-			)
+		case s["_fail"] == "read", s["_fail"] == "readback" && written[k]:
+			fail(w)
 		default:
 			reply(w, []any{s})
 		}
@@ -87,7 +90,12 @@ func newSettingsFakeController(
 		k := strings.TrimPrefix(r.URL.Path, "/api/s/default/set/setting/")
 		mu.Lock()
 		defer mu.Unlock()
+		if byKey[k] != nil && byKey[k]["_fail"] == "write" {
+			fail(w)
+			return
+		}
 		puts[k] = body
+		written[k] = true
 		if byKey[k] == nil {
 			byKey[k] = map[string]any{}
 			order = append(order, k)
