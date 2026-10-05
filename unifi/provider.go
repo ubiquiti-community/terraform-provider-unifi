@@ -317,6 +317,8 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewWireguardPeerResource,
 		NewClientQosRateResource,
 		NewTrafficRouteResource,
+		NewQOSRuleResource,
+		NewContentFilterResource,
 	}
 }
 
