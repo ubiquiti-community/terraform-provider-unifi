@@ -260,18 +260,22 @@ Clients are created in the controller when observed on the network, so the resou
 				},
 			},
 			"fixed_ap_mac": schema.StringAttribute{
-				MarkdownDescription: "The MAC address of the access point to which this client should be fixed.",
-				CustomType:          hwtypes.MACAddressType{},
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "The MAC address of the access point to which this client should be " +
+					"fixed. Read as null while AP pinning is disabled.",
+				CustomType: hwtypes.MACAddressType{},
+				Optional:   true,
+				Computed:   true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"network_id": schema.StringAttribute{
-				MarkdownDescription: "The network ID for this client.",
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "ID of the network this client is forced onto regardless of the SSID or " +
+					"port it connects through (UniFi's Network Override, `virtual_network_override_id`). " +
+					"This is not the network of `fixed_ip`: a fixed IP belongs to whichever network's subnet " +
+					"contains it. Read as null while the override is disabled.",
+				Optional: true,
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -1076,8 +1080,21 @@ func (r *clientResource) clientToModel(
 	} else {
 		model.FixedIP = types.StringValue("")
 	}
-	model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
-	model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
+	// Like fixed_ip and local_dns_record: with AP pinning or the network override
+	// switched off, the controller keeps echoing the last AP MAC / network ID (it
+	// rejects clearing fixed_ap_mac). Reading that echo as the value made the next
+	// update send the matching enable flag as true, silently re-enabling a pin or
+	// override that was turned off in the UI.
+	if client.FixedApEnabled {
+		model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
+	} else {
+		model.FixedApMAC = hwtypes.NewMACAddressNull()
+	}
+	if client.VirtualNetworkOverrideEnabled != nil && *client.VirtualNetworkOverrideEnabled {
+		model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
+	} else {
+		model.NetworkID = types.StringNull()
+	}
 
 	// Populate qos_rate from the client's UserGroupID by looking up the client group.
 	if client.UserGroupID != "" {
@@ -1168,15 +1185,20 @@ func (r *clientResource) mergeClient(
 	merged.LocalDNSRecordEnabled = planned.LocalDNSRecord != ""
 
 	// NetworkID (maps to VirtualNetworkOverrideID) and its enable flag
-	merged.VirtualNetworkOverrideID = planned.VirtualNetworkOverrideID
-
 	if planned.VirtualNetworkOverrideID != "" {
+		merged.VirtualNetworkOverrideID = planned.VirtualNetworkOverrideID
 		merged.VirtualNetworkOverrideEnabled = util.Ptr(true)
+	} else if existing.VirtualNetworkOverrideEnabled != nil && *existing.VirtualNetworkOverrideEnabled {
+		// Turn an active override off; the stored ID stays, as the UI leaves it.
+		merged.VirtualNetworkOverrideEnabled = util.Ptr(false)
 	}
 
-	// FixedAP and its enable flag
-	merged.FixedApMAC = planned.FixedApMAC
+	// FixedAP and its enable flag. An empty plan keeps the stored AP MAC, which
+	// the controller requires, and only clears the flag.
 	merged.FixedApEnabled = planned.FixedApMAC != ""
+	if planned.FixedApMAC != "" {
+		merged.FixedApMAC = planned.FixedApMAC
+	}
 
 	return &merged
 }
