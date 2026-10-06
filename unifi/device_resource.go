@@ -2403,7 +2403,8 @@ func (r *deviceResource) modelToAPIDevice(
 // with a copy that has been round-tripped through DevicePortOverrides, so every
 // port on the device loses the fields the struct does not model (stp_edge_state,
 // stp_bpdu_guard_enabled, multicast_router_mode, sd_wan_underlay_port) and every
-// field at its zero value (omitempty drops false, "" and []).
+// field at its zero value (omitempty drops "" and [] and a nil pointer; the
+// booleans are pointers since #567, so an explicit false survives).
 //
 // Carrying the controller's value forward keeps the marshalled entry identical, so
 // the diff stays empty and nothing is written. No value is ever sourced from
@@ -2750,19 +2751,19 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 	}
 
 	// Boolean attributes
-	model.Autoneg = types.BoolValue(po.Autoneg)
-	model.EgressRateLimitKbpsEnabled = types.BoolValue(po.EgressRateLimitKbpsEnabled)
-	model.FlowControlEnabled = types.BoolValue(po.FlowControlEnabled)
-	model.FullDuplex = types.BoolValue(po.FullDuplex)
-	model.Isolation = types.BoolValue(po.Isolation)
-	model.LldpmedEnabled = types.BoolValue(po.LldpmedEnabled)
-	model.LldpmedNotifyEnabled = types.BoolValue(po.LldpmedNotifyEnabled)
-	model.PortKeepaliveEnabled = types.BoolValue(po.PortKeepaliveEnabled)
-	model.PortSecurityEnabled = types.BoolValue(po.PortSecurityEnabled)
-	model.StormctrlBroadcastEnabled = types.BoolValue(po.StormctrlBroadcastastEnabled)
-	model.StormctrlMcastEnabled = types.BoolValue(po.StormctrlMcastEnabled)
-	model.StormctrlUcastEnabled = types.BoolValue(po.StormctrlUcastEnabled)
-	model.StpPortMode = types.BoolValue(po.StpPortMode)
+	model.Autoneg = types.BoolPointerValue(po.Autoneg)
+	model.EgressRateLimitKbpsEnabled = types.BoolPointerValue(po.EgressRateLimitKbpsEnabled)
+	model.FlowControlEnabled = types.BoolPointerValue(po.FlowControlEnabled)
+	model.FullDuplex = types.BoolPointerValue(po.FullDuplex)
+	model.Isolation = types.BoolPointerValue(po.Isolation)
+	model.LldpmedEnabled = types.BoolPointerValue(po.LldpmedEnabled)
+	model.LldpmedNotifyEnabled = types.BoolPointerValue(po.LldpmedNotifyEnabled)
+	model.PortKeepaliveEnabled = types.BoolPointerValue(po.PortKeepaliveEnabled)
+	model.PortSecurityEnabled = types.BoolPointerValue(po.PortSecurityEnabled)
+	model.StormctrlBroadcastEnabled = types.BoolPointerValue(po.StormctrlBroadcastastEnabled)
+	model.StormctrlMcastEnabled = types.BoolPointerValue(po.StormctrlMcastEnabled)
+	model.StormctrlUcastEnabled = types.BoolPointerValue(po.StormctrlUcastEnabled)
+	model.StpPortMode = types.BoolPointerValue(po.StpPortMode)
 
 	// Int64 attributes
 	model.Dot1XIDleTimeout = util.DurationPtrValue(po.Dot1XIDleTimeout, time.Second)
@@ -2933,19 +2934,19 @@ func (r *deviceResource) frameworkToPortOverrides(
 			}
 
 			// Boolean attributes
-			po.Autoneg = model.Autoneg.ValueBool()
-			po.EgressRateLimitKbpsEnabled = model.EgressRateLimitKbpsEnabled.ValueBool()
-			po.FlowControlEnabled = model.FlowControlEnabled.ValueBool()
-			po.FullDuplex = model.FullDuplex.ValueBool()
-			po.Isolation = model.Isolation.ValueBool()
-			po.LldpmedEnabled = model.LldpmedEnabled.ValueBool()
-			po.LldpmedNotifyEnabled = model.LldpmedNotifyEnabled.ValueBool()
-			po.PortKeepaliveEnabled = model.PortKeepaliveEnabled.ValueBool()
-			po.PortSecurityEnabled = model.PortSecurityEnabled.ValueBool()
-			po.StormctrlBroadcastastEnabled = model.StormctrlBroadcastEnabled.ValueBool()
-			po.StormctrlMcastEnabled = model.StormctrlMcastEnabled.ValueBool()
-			po.StormctrlUcastEnabled = model.StormctrlUcastEnabled.ValueBool()
-			po.StpPortMode = model.StpPortMode.ValueBool()
+			po.Autoneg = util.ConvertBoolToAPIValue(model.Autoneg)
+			po.EgressRateLimitKbpsEnabled = util.ConvertBoolToAPIValue(model.EgressRateLimitKbpsEnabled)
+			po.FlowControlEnabled = util.ConvertBoolToAPIValue(model.FlowControlEnabled)
+			po.FullDuplex = util.ConvertBoolToAPIValue(model.FullDuplex)
+			po.Isolation = util.ConvertBoolToAPIValue(model.Isolation)
+			po.LldpmedEnabled = util.ConvertBoolToAPIValue(model.LldpmedEnabled)
+			po.LldpmedNotifyEnabled = util.ConvertBoolToAPIValue(model.LldpmedNotifyEnabled)
+			po.PortKeepaliveEnabled = util.ConvertBoolToAPIValue(model.PortKeepaliveEnabled)
+			po.PortSecurityEnabled = util.ConvertBoolToAPIValue(model.PortSecurityEnabled)
+			po.StormctrlBroadcastastEnabled = util.ConvertBoolToAPIValue(model.StormctrlBroadcastEnabled)
+			po.StormctrlMcastEnabled = util.ConvertBoolToAPIValue(model.StormctrlMcastEnabled)
+			po.StormctrlUcastEnabled = util.ConvertBoolToAPIValue(model.StormctrlUcastEnabled)
+			po.StpPortMode = util.ConvertBoolToAPIValue(model.StpPortMode)
 
 			// Int64 attributes
 			if !model.Dot1XIDleTimeout.IsNull() {
