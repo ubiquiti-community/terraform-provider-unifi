@@ -50,6 +50,36 @@ type Client struct {
 	// so they stop each creating a duplicate group with the same name (#389).
 	groupCacheMu sync.Mutex
 	groupCache   map[string]map[string]string // site -> (name -> id)
+
+	// deviceLocksMu guards deviceLocks, a per-device-MAC mutex keyed the same
+	// way as groupCache above and for the same reason: it lives on the shared
+	// *Client so it serializes across resource instances. unifi_device_port's
+	// upsert does an unlocked read-modify-write of a device's whole
+	// port_overrides array (no per-port API endpoint exists), so two such
+	// resources for the same device applied concurrently can race and silently
+	// drop one's change; locking per device MAC prevents that without
+	// serializing updates to unrelated devices.
+	deviceLocksMu sync.Mutex
+	deviceLocks   map[string]*sync.Mutex
+}
+
+// lockDevice acquires a mutex scoped to the given device MAC and returns a
+// function to release it, serializing concurrent read-modify-write updates
+// (e.g. from unifi_device_port) to the same device.
+func (c *Client) lockDevice(mac string) func() {
+	c.deviceLocksMu.Lock()
+	if c.deviceLocks == nil {
+		c.deviceLocks = make(map[string]*sync.Mutex)
+	}
+	m, ok := c.deviceLocks[mac]
+	if !ok {
+		m = &sync.Mutex{}
+		c.deviceLocks[mac] = m
+	}
+	c.deviceLocksMu.Unlock()
+
+	m.Lock()
+	return m.Unlock
 }
 
 // GetSiteName returns the site name for this client.
@@ -294,6 +324,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewAPGroupResource,
 		NewBGPResource,
 		NewDeviceFrameworkResource,
+		NewDevicePortResource,
 		NewDNSRecordFrameworkResource,
 		NewDynamicDNSResource,
 		NewFirewallGroupFrameworkResource,
