@@ -1111,6 +1111,68 @@ func Test_mergePortOverridesByIndex(t *testing.T) {
 	}
 }
 
+// Test_mergePortOverridesByIndex_keepsExplicitFalse guards #567: an explicit
+// autoneg=false must survive the merge whether the controller already holds
+// it (set in the UI) or the config declares it. With a plain bool + omitempty
+// both came out as a missing key, and the controller re-enabled autoneg.
+func Test_mergePortOverridesByIndex_keepsExplicitFalse(t *testing.T) {
+	merged := mergePortOverridesByIndex(
+		[]unifi.DevicePortOverrides{{PortIDX: ptrInt64(49), Autoneg: boolPtr(false)}}, // controller-side
+		[]unifi.DevicePortOverrides{{PortIDX: ptrInt64(1), Autoneg: boolPtr(false)}},  // declared
+	)
+	b, err := json.Marshal(merged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(b), `"autoneg":false`); got != 2 {
+		t.Fatalf("explicit false dropped (%d of 2 present): %s", got, b)
+	}
+}
+
+// Test_frameworkToPortOverrides_boolTriState pins the mapping #567 depends on:
+// an explicit false is sent, true is sent, and unknown (an Optional+Computed
+// attribute left out of config) and null stay omitted. ValueBool() would turn
+// the last two into false, ValueBoolPointer() would turn unknown into &false.
+func Test_frameworkToPortOverrides_boolTriState(t *testing.T) {
+	set := portOverrideSetWith(t, map[string]attr.Value{
+		"index":                types.Int64Value(49),
+		"autoneg":              types.BoolValue(false),
+		"full_duplex":          types.BoolValue(true),
+		"flow_control_enabled": types.BoolUnknown(),
+	})
+	pos, diags := (&deviceResource{}).frameworkToPortOverrides(context.Background(), set)
+	if diags.HasError() || len(pos) != 1 {
+		t.Fatalf("got %d overrides, diags %v", len(pos), diags)
+	}
+	po := pos[0]
+	if po.Autoneg == nil || *po.Autoneg {
+		t.Errorf("Autoneg = %v, want pointer to false", po.Autoneg)
+	}
+	if po.FullDuplex == nil || !*po.FullDuplex {
+		t.Errorf("FullDuplex = %v, want pointer to true", po.FullDuplex)
+	}
+	if po.FlowControlEnabled != nil {
+		t.Errorf("FlowControlEnabled = %v, want nil for unknown", *po.FlowControlEnabled)
+	}
+	if po.Isolation != nil {
+		t.Errorf("Isolation = %v, want nil for null", *po.Isolation)
+	}
+
+	model, diags := apiPortOverrideToModel(po)
+	if diags.HasError() {
+		t.Fatalf("apiPortOverrideToModel errored: %v", diags)
+	}
+	if model.Autoneg.IsNull() || model.Autoneg.ValueBool() {
+		t.Errorf("model.Autoneg = %v, want known false", model.Autoneg)
+	}
+	if model.FullDuplex.IsNull() || !model.FullDuplex.ValueBool() {
+		t.Errorf("model.FullDuplex = %v, want known true", model.FullDuplex)
+	}
+	if !model.FlowControlEnabled.IsNull() {
+		t.Errorf("model.FlowControlEnabled = %v, want null", model.FlowControlEnabled)
+	}
+}
+
 func Test_deviceResource_reconcilePortOverrides(t *testing.T) {
 	type args struct {
 		ctx          context.Context
@@ -1301,7 +1363,7 @@ func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.
 	r := &deviceResource{}
 
 	baseline, diags := r.portOverridesToFramework(ctx, []unifi.DevicePortOverrides{
-		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: false},
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: boolPtr(false)},
 	})
 	if diags.HasError() {
 		t.Fatalf("portOverridesToFramework errored: %v", diags.Errors())
@@ -1340,7 +1402,7 @@ func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.
 	}
 
 	got, gotDiags := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{
-		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: true},
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: boolPtr(true)},
 	})
 	if gotDiags.HasError() {
 		t.Fatalf("reconcilePortOverrides errored: %v", gotDiags.Errors())
