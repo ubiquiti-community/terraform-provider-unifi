@@ -1576,7 +1576,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.autoSpeedtestModelToSetting(&as)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Auto Speedtest Setting", err.Error())
 			return
 		}
@@ -1589,7 +1589,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.countryModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Country Setting", err.Error())
 			return
 		}
@@ -1602,7 +1602,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.dpiModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating DPI Setting", err.Error())
 			return
 		}
@@ -1615,7 +1615,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.lcmModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating LCM Setting", err.Error())
 			return
 		}
@@ -1628,7 +1628,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.networkOptimizationModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Network Optimization Setting", err.Error())
 			return
 		}
@@ -1641,7 +1641,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.ntpModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating NTP Setting", err.Error())
 			return
 		}
@@ -1657,7 +1657,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Syslog Setting", err.Error())
 			return
 		}
@@ -1674,7 +1674,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating DoH Setting", err.Error())
 			return
 		}
@@ -1698,7 +1698,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating IPS Setting", err.Error())
 			return
 		}
@@ -1729,7 +1729,7 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.mgmtModelToSetting(ctx, &mgmt, currentMgmt)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Mgmt Setting", err.Error())
 			return
 		}
@@ -1754,7 +1754,7 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Radius Setting", err.Error())
 			return
 		}
@@ -1775,7 +1775,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating USG Setting", err.Error())
 			return
 		}
@@ -1810,7 +1810,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating IGMP Snooping Setting", err.Error())
 			return
 		}
@@ -1931,7 +1931,7 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.autoSpeedtestModelToSetting(&as)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Auto Speedtest Setting", err.Error())
 			return
 		}
@@ -1944,7 +1944,7 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.countryModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Country Setting", err.Error())
 			return
 		}
@@ -1957,7 +1957,7 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.dpiModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating DPI Setting", err.Error())
 			return
 		}
@@ -1970,7 +1970,7 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.lcmModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating LCM Setting", err.Error())
 			return
 		}
@@ -1983,7 +1983,7 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.networkOptimizationModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Network Optimization Setting", err.Error())
 			return
 		}
@@ -1996,7 +1996,7 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.ntpModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating NTP Setting", err.Error())
 			return
 		}
@@ -2012,7 +2012,7 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Syslog Setting", err.Error())
 			return
 		}
@@ -2029,7 +2029,7 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating DoH Setting", err.Error())
 			return
 		}
@@ -2053,7 +2053,7 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating IPS Setting", err.Error())
 			return
 		}
@@ -2084,7 +2084,7 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.mgmtModelToSetting(ctx, &mgmt, currentMgmt)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Mgmt Setting", err.Error())
 			return
 		}
@@ -2109,7 +2109,7 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Radius Setting", err.Error())
 			return
 		}
@@ -2130,7 +2130,7 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating USG Setting", err.Error())
 			return
 		}
@@ -2163,7 +2163,7 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating IGMP Snooping Setting", err.Error())
 			return
 		}
