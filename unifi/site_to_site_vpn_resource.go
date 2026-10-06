@@ -76,28 +76,37 @@ type siteToSiteVPNResourceModel struct {
 	PeerIP types.String `tfsdk:"peer_ip"`
 
 	// IKE peer-authentication identifiers.
-	LocalIdentifier         types.String         `tfsdk:"local_identifier"`
-	LocalIdentifierEnabled  types.Bool           `tfsdk:"local_identifier_enabled"`
-	RemoteIdentifier        types.String         `tfsdk:"remote_identifier"`
-	RemoteIdentifierEnabled types.Bool           `tfsdk:"remote_identifier_enabled"`
-	LocalIP                 iptypes.IPv4Address  `tfsdk:"local_ip"`
-	KeyExchange             types.String         `tfsdk:"key_exchange"`
-	PreSharedKey            types.String         `tfsdk:"pre_shared_key"`
-	PreSharedKeyWO          types.String         `tfsdk:"pre_shared_key_wo"`
-	RemoteSubnets           types.List           `tfsdk:"remote_subnets"`
-	Profile                 types.String         `tfsdk:"profile"`
-	IKEEncryption           types.String         `tfsdk:"ike_encryption"`
-	IKEHash                 types.String         `tfsdk:"ike_hash"`
-	IKEDhGroup              types.Int64          `tfsdk:"ike_dh_group"`
-	IKELifetime             timetypes.GoDuration `tfsdk:"ike_lifetime"`
-	ESPEncryption           types.String         `tfsdk:"esp_encryption"`
-	ESPHash                 types.String         `tfsdk:"esp_hash"`
-	ESPDhGroup              types.Int64          `tfsdk:"esp_dh_group"`
-	ESPLifetime             timetypes.GoDuration `tfsdk:"esp_lifetime"`
-	PFS                     types.Bool           `tfsdk:"pfs"`
-	DynamicRouting          types.Bool           `tfsdk:"dynamic_routing"`
-	RouteDistance           types.Int64          `tfsdk:"route_distance"`
-	Timeouts                timeouts.Value       `tfsdk:"timeouts"`
+	LocalIdentifier         types.String        `tfsdk:"local_identifier"`
+	LocalIdentifierEnabled  types.Bool          `tfsdk:"local_identifier_enabled"`
+	RemoteIdentifier        types.String        `tfsdk:"remote_identifier"`
+	RemoteIdentifierEnabled types.Bool          `tfsdk:"remote_identifier_enabled"`
+	LocalIP                 iptypes.IPv4Address `tfsdk:"local_ip"`
+	KeyExchange             types.String        `tfsdk:"key_exchange"`
+	PreSharedKey            types.String        `tfsdk:"pre_shared_key"`
+	PreSharedKeyWO          types.String        `tfsdk:"pre_shared_key_wo"`
+	RemoteSubnets           types.List          `tfsdk:"remote_subnets"`
+	// The controller stores these on every site-vpn network but upstream maps
+	// neither, and both are lost on update: ipsec_tunnel_ip is omitempty so a
+	// nil is dropped, while ipsec_tunnel_ip_enabled and
+	// remote_vpn_dynamic_subnets_enabled are plain bools with no omitempty and
+	// so are sent as false. Update() has no read-modify-write and the
+	// controller's networkconf PUT is a full replace, so a BGP tunnel silently
+	// loses the inner address it peers over.
+	TunnelIP       types.String         `tfsdk:"tunnel_ip"`
+	DynamicSubnets types.Bool           `tfsdk:"dynamic_subnets"`
+	Profile        types.String         `tfsdk:"profile"`
+	IKEEncryption  types.String         `tfsdk:"ike_encryption"`
+	IKEHash        types.String         `tfsdk:"ike_hash"`
+	IKEDhGroup     types.Int64          `tfsdk:"ike_dh_group"`
+	IKELifetime    timetypes.GoDuration `tfsdk:"ike_lifetime"`
+	ESPEncryption  types.String         `tfsdk:"esp_encryption"`
+	ESPHash        types.String         `tfsdk:"esp_hash"`
+	ESPDhGroup     types.Int64          `tfsdk:"esp_dh_group"`
+	ESPLifetime    timetypes.GoDuration `tfsdk:"esp_lifetime"`
+	PFS            types.Bool           `tfsdk:"pfs"`
+	DynamicRouting types.Bool           `tfsdk:"dynamic_routing"`
+	RouteDistance  types.Int64          `tfsdk:"route_distance"`
+	Timeouts       timeouts.Value       `tfsdk:"timeouts"`
 }
 
 // siteToSiteVPNIdentityModel describes the resource identity data model.
@@ -305,6 +314,22 @@ func (r *siteToSiteVPNResource) Schema(
 				Validators: []validator.List{
 					listvalidator.ValueStringsAre(validators.CIDRValidator()),
 				},
+			},
+			"tunnel_ip": schema.StringAttribute{
+				MarkdownDescription: "Inner address of the tunnel interface, as a CIDR " +
+					"(e.g. `169.254.21.2/30`). This is the address a dynamic-routing tunnel " +
+					"peers over; setting it also sets `ipsec_tunnel_ip_enabled`.",
+				Optional:      true,
+				Computed:      true,
+				Validators:    []validator.String{validators.CIDRValidator()},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"dynamic_subnets": schema.BoolAttribute{
+				MarkdownDescription: "Accept remote subnets learned dynamically (over BGP) rather " +
+					"than from `remote_subnets`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"profile": schema.StringAttribute{
 				MarkdownDescription: "IPsec profile. One of `customized`, `azure_dynamic`, or " +
@@ -899,6 +924,18 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		diags.Append(model.RemoteSubnets.ElementsAs(ctx, &network.RemoteVPNSubnets, false)...)
 	}
 
+	// ipsec_tunnel_ip is `omitempty`, and ipsec_tunnel_ip_enabled is a plain
+	// bool without it — so leaving these unset on an update PUT silently strips
+	// the inner address and disables the flag. Update() has no read-modify-write
+	// and the controller's networkconf PUT is a full replace, so both must be
+	// derived here or a tunnel that peers over the inner address loses it.
+	network.IPSecTunnelIP = optStr(model.TunnelIP)
+	network.IPSecTunnelIPEnabled = network.IPSecTunnelIP != nil
+
+	// Same hazard: a plain bool with no omitempty, so an unmapped value is sent
+	// as false and dynamic remote subnets are turned off behind the operator.
+	network.RemoteVPNDynamicSubnetsEnabled = model.DynamicSubnets.ValueBool()
+
 	return network, diags
 }
 
@@ -950,6 +987,9 @@ func (r *siteToSiteVPNResource) networkToModel(
 	subnets, subnetDiags := types.ListValueFrom(ctx, types.StringType, network.RemoteVPNSubnets)
 	diags.Append(subnetDiags...)
 	model.RemoteSubnets = subnets
+
+	model.TunnelIP = stringPtrOrNull(network.IPSecTunnelIP)
+	model.DynamicSubnets = types.BoolValue(network.RemoteVPNDynamicSubnetsEnabled)
 
 	return diags
 }
