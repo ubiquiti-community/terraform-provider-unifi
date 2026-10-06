@@ -9,6 +9,8 @@ import (
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -479,6 +481,404 @@ func TestSiteToSiteVPNRemoteSubnetsValid(t *testing.T) {
 				t.Errorf("siteToSiteVPNRemoteSubnetsValid() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRemoteVPNDynamicSubnetsEnabled(t *testing.T) {
+	empty := types.ListValueMust(types.StringType, nil)
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	tests := []struct {
+		name           string
+		flag           types.Bool
+		dynamicRouting types.Bool
+		remoteSubnets  types.List
+		want           bool
+	}{
+		// Manual control when not forced on.
+		{
+			"manually enabled, static tunnel with subnet",
+			types.BoolValue(true),
+			types.BoolValue(false),
+			nonEmpty,
+			true,
+		},
+		{
+			"manually disabled, static tunnel with subnet",
+			types.BoolValue(false),
+			types.BoolValue(false),
+			nonEmpty,
+			false,
+		},
+		{
+			"unset, static tunnel with subnet",
+			types.BoolNull(),
+			types.BoolValue(false),
+			nonEmpty,
+			false,
+		},
+		{
+			"manually enabled, dynamic routing off",
+			types.BoolValue(true),
+			types.BoolValue(false),
+			empty,
+			true,
+		},
+		{"unset, dynamic routing off", types.BoolNull(), types.BoolValue(false), empty, false},
+		{"unknown, dynamic routing off", types.BoolUnknown(), types.BoolValue(false), empty, false},
+		// Not forced on: dynamic routing but static subnets present.
+		{
+			"manually disabled, dynamic routing with subnet",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			nonEmpty,
+			false,
+		},
+		{
+			"manually enabled, dynamic routing with subnet",
+			types.BoolValue(true),
+			types.BoolValue(true),
+			nonEmpty,
+			true,
+		},
+		// Forced on: dynamic routing with no static subnets cannot be disabled.
+		{
+			"forced on despite disable, dynamic routing without subnets",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			empty,
+			true,
+		},
+		{
+			"forced on when unset, dynamic routing without subnets",
+			types.BoolNull(),
+			types.BoolValue(true),
+			empty,
+			true,
+		},
+		{
+			"forced on, dynamic routing with null subnets",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			types.ListNull(types.StringType),
+			true,
+		},
+		{
+			"forced on, dynamic routing with unknown subnets",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			types.ListUnknown(types.StringType),
+			true,
+		},
+		// Routing mode null/unknown is treated as off, so no forcing.
+		{
+			"routing mode omitted, no subnets, disabled",
+			types.BoolValue(false),
+			types.BoolNull(),
+			empty,
+			false,
+		},
+		{
+			"routing mode unknown, no subnets, disabled",
+			types.BoolValue(false),
+			types.BoolUnknown(),
+			empty,
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := remoteVPNDynamicSubnetsEnabled(
+				tt.flag,
+				tt.dynamicRouting,
+				tt.remoteSubnets,
+			); got != tt.want {
+				t.Errorf("remoteVPNDynamicSubnetsEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSiteToSiteVPNDynamicSubnetsValid(t *testing.T) {
+	empty := types.ListValueMust(types.StringType, nil)
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	tests := []struct {
+		name           string
+		flag           types.Bool
+		dynamicRouting types.Bool
+		remoteSubnets  types.List
+		want           bool
+	}{
+		// Only an explicit false that would be forced on is invalid.
+		{"disabled while forced on", types.BoolValue(false), types.BoolValue(true), empty, false},
+		{
+			"disabled, dynamic routing with subnet",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			nonEmpty,
+			true,
+		},
+		{
+			"disabled, dynamic routing off",
+			types.BoolValue(false),
+			types.BoolValue(false),
+			empty,
+			true,
+		},
+		// Enabled or unset is always fine.
+		{"enabled while forced on", types.BoolValue(true), types.BoolValue(true), empty, true},
+		{"unset while forced on", types.BoolNull(), types.BoolValue(true), empty, true},
+		{"unknown while forced on", types.BoolUnknown(), types.BoolValue(true), empty, true},
+		// Unknown siblings defer validation.
+		{"disabled, routing unknown", types.BoolValue(false), types.BoolUnknown(), empty, true},
+		{
+			"disabled, subnets unknown",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			types.ListUnknown(types.StringType),
+			true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := siteToSiteVPNDynamicSubnetsValid(
+				tt.flag,
+				tt.dynamicRouting,
+				tt.remoteSubnets,
+			); got != tt.want {
+				t.Errorf("siteToSiteVPNDynamicSubnetsValid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// buildDynamicSubnetsConfig builds a tfsdk.Config for the resource schema with
+// every attribute null except dynamic_routing and remote_subnets, for driving
+// the dynamicSubnetsValidator end-to-end.
+func buildDynamicSubnetsConfig(
+	t *testing.T,
+	ctx context.Context,
+	dynamicRouting types.Bool,
+	remoteSubnets types.List,
+) tfsdk.Config {
+	t.Helper()
+
+	var schemaResp fwresource.SchemaResponse
+	(&siteToSiteVPNResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatalf("schema terraform type is not an object")
+	}
+	vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+	for name, at := range objType.AttributeTypes {
+		vals[name] = tftypes.NewValue(at, nil)
+	}
+
+	drVal, _ := dynamicRouting.ToTerraformValue(ctx)
+	vals["dynamic_routing"] = drVal
+	rsVal, _ := remoteSubnets.ToTerraformValue(ctx)
+	vals["remote_subnets"] = rsVal
+
+	return tfsdk.Config{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(objType, vals),
+	}
+}
+
+func TestDynamicSubnetsValidator_ValidateBool(t *testing.T) {
+	ctx := context.Background()
+	empty := types.ListValueMust(types.StringType, nil)
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	tests := []struct {
+		name           string
+		flag           types.Bool
+		dynamicRouting types.Bool
+		remoteSubnets  types.List
+		wantErr        bool
+	}{
+		{"disabled while forced on", types.BoolValue(false), types.BoolValue(true), empty, true},
+		{
+			"disabled, dynamic routing with subnet",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			nonEmpty,
+			false,
+		},
+		{
+			"disabled, dynamic routing off",
+			types.BoolValue(false),
+			types.BoolValue(false),
+			empty,
+			false,
+		},
+		{"enabled while forced on", types.BoolValue(true), types.BoolValue(true), empty, false},
+		{"unset while forced on", types.BoolNull(), types.BoolValue(true), empty, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := validator.BoolRequest{
+				Path:        path.Root("remote_vpn_dynamic_subnets_enabled"),
+				Config:      buildDynamicSubnetsConfig(t, ctx, tt.dynamicRouting, tt.remoteSubnets),
+				ConfigValue: tt.flag,
+			}
+			resp := &validator.BoolResponse{}
+			dynamicSubnetsValidator{}.ValidateBool(ctx, req, resp)
+
+			if got := resp.Diagnostics.HasError(); got != tt.wantErr {
+				t.Errorf(
+					"ValidateBool() HasError = %v, want %v: %v",
+					got,
+					tt.wantErr,
+					resp.Diagnostics,
+				)
+			}
+		})
+	}
+}
+
+func TestDynamicSubnetsPlanModifier_PlanModifyBool(t *testing.T) {
+	ctx := context.Background()
+	empty := types.ListValueMust(types.StringType, nil)
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	tests := []struct {
+		name           string
+		configValue    types.Bool
+		dynamicRouting types.Bool
+		remoteSubnets  types.List
+		want           types.Bool
+	}{
+		// Forced on regardless of the configured value.
+		{
+			"forced on when disabled",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			empty,
+			types.BoolValue(true),
+		},
+		{
+			"forced on when unset",
+			types.BoolNull(),
+			types.BoolValue(true),
+			empty,
+			types.BoolValue(true),
+		},
+		// Not forced: the configured value wins.
+		{
+			"manual enable, routing off",
+			types.BoolValue(true),
+			types.BoolValue(false),
+			empty,
+			types.BoolValue(true),
+		},
+		{
+			"manual disable, routing off",
+			types.BoolValue(false),
+			types.BoolValue(false),
+			empty,
+			types.BoolValue(false),
+		},
+		{
+			"not forced, routing with subnet",
+			types.BoolValue(false),
+			types.BoolValue(true),
+			nonEmpty,
+			types.BoolValue(false),
+		},
+		{
+			"unset, routing off",
+			types.BoolNull(),
+			types.BoolValue(false),
+			empty,
+			types.BoolValue(false),
+		},
+		// Unknown siblings defer: the planned (unknown) value is left untouched.
+		{
+			"deferred when routing unknown",
+			types.BoolNull(),
+			types.BoolUnknown(),
+			empty,
+			types.BoolUnknown(),
+		},
+		{
+			"deferred when subnets unknown",
+			types.BoolNull(),
+			types.BoolValue(true),
+			types.ListUnknown(types.StringType),
+			types.BoolUnknown(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := planmodifier.BoolRequest{
+				Path:        path.Root("remote_vpn_dynamic_subnets_enabled"),
+				Plan:        buildDynamicSubnetsPlan(t, ctx, tt.dynamicRouting, tt.remoteSubnets),
+				ConfigValue: tt.configValue,
+			}
+			// The attribute is computed, so it arrives unknown before the modifier runs.
+			resp := &planmodifier.BoolResponse{PlanValue: types.BoolUnknown()}
+			dynamicSubnetsPlanModifier{}.PlanModifyBool(ctx, req, resp)
+
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("PlanModifyBool diagnostics: %v", resp.Diagnostics)
+			}
+			if !resp.PlanValue.Equal(tt.want) {
+				t.Errorf("PlanValue = %v, want %v", resp.PlanValue, tt.want)
+			}
+		})
+	}
+}
+
+// buildDynamicSubnetsPlan builds a tfsdk.Plan for the resource schema with
+// every attribute null except dynamic_routing and remote_subnets, for driving
+// the dynamicSubnetsPlanModifier.
+func buildDynamicSubnetsPlan(
+	t *testing.T,
+	ctx context.Context,
+	dynamicRouting types.Bool,
+	remoteSubnets types.List,
+) tfsdk.Plan {
+	t.Helper()
+
+	var schemaResp fwresource.SchemaResponse
+	(&siteToSiteVPNResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatalf("schema terraform type is not an object")
+	}
+	vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+	for name, at := range objType.AttributeTypes {
+		vals[name] = tftypes.NewValue(at, nil)
+	}
+
+	drVal, _ := dynamicRouting.ToTerraformValue(ctx)
+	vals["dynamic_routing"] = drVal
+	rsVal, _ := remoteSubnets.ToTerraformValue(ctx)
+	vals["remote_subnets"] = rsVal
+
+	return tfsdk.Plan{
+		Schema: schemaResp.Schema,
+		Raw:    tftypes.NewValue(objType, vals),
 	}
 }
 

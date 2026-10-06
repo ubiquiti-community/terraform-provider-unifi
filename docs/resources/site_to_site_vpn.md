@@ -101,6 +101,7 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
 - `profile` (String) IPsec profile. One of `customized`, `azure_dynamic`, or `azure_static`. Set to `customized` to tune the IKE/ESP attributes below; the controller may derive the ESP values from the IKE ones.
 - `remote_identifier` (String) IKE remote identifier used for peer authentication (the UI's "Remote Identifier"). See `local_identifier`.
 - `remote_identifier_enabled` (Boolean) Whether the remote identifier is used for authentication. See `local_identifier_enabled`.
+- `remote_vpn_dynamic_subnets_enabled` (Boolean) Whether the tunnel advertises dynamically learned subnets. It can be enabled manually, but it is forced on (and cannot be disabled) when `dynamic_routing` is enabled and `remote_subnets` is empty, since the tunnel then relies entirely on learned routes.
 - `route_distance` (Number) The route distance (administrative metric) for tunnel routes (1-255).
 - `site` (String) The name of the site to associate the VPN with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
