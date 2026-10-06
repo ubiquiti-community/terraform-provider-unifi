@@ -81,6 +81,8 @@ type siteToSiteVPNResourceModel struct {
 	RemoteIdentifier        types.String         `tfsdk:"remote_identifier"`
 	RemoteIdentifierEnabled types.Bool           `tfsdk:"remote_identifier_enabled"`
 	LocalIP                 iptypes.IPv4Address  `tfsdk:"local_ip"`
+	TunnelIP                types.String         `tfsdk:"tunnel_ip"`
+	TunnelIPEnabled         types.Bool           `tfsdk:"tunnel_ip_enabled"`
 	KeyExchange             types.String         `tfsdk:"key_exchange"`
 	PreSharedKey            types.String         `tfsdk:"pre_shared_key"`
 	PreSharedKeyWO          types.String         `tfsdk:"pre_shared_key_wo"`
@@ -268,6 +270,30 @@ func (r *siteToSiteVPNResource) Schema(
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"tunnel_ip": schema.StringAttribute{
+				MarkdownDescription: "The tunnel IP used for the IPsec connection.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.All(
+						validators.CIDRValidator(),
+					),
+				},
+			},
+			"tunnel_ip_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether the tunnel IP is used." +
+					"Set automatically when `tunnel_ip` is " +
+					"configured; declare it explicitly to enable the tunnel IP " +
+					"without pinning a value.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"key_exchange": schema.StringAttribute{
@@ -851,6 +877,16 @@ func identifierEnabled(flag types.Bool, identifier types.String) bool {
 	return !identifier.IsNull() && !identifier.IsUnknown() && identifier.ValueString() != ""
 }
 
+// tunnelIPEnabled resolves a tunnel IP's enabled flag. A declared flag
+// wins; otherwise configuring the tunnel IP itself enables it, which is what
+// the UI does and spares the operator from setting both.
+func tunnelIPEnabled(flag types.Bool, tunnelIP types.String) bool {
+	if !flag.IsNull() && !flag.IsUnknown() {
+		return flag.ValueBool()
+	}
+	return !tunnelIP.IsNull() && !tunnelIP.IsUnknown() && tunnelIP.ValueString() != ""
+}
+
 // modelToNetwork converts the Terraform model to the go-unifi Network struct.
 // The pre-shared key from config (pre_shared_key) is set here; the write-only
 // variant is applied separately in Create/Update.
@@ -875,7 +911,11 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		IPSecRemoteIDentifierEnabled: identifierEnabled(
 			model.RemoteIdentifierEnabled, model.RemoteIdentifier,
 		),
-		IPSecLocalIP:        optStr(model.LocalIP),
+		IPSecLocalIP:  optStr(model.LocalIP),
+		IPSecTunnelIP: optStr(model.TunnelIP),
+		IPSecTunnelIPEnabled: tunnelIPEnabled(
+			model.TunnelIPEnabled, model.TunnelIP,
+		),
 		IPSecKeyExchange:    optStr(model.KeyExchange),
 		IPSecProfile:        optStr(model.Profile),
 		IPSecEncryption:     optStr(model.IKEEncryption),
@@ -933,6 +973,8 @@ func (r *siteToSiteVPNResource) networkToModel(
 	model.RemoteIdentifier = stringPtrOrNull(network.IPSecRemoteIDentifier)
 	model.RemoteIdentifierEnabled = types.BoolValue(network.IPSecRemoteIDentifierEnabled)
 	model.LocalIP = util.IPv4PtrValueOrNull(network.IPSecLocalIP)
+	model.TunnelIP = stringPtrOrNull(network.IPSecTunnelIP)
+	model.TunnelIPEnabled = types.BoolValue(network.IPSecTunnelIPEnabled)
 	model.KeyExchange = stringPtrOrNull(network.IPSecKeyExchange)
 	model.Profile = stringPtrOrNull(network.IPSecProfile)
 	model.IKEEncryption = stringPtrOrNull(network.IPSecEncryption)

@@ -104,6 +104,8 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
 - `route_distance` (Number) The route distance (administrative metric) for tunnel routes (1-255).
 - `site` (String) The name of the site to associate the VPN with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
+- `tunnel_ip` (String) The tunnel IP used for the IPsec connection.
+- `tunnel_ip_enabled` (Boolean) Whether the tunnel IP is used.Set automatically when `tunnel_ip` is configured; declare it explicitly to enable the tunnel IP without pinning a value.
 
 ### Read-Only
 
