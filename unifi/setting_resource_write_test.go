@@ -3,8 +3,10 @@ package unifi
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
@@ -121,4 +123,59 @@ func Test_settingResource_updateWritesOnlyTheChange(t *testing.T) {
 	if got := puts(); !reflect.DeepEqual(got, want) {
 		t.Errorf("update wrote %v, want %v", got, want)
 	}
+}
+
+// A failed write of any block stops Create and Update with that block's error.
+func Test_settingResource_writeErrors(t *testing.T) {
+	// The setting key each block of everySettingBlock writes.
+	keys := []string{
+		"auto_speedtest", "country", "doh", "dpi", "igmp_snooping", "ips", "lcm",
+		"mgmt", "network_optimization", "ntp", "radius", "rsyslogd", "usg",
+	}
+	failing := func(key string) []map[string]any {
+		stored := storedSettingKeys()
+		for _, s := range stored {
+			if s["key"] == key {
+				s["_fail"] = "write"
+			}
+		}
+		return stored
+	}
+	// Any valid prior state will do for Update; it only provides the site.
+	r0, _ := newSettingsFakeController(t, storedSettingKeys())
+	prior := settingCreate(t, r0, everySettingBlock(true))
+
+	for _, key := range keys {
+		t.Run(key, func(t *testing.T) {
+			s := resourceSchema(t, r0)
+			attrs := everySettingBlock(true)
+
+			r, _ := newSettingsFakeController(t, failing(key))
+			cr := &fwresource.CreateResponse{State: tfState(t, s, nil), Identity: tfIdentity(t, r)}
+			r.Create(context.Background(), fwresource.CreateRequest{
+				Plan: tfPlan(t, s, attrs), Config: tfConfig(t, s, attrs),
+			}, cr)
+			if !hasErrorPrefix(cr.Diagnostics, "Error Creating ") {
+				t.Errorf("Create: want a write error, got %v", cr.Diagnostics)
+			}
+
+			r, _ = newSettingsFakeController(t, failing(key))
+			ur := &fwresource.UpdateResponse{State: prior.State, Identity: prior.Identity}
+			r.Update(context.Background(), fwresource.UpdateRequest{
+				Plan: tfPlan(t, s, attrs), Config: tfConfig(t, s, attrs), State: prior.State,
+			}, ur)
+			if !hasErrorPrefix(ur.Diagnostics, "Error Updating ") {
+				t.Errorf("Update: want a write error, got %v", ur.Diagnostics)
+			}
+		})
+	}
+}
+
+func hasErrorPrefix(diags diag.Diagnostics, prefix string) bool {
+	for _, d := range diags.Errors() {
+		if strings.HasPrefix(d.Summary(), prefix) {
+			return true
+		}
+	}
+	return false
 }
