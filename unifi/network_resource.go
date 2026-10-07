@@ -2086,7 +2086,7 @@ func (r *networkResource) modelToNetwork(
 		AutoScaleEnabled:        boolPointerIfKnown(model.AutoScale),
 		IPSubnet:                model.Subnet.ValueStringPointer(),
 		NetworkIsolationEnabled: model.NetworkIsolation.ValueBool(),
-		SettingPreference:       model.SettingPreference.ValueStringPointer(),
+		SettingPreference:       stringPointerIfKnown(model.SettingPreference),
 		InternetAccessEnabled:   model.InternetAccess.ValueBool(),
 		MdnsEnabled:             model.MulticastDNS.ValueBool(),
 		GatewayType:             model.GatewayType.ValueStringPointer(),
@@ -2545,6 +2545,18 @@ func nullIfUnknown(v types.Bool) types.Bool {
 // controller has no default for: writing false (or a provider-invented true)
 // for an unconfigured attribute changes the network behind the operator's back
 // (#524).
+// stringPointerIfKnown returns the value as a pointer, or nil when it is null
+// or unknown. ValueStringPointer turns an unknown into a pointer to "", and
+// the controller rejects an empty setting_preference with InvalidPayload, so
+// an attribute that is Optional+Computed without a Default (unknown on create
+// since #550) must be omitted from the request rather than sent empty.
+func stringPointerIfKnown(v types.String) *string {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	return v.ValueStringPointer()
+}
+
 func boolPointerIfKnown(v types.Bool) *bool {
 	if v.IsNull() || v.IsUnknown() {
 		return nil
