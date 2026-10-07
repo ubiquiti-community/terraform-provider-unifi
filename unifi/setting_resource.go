@@ -2806,6 +2806,19 @@ func (r *settingResource) readSettings(
 				diags.AddError("Error Reading IPS Suppression Setting", err.Error())
 				return
 			}
+			if !found {
+				// Controllers without the standalone document keep
+				// suppression nested in the ips setting (see
+				// persistIpsSuppression).
+				ipsData, ipsFound, ipsErr := r.readRawSettingData(ctx, site, ipsSettingKey)
+				if ipsErr != nil {
+					diags.AddError("Error Reading IPS Suppression Setting", ipsErr.Error())
+					return
+				}
+				if nested, ok := ipsData["suppression"].(map[string]any); ipsFound && ok {
+					rawData, found = nested, true
+				}
+			}
 			if found {
 				supp, err := ipsSuppressionFromRaw(rawData)
 				if err != nil {
@@ -3344,15 +3357,21 @@ func (r *settingResource) persistUsgGeoFiltering(
 		return
 	}
 
-	// Older controllers reject the usg_geo key with api.err.Invalid and
-	// persist the geo_ip_filtering_* fields on the usg setting itself. The
-	// v10 models dropped those fields, so the preceding typed usg update no
-	// longer carries them: merge them into the raw usg setting instead.
+	// Controllers without the standalone document (observed on Network
+	// 10.0.162) reject the usg_geo key with api.err.Invalid and persist the
+	// geo_ip_filtering_* fields on the usg setting itself. The v10 models
+	// dropped those fields, so the preceding typed usg update no longer
+	// carries them: merge them into the raw usg setting instead. A fresh site
+	// has never stored them, so their absence from the document is not a
+	// reason to skip the fallback; the absence of a usg_geo document is what
+	// identifies the legacy controller.
 	var apiErr *ui.APIError
 	if errors.As(err, &apiErr) && apiErr.Message == "api.err.Invalid" {
-		usgData, found, readErr := r.readRawSettingData(ctx, site, usgSettingKey)
-		if readErr == nil && found {
-			if _, ok := usgData["geo_ip_filtering_enabled"]; ok {
+		if _, hasStandalone, probeErr := r.readRawSettingData(
+			ctx, site, usgGeoSettingKey,
+		); probeErr == nil && !hasStandalone {
+			usgData, found, readErr := r.readRawSettingData(ctx, site, usgSettingKey)
+			if readErr == nil && found {
 				for k, v := range carrier.usgGeoRawFields() {
 					usgData[k] = v
 				}
@@ -4191,6 +4210,10 @@ func (r *settingResource) dohSettingToModel(
 // ips setting's "suppression" field and reject this key with api.err.Invalid.
 const ipsSuppressionSettingKey = "ips_suppression"
 
+// ipsSettingKey is the ips setting document, which carries suppression
+// nested on controllers without the standalone ips_suppression document.
+const ipsSettingKey = "ips"
+
 // readRawSettingData fetches a site setting by its raw key, for setting keys
 // the go-unifi client has no typed struct for. found is false when the
 // controller has no setting stored under that key.
@@ -4270,21 +4293,46 @@ func (r *settingResource) persistIpsSuppression(
 		return
 	}
 
-	// The nested ips.suppression variant is gone from go-unifi v1.34.1, so
-	// there is no echo-back case left to probe for: suppression always goes to
-	// the standalone document.
+	// go-unifi v1.34.1 dropped the nested ips.suppression field, so the
+	// typed ips update never carries suppression: it goes to the standalone
+	// document first.
 	raw := ipsSuppressionRawSetting(suppression)
-	if err := r.client.UpdateSetting(ctx, site, raw); err != nil {
-		// Controllers without the standalone key reject it with
-		// api.err.Invalid; when nothing is configured there is nothing to
-		// persist, so that rejection is not an error.
-		var apiErr *ui.APIError
-		if len(suppression.Alerts) == 0 && len(suppression.Whitelist) == 0 &&
-			errors.As(err, &apiErr) && apiErr.Message == "api.err.Invalid" {
-			return
-		}
-		diags.AddError("Error Updating IPS Suppression Setting", err.Error())
+	err := r.client.UpdateSetting(ctx, site, raw)
+	if err == nil {
+		return
 	}
+
+	// Controllers without the standalone document (observed on Network
+	// 10.0.162) reject the key with api.err.Invalid and still store
+	// suppression nested in the ips setting. Merge it into the raw ips
+	// document there; the nested write is only attempted when no standalone
+	// document exists, so a newer controller's rejection of a bad payload is
+	// still reported.
+	var apiErr *ui.APIError
+	if errors.As(err, &apiErr) && apiErr.Message == "api.err.Invalid" {
+		if _, hasStandalone, probeErr := r.readRawSettingData(
+			ctx, site, ipsSuppressionSettingKey,
+		); probeErr == nil && !hasStandalone {
+			ipsData, found, readErr := r.readRawSettingData(ctx, site, ipsSettingKey)
+			if readErr == nil && found {
+				ipsData["suppression"] = raw.Data
+				nested := &settings.RawSetting{
+					BaseSetting: settings.BaseSetting{Key: ipsSettingKey},
+					Data:        ipsData,
+				}
+				if writeErr := r.client.UpdateSetting(ctx, site, nested); writeErr != nil {
+					diags.AddError("Error Updating IPS Suppression Setting", writeErr.Error())
+				}
+				return
+			}
+			// No ips document to carry it either: with nothing configured
+			// there is nothing to persist, so the rejection is not an error.
+			if len(suppression.Alerts) == 0 && len(suppression.Whitelist) == 0 {
+				return
+			}
+		}
+	}
+	diags.AddError("Error Updating IPS Suppression Setting", err.Error())
 }
 
 // ipsModelToSetting returns the ips setting plus, separately, the suppression

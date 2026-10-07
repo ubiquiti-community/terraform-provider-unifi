@@ -878,7 +878,9 @@ func TestAccSettingResource_ipsHoneypot(t *testing.T) {
 // whose post-apply refresh plan is non-empty, which is exactly the perpetual
 // diff reported). On controllers that nest suppression in the ips setting the
 // nested path is used; controllers that store it under the standalone
-// ips_suppression key take the fallback write/read path.
+// ips_suppression key take the fallback write/read path. Controllers that
+// nest suppression (Network 10.0.x) only accept a non-empty list when at
+// least one network is IPS-enabled, so the configs attach one.
 func TestAccSettingResource_ipsSuppression(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
@@ -934,9 +936,16 @@ func TestAccSettingResource_ipsSuppression(t *testing.T) {
 
 func testAccSettingConfig_ipsSuppression() string {
 	return `
+resource "unifi_network" "ips_suppression" {
+  name   = "test-ips-suppression"
+  subnet = "10.1.81.1/24"
+  vlan   = 81
+}
+
 resource "unifi_setting" "test" {
   ips = {
-    ips_mode = "disabled"
+    ips_mode         = "disabled"
+    enabled_networks = [unifi_network.ips_suppression.id]
     suppression = {
       alerts = [{
         category  = "emerging-scan"
@@ -959,9 +968,16 @@ resource "unifi_setting" "test" {
 
 func testAccSettingConfig_ipsSuppressionUpdated() string {
 	return `
+resource "unifi_network" "ips_suppression" {
+  name   = "test-ips-suppression"
+  subnet = "10.1.81.1/24"
+  vlan   = 81
+}
+
 resource "unifi_setting" "test" {
   ips = {
-    ips_mode = "disabled"
+    ips_mode         = "disabled"
+    enabled_networks = [unifi_network.ips_suppression.id]
     suppression = {
       alerts = [
         {
@@ -990,9 +1006,16 @@ resource "unifi_setting" "test" {
 
 func testAccSettingConfig_ipsSuppressionCleared() string {
 	return `
+resource "unifi_network" "ips_suppression" {
+  name   = "test-ips-suppression"
+  subnet = "10.1.81.1/24"
+  vlan   = 81
+}
+
 resource "unifi_setting" "test" {
   ips = {
-    ips_mode = "disabled"
+    ips_mode         = "disabled"
+    enabled_networks = [unifi_network.ips_suppression.id]
     suppression = {
       alerts    = []
       whitelist = []
