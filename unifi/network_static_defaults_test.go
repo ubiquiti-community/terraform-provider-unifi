@@ -5,10 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
@@ -119,6 +118,9 @@ func TestNetworkAdoptedIPv6InterfaceTypeIsKept(t *testing.T) {
 	ipv6 := plannedObject(t, attrs["ipv6"], "ipv6")
 	var got string
 	if err := ipv6["interface_type"].As(&got); err != nil || got != "none" {
-		t.Errorf("create planned ipv6.interface_type = %v (%v), want none", ipv6["interface_type"], err)
+		t.Errorf(
+			"create planned ipv6.interface_type = %v (%v), want none",
+			ipv6["interface_type"], err,
+		)
 	}
 }
