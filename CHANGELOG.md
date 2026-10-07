@@ -32,6 +32,10 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+### 🐛 Bug Fixes
+
+- **`unifi_network`: `ipv6.interface_type` no longer overwrites the controller's value on an adopted network.** The nested `ipv6` group carries no schema `Default`, but its `ModifyPlan` reproduced the old flat `ipv6_interface_type` default and re-asserted `none` on every plan whose configuration omitted the block, which brought back the overwrite v0.59.0 removed (#550): importing a network with static IPv6 again proposed `static` -> `none`. The default is now applied on create only; once a prior value exists it is kept, matching the leaf's `UseStateForUnknown` and its documentation (#544).
+
 ## [v0.59.0] - 2026-10-03
 
 Five fixes to one defect class, each measured against a live controller rather

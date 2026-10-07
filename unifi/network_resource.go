@@ -1242,15 +1242,18 @@ func (r *networkResource) Configure(
 // object without a schema Default (see the comment above
 // networkIPv6RAPlanShape for why a Default cannot be used):
 //
-//   - interface_type defaults to "none" whenever the configuration does not
-//     set it, whether the ipv6 block is present or omitted entirely;
+//   - interface_type defaults to "none" when the configuration does not set
+//     it and there is no prior value to keep, whether the ipv6 block is
+//     present or omitted entirely;
 //   - when the block is omitted and there is no prior object to carry
 //     (create, or a state that never held one), the group takes its
 //     create-time shape: Optional-only leaves null, Computed leaves unknown.
 //
-// On update with the block omitted, UseStateForUnknown has already restored
-// the prior object, so only interface_type is (re)asserted here, exactly as
-// the flat attribute's Default did.
+// The "none" default is applied on create only. v0.59.0 (#550) dropped the
+// flat ipv6_interface_type Default because it overwrote an adopted network's
+// type (importing a network with static IPv6 proposed cutting it to "none"),
+// so once a prior value exists UseStateForUnknown carries it and nothing is
+// asserted here.
 func planIPv6Defaults(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
@@ -1266,6 +1269,20 @@ func planIPv6Defaults(
 	if diags.HasError() || !configType.IsNull() {
 		// Configured (or unknown until apply): nothing to default.
 		return diags
+	}
+
+	if !req.State.Raw.IsNull() {
+		var stateType types.String
+		diags.Append(req.State.GetAttribute(
+			ctx, path.Root("ipv6").AtName("interface_type"), &stateType)...)
+		if diags.HasError() {
+			return diags
+		}
+		if !stateType.IsNull() && !stateType.IsUnknown() {
+			// An adopted or previously applied network keeps the type the
+			// controller holds (#550); UseStateForUnknown already planned it.
+			return diags
+		}
 	}
 
 	var configIPv6 types.Object
