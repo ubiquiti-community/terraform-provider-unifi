@@ -40,4 +40,4 @@ jobs:
           additional_permissions: |
             actions: write
           claude_args: >-
-            --allowed-tools "Bash(gh *),Bash(git fetch:*),Bash(git merge:*),Bash(git rebase:*),Bash(git checkout:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git show:*),Bash(gh pr:*),Bash(go build:*),Bash(go vet:*),Bash(go test:*)"
+            --allowed-tools "Bash(gofmt:*),Bash(go fmt:*),Bash(go install:*),Bash(golangci-lint:*),Bash(gh *),Bash(git fetch:*),Bash(git merge:*),Bash(git rebase:*),Bash(git checkout:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git show:*),Bash(gh pr:*),Bash(go build:*),Bash(go vet:*),Bash(go test:*)"
