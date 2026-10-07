@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - **`unifi_network`: `ipv6.interface_type` no longer overwrites the controller's value on an adopted network.** The nested `ipv6` group carries no schema `Default`, but its `ModifyPlan` reproduced the old flat `ipv6_interface_type` default and re-asserted `none` on every plan whose configuration omitted the block, which brought back the overwrite v0.59.0 removed (#550): importing a network with static IPv6 again proposed `static` -> `none`. The default is now applied on create only; once a prior value exists it is kept, matching the leaf's `UseStateForUnknown` and its documentation (#544).
+- **`unifi_network`: creating a network without `setting_preference` no longer fails with `api.err.InvalidPayload`.** Since v0.59.0 dropped the attribute's static default (#550) it is unknown on create, and the write path turned that unknown into an empty string, which the controller rejects. The request now omits an unset `setting_preference` so the controller applies its own default; a configured value is sent as before.
 
 ## [v0.59.0] - 2026-10-03
 
