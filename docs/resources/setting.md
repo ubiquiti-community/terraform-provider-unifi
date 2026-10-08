@@ -69,6 +69,32 @@ resource "unifi_setting" "combined" {
   }
 }
 
+# Configure only SNMP settings (v1/v2c community plus an SNMPv3 user).
+# The write-only password below requires Terraform 1.11+.
+variable "snmp_password" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
+resource "unifi_setting" "snmp_only" {
+  site = "default"
+
+  snmp = {
+    enabled             = true
+    community           = "my-snmp-community"
+    enabled_v3          = true
+    username            = "monitor"
+    password_wo         = var.snmp_password
+    password_wo_version = 1 # Change this version whenever the password changes.
+
+    # Alternatively, replace the two password_wo fields with:
+    # password = "my-snmpv3-password"
+    # That value is stored in state and preserved on read. Neither password
+    # path detects controller-side password changes. Community is read back.
+  }
+}
+
 # Configure only RADIUS settings
 resource "unifi_setting" "radius_only" {
   site = "default"
@@ -142,6 +168,7 @@ resource "unifi_setting" "device_isolation" {
 - `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
 - `site` (String) The name of the site to associate the settings with.
+- `snmp` (Attributes) SNMP agent settings (Settings > System > SNMP): a v1/v2c community and a single SNMPv3 user. Only configured SNMP settings are read; import does not populate this attribute. (see [below for nested schema](#nestedatt--snmp))
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `usg` (Attributes) USG settings. (see [below for nested schema](#nestedatt--usg))
@@ -391,6 +418,20 @@ Optional:
 - `auth_port` (Number) RADIUS authentication port.
 - `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
 - `secret` (String, Sensitive) RADIUS shared secret.
+
+
+<a id="nestedatt--snmp"></a>
+### Nested Schema for `snmp`
+
+Optional:
+
+- `community` (String, Sensitive) SNMP v1/v2c community string.
+- `enabled` (Boolean) Enable SNMP v1/v2c.
+- `enabled_v3` (Boolean) Enable SNMPv3.
+- `password` (String, Sensitive) SNMPv3 password, stored in state. The configured value is preserved on read because controllers may omit or mask the password. External password changes are not detected. Mutually exclusive with `password_wo`.
+- `password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only SNMPv3 password (Terraform 1.11+), never stored in plan or state; accepts ephemeral values. Mutually exclusive with `password`. Set `password_wo_version` and change it to rotate this password. Changing only this value does not trigger an update. External password changes are not detected.
+- `password_wo_version` (Number) Positive version for `password_wo`. Required with `password_wo`; change it whenever the write-only password should be applied. The version is stored in state. An unchanged version preserves the controller password during other updates.
+- `username` (String) SNMPv3 username.
 
 
 <a id="nestedatt--syslog"></a>
