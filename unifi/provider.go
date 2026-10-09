@@ -50,6 +50,36 @@ type Client struct {
 	// so they stop each creating a duplicate group with the same name (#389).
 	groupCacheMu sync.Mutex
 	groupCache   map[string]map[string]string // site -> (name -> id)
+
+	// integrationSiteMu guards integrationSites, which memoizes site -> Integration
+	// API UUID so the sites listing is fetched once per site, not on every CRUD call.
+	integrationSiteMu sync.Mutex
+	integrationSites  map[string]ui.IntegrationSiteID
+}
+
+// IntegrationSiteID resolves a site (legacy name such as "default", or a UUID) to the
+// site UUID the Network Integration API requires. Results are cached per client.
+func (c *Client) IntegrationSiteID(
+	ctx context.Context,
+	site string,
+) (ui.IntegrationSiteID, error) {
+	c.integrationSiteMu.Lock()
+	defer c.integrationSiteMu.Unlock()
+
+	if id, ok := c.integrationSites[site]; ok {
+		return id, nil
+	}
+
+	id, err := c.ApiClient.ResolveIntegrationSiteID(ctx, site)
+	if err != nil {
+		return "", err
+	}
+
+	if c.integrationSites == nil {
+		c.integrationSites = make(map[string]ui.IntegrationSiteID)
+	}
+	c.integrationSites[site] = id
+	return id, nil
 }
 
 // GetSiteName returns the site name for this client.
@@ -317,6 +347,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewWireguardPeerResource,
 		NewClientQosRateResource,
 		NewTrafficRouteResource,
+		NewTrafficMatchingListResource,
 	}
 }
 
@@ -380,5 +411,6 @@ func (p *unifiProvider) ListResources(context.Context) []func() list.ListResourc
 		NewPortProfileListResource,
 		NewDeviceListResource,
 		NewFirewallPolicyListResource,
+		NewTrafficMatchingListListResource,
 	}
 }
