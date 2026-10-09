@@ -42,12 +42,7 @@ func TestSettingIpsPreservesUnmanagedFields(t *testing.T) {
 		Honeypot: types.ListNull(
 			types.ObjectType{AttrTypes: ipsHoneypotAttrTypes},
 		),
-		SuppressionWhitelist: types.ListNull(
-			types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
-		),
-		SuppressionAlerts: types.ListNull(
-			types.ObjectType{AttrTypes: ipsAlertAttrTypes},
-		),
+		Suppression: types.ObjectNull(ipsSuppressionAttrTypes),
 	}
 
 	var diags diag.Diagnostics
@@ -147,10 +142,7 @@ func TestSettingIpsNilBaseLosesUnmanagedFields(t *testing.T) {
 		Honeypot: types.ListNull(
 			types.ObjectType{AttrTypes: ipsHoneypotAttrTypes},
 		),
-		SuppressionWhitelist: types.ListNull(
-			types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
-		),
-		SuppressionAlerts: types.ListNull(types.ObjectType{AttrTypes: ipsAlertAttrTypes}),
+		Suppression: types.ObjectNull(ipsSuppressionAttrTypes),
 	}
 
 	got, _ := r.ipsModelToSetting(ctx, model, &diags, nil)
@@ -176,10 +168,7 @@ func TestSettingIpsNilBase(t *testing.T) {
 		EnabledCategories: types.ListNull(types.StringType),
 		EnabledNetworks:   types.ListNull(types.StringType),
 		Honeypot:          types.ListNull(types.ObjectType{AttrTypes: ipsHoneypotAttrTypes}),
-		SuppressionWhitelist: types.ListNull(
-			types.ObjectType{AttrTypes: ipsWhitelistAttrTypes},
-		),
-		SuppressionAlerts: types.ListNull(types.ObjectType{AttrTypes: ipsAlertAttrTypes}),
+		Suppression:       types.ObjectNull(ipsSuppressionAttrTypes),
 	}
 	got, _ := r.ipsModelToSetting(ctx, model, &diags, nil)
 	if diags.HasError() {

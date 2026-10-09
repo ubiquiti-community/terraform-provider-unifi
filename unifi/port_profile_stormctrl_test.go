@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 // The storm-control, rate-limit and priority-queue attributes were hardcoded to
@@ -44,49 +45,50 @@ func TestPortProfileStormctrlRoundTrip(t *testing.T) {
 		t.Fatalf("conversion: %v", d)
 	}
 
-	for _, tc := range []struct {
-		name string
-		got  types.Int64
+	erl, _, d := util.ObjectAs[portEgressRateLimitModel](ctx, model.EgressRateLimit)
+	if d.HasError() {
+		t.Fatalf("egress_rate_limit: %v", d)
+	}
+	if erl.Kbps.ValueInt64() != 64000 || !erl.Enabled.ValueBool() {
+		t.Errorf("egress_rate_limit = %+v, want kbps=64000 enabled=true", erl)
+	}
+
+	for name, got := range map[string]types.Int64{
+		"priority_queue1_level": model.PriorityQueue1Level,
+		"priority_queue2_level": model.PriorityQueue2Level,
+		"priority_queue3_level": model.PriorityQueue3Level,
+		"priority_queue4_level": model.PriorityQueue4Level,
+	} {
+		if got.IsNull() || got.IsUnknown() {
+			t.Errorf("%s should be known, got %v", name, got)
+		}
+	}
+
+	sc, d := portStormctrlFromObject(ctx, model.Stormctrl)
+	if d.HasError() {
+		t.Fatalf("stormctrl: %v", d)
+	}
+	if sc.Type != "rate" {
+		t.Errorf("stormctrl.type = %q, want %q", sc.Type, "rate")
+	}
+	if !sc.BcastEnabled || !sc.McastEnabled || !sc.UcastEnabled {
+		t.Errorf("stormctrl classes should all be enabled, got %+v", sc)
+	}
+	for name, tc := range map[string]struct {
+		got  *int64
 		want int64
 	}{
-		{"egress_rate_limit_kbps", model.EgressRateLimitKbps, 64000},
-		{"priority_queue1_level", model.PriorityQueue1Level, 10},
-		{"priority_queue2_level", model.PriorityQueue2Level, 20},
-		{"priority_queue3_level", model.PriorityQueue3Level, 30},
-		{"priority_queue4_level", model.PriorityQueue4Level, 40},
-		{"stormctrl_bcast_rate", model.StormctrlBcastRate, 1000},
-		{"stormctrl_mcast_rate", model.StormctrlMcastRate, 2000},
-		{"stormctrl_ucast_rate", model.StormctrlUcastRate, 3000},
+		"stormctrl.bcast.rate": {sc.BcastRate, 1000},
+		"stormctrl.mcast.rate": {sc.McastRate, 2000},
+		"stormctrl.ucast.rate": {sc.UcastRate, 3000},
 	} {
-		if tc.got.IsNull() || tc.got.IsUnknown() {
-			t.Errorf("%s should be known, got %v", tc.name, tc.got)
-			continue
+		if tc.got == nil || *tc.got != tc.want {
+			t.Errorf("%s = %v, want %d", name, tc.got, tc.want)
 		}
-		if tc.got.ValueInt64() != tc.want {
-			t.Errorf("%s = %d, want %d", tc.name, tc.got.ValueInt64(), tc.want)
-		}
-	}
-
-	for _, tc := range []struct {
-		name string
-		got  types.Bool
-	}{
-		{"egress_rate_limit_kbps_enabled", model.EgressRateLimitKbpsEnabled},
-		{"stormctrl_bcast_enabled", model.StormctrlBcastEnabled},
-		{"stormctrl_mcast_enabled", model.StormctrlMcastEnabled},
-		{"stormctrl_ucast_enabled", model.StormctrlUcastEnabled},
-	} {
-		if !tc.got.ValueBool() {
-			t.Errorf("%s = false, want true", tc.name)
-		}
-	}
-
-	if got := model.StormctrlType.ValueString(); got != "rate" {
-		t.Errorf("stormctrl_type = %q, want %q", got, "rate")
 	}
 }
 
-// A controller that holds none of these must still read back as null rather
+// A controller that holds none of these must still read back as unset rather
 // than zero, so an unset attribute stays unset instead of planning 0.
 func TestPortProfileStormctrlAbsentReadsNull(t *testing.T) {
 	ctx := context.Background()
@@ -98,20 +100,18 @@ func TestPortProfileStormctrlAbsentReadsNull(t *testing.T) {
 		t.Fatalf("conversion: %v", d)
 	}
 
-	for _, tc := range []struct {
-		name string
-		got  types.Int64
-	}{
-		{"egress_rate_limit_kbps", model.EgressRateLimitKbps},
-		{"stormctrl_bcast_rate", model.StormctrlBcastRate},
-		{"stormctrl_mcast_level", model.StormctrlMcastLevel},
-		{"stormctrl_ucast_rate", model.StormctrlUcastRate},
-	} {
-		if !tc.got.IsNull() {
-			t.Errorf("%s = %v, want null", tc.name, tc.got)
-		}
+	erl, _, _ := util.ObjectAs[portEgressRateLimitModel](ctx, model.EgressRateLimit)
+	if !erl.Kbps.IsNull() {
+		t.Errorf("egress_rate_limit.kbps = %v, want null", erl.Kbps)
 	}
-	if !model.StormctrlType.IsNull() {
-		t.Errorf("stormctrl_type = %v, want null", model.StormctrlType)
+	sc, d := portStormctrlFromObject(ctx, model.Stormctrl)
+	if d.HasError() {
+		t.Fatalf("stormctrl: %v", d)
+	}
+	if sc.BcastRate != nil || sc.McastLevel != nil || sc.UcastRate != nil {
+		t.Errorf("stormctrl rates/levels should be unset, got %+v", sc)
+	}
+	if sc.Type != "" {
+		t.Errorf("stormctrl.type = %q, want empty", sc.Type)
 	}
 }

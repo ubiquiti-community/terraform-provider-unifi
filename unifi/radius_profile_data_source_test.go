@@ -29,7 +29,7 @@ func TestAccRadiusProfileDataSource_basic(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_profile.test",
-						"interim_update_enabled",
+						"interim_update.enabled",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
@@ -44,13 +44,13 @@ func TestAccRadiusProfileDataSource_basic(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_profile.test",
-						"vlan_enabled",
+						"vlan.enabled",
 						"false",
 					),
 					resource.TestCheckResourceAttrSet("data.unifi_radius_profile.test", "site"),
 					resource.TestCheckResourceAttrSet(
 						"data.unifi_radius_profile.test",
-						"interim_update_interval",
+						"interim_update.interval",
 					),
 				),
 			},
@@ -95,12 +95,12 @@ func TestAccRadiusProfileDataSource_accountingEnabled(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_profile.test",
-						"interim_update_enabled",
+						"interim_update.enabled",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"data.unifi_radius_profile.test",
-						"interim_update_interval",
+						"interim_update.interval",
 						"15m0s",
 					),
 				),
@@ -145,10 +145,13 @@ data "unifi_radius_profile" "test" {
 func testAccRadiusProfileDataSourceConfig_accountingEnabled() string {
 	return `
 resource "unifi_radius_profile" "test" {
-  name                    = "tfacc-radius-profile-ds-acct"
-  accounting_enabled      = true
-  interim_update_enabled  = true
-  interim_update_interval = "15m0s"
+  name               = "tfacc-radius-profile-ds-acct"
+  accounting_enabled = true
+
+  interim_update = {
+    enabled  = true
+    interval = "15m0s"
+  }
 }
 
 data "unifi_radius_profile" "test" {
@@ -200,9 +203,18 @@ func Test_radiusProfileDataSource_Schema(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Errorf("Schema() produced errors: %v", resp.Diagnostics)
 	}
-	for _, attr := range []string{"id", "site", "name", "accounting_enabled", "interim_update_enabled"} {
-		if _, ok := resp.Schema.Attributes[attr]; !ok {
-			t.Errorf("missing attribute %q", attr)
+	for _, name := range []string{
+		"id", "site", "name", "accounting_enabled", "interim_update", "vlan",
+	} {
+		if _, ok := resp.Schema.Attributes[name]; !ok {
+			t.Errorf("missing attribute %q", name)
+		}
+	}
+	for _, flat := range []string{
+		"interim_update_enabled", "interim_update_interval", "vlan_enabled", "vlan_wlan_mode",
+	} {
+		if _, ok := resp.Schema.Attributes[flat]; ok {
+			t.Errorf("flat attribute %q should have been nested", flat)
 		}
 	}
 }

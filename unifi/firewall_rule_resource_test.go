@@ -6,15 +6,37 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/querycheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
+
+// firewallRuleTestObject returns base with overrides applied to its attributes.
+func firewallRuleTestObject(
+	t *testing.T,
+	base types.Object,
+	overrides map[string]attr.Value,
+) types.Object {
+	t.Helper()
+	attrs := base.Attributes()
+	for k, v := range overrides {
+		attrs[k] = v
+	}
+	obj, d := types.ObjectValue(base.AttributeTypes(context.Background()), attrs)
+	if d.HasError() {
+		t.Fatalf("building test object: %v", d)
+	}
+	return obj
+}
 
 func TestAccFirewallRule_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -41,22 +63,22 @@ func TestAccFirewallRule_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("unifi_firewall_rule.test", "logging", "false"),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_established",
+						"state.established",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_invalid",
+						"state.invalid",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_new",
+						"state.new",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_related",
+						"state.related",
 						"false",
 					),
 				),
@@ -177,22 +199,22 @@ func TestAccFirewallRule_withStateMatching(t *testing.T) {
 					resource.TestCheckResourceAttrSet("unifi_firewall_rule.test", "id"),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_established",
+						"state.established",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_related",
+						"state.related",
 						"true",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_new",
+						"state.new",
 						"false",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"state_invalid",
+						"state.invalid",
 						"false",
 					),
 				),
@@ -216,7 +238,11 @@ func TestAccFirewallRule_withProtocol(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet("unifi_firewall_rule.test", "id"),
 					resource.TestCheckResourceAttr("unifi_firewall_rule.test", "protocol", "tcp"),
-					resource.TestCheckResourceAttr("unifi_firewall_rule.test", "dst_port", "443"),
+					resource.TestCheckResourceAttr(
+						"unifi_firewall_rule.test",
+						"destination.port",
+						"443",
+					),
 				),
 			},
 			{
@@ -239,12 +265,12 @@ func TestAccFirewallRule_withSrcAddress(t *testing.T) {
 					resource.TestCheckResourceAttrSet("unifi_firewall_rule.test", "id"),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"src_address",
+						"source.address",
 						"10.0.0.0/8",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"src_network_type",
+						"source.network_type",
 						"NETv4",
 					),
 				),
@@ -269,7 +295,7 @@ func TestAccFirewallRule_withDstAddress(t *testing.T) {
 					resource.TestCheckResourceAttrSet("unifi_firewall_rule.test", "id"),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"dst_address",
+						"destination.address",
 						"192.168.0.0/16",
 					),
 				),
@@ -294,12 +320,12 @@ func TestAccFirewallRule_withFirewallGroups(t *testing.T) {
 					resource.TestCheckResourceAttrSet("unifi_firewall_rule.test", "id"),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"src_firewall_group_ids.#",
+						"source.firewall_group_ids.#",
 						"1",
 					),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"dst_firewall_group_ids.#",
+						"destination.firewall_group_ids.#",
 						"1",
 					),
 				),
@@ -407,7 +433,7 @@ func TestAccFirewallRule_withSrcMac(t *testing.T) {
 					resource.TestCheckResourceAttrSet("unifi_firewall_rule.test", "id"),
 					resource.TestCheckResourceAttr(
 						"unifi_firewall_rule.test",
-						"src_mac",
+						"source.mac",
 						"00:11:22:33:44:55",
 					),
 					resource.TestCheckResourceAttr(
@@ -436,7 +462,10 @@ resource "unifi_firewall_rule" "test" {
 
   protocol                = "tcp"
   protocol_match_excepted = true
-  src_mac                 = "00:11:22:33:44:55"
+
+  source = {
+    mac = "00:11:22:33:44:55"
+  }
 }
 `
 }
@@ -449,11 +478,13 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "LAN_IN"
   rule_index = 2000
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -466,11 +497,13 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "WAN_IN"
   rule_index = 2010
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -483,11 +516,13 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "LAN_IN"
   rule_index = 2020
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -501,11 +536,13 @@ resource "unifi_firewall_rule" "test" {
   rule_index = 2030
   enabled    = false
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -519,10 +556,12 @@ resource "unifi_firewall_rule" "test" {
   rule_index = 2040
   logging    = true
 
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -535,11 +574,13 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "WAN_IN"
   rule_index = 2050
 
-  logging           = false
-  state_established = true
-  state_related     = true
-  state_new         = false
-  state_invalid     = false
+  logging = false
+  state = {
+    established = true
+    related     = true
+    new         = false
+    invalid     = false
+  }
 }
 `
 }
@@ -552,13 +593,18 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "WAN_IN"
   rule_index = 2060
   protocol   = "tcp"
-  dst_port   = "443"
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  destination = {
+    port = "443"
+  }
+
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -566,18 +612,23 @@ resource "unifi_firewall_rule" "test" {
 func testAccFirewallRuleConfig_withSrcAddress() string {
 	return `
 resource "unifi_firewall_rule" "test" {
-  name            = "tfacc-firewall-rule-src"
-  action          = "drop"
-  ruleset         = "LAN_IN"
-  rule_index      = 2070
-  src_address     = "10.0.0.0/8"
-  src_network_type = "NETv4"
+  name       = "tfacc-firewall-rule-src"
+  action     = "drop"
+  ruleset    = "LAN_IN"
+  rule_index = 2070
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  source = {
+    address      = "10.0.0.0/8"
+    network_type = "NETv4"
+  }
+
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -589,13 +640,18 @@ resource "unifi_firewall_rule" "test" {
   action     = "drop"
   ruleset    = "LAN_IN"
   rule_index = 2080
-  dst_address = "192.168.0.0/16"
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  destination = {
+    address = "192.168.0.0/16"
+  }
+
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -620,14 +676,20 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "LAN_IN"
   rule_index = 2090
 
-  src_firewall_group_ids = [unifi_firewall_group.src.id]
-  dst_firewall_group_ids = [unifi_firewall_group.dst.id]
+  source = {
+    firewall_group_ids = [unifi_firewall_group.src.id]
+  }
+  destination = {
+    firewall_group_ids = [unifi_firewall_group.dst.id]
+  }
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -641,11 +703,13 @@ resource "unifi_firewall_rule" "test" {
   rule_index = 2001
   enabled    = false
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -658,11 +722,13 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "LAN_IN"
   rule_index = 4000
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -675,11 +741,13 @@ resource "unifi_firewall_rule" "test" {
   ruleset    = "GUEST_IN"
   rule_index = 2000
 
-  logging           = false
-  state_established = false
-  state_invalid     = false
-  state_new         = false
-  state_related     = false
+  logging = false
+  state = {
+    established = false
+    invalid     = false
+    new         = false
+    related     = false
+  }
 }
 `
 }
@@ -795,6 +863,10 @@ func Test_firewallRuleResource_Schema(t *testing.T) {
 			tt.r.Schema(tt.args.ctx, tt.args.req, tt.args.resp)
 			s := tt.args.resp.Schema
 
+			if s.Version != 1 {
+				t.Errorf("Version = %d, want 1", s.Version)
+			}
+
 			checks := []struct {
 				attr     string
 				required bool
@@ -807,6 +879,10 @@ func Test_firewallRuleResource_Schema(t *testing.T) {
 				{"ruleset", true, false, false},
 				{"rule_index", true, false, false},
 				{"enabled", false, true, true},
+				{"icmp", false, true, false},
+				{"source", false, true, true},
+				{"destination", false, true, true},
+				{"state", false, true, true},
 			}
 			for _, c := range checks {
 				a, ok := s.Attributes[c.attr]
@@ -823,6 +899,56 @@ func Test_firewallRuleResource_Schema(t *testing.T) {
 				if a.IsComputed() != c.computed {
 					t.Errorf("%s: Computed = %v, want %v", c.attr, a.IsComputed(), c.computed)
 				}
+			}
+
+			// The flat attributes are gone and their leaves live in the
+			// nested objects (mac keeps its custom type).
+			for _, flat := range []string{
+				"src_address", "src_mac", "dst_port", "icmp_typename", "state_established",
+			} {
+				if _, exists := s.Attributes[flat]; exists {
+					t.Errorf("flat attribute %q still present", flat)
+				}
+			}
+			nested := map[string][]string{
+				"icmp": {"typename", "v6_typename"},
+				"source": {
+					"network_id",
+					"network_type",
+					"firewall_group_ids",
+					"address",
+					"address_ipv6",
+					"port",
+					"mac",
+				},
+				"destination": {
+					"network_id",
+					"network_type",
+					"firewall_group_ids",
+					"address",
+					"address_ipv6",
+					"port",
+				},
+				"state": {"established", "invalid", "new", "related"},
+			}
+			for name, leaves := range nested {
+				obj, ok := s.Attributes[name].(schema.SingleNestedAttribute)
+				if !ok {
+					t.Errorf("%s: %T, want schema.SingleNestedAttribute", name, s.Attributes[name])
+					continue
+				}
+				for _, leaf := range leaves {
+					if _, ok := obj.Attributes[leaf]; !ok {
+						t.Errorf("%s: missing leaf %q", name, leaf)
+					}
+				}
+			}
+			src, ok := s.Attributes["source"].(schema.SingleNestedAttribute)
+			if !ok {
+				t.Fatalf("source: %T, want schema.SingleNestedAttribute", s.Attributes["source"])
+			}
+			if got := src.Attributes["mac"].GetType(); !got.Equal(hwtypes.MACAddressType{}) {
+				t.Errorf("source.mac type = %v, want hwtypes.MACAddressType", got)
 			}
 		})
 	}
@@ -939,6 +1065,11 @@ func Test_firewallRuleResource_modelToFirewallRule(t *testing.T) {
 	}
 	ruleIndex2000 := int64(2000)
 	ruleIndex3000 := int64(3000)
+	// Null objects contribute nothing, exactly as unset flat attributes did.
+	nullICMP := types.ObjectNull(firewallRuleICMPAttrTypes())
+	nullSource := types.ObjectNull(firewallRuleSourceAttrTypes())
+	nullDestination := types.ObjectNull(firewallRuleDestinationAttrTypes())
+	nullState := types.ObjectNull(firewallRuleStateAttrTypes())
 	tests := []struct {
 		name string
 		r    *firewallRuleResource
@@ -958,26 +1089,11 @@ func Test_firewallRuleResource_modelToFirewallRule(t *testing.T) {
 					Enabled:             types.BoolValue(true),
 					Protocol:            types.StringNull(),
 					ProtocolV6:          types.StringNull(),
-					ICMPTypename:        types.StringNull(),
-					ICMPV6Typename:      types.StringNull(),
-					SrcNetworkID:        types.StringNull(),
-					SrcNetworkType:      types.StringNull(),
-					SrcFirewallGroupIDs: types.SetNull(types.StringType),
-					SrcAddress:          types.StringNull(),
-					SrcAddressIPv6:      types.StringNull(),
-					SrcPort:             types.StringNull(),
-					SrcMac:              hwtypes.NewMACAddressNull(),
-					DstNetworkID:        types.StringNull(),
-					DstNetworkType:      types.StringNull(),
-					DstFirewallGroupIDs: types.SetNull(types.StringType),
-					DstAddress:          types.StringNull(),
-					DstAddressIPv6:      types.StringNull(),
-					DstPort:             types.StringNull(),
+					ICMP:                nullICMP,
+					Source:              nullSource,
+					Destination:         nullDestination,
 					Logging:             types.BoolNull(),
-					StateEstablished:    types.BoolNull(),
-					StateInvalid:        types.BoolNull(),
-					StateNew:            types.BoolNull(),
-					StateRelated:        types.BoolNull(),
+					State:               nullState,
 					IPSec:               types.StringNull(),
 					SettingPreference:   types.StringNull(),
 					ProtocolMatchExcept: types.BoolValue(false),
@@ -997,33 +1113,33 @@ func Test_firewallRuleResource_modelToFirewallRule(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				model: &firewallRuleResourceModel{
-					Name:                types.StringValue("allow-https"),
-					Action:              types.StringValue("accept"),
-					Ruleset:             types.StringValue("WAN_IN"),
-					RuleIndex:           types.Int64Value(3000),
-					Enabled:             types.BoolValue(true),
-					Protocol:            types.StringValue("tcp"),
-					ProtocolV6:          types.StringNull(),
-					ICMPTypename:        types.StringNull(),
-					ICMPV6Typename:      types.StringNull(),
-					SrcNetworkID:        types.StringNull(),
-					SrcNetworkType:      types.StringNull(),
-					SrcFirewallGroupIDs: types.SetNull(types.StringType),
-					SrcAddress:          types.StringValue("10.0.0.1"),
-					SrcAddressIPv6:      types.StringNull(),
-					SrcPort:             types.StringNull(),
-					SrcMac:              hwtypes.NewMACAddressNull(),
-					DstNetworkID:        types.StringNull(),
-					DstNetworkType:      types.StringNull(),
-					DstFirewallGroupIDs: types.SetNull(types.StringType),
-					DstAddress:          types.StringNull(),
-					DstAddressIPv6:      types.StringNull(),
-					DstPort:             types.StringValue("443"),
+					Name:       types.StringValue("allow-https"),
+					Action:     types.StringValue("accept"),
+					Ruleset:    types.StringValue("WAN_IN"),
+					RuleIndex:  types.Int64Value(3000),
+					Enabled:    types.BoolValue(true),
+					Protocol:   types.StringValue("tcp"),
+					ProtocolV6: types.StringNull(),
+					ICMP:       nullICMP,
+					// Null leaves inside a known object are skipped too.
+					Source: firewallRuleTestObject(
+						t,
+						firewallRuleSourceDefault(),
+						map[string]attr.Value{
+							"network_type": types.StringNull(),
+							"address":      types.StringValue("10.0.0.1"),
+						},
+					),
+					Destination: firewallRuleTestObject(
+						t,
+						firewallRuleDestinationDefault(),
+						map[string]attr.Value{
+							"network_type": types.StringNull(),
+							"port":         types.StringValue("443"),
+						},
+					),
 					Logging:             types.BoolNull(),
-					StateEstablished:    types.BoolNull(),
-					StateInvalid:        types.BoolNull(),
-					StateNew:            types.BoolNull(),
-					StateRelated:        types.BoolNull(),
+					State:               nullState,
 					IPSec:               types.StringNull(),
 					SettingPreference:   types.StringNull(),
 					ProtocolMatchExcept: types.BoolValue(false),
@@ -1053,26 +1169,11 @@ func Test_firewallRuleResource_modelToFirewallRule(t *testing.T) {
 					Enabled:             types.BoolValue(false),
 					Protocol:            types.StringNull(),
 					ProtocolV6:          types.StringNull(),
-					ICMPTypename:        types.StringNull(),
-					ICMPV6Typename:      types.StringNull(),
-					SrcNetworkID:        types.StringNull(),
-					SrcNetworkType:      types.StringNull(),
-					SrcFirewallGroupIDs: types.SetNull(types.StringType),
-					SrcAddress:          types.StringNull(),
-					SrcAddressIPv6:      types.StringNull(),
-					SrcPort:             types.StringNull(),
-					SrcMac:              hwtypes.NewMACAddressNull(),
-					DstNetworkID:        types.StringNull(),
-					DstNetworkType:      types.StringNull(),
-					DstFirewallGroupIDs: types.SetNull(types.StringType),
-					DstAddress:          types.StringNull(),
-					DstAddressIPv6:      types.StringNull(),
-					DstPort:             types.StringNull(),
+					ICMP:                nullICMP,
+					Source:              nullSource,
+					Destination:         nullDestination,
 					Logging:             types.BoolNull(),
-					StateEstablished:    types.BoolNull(),
-					StateInvalid:        types.BoolNull(),
-					StateNew:            types.BoolNull(),
-					StateRelated:        types.BoolNull(),
+					State:               nullState,
 					IPSec:               types.StringNull(),
 					SettingPreference:   types.StringNull(),
 					ProtocolMatchExcept: types.BoolNull(),
@@ -1089,13 +1190,11 @@ func Test_firewallRuleResource_modelToFirewallRule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.modelToFirewallRule(
-				tt.args.ctx,
-				tt.args.model,
-			); !reflect.DeepEqual(
-				got,
-				tt.want,
-			) {
+			got, diags := tt.r.modelToFirewallRule(tt.args.ctx, tt.args.model)
+			if diags.HasError() {
+				t.Fatalf("modelToFirewallRule: %v", diags)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("firewallRuleResource.modelToFirewallRule() = %v, want %v", got, tt.want)
 			}
 		})
@@ -1176,22 +1275,32 @@ func Test_firewallRuleResource_firewallRuleToModel(t *testing.T) {
 				if !m.Protocol.IsNull() {
 					t.Error("Protocol should be null")
 				}
-				if !m.SrcAddress.IsNull() {
-					t.Error("SrcAddress should be null")
+				if !m.ICMP.IsNull() {
+					t.Errorf("icmp = %v, want null when neither ICMP type is set", m.ICMP)
 				}
-				if !m.DstPort.IsNull() {
-					t.Error("DstPort should be null")
+				src := m.Source.Attributes()
+				if !src["address"].IsNull() {
+					t.Error("source.address should be null")
+				}
+				if !src["firewall_group_ids"].IsNull() {
+					t.Error("source.firewall_group_ids should be null")
+				}
+				if !src["mac"].IsNull() {
+					t.Error("source.mac should be null")
+				}
+				if !m.Destination.Attributes()["port"].IsNull() {
+					t.Error("destination.port should be null")
 				}
 				if !m.IPSec.IsNull() {
 					t.Error("IPSec should be null")
 				}
-				if !m.SrcFirewallGroupIDs.IsNull() {
-					t.Error("SrcFirewallGroupIDs should be null")
+				if !m.State.Equal(firewallRuleStateDefault()) {
+					t.Errorf("state = %v, want all-false default", m.State)
 				}
 			},
 		},
 		{
-			name: "SrcNetworkType defaults to NETv4 when empty",
+			name: "source.network_type defaults to NETv4 when empty",
 			r:    &firewallRuleResource{},
 			args: args{
 				ctx: context.Background(),
@@ -1207,19 +1316,24 @@ func Test_firewallRuleResource_firewallRuleToModel(t *testing.T) {
 				site:  "default",
 			},
 			checkFunc: func(t *testing.T, m *firewallRuleResourceModel) {
-				if m.SrcNetworkType.ValueString() != "NETv4" {
-					t.Errorf(
-						"SrcNetworkType = %q, want %q",
-						m.SrcNetworkType.ValueString(),
-						"NETv4",
-					)
+				got := attrAs[types.String](t, m.Source.Attributes()["network_type"])
+				if got.ValueString() != "NETv4" {
+					t.Errorf("source.network_type = %q, want %q", got.ValueString(), "NETv4")
 				}
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.r.firewallRuleToModel(tt.args.ctx, tt.args.firewallRule, tt.args.model, tt.args.site)
+			diags := tt.r.firewallRuleToModel(
+				tt.args.ctx,
+				tt.args.firewallRule,
+				tt.args.model,
+				tt.args.site,
+			)
+			if diags.HasError() {
+				t.Fatalf("firewallRuleToModel: %v", diags)
+			}
 			if tt.checkFunc != nil {
 				tt.checkFunc(t, tt.args.model)
 			}
@@ -1289,4 +1403,334 @@ func TestAccFirewallRuleList_basic(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestFirewallRuleUpgradeState_v0NestsPrefixedGroups guards the v0 -> v1
+// schema upgrade: flat src_*/dst_*/icmp_*/state_* attributes move into the
+// nested source/destination/icmp/state objects.
+func TestFirewallRuleUpgradeState_v0NestsPrefixedGroups(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallRuleResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Schema.Version != 1 {
+		t.Fatalf("firewall rule schema Version = %d, want 1", schemaResp.Schema.Version)
+	}
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	ups := r.UpgradeState(ctx)
+	up, ok := ups[0]
+	if !ok {
+		t.Fatal("no upgrader registered for schema version 0")
+	}
+	upgrade := func(prior []byte) map[string]tftypes.Value {
+		t.Helper()
+		resp := &fwresource.UpgradeStateResponse{}
+		up.StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+			RawState: &tfprotov6.RawState{JSON: prior},
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+		}
+		val, err := resp.DynamicValue.Unmarshal(schemaType)
+		if err != nil {
+			t.Fatalf("unmarshal upgraded value: %v", err)
+		}
+		var root map[string]tftypes.Value
+		if err := val.As(&root); err != nil {
+			t.Fatalf("as object: %v", err)
+		}
+		return root
+	}
+	obj := func(v tftypes.Value, name string) map[string]tftypes.Value {
+		t.Helper()
+		var m map[string]tftypes.Value
+		if err := v.As(&m); err != nil {
+			t.Fatalf("%s: as object: %v (value %v)", name, err, v)
+		}
+		return m
+	}
+	str := func(v tftypes.Value, name, want string) {
+		t.Helper()
+		var s string
+		if err := v.As(&s); err != nil || s != want {
+			t.Errorf("%s = %v (%v), want %q", name, v, err, want)
+		}
+	}
+	boolean := func(v tftypes.Value, name string, want bool) {
+		t.Helper()
+		var b bool
+		if err := v.As(&b); err != nil || b != want {
+			t.Errorf("%s = %v (%v), want %v", name, v, err, want)
+		}
+	}
+
+	root := upgrade([]byte(`{
+		"id": "fr-1", "site": "default", "name": "allow-https", "action": "accept",
+		"ruleset": "WAN_IN", "rule_index": 3000, "enabled": true,
+		"protocol": "tcp", "protocol_v6": null,
+		"icmp_typename": null, "icmp_v6_typename": null,
+		"src_network_id": null, "src_network_type": "ADDRv4",
+		"src_firewall_group_ids": ["fg-1"], "src_address": "10.0.0.1",
+		"src_address_ipv6": null, "src_port": null, "src_mac": "00:11:22:33:44:55",
+		"dst_network_id": "net-1", "dst_network_type": "NETv4",
+		"dst_firewall_group_ids": null, "dst_address": null, "dst_address_ipv6": null,
+		"dst_port": "443",
+		"logging": true,
+		"state_established": true, "state_invalid": false,
+		"state_new": false, "state_related": true,
+		"ip_sec": null, "setting_preference": null, "protocol_match_excepted": false,
+		"timeouts": null
+	}`))
+
+	for _, flat := range []string{
+		"src_address", "src_mac", "dst_port", "icmp_typename", "state_established",
+	} {
+		if _, exists := root[flat]; exists {
+			t.Errorf("flat attribute %q survived the upgrade", flat)
+		}
+	}
+	str(root["name"], "name", "allow-https")
+	src := obj(root["source"], "source")
+	str(src["network_type"], "source.network_type", "ADDRv4")
+	str(src["address"], "source.address", "10.0.0.1")
+	str(src["mac"], "source.mac", "00:11:22:33:44:55")
+	var groups []tftypes.Value
+	if err := src["firewall_group_ids"].As(&groups); err != nil || len(groups) != 1 {
+		t.Errorf(
+			"source.firewall_group_ids = %v (%v), want one entry",
+			src["firewall_group_ids"],
+			err,
+		)
+	}
+	if !src["port"].IsNull() {
+		t.Errorf("source.port = %v, want null", src["port"])
+	}
+	dst := obj(root["destination"], "destination")
+	str(dst["network_id"], "destination.network_id", "net-1")
+	str(dst["network_type"], "destination.network_type", "NETv4")
+	str(dst["port"], "destination.port", "443")
+	if !dst["firewall_group_ids"].IsNull() {
+		t.Errorf("destination.firewall_group_ids = %v, want null", dst["firewall_group_ids"])
+	}
+	st := obj(root["state"], "state")
+	boolean(st["established"], "state.established", true)
+	boolean(st["invalid"], "state.invalid", false)
+	boolean(st["new"], "state.new", false)
+	boolean(st["related"], "state.related", true)
+	// Neither ICMP type was set: the Optional-only group is a null object,
+	// not an object of nulls, so the next plan is empty.
+	if !root["icmp"].IsNull() {
+		t.Errorf("icmp = %v, want null when neither ICMP type was set", root["icmp"])
+	}
+
+	// A rule that did match on an ICMP type keeps it under icmp. Attributes
+	// missing from this older state are filled with null.
+	root = upgrade([]byte(`{
+		"id": "fr-2", "name": "ping", "action": "accept", "ruleset": "LAN_IN",
+		"rule_index": 2000, "enabled": true, "protocol": "icmp",
+		"icmp_typename": "echo-request", "icmp_v6_typename": null,
+		"src_network_type": "NETv4", "dst_network_type": "NETv4",
+		"state_established": false, "state_invalid": false,
+		"state_new": false, "state_related": false
+	}`))
+	icmp := obj(root["icmp"], "icmp")
+	str(icmp["typename"], "icmp.typename", "echo-request")
+	if !icmp["v6_typename"].IsNull() {
+		t.Errorf("icmp.v6_typename = %v, want null", icmp["v6_typename"])
+	}
+	src = obj(root["source"], "source")
+	str(src["network_type"], "source.network_type", "NETv4")
+	if !src["mac"].IsNull() {
+		t.Errorf("source.mac = %v, want null when absent from prior state", src["mac"])
+	}
+}
+
+// TestFirewallRuleNestedGroups_wireAndReadBack checks that the nested
+// source/destination/icmp/state groups are written to and read back from the
+// API struct, that omitted groups send exactly what the flat defaults sent,
+// and that applyPlanToState overlays only the leaves the plan knows.
+func TestFirewallRuleNestedGroups_wireAndReadBack(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallRuleResource{}
+
+	groups, d := types.SetValue(types.StringType, []attr.Value{types.StringValue("fg-1")})
+	if d.HasError() {
+		t.Fatalf("group set: %v", d)
+	}
+	model := &firewallRuleResourceModel{
+		Name:       types.StringValue("allow-https"),
+		Action:     types.StringValue("accept"),
+		Ruleset:    types.StringValue("WAN_IN"),
+		RuleIndex:  types.Int64Value(3000),
+		Enabled:    types.BoolValue(true),
+		Protocol:   types.StringValue("tcp"),
+		ProtocolV6: types.StringNull(),
+		ICMP: types.ObjectValueMust(firewallRuleICMPAttrTypes(), map[string]attr.Value{
+			"typename":    types.StringValue("echo-request"),
+			"v6_typename": types.StringNull(),
+		}),
+		Source: types.ObjectValueMust(firewallRuleSourceAttrTypes(), map[string]attr.Value{
+			"network_id":         types.StringNull(),
+			"network_type":       types.StringValue("ADDRv4"),
+			"firewall_group_ids": groups,
+			"address":            types.StringValue("10.0.0.1"),
+			"address_ipv6":       types.StringNull(),
+			"port":               types.StringNull(),
+			"mac":                hwtypes.NewMACAddressValue("00:11:22:33:44:55"),
+		}),
+		Destination: firewallRuleTestObject(
+			t,
+			firewallRuleDestinationDefault(),
+			map[string]attr.Value{
+				"network_id": types.StringValue("net-1"),
+				"port":       types.StringValue("443"),
+			},
+		),
+		Logging: types.BoolValue(true),
+		State: firewallRuleTestObject(t, firewallRuleStateDefault(), map[string]attr.Value{
+			"established": types.BoolValue(true),
+			"related":     types.BoolValue(true),
+		}),
+		IPSec:               types.StringNull(),
+		SettingPreference:   types.StringNull(),
+		ProtocolMatchExcept: types.BoolValue(false),
+	}
+
+	api, diags := r.modelToFirewallRule(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToFirewallRule: %v", diags)
+	}
+	if api.ICMPTypename != "echo-request" || api.ICMPv6Typename != "" {
+		t.Errorf("icmp: %q %q", api.ICMPTypename, api.ICMPv6Typename)
+	}
+	if api.SrcNetworkType != "ADDRv4" || api.SrcAddress != "10.0.0.1" ||
+		api.SrcMACAddress != "00:11:22:33:44:55" || len(api.SrcFirewallGroupIDs) != 1 ||
+		api.SrcFirewallGroupIDs[0] != "fg-1" || api.SrcNetworkID != "" || api.SrcPort != "" {
+		t.Errorf("source: %+v", api)
+	}
+	if api.DstNetworkType != "NETv4" || api.DstNetworkID != "net-1" || api.DstPort != "443" ||
+		api.DstFirewallGroupIDs != nil || api.DstAddress != "" {
+		t.Errorf("destination: %+v", api)
+	}
+	if !api.StateEstablished || api.StateInvalid || api.StateNew || !api.StateRelated {
+		t.Errorf("state: %+v", api)
+	}
+
+	// Read back: every group is rebuilt from the API response.
+	var back firewallRuleResourceModel
+	if d := r.firewallRuleToModel(ctx, api, &back, "default"); d.HasError() {
+		t.Fatalf("firewallRuleToModel: %v", d)
+	}
+	for name, got := range map[string][2]types.Object{
+		"icmp":        {back.ICMP, model.ICMP},
+		"source":      {back.Source, model.Source},
+		"destination": {back.Destination, model.Destination},
+		"state":       {back.State, model.State},
+	} {
+		if !got[0].Equal(got[1]) {
+			t.Errorf("%s read back = %v, want %v", name, got[0], got[1])
+		}
+	}
+
+	// Omitted groups (schema defaults) send exactly what the flat defaults
+	// sent: network_type NETv4 on both ends, every state flag false.
+	defaults := &firewallRuleResourceModel{
+		Name:        types.StringValue("min"),
+		Action:      types.StringValue("drop"),
+		Ruleset:     types.StringValue("LAN_IN"),
+		RuleIndex:   types.Int64Value(2000),
+		Enabled:     types.BoolValue(true),
+		ICMP:        types.ObjectNull(firewallRuleICMPAttrTypes()),
+		Source:      firewallRuleSourceDefault(),
+		Destination: firewallRuleDestinationDefault(),
+		State:       firewallRuleStateDefault(),
+	}
+	api, diags = r.modelToFirewallRule(ctx, defaults)
+	if diags.HasError() {
+		t.Fatalf("modelToFirewallRule (defaults): %v", diags)
+	}
+	if api.SrcNetworkType != "NETv4" || api.DstNetworkType != "NETv4" ||
+		api.SrcAddress != "" || api.SrcMACAddress != "" || api.DstPort != "" ||
+		api.SrcFirewallGroupIDs != nil || api.DstFirewallGroupIDs != nil ||
+		api.ICMPTypename != "" || api.StateEstablished || api.StateInvalid ||
+		api.StateNew || api.StateRelated {
+		t.Errorf("defaults: %+v", api)
+	}
+
+	// Unknown groups contribute nothing, like null ones.
+	unknown := &firewallRuleResourceModel{
+		Name:        types.StringValue("unknown"),
+		Source:      types.ObjectUnknown(firewallRuleSourceAttrTypes()),
+		Destination: types.ObjectUnknown(firewallRuleDestinationAttrTypes()),
+		State:       types.ObjectUnknown(firewallRuleStateAttrTypes()),
+		ICMP:        types.ObjectUnknown(firewallRuleICMPAttrTypes()),
+	}
+	api, diags = r.modelToFirewallRule(ctx, unknown)
+	if diags.HasError() {
+		t.Fatalf("modelToFirewallRule (unknown): %v", diags)
+	}
+	if api.SrcNetworkType != "" || api.DstNetworkType != "" || api.StateEstablished {
+		t.Errorf("unknown groups must contribute nothing: %+v", api)
+	}
+
+	// applyPlanToState: an unknown planned group keeps the state's value; a
+	// known group re-asserts only its non-null leaves.
+	plan := &firewallRuleResourceModel{
+		Source: types.ObjectUnknown(firewallRuleSourceAttrTypes()),
+		State: types.ObjectValueMust(firewallRuleStateAttrTypes(), map[string]attr.Value{
+			"established": types.BoolNull(),
+			"invalid":     types.BoolNull(),
+			"new":         types.BoolValue(true),
+			"related":     types.BoolNull(),
+		}),
+	}
+	state := back
+	r.applyPlanToState(ctx, plan, &state)
+	if !state.Source.Equal(back.Source) {
+		t.Errorf("unknown planned source must keep state value: %v", state.Source)
+	}
+	if !state.Destination.Equal(back.Destination) {
+		t.Errorf("null planned destination must keep state value: %v", state.Destination)
+	}
+	st := state.State.Attributes()
+	if !attrAs[types.Bool](t, st["new"]).ValueBool() {
+		t.Errorf("planned state.new not applied: %v", st)
+	}
+	if !attrAs[types.Bool](t, st["established"]).ValueBool() ||
+		!attrAs[types.Bool](t, st["related"]).ValueBool() {
+		t.Errorf("null planned state leaves must keep state values: %v", st)
+	}
+
+	// A rule with neither ICMP type reads back as a null icmp (the group is
+	// Optional-only), except when the practitioner configured an empty block.
+	var fresh firewallRuleResourceModel
+	if d := r.firewallRuleToModel(
+		ctx,
+		&unifi.FirewallRule{ID: "x"},
+		&fresh,
+		"default",
+	); d.HasError() {
+		t.Fatalf("firewallRuleToModel (fresh): %v", d)
+	}
+	if !fresh.ICMP.IsNull() {
+		t.Errorf("icmp should be null when never configured: %v", fresh.ICMP)
+	}
+	emptyBlock := types.ObjectValueMust(firewallRuleICMPAttrTypes(), map[string]attr.Value{
+		"typename":    types.StringNull(),
+		"v6_typename": types.StringNull(),
+	})
+	configured := firewallRuleResourceModel{ICMP: emptyBlock}
+	if d := r.firewallRuleToModel(
+		ctx,
+		&unifi.FirewallRule{ID: "x"},
+		&configured,
+		"default",
+	); d.HasError() {
+		t.Fatalf("firewallRuleToModel (empty block): %v", d)
+	}
+	if !configured.ICMP.Equal(emptyBlock) {
+		t.Errorf("icmp = {} must be kept as configured: %v", configured.ICMP)
+	}
 }

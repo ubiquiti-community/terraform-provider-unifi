@@ -971,7 +971,7 @@ func (r *clientResource) planToClient(
 	}
 
 	if networkID != "" {
-		client.VirtualNetworkOverrideEnabled = util.Ptr(true)
+		client.VirtualNetworkOverrideEnabled = new(true)
 	}
 
 	// Resolve qos_rate to a client group (usergroup) ID.
@@ -1171,7 +1171,7 @@ func (r *clientResource) mergeClient(
 	merged.VirtualNetworkOverrideID = planned.VirtualNetworkOverrideID
 
 	if planned.VirtualNetworkOverrideID != "" {
-		merged.VirtualNetworkOverrideEnabled = util.Ptr(true)
+		merged.VirtualNetworkOverrideEnabled = new(true)
 	}
 
 	// FixedAP and its enable flag

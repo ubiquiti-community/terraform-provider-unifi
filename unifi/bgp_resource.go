@@ -84,6 +84,7 @@ route-map {{.Name}}-OUT-V6 permit 10
 !
 line vty
 !
+
 `)))
 
 // frrTemplateData is the data structure passed to the FRR config template.

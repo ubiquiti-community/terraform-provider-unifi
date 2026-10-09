@@ -1,8 +1,10 @@
 resource "unifi_client_qos_rate" "wifi" {
   name = "wifi"
 
-  qos_rate_max_down = 2000 # 2mbps
-  qos_rate_max_up   = 10   # 10kbps
+  qos_rate = {
+    max_down = 2000 # 2mbps
+    max_up   = 10   # 10kbps
+  }
 }
 
 
