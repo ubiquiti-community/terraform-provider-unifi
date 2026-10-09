@@ -35,9 +35,9 @@ func TestWLANNoStaticDefaultsOnComputedAttributes(t *testing.T) {
 	// (bss_transition) and disabling management-frame protection (pmf_mode).
 	for _, name := range []string{
 		"group_rekey",
-		"wpa_enc",
-		"wpa3_support",
-		"wpa3_transition",
+		"wpa.enc",
+		"wpa3.support",
+		"wpa3.transition",
 		"pmf_mode",
 		"bss_transition",
 		"hide_ssid",
@@ -46,7 +46,7 @@ func TestWLANNoStaticDefaultsOnComputedAttributes(t *testing.T) {
 		"wlan_band",
 		"wlan_bands",
 	} {
-		attr, ok := resp.Schema.Attributes[name]
+		attr, ok := lookupSchemaAttribute(resp.Schema.Attributes, name)
 		if !ok {
 			t.Errorf("attribute %q is missing from the schema", name)
 			continue

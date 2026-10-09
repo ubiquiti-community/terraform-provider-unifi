@@ -30,14 +30,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          install-only: true
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: write
           claude_args: >-
-            --allowed-tools "Bash(gh *),Bash(git fetch:*),Bash(git merge:*),Bash(git rebase:*),Bash(git checkout:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git show:*),Bash(gh pr:*),Bash(go build:*),Bash(go vet:*),Bash(go test:*)"
+            --allowed-tools "Bash(gofmt:*),Bash(go fmt:*),Bash(go install:*),Bash(golangci-lint:*),Bash(gh *),Bash(git fetch:*),Bash(git merge:*),Bash(git rebase:*),Bash(git checkout:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git show:*),Bash(gh pr:*),Bash(go build:*),Bash(go vet:*),Bash(go test:*)"
