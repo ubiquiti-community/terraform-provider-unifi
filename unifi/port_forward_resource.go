@@ -220,8 +220,14 @@ func (r *portForwardResource) Schema(
 					"ip_address": schema.StringAttribute{
 						MarkdownDescription: "The WAN IP address for the port forwarding rule. Use `any` for all addresses.",
 						Optional:            true,
+						// The controller stores and returns "any" for a rule without a
+						// destination IP filter; Computed keeps that value when unset.
+						Computed: true,
 						Validators: []validator.String{
 							validators.IPv4OrAnyValidator(),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
 						},
 					},
 					"port": schema.StringAttribute{
