@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"testing"
 
@@ -935,5 +936,127 @@ func TestAccVPNClientList_basic(t *testing.T) {
 				},
 			},
 		},
+	})
+}
+
+func Test_vpnClientResource_ipv6Subnet(t *testing.T) {
+	ctx := context.Background()
+	r := &vpnClientResource{}
+
+	conf := "[Interface]\nPrivateKey = privkey==\nAddress = 10.0.0.2/30, 2001:db8::2/64\n\n" +
+		"[Peer]\nPublicKey = pubkey==\nEndpoint = 192.0.2.1:51820\nAllowedIPs = ::/0\n"
+
+	fileModeModel := func(t *testing.T, ipv6 cidrtypes.IPv6Prefix) *vpnClientResourceModel {
+		t.Helper()
+		cfgObj, d := types.ObjectValueFrom(
+			ctx,
+			wireguardConfigurationModel{}.AttributeTypes(),
+			wireguardConfigurationModel{
+				Content:  types.StringValue(base64.StdEncoding.EncodeToString([]byte(conf))),
+				Filename: types.StringValue("wg.conf"),
+			},
+		)
+		if d.HasError() {
+			t.Fatalf("building configuration: %v", d)
+		}
+		wg := wireguardModel{
+			PrivateKey:          types.StringNull(),
+			Configuration:       cfgObj,
+			Peer:                types.ObjectNull(wireguardPeerModel{}.AttributeTypes()),
+			PresharedKeyEnabled: types.BoolValue(false),
+			PresharedKey:        types.StringNull(),
+			Interface:           types.StringValue("wan"),
+			DnsServers:          types.ListNull(types.StringType),
+		}
+		wgObj, d := types.ObjectValueFrom(ctx, wg.AttributeTypes(), wg)
+		if d.HasError() {
+			t.Fatalf("building wireguard: %v", d)
+		}
+		return &vpnClientResourceModel{
+			Name:       types.StringValue("v6-vpn"),
+			Enabled:    types.BoolValue(true),
+			Subnet:     cidrtypes.NewIPv4PrefixValue("10.0.0.2/30"),
+			IPv6Subnet: ipv6,
+			Wireguard:  wgObj,
+		}
+	}
+
+	t.Run("file mode takes the IPv6 entry of Address", func(t *testing.T) {
+		network, diags := r.modelToNetwork(ctx, fileModeModel(t, cidrtypes.NewIPv6PrefixUnknown()))
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if network.IPV6Subnet == nil || *network.IPV6Subnet != "2001:db8::2/64" {
+			t.Errorf("IPV6Subnet = %v, want 2001:db8::2/64", network.IPV6Subnet)
+		}
+	})
+
+	t.Run("explicit ipv6_subnet wins over the file", func(t *testing.T) {
+		network, diags := r.modelToNetwork(
+			ctx,
+			fileModeModel(t, cidrtypes.NewIPv6PrefixValue("2001:db8:1::2/64")),
+		)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if network.IPV6Subnet == nil || *network.IPV6Subnet != "2001:db8:1::2/64" {
+			t.Errorf("IPV6Subnet = %v, want 2001:db8:1::2/64", network.IPV6Subnet)
+		}
+	})
+
+	t.Run("null ipv6_subnet is omitted from the request", func(t *testing.T) {
+		model := &vpnClientResourceModel{
+			Name:       types.StringValue("v4-vpn"),
+			Enabled:    types.BoolValue(true),
+			Subnet:     cidrtypes.NewIPv4PrefixValue("10.0.0.2/24"),
+			IPv6Subnet: cidrtypes.NewIPv6PrefixNull(),
+			Wireguard:  types.ObjectNull(wireguardModel{}.AttributeTypes()),
+		}
+		network, diags := r.modelToNetwork(ctx, model)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if network.IPV6Subnet != nil {
+			t.Errorf("IPV6Subnet = %q, want nil", *network.IPV6Subnet)
+		}
+	})
+
+	t.Run("read populates ipv6_subnet, and an empty value reads as null", func(t *testing.T) {
+		for _, tc := range []struct {
+			api      *string
+			wantNull bool
+		}{
+			{new("2001:db8::2/64"), false},
+			{new(""), true},
+			{nil, true},
+		} {
+			name := "v6-vpn"
+			subnet := "10.0.0.2/30"
+			network := &unifi.Network{
+				ID:         "net-v6",
+				Name:       &name,
+				Enabled:    true,
+				IPSubnet:   &subnet,
+				IPV6Subnet: tc.api,
+			}
+			model := &vpnClientResourceModel{}
+			diags := r.networkToModel(ctx, network, model, "default", &vpnClientResourceModel{})
+			if diags.HasError() {
+				t.Fatalf("unexpected diags: %v", diags)
+			}
+			if model.IPv6Subnet.IsNull() != tc.wantNull {
+				label := "<nil>"
+				if tc.api != nil {
+					label = *tc.api
+				}
+				t.Errorf(
+					"api %q: IPv6Subnet null = %v, want %v",
+					label, model.IPv6Subnet.IsNull(), tc.wantNull,
+				)
+			}
+			if !tc.wantNull && model.IPv6Subnet.ValueString() != *tc.api {
+				t.Errorf("IPv6Subnet = %q, want %q", model.IPv6Subnet.ValueString(), *tc.api)
+			}
+		}
 	})
 }
