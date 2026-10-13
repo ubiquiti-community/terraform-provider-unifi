@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### ✨ Features
 
 - **`unifi_wlan`: `roaming_assistant_na` and `roaming_assistant_6e`.** UniFi Network 10.x moved assisted roaming from the device's radio table to the WLAN; these nested objects (`enabled`, `rssi`) replace the deprecated device-level `radio_table.assisted_roaming_*` attributes.
+- **`unifi_device` and `unifi_setting`: manage Etherlighting via the new `etherlighting` blocks.** On switches with per-port LED lighting (e.g. USW Pro Max), `unifi_device.etherlighting` sets the per-switch `mode` (`speed` or `network`), `brightness` (1-100), `behavior` (`steady` or `breath`) and `led_mode` (`etherlighting` or `standard`); its fields are Optional+Computed with `UseStateForUnknown`, and `ether_lighting` is carried into the minimal update body, so a change is sent on update rather than only on adoption. `unifi_setting.etherlighting` sets the site-wide colors per link speed (`speed_overrides`) and per network (`network_overrides`), as 6-digit hex codes without the `#`. The setting block is opt-in like the others on `unifi_setting` and writes only the lists present in the configuration: a declared list replaces the controller's list (`[]` clears it), and an omitted one keeps the colors set in the UI (#463)
 
 ### ⚠️ Breaking Changes
 

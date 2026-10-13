@@ -132,6 +132,9 @@ type deviceResourceModel struct {
 	// Management
 	MgmtNetworkID types.String `tfsdk:"mgmt_network_id"`
 
+	// Etherlighting (etherlighting = { mode, brightness, behavior, led_mode })
+	Etherlighting types.Object `tfsdk:"etherlighting"`
+
 	// Computed attributes
 	Adopted types.Bool   `tfsdk:"adopted"`
 	Model   types.String `tfsdk:"model"`
@@ -248,6 +251,22 @@ func deviceLcmNightModeAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"begins": types.StringType,
 		"ends":   types.StringType,
+	}
+}
+
+type deviceEtherlightingModel struct {
+	Mode       types.String `tfsdk:"mode"`
+	Brightness types.Int64  `tfsdk:"brightness"`
+	Behavior   types.String `tfsdk:"behavior"`
+	LedMode    types.String `tfsdk:"led_mode"`
+}
+
+func deviceEtherlightingAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"mode":       types.StringType,
+		"brightness": types.Int64Type,
+		"behavior":   types.StringType,
+		"led_mode":   types.StringType,
 	}
 }
 
@@ -756,6 +775,62 @@ func (r *deviceResource) Schema(
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+
+			// Etherlighting
+			"etherlighting": schema.SingleNestedAttribute{
+				Description: "Etherlighting settings for switches with per-port LED lighting " +
+					"(e.g. USW Pro Max). The per-speed and per-network colors are site-wide " +
+					"and are configured with `unifi_setting`'s `etherlighting` block.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"mode": schema.StringAttribute{
+						Description: "What the port LEDs show; valid values are `speed` (color by link speed) and `network` (color by network).",
+						Optional:    true,
+						Computed:    true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("speed", "network"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"brightness": schema.Int64Attribute{
+						Description: "Etherlighting brightness (1-100).",
+						Optional:    true,
+						Computed:    true,
+						Validators:  []validator.Int64{int64validator.Between(1, 100)},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+					},
+					"behavior": schema.StringAttribute{
+						Description: "LED behavior; valid values are `steady` and `breath`.",
+						Optional:    true,
+						Computed:    true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("steady", "breath"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"led_mode": schema.StringAttribute{
+						Description: "LED mode; valid values are `etherlighting` and `standard`.",
+						Optional:    true,
+						Computed:    true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("etherlighting", "standard"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
 				},
 			},
 
@@ -1986,11 +2061,11 @@ func (r *deviceResource) ImportState(
 // Every other user-configurable field that modelToAPIDevice populates is carried
 // as well: stp_version and stp_priority (#476), outlet_overrides (#510), and the
 // LCM display, PoE, outlet, lock, disable, band-steering, flow-control,
-// jumbo-frame, outdoor-mode, volume and Talk password settings. Each of them is
-// `omitempty` in go-unifi, so an unset attribute stays off the wire, while a
-// configured one must travel or the controller keeps its old value and the
-// post-apply read fails with an inconsistent-result error. When adding an
-// attribute to modelToAPIDevice, add it here and to
+// jumbo-frame, outdoor-mode, volume, Talk password and etherlighting settings.
+// Each of them is `omitempty` in go-unifi, so an unset attribute stays off the
+// wire, while a configured one must travel or the controller keeps its old
+// value and the post-apply read fails with an inconsistent-result error. When
+// adding an attribute to modelToAPIDevice, add it here and to
 // Test_buildMinimalUpdateDevice_carriesConfigurableFields.
 func buildMinimalUpdateDevice(
 	deviceReq, currentDevice *unifi.Device,
@@ -2045,6 +2120,7 @@ func buildMinimalUpdateDevice(
 		LcmNightModeEnds:           deviceReq.LcmNightModeEnds,
 		OutletEnabled:              deviceReq.OutletEnabled,
 		OutletOverrides:            deviceReq.OutletOverrides,
+		EtherLighting:              deviceReq.EtherLighting,
 	}
 	if currentDevice != nil {
 		minimalDevice.State = currentDevice.State
@@ -2310,6 +2386,13 @@ func (r *deviceResource) setResourceData(
 		model.MgmtNetworkID = types.StringValue(device.MgmtNetworkID)
 	}
 
+	// Etherlighting
+	etherlighting, convDiags := r.etherlightingToFramework(ctx, device.EtherLighting)
+	diags.Append(convDiags...)
+	if !diags.HasError() {
+		model.Etherlighting = etherlighting
+	}
+
 	// Convert config network
 	configNetwork, convDiags := r.configNetworkToFramework(ctx, device.ConfigNetwork)
 	diags.Append(convDiags...)
@@ -2447,6 +2530,19 @@ func (r *deviceResource) modelToAPIDevice(
 	// Management
 	if !model.MgmtNetworkID.IsNull() {
 		device.MgmtNetworkID = model.MgmtNetworkID.ValueString()
+	}
+
+	// Etherlighting. Unknown leaves map to their zero value, which `omitempty`
+	// keeps off the wire.
+	if el, ok, d := util.ObjectAs[deviceEtherlightingModel](ctx, model.Etherlighting); ok {
+		device.EtherLighting = &unifi.DeviceEtherLighting{
+			Mode:       el.Mode.ValueString(),
+			Brightness: int64PointerIfKnown(el.Brightness),
+			Behavior:   el.Behavior.ValueString(),
+			LedMode:    el.LedMode.ValueString(),
+		}
+	} else {
+		diags.Append(d...)
 	}
 
 	// Convert config network
@@ -3544,6 +3640,22 @@ func (r *deviceResource) lcmToFramework(
 	})
 	diags.Append(d...)
 	return obj, diags
+}
+
+// etherlightingToFramework builds the `etherlighting` object from the API response.
+func (r *deviceResource) etherlightingToFramework(
+	ctx context.Context,
+	el *unifi.DeviceEtherLighting,
+) (types.Object, diag.Diagnostics) {
+	if el == nil {
+		return types.ObjectNull(deviceEtherlightingAttrTypes()), nil
+	}
+	return types.ObjectValueFrom(ctx, deviceEtherlightingAttrTypes(), deviceEtherlightingModel{
+		Mode:       stringOrNull(el.Mode),
+		Brightness: types.Int64PointerValue(el.Brightness),
+		Behavior:   stringOrNull(el.Behavior),
+		LedMode:    stringOrNull(el.LedMode),
+	})
 }
 
 // frameworkToConfigNetwork converts Framework types to API ConfigNetwork.

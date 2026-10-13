@@ -305,6 +305,7 @@ type settingResourceModel struct {
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
 	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
 	Connectivity  types.Object   `tfsdk:"connectivity"`
+	EtherLighting types.Object   `tfsdk:"etherlighting"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
 }
 
@@ -339,6 +340,21 @@ type settingConnectivityModel struct {
 	MloMeshEnabled types.Bool   `tfsdk:"mlo_mesh_enabled"`
 	UplinkType     types.String `tfsdk:"uplink_type"`
 	UplinkHost     types.String `tfsdk:"uplink_host"`
+}
+
+type settingEtherLightingModel struct {
+	NetworkOverrides types.List `tfsdk:"network_overrides"`
+	SpeedOverrides   types.List `tfsdk:"speed_overrides"`
+}
+
+type settingEtherLightingNetworkOverrideModel struct {
+	Network types.String `tfsdk:"network"`
+	Color   types.String `tfsdk:"color"`
+}
+
+type settingEtherLightingSpeedOverrideModel struct {
+	Speed types.String `tfsdk:"speed"`
+	Color types.String `tfsdk:"color"`
 }
 
 // settingIgmpSnoopingModel is the nested igmp_snooping block. On UniFi 10.3.x the
@@ -571,6 +587,28 @@ var (
 		"uplink_type":      types.StringType,
 		"uplink_host":      types.StringType,
 	}
+
+	etherLightingNetworkOverrideAttrTypes = map[string]attr.Type{
+		"network": types.StringType,
+		"color":   types.StringType,
+	}
+	etherLightingSpeedOverrideAttrTypes = map[string]attr.Type{
+		"speed": types.StringType,
+		"color": types.StringType,
+	}
+	etherLightingAttrTypes = map[string]attr.Type{
+		"network_overrides": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: etherLightingNetworkOverrideAttrTypes},
+		},
+		"speed_overrides": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: etherLightingSpeedOverrideAttrTypes},
+		},
+	}
+)
+
+var etherLightingColorValidator = stringvalidator.RegexMatches(
+	regexp.MustCompile(`^[0-9A-Fa-f]{6}$`),
+	"must be a 6-digit hex color without the leading `#`, e.g. `ff0000`",
 )
 
 func (r *settingResource) Metadata(
@@ -1682,6 +1720,70 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"etherlighting": schema.SingleNestedAttribute{
+				MarkdownDescription: "Site-wide Etherlighting colors for switches with " +
+					"per-port LED lighting. Switches in `speed` mode color each port by " +
+					"its link speed, those in `network` mode by its network; set the mode " +
+					"per switch with `unifi_device`'s `etherlighting` block. Each list " +
+					"replaces the controller's list when set and is left untouched when " +
+					"omitted.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"network_overrides": schema.ListNestedAttribute{
+						MarkdownDescription: "Colors for ports on the given network.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"network": schema.StringAttribute{
+									MarkdownDescription: "ID of the network.",
+									Required:            true,
+								},
+								"color": schema.StringAttribute{
+									MarkdownDescription: "6-digit hex color without the leading `#` (e.g. `ff0000`).",
+									Required:            true,
+									Validators: []validator.String{
+										etherLightingColorValidator,
+									},
+								},
+							},
+						},
+					},
+					"speed_overrides": schema.ListNestedAttribute{
+						MarkdownDescription: "Colors for ports linked at the given speed.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"speed": schema.StringAttribute{
+									MarkdownDescription: "Link speed: `FE`, `GbE`, `2.5GbE`, `5GbE`, " +
+										"`10GbE`, `25GbE`, `40GbE` or `100GbE`.",
+									Required: true,
+									Validators: []validator.String{
+										stringvalidator.OneOf(
+											"FE", "GbE", "2.5GbE", "5GbE",
+											"10GbE", "25GbE", "40GbE", "100GbE",
+										),
+									},
+								},
+								"color": schema.StringAttribute{
+									MarkdownDescription: "6-digit hex color without the leading `#` (e.g. `ff0000`).",
+									Required:            true,
+									Validators: []validator.String{
+										etherLightingColorValidator,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 			"timeouts": timeouts.Attributes(
 				ctx,
 				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
@@ -2199,6 +2301,11 @@ func (r *settingResource) Create(
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
 	r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+
+	var etherLightingConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("etherlighting"), &etherLightingConfig)...)
+	r.persistEtherLighting(ctx, site, etherLightingConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2552,6 +2659,11 @@ func (r *settingResource) Update(
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
 	r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+
+	var etherLightingConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("etherlighting"), &etherLightingConfig)...)
+	r.persistEtherLighting(ctx, site, etherLightingConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -3006,6 +3118,27 @@ func (r *settingResource) readSettings(
 		data.GlobalSwitch = objValue
 	} else {
 		data.GlobalSwitch = types.ObjectNull(globalSwitchAttrTypes)
+	}
+
+	// Etherlighting colors
+	if !data.EtherLighting.IsNull() && !data.EtherLighting.IsUnknown() {
+		_, elSetting, err := ui.GetSetting[*settings.EtherLighting](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Etherlighting Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx,
+			etherLightingAttrTypes,
+			r.etherLightingSettingToModel(ctx, elSetting, diags),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.EtherLighting = objValue
+	} else {
+		data.EtherLighting = types.ObjectNull(etherLightingAttrTypes)
 	}
 }
 
@@ -3932,6 +4065,122 @@ func (r *settingResource) connectivitySettingToModel(
 		MloMeshEnabled: types.BoolValue(setting.MloMeshEnabled),
 		UplinkType:     stringOrNull(setting.UplinkType),
 		UplinkHost:     stringOrNull(setting.UplinkHost),
+	}
+}
+
+// Etherlighting conversion functions.
+
+// persistEtherLighting writes the etherlighting lists set in config, if any.
+// obj must come from config, not the plan: UseStateForUnknown fills an omitted
+// list in the plan from state, and that must not be re-sent. The controller
+// merges this partial PUT into the stored setting, so a list left out of the
+// configuration keeps the colors set in the UI.
+func (r *settingResource) persistEtherLighting(
+	ctx context.Context,
+	site string,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) {
+	if obj.IsNull() || obj.IsUnknown() {
+		return
+	}
+	var model settingEtherLightingModel
+	diags.Append(obj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return
+	}
+
+	setting := etherLightingRawSetting(ctx, &model, diags)
+	if diags.HasError() {
+		return
+	}
+	if len(setting.Data) == 0 {
+		return
+	}
+	if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		diags.AddError("Error Updating Etherlighting Setting", err.Error())
+	}
+}
+
+const etherLightingSettingKey = "ether_lighting"
+
+func etherLightingRawSetting(
+	ctx context.Context,
+	model *settingEtherLightingModel,
+	diags *diag.Diagnostics,
+) *settings.RawSetting {
+	data := map[string]any{}
+	if !model.NetworkOverrides.IsNull() && !model.NetworkOverrides.IsUnknown() {
+		var overrides []settingEtherLightingNetworkOverrideModel
+		diags.Append(model.NetworkOverrides.ElementsAs(ctx, &overrides, false)...)
+		// Never nil, which would marshal as null rather than [].
+		entries := make([]settings.SettingEtherLightingNetworkOverrides, 0, len(overrides))
+		for _, o := range overrides {
+			entries = append(entries, settings.SettingEtherLightingNetworkOverrides{
+				Key:         o.Network.ValueString(),
+				RawColorHex: o.Color.ValueString(),
+			})
+		}
+		data["network_overrides"] = entries
+	}
+	if !model.SpeedOverrides.IsNull() && !model.SpeedOverrides.IsUnknown() {
+		var overrides []settingEtherLightingSpeedOverrideModel
+		diags.Append(model.SpeedOverrides.ElementsAs(ctx, &overrides, false)...)
+		entries := make([]settings.SettingEtherLightingSpeedOverrides, 0, len(overrides))
+		for _, o := range overrides {
+			entries = append(entries, settings.SettingEtherLightingSpeedOverrides{
+				Key:         o.Speed.ValueString(),
+				RawColorHex: o.Color.ValueString(),
+			})
+		}
+		data["speed_overrides"] = entries
+	}
+	return &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: etherLightingSettingKey},
+		Data:        data,
+	}
+}
+
+func (r *settingResource) etherLightingSettingToModel(
+	ctx context.Context,
+	setting *settings.EtherLighting,
+	diags *diag.Diagnostics,
+) *settingEtherLightingModel {
+	networkOverrides := make(
+		[]settingEtherLightingNetworkOverrideModel, 0, len(setting.NetworkOverrides),
+	)
+	for _, o := range setting.NetworkOverrides {
+		networkOverrides = append(networkOverrides, settingEtherLightingNetworkOverrideModel{
+			Network: types.StringValue(o.Key),
+			Color:   types.StringValue(o.RawColorHex),
+		})
+	}
+	networkList, d := types.ListValueFrom(
+		ctx,
+		types.ObjectType{AttrTypes: etherLightingNetworkOverrideAttrTypes},
+		networkOverrides,
+	)
+	diags.Append(d...)
+
+	speedOverrides := make(
+		[]settingEtherLightingSpeedOverrideModel, 0, len(setting.SpeedOverrides),
+	)
+	for _, o := range setting.SpeedOverrides {
+		speedOverrides = append(speedOverrides, settingEtherLightingSpeedOverrideModel{
+			Speed: types.StringValue(o.Key),
+			Color: types.StringValue(o.RawColorHex),
+		})
+	}
+	speedList, d := types.ListValueFrom(
+		ctx,
+		types.ObjectType{AttrTypes: etherLightingSpeedOverrideAttrTypes},
+		speedOverrides,
+	)
+	diags.Append(d...)
+
+	return &settingEtherLightingModel{
+		NetworkOverrides: networkList,
+		SpeedOverrides:   speedList,
 	}
 }
 

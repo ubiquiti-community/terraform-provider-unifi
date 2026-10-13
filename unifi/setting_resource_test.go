@@ -3414,3 +3414,122 @@ func TestSettingNestedGroups_roundTrip(t *testing.T) {
 		}
 	})
 }
+
+func TestEtherLightingRawSetting(t *testing.T) {
+	ctx := context.Background()
+	networkType := types.ObjectType{AttrTypes: etherLightingNetworkOverrideAttrTypes}
+	speedType := types.ObjectType{AttrTypes: etherLightingSpeedOverrideAttrTypes}
+
+	t.Run("only configured lists are sent", func(t *testing.T) {
+		speeds, d := types.ListValueFrom(ctx, speedType, []settingEtherLightingSpeedOverrideModel{
+			{Speed: types.StringValue("GbE"), Color: types.StringValue("00ff00")},
+			{Speed: types.StringValue("10GbE"), Color: types.StringValue("ffffff")},
+		})
+		if d.HasError() {
+			t.Fatalf("building the list: %v", d)
+		}
+		var diags diag.Diagnostics
+		raw := etherLightingRawSetting(ctx, &settingEtherLightingModel{
+			NetworkOverrides: types.ListNull(networkType),
+			SpeedOverrides:   speeds,
+		}, &diags)
+		if diags.HasError() {
+			t.Fatalf("conversion: %v", diags)
+		}
+		if raw.Key != "ether_lighting" {
+			t.Errorf("Key = %q, want ether_lighting", raw.Key)
+		}
+		if _, present := raw.Data["network_overrides"]; present {
+			t.Error("an unmanaged network_overrides must not be sent")
+		}
+		b, err := json.Marshal(raw)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(b, &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		want := `[{"key":"GbE","raw_color_hex":"00ff00"},{"key":"10GbE","raw_color_hex":"ffffff"}]`
+		got, err := json.Marshal(payload["speed_overrides"])
+		if err != nil {
+			t.Fatalf("marshal speed_overrides: %v", err)
+		}
+		if string(got) != want {
+			t.Errorf("speed_overrides = %s, want %s", got, want)
+		}
+	})
+
+	t.Run("an explicitly empty list clears the overrides", func(t *testing.T) {
+		empty, d := types.ListValueFrom(
+			ctx,
+			networkType,
+			[]settingEtherLightingNetworkOverrideModel{},
+		)
+		if d.HasError() {
+			t.Fatalf("building the list: %v", d)
+		}
+		var diags diag.Diagnostics
+		raw := etherLightingRawSetting(ctx, &settingEtherLightingModel{
+			NetworkOverrides: empty,
+			SpeedOverrides:   types.ListUnknown(speedType),
+		}, &diags)
+		if diags.HasError() {
+			t.Fatalf("conversion: %v", diags)
+		}
+		b, err := json.Marshal(raw)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(b, &payload); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if got, ok := payload["network_overrides"].([]any); !ok || len(got) != 0 {
+			t.Errorf("network_overrides = %#v, want []", payload["network_overrides"])
+		}
+		if _, present := payload["speed_overrides"]; present {
+			t.Errorf("an unknown speed_overrides must not be sent: %s", b)
+		}
+	})
+
+	t.Run("nothing configured sends nothing", func(t *testing.T) {
+		var diags diag.Diagnostics
+		raw := etherLightingRawSetting(ctx, &settingEtherLightingModel{
+			NetworkOverrides: types.ListNull(networkType),
+			SpeedOverrides:   types.ListNull(speedType),
+		}, &diags)
+		if len(raw.Data) != 0 {
+			t.Errorf("want an empty payload, got %v", raw.Data)
+		}
+	})
+}
+
+func Test_settingResource_etherLightingSettingToModel(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+	var diags diag.Diagnostics
+	got := r.etherLightingSettingToModel(ctx, &settings.EtherLighting{
+		NetworkOverrides: []settings.SettingEtherLightingNetworkOverrides{
+			{Key: "net-1", RawColorHex: "ff0000"},
+		},
+	}, &diags)
+	if diags.HasError() {
+		t.Fatalf("conversion: %v", diags)
+	}
+
+	var networks []settingEtherLightingNetworkOverrideModel
+	got.NetworkOverrides.ElementsAs(ctx, &networks, false)
+	if len(networks) != 1 || networks[0].Network.ValueString() != "net-1" ||
+		networks[0].Color.ValueString() != "ff0000" {
+		t.Errorf("network_overrides = %v, want [{net-1 ff0000}]", got.NetworkOverrides)
+	}
+	// A list the controller does not hold reads back empty, not null, so an
+	// omitted (Computed) list settles instead of planning on every run.
+	if got.SpeedOverrides.IsNull() || len(got.SpeedOverrides.Elements()) != 0 {
+		t.Errorf("speed_overrides = %v, want an empty list", got.SpeedOverrides)
+	}
+	if _, d := types.ObjectValueFrom(ctx, etherLightingAttrTypes, got); d.HasError() {
+		t.Fatalf("model does not match etherLightingAttrTypes: %v", d)
+	}
+}
