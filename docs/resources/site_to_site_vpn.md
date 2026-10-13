@@ -80,6 +80,7 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
+- `dh_group` (Number) The IPsec Diffie-Hellman group, sent as the controller's `ipsec_dh_group` field. It is separate from the phase-specific `ike_dh_group` and `esp_dh_group`. Defaults to `14`.
 - `dynamic_routing` (Boolean) Whether IPsec dynamic routing is enabled.
 - `enabled` (Boolean) Whether the tunnel is enabled.
 - `esp_dh_group` (Number) ESP (phase 2) Diffie-Hellman group (PFS). Only used when `profile = customized`.

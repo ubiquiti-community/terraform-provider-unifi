@@ -9,6 +9,8 @@ import (
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/defaults"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -43,6 +45,7 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 		RemoteSubnets: subnets,
 		Profile:       types.StringValue("customized"),
 		IKEEncryption: types.StringValue("aes256"),
+		DHGroup:       types.Int64Value(15),
 		IKEDhGroup:    types.Int64Value(14),
 		PFS:           types.BoolValue(true),
 	}
@@ -62,6 +65,9 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 	}
 	if network.IPSecPreSharedKey == nil || *network.IPSecPreSharedKey != "s3cret-psk" {
 		t.Errorf("IPSecPreSharedKey not set")
+	}
+	if network.IPSecDhGroup == nil || *network.IPSecDhGroup != 15 {
+		t.Errorf("IPSecDhGroup = %v, want 15", network.IPSecDhGroup)
 	}
 	if network.IPSecIkeDhGroup == nil || *network.IPSecIkeDhGroup != 14 {
 		t.Errorf("IPSecIkeDhGroup = %v, want 14", network.IPSecIkeDhGroup)
@@ -84,6 +90,7 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 		IPSecPeerIP:       unifi.Ptr("203.0.113.9"),
 		IPSecKeyExchange:  unifi.Ptr("ikev2"),
 		IPSecPreSharedKey: unifi.Ptr("echoed-by-controller"),
+		IPSecDhGroup:      unifi.Ptr(int64(15)),
 		IPSecPfs:          true,
 		RemoteVPNSubnets:  []string{"192.0.2.0/24", "198.51.100.0/24"},
 	}
@@ -98,6 +105,9 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 	}
 	if out.PeerIP.ValueString() != "203.0.113.9" {
 		t.Errorf("PeerIP = %q", out.PeerIP.ValueString())
+	}
+	if out.DHGroup.ValueInt64() != 15 {
+		t.Errorf("DHGroup = %v, want 15", out.DHGroup)
 	}
 	// The controller echoes the PSK on read, but networkToModel must preserve the
 	// configured/state value to avoid perpetual diffs.
@@ -388,11 +398,21 @@ func Test_siteToSiteVPNResource_Schema(t *testing.T) {
 	}
 	for _, attr := range []string{
 		"id", "site", "name", "enabled", "interface", "peer_ip",
-		"pre_shared_key", "remote_subnets", "profile", "timeouts",
+		"pre_shared_key", "remote_subnets", "profile", "dh_group", "timeouts",
 	} {
 		if _, ok := resp.Schema.Attributes[attr]; !ok {
 			t.Errorf("missing attribute %q", attr)
 		}
+	}
+
+	dh, ok := resp.Schema.Attributes["dh_group"].(schema.Int64Attribute)
+	if !ok || dh.Default == nil {
+		t.Fatal("dh_group must be an Int64Attribute with a default")
+	}
+	defResp := &defaults.Int64Response{}
+	dh.Default.DefaultInt64(context.Background(), defaults.Int64Request{}, defResp)
+	if defResp.PlanValue.ValueInt64() != 14 {
+		t.Errorf("dh_group default = %v, want 14", defResp.PlanValue)
 	}
 }
 
