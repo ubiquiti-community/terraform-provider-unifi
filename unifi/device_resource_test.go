@@ -770,7 +770,7 @@ func TestDeviceComputedAttrsUseStateForUnknown(t *testing.T) {
 		"flowctrl_enabled", "jumboframe_enabled", "stp",
 		"locked", "poe_mode", "outdoor_mode_override",
 		"volume", "x_baresip_password", "lcm",
-		"outlet_enabled", "mgmt_network_id",
+		"outlet_enabled", "mgmt_network_id", "etherlighting",
 		"adopted", "model", "type",
 	}
 
@@ -2514,6 +2514,12 @@ func Test_buildMinimalUpdateDevice_carriesConfigurableFields(t *testing.T) {
 		MeshStaVapEnabled:          true,
 		ConfigNetwork:              &unifi.DeviceConfigNetwork{Type: "dhcp"},
 		RadioTable:                 []unifi.DeviceRadioTable{{Name: "wifi0", Radio: "ng"}},
+		EtherLighting: &unifi.DeviceEtherLighting{
+			Mode:       "network",
+			Brightness: ptrInt64(80),
+			Behavior:   "breath",
+			LedMode:    "etherlighting",
+		},
 	}
 
 	got := buildMinimalUpdateDevice(deviceReq, nil, nil)
@@ -2530,6 +2536,7 @@ func Test_buildMinimalUpdateDevice_carriesConfigurableFields(t *testing.T) {
 		"OutletEnabled", "OutletOverrides",
 		"MgmtNetworkID", "LedOverride", "LedOverrideColor", "LedOverrideColorBrightness",
 		"SwitchVLANEnabled", "MeshStaVapEnabled", "ConfigNetwork", "RadioTable",
+		"EtherLighting",
 	} {
 		w := want.FieldByName(name).Interface()
 		h := have.FieldByName(name).Interface()

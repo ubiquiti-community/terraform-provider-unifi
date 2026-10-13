@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
@@ -457,6 +458,62 @@ func TestDeviceModelToAPIDevice_nestedGroups(t *testing.T) {
 	nm := attrAs[types.Object](t, back.Lcm.Attributes()["night_mode"]).Attributes()
 	if attrAs[types.String](t, nm["begins"]).ValueString() != "22:00" || !nm["ends"].IsNull() {
 		t.Errorf("lcm.night_mode not read: %v", nm)
+	}
+}
+
+func TestDeviceEtherlighting_roundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	model := &deviceResourceModel{
+		MAC: hwtypes.NewMACAddressValue("00:11:22:33:44:55"),
+		Etherlighting: types.ObjectValueMust(deviceEtherlightingAttrTypes(), map[string]attr.Value{
+			"mode":       types.StringValue("network"),
+			"brightness": types.Int64Value(80),
+			"behavior":   types.StringUnknown(),
+			"led_mode":   types.StringValue("etherlighting"),
+		}),
+	}
+	dev, diags := r.modelToAPIDevice(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToAPIDevice: %v", diags)
+	}
+	el := dev.EtherLighting
+	if el == nil || el.Mode != "network" || el.Brightness == nil || *el.Brightness != 80 ||
+		el.LedMode != "etherlighting" || el.Behavior != "" {
+		t.Errorf("etherlighting not mapped (unknown behavior must stay unset): %+v", el)
+	}
+
+	model.Etherlighting = types.ObjectUnknown(deviceEtherlightingAttrTypes())
+	if dev, _ = r.modelToAPIDevice(ctx, model); dev.EtherLighting != nil {
+		t.Errorf("an unknown etherlighting object must stay off the wire: %+v", dev.EtherLighting)
+	}
+
+	var readDiags diag.Diagnostics
+	back := &deviceResourceModel{}
+	r.setResourceData(ctx, &readDiags, &unifi.Device{
+		ID: "dev-1", MAC: "00:11:22:33:44:55",
+		EtherLighting: &unifi.DeviceEtherLighting{
+			Mode: "speed", Brightness: ptrInt64(100), Behavior: "steady",
+		},
+	}, back, "default")
+	if readDiags.HasError() {
+		t.Fatalf("setResourceData: %v", readDiags)
+	}
+	got := back.Etherlighting.Attributes()
+	if attrAs[types.String](t, got["mode"]).ValueString() != "speed" ||
+		attrAs[types.Int64](t, got["brightness"]).ValueInt64() != 100 ||
+		attrAs[types.String](t, got["behavior"]).ValueString() != "steady" ||
+		!got["led_mode"].IsNull() {
+		t.Errorf("etherlighting not read back: %v", back.Etherlighting)
+	}
+
+	r.setResourceData(ctx, &readDiags, &unifi.Device{ID: "dev-2"}, back, "default")
+	if readDiags.HasError() {
+		t.Fatalf("setResourceData (no etherlighting): %v", readDiags)
+	}
+	if !back.Etherlighting.IsNull() {
+		t.Errorf("a device without etherlighting must read back null: %v", back.Etherlighting)
 	}
 }
 
