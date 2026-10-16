@@ -19,6 +19,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -1332,6 +1333,52 @@ func Test_wlanToModel_bandsteeringMode(t *testing.T) {
 			t.Errorf("BandsteeringMode = %v, want null", model.BandsteeringMode)
 		}
 	})
+}
+
+// Test_wlanPlan_bandsteeringModeNotUnknownOnUpdate covers the deprecated
+// attribute on an update that changes something else. bandsteering_mode is
+// Optional+Computed and always reads back null, so without a plan modifier the
+// framework re-plans it as unknown whenever the WLAN has any other change, and
+// every such plan shows "+ bandsteering_mode = (known after apply)". The
+// planned value must stay the prior null.
+func Test_wlanPlan_bandsteeringModeNotUnknownOnUpdate(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp fwresource.SchemaResponse
+	(&wlanFrameworkResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("schema: %v", schemaResp.Diagnostics)
+	}
+
+	f := planFixture{ctx: ctx, t: t, overrides: map[string]attr.Value{
+		"bandsteering_mode": types.StringNull(),
+	}}
+	prior, config := f.object(schemaResp.Schema, "")
+
+	// Rename the WLAN: a real change, so the framework marks unset Computed
+	// attributes as unknown unless a plan modifier pins them.
+	rename := func(v tftypes.Value) tftypes.Value {
+		var attrs map[string]tftypes.Value
+		if err := v.As(&attrs); err != nil {
+			t.Fatalf("as object: %v", err)
+		}
+		// As shares the object's map; copy it so prior stays unchanged.
+		renamed := make(map[string]tftypes.Value, len(attrs))
+		for k, a := range attrs {
+			renamed[k] = a
+		}
+		renamed["name"] = tftypes.NewValue(tftypes.String, "renamed")
+		return tftypes.NewValue(v.Type(), renamed)
+	}
+	planned := planResourceChange(t, "unifi_wlan", schemaResp.Schema,
+		prior, rename(prior), rename(config))
+
+	var attrs map[string]tftypes.Value
+	if err := planned.As(&attrs); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	if got := attrs["bandsteering_mode"]; !got.IsKnown() || !got.IsNull() {
+		t.Errorf("bandsteering_mode = %v, want the prior null", got)
+	}
 }
 
 // TestAccWLANFramework_bandsteeringMode exercises #388 end to end against the
