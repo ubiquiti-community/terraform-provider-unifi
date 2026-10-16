@@ -1335,13 +1335,20 @@ func Test_wlanToModel_bandsteeringMode(t *testing.T) {
 	})
 }
 
-// Test_wlanPlan_bandsteeringModeNotUnknownOnUpdate covers the deprecated
-// attribute on an update that changes something else. bandsteering_mode is
-// Optional+Computed and always reads back null, so without a plan modifier the
-// framework re-plans it as unknown whenever the WLAN has any other change, and
-// every such plan shows "+ bandsteering_mode = (known after apply)". The
-// planned value must stay the prior null.
-func Test_wlanPlan_bandsteeringModeNotUnknownOnUpdate(t *testing.T) {
+// Test_wlanPlan_bandsteeringModeStaysPinned covers the deprecated
+// bandsteering_mode, which is Optional+Computed and always reads back null.
+// Whenever the framework decides a WLAN's plan differs from its prior state it
+// re-plans every unpinned Computed attribute as unknown, so without a plan
+// modifier this attribute shows "+ bandsteering_mode = (known after apply)":
+//
+//   - on a real change (a renamed SSID);
+//   - on no change at all, when the controller holds mac_filter.policy =
+//     "allow": the nested Default ("deny") trips the gate and mac_filter's own
+//     UseStateForUnknown restores "allow", leaving a perpetual in-place update
+//     with nothing visible but this attribute.
+//
+// Either way the planned value must stay the prior null.
+func Test_wlanPlan_bandsteeringModeStaysPinned(t *testing.T) {
 	ctx := context.Background()
 	var schemaResp fwresource.SchemaResponse
 	(&wlanFrameworkResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
@@ -1349,36 +1356,75 @@ func Test_wlanPlan_bandsteeringModeNotUnknownOnUpdate(t *testing.T) {
 		t.Fatalf("schema: %v", schemaResp.Diagnostics)
 	}
 
-	f := planFixture{ctx: ctx, t: t, overrides: map[string]attr.Value{
-		"bandsteering_mode": types.StringNull(),
-	}}
-	prior, config := f.object(schemaResp.Schema, "")
-
-	// Rename the WLAN: a real change, so the framework marks unset Computed
-	// attributes as unknown unless a plan modifier pins them.
-	rename := func(v tftypes.Value) tftypes.Value {
-		var attrs map[string]tftypes.Value
-		if err := v.As(&attrs); err != nil {
-			t.Fatalf("as object: %v", err)
-		}
-		// As shares the object's map; copy it so prior stays unchanged.
-		renamed := make(map[string]tftypes.Value, len(attrs))
-		for k, a := range attrs {
-			renamed[k] = a
-		}
-		renamed["name"] = tftypes.NewValue(tftypes.String, "renamed")
-		return tftypes.NewValue(v.Type(), renamed)
+	cases := []struct {
+		name   string
+		policy string
+		rename bool
+	}{
+		{"renamed WLAN", "deny", true},
+		{"unchanged WLAN with mac_filter policy allow", "allow", false},
 	}
-	planned := planResourceChange(t, "unifi_wlan", schemaResp.Schema,
-		prior, rename(prior), rename(config))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := planFixture{ctx: ctx, t: t, overrides: map[string]attr.Value{
+				"bandsteering_mode":  types.StringNull(),
+				"mac_filter.enabled": types.BoolValue(false),
+				"mac_filter.policy":  types.StringValue(tc.policy),
+			}}
+			prior, config := f.object(schemaResp.Schema, "")
+			proposed := prior
+			if tc.rename {
+				proposed = withName(t, prior, "renamed")
+				config = withName(t, config, "renamed")
+			}
+			planned := planResourceChange(
+				t,
+				"unifi_wlan",
+				schemaResp.Schema,
+				prior,
+				proposed,
+				config,
+			)
 
+			var attrs map[string]tftypes.Value
+			if err := planned.As(&attrs); err != nil {
+				t.Fatalf("as object: %v", err)
+			}
+			if got := attrs["bandsteering_mode"]; !got.IsKnown() || !got.IsNull() {
+				t.Errorf("bandsteering_mode = %v, want the prior null", got)
+			}
+			if !tc.rename {
+				diffs, err := prior.Diff(planned)
+				if err != nil {
+					t.Fatalf("diff: %v", err)
+				}
+				for _, d := range diffs {
+					t.Errorf(
+						"unchanged configuration planned %s: %v -> %v",
+						d.Path,
+						d.Value1,
+						d.Value2,
+					)
+				}
+			}
+		})
+	}
+}
+
+// withName returns a copy of a WLAN object value with name replaced. As
+// shares the object's map, so it is copied before the change.
+func withName(t *testing.T, v tftypes.Value, name string) tftypes.Value {
+	t.Helper()
 	var attrs map[string]tftypes.Value
-	if err := planned.As(&attrs); err != nil {
+	if err := v.As(&attrs); err != nil {
 		t.Fatalf("as object: %v", err)
 	}
-	if got := attrs["bandsteering_mode"]; !got.IsKnown() || !got.IsNull() {
-		t.Errorf("bandsteering_mode = %v, want the prior null", got)
+	renamed := make(map[string]tftypes.Value, len(attrs))
+	for k, a := range attrs {
+		renamed[k] = a
 	}
+	renamed["name"] = tftypes.NewValue(tftypes.String, name)
+	return tftypes.NewValue(v.Type(), renamed)
 }
 
 // TestAccWLANFramework_bandsteeringMode exercises #388 end to end against the
