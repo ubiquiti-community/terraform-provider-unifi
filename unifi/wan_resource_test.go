@@ -557,8 +557,9 @@ func Test_igmpProxyModel_AttributeTypes(t *testing.T) {
 		{
 			name: "returns correct types",
 			want: map[string]attr.Type{
-				"downstream": types.StringType,
-				"upstream":   types.BoolType,
+				"downstream":             types.StringType,
+				"downstream_network_ids": types.SetType{ElemType: types.StringType},
+				"upstream":               types.BoolType,
 			},
 		},
 	}
@@ -1303,4 +1304,134 @@ func TestWAN_nestedGroupsRoundTrip(t *testing.T) {
 	).ValueInt64(); got != 56 {
 		t.Errorf("dhcpv6.pd.size after read = %d, want 56", got)
 	}
+}
+
+func Test_igmpProxyForDownstream(t *testing.T) {
+	if got := igmpProxyForDownstream(nil); got != "none" {
+		t.Errorf("igmpProxyForDownstream(nil) = %q, want none", got)
+	}
+	if got := igmpProxyForDownstream([]string{"5f1"}); got != "some" {
+		t.Errorf("igmpProxyForDownstream(one id) = %q, want some", got)
+	}
+}
+
+func Test_wanResource_igmpDownstreamNetworkIDs(t *testing.T) {
+	r := &wanResource{}
+	ctx := context.Background()
+
+	base := func(igmp igmpProxyModel) *wanResourceModel {
+		obj, diags := types.ObjectValueFrom(ctx, igmpProxyModel{}.AttributeTypes(), igmp)
+		if diags.HasError() {
+			t.Fatalf("igmp object: %v", diags)
+		}
+		return &wanResourceModel{
+			Name:                  types.StringValue("test"),
+			Type:                  types.StringValue("dhcp"),
+			TypeV6:                types.StringNull(),
+			Enabled:               types.BoolValue(true),
+			Vlan:                  types.ObjectNull(vlanModel{}.AttributeTypes()),
+			EgressQoS:             types.ObjectNull(egressQosModel{}.AttributeTypes()),
+			DNS:                   types.ObjectNull(dnsModel{}.AttributeTypes()),
+			DHCP:                  types.ObjectNull(dhcpWanModel{}.AttributeTypes()),
+			DHCPv6:                types.ObjectNull(dhcpv6WanModel{}.AttributeTypes()),
+			SmartQ:                types.ObjectNull(smartqModel{}.AttributeTypes()),
+			UPnP:                  types.ObjectNull(upnpModel{}.AttributeTypes()),
+			LoadBalance:           types.ObjectNull(loadBalanceModel{}.AttributeTypes()),
+			IGMPProxy:             obj,
+			ProviderCapabilities:  types.ObjectNull(providerCapabilitiesModel{}.AttributeTypes()),
+			ReportWANEvent:        types.BoolNull(),
+			IPAliases:             types.ListNull(types.StringType),
+			SettingPreference:     types.StringNull(),
+			IPv6SettingPreference: types.StringNull(),
+			SingleNetworkLAN:      types.StringNull(),
+			MACOverrideEnabled:    types.BoolNull(),
+			Dslite:                types.ObjectNull(wanDsliteModel{}.AttributeTypes()),
+		}
+	}
+	ids := func(v ...string) types.Set {
+		elems := make([]attr.Value, 0, len(v))
+		for _, id := range v {
+			elems = append(elems, types.StringValue(id))
+		}
+		return types.SetValueMust(types.StringType, elems)
+	}
+
+	t.Run("network ids travel and imply some", func(t *testing.T) {
+		got, diags := r.modelToNetwork(ctx, base(igmpProxyModel{
+			Downstream:           types.StringUnknown(),
+			DownstreamNetworkIDs: ids("5f1", "5f2"),
+			Upstream:             types.BoolValue(true),
+		}))
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if !reflect.DeepEqual(got.IGMPProxyDownstreamNetworkIDs, []string{"5f1", "5f2"}) &&
+			!reflect.DeepEqual(got.IGMPProxyDownstreamNetworkIDs, []string{"5f2", "5f1"}) {
+			t.Errorf("IGMPProxyDownstreamNetworkIDs = %v, want 5f1 and 5f2", got.IGMPProxyDownstreamNetworkIDs)
+		}
+		if got.IGMPProxyFor == nil || *got.IGMPProxyFor != "some" {
+			t.Errorf("IGMPProxyFor = %v, want some", got.IGMPProxyFor)
+		}
+		if !got.IGMPProxyUpstream {
+			t.Error("IGMPProxyUpstream = false, want true")
+		}
+	})
+
+	t.Run("an empty set clears the list and implies none", func(t *testing.T) {
+		got, diags := r.modelToNetwork(ctx, base(igmpProxyModel{
+			Downstream:           types.StringUnknown(),
+			DownstreamNetworkIDs: ids(),
+			Upstream:             types.BoolValue(true),
+		}))
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if len(got.IGMPProxyDownstreamNetworkIDs) != 0 {
+			t.Errorf("IGMPProxyDownstreamNetworkIDs = %v, want empty", got.IGMPProxyDownstreamNetworkIDs)
+		}
+		if got.IGMPProxyFor == nil || *got.IGMPProxyFor != "none" {
+			t.Errorf("IGMPProxyFor = %v, want none", got.IGMPProxyFor)
+		}
+	})
+
+	t.Run("a USG-era target without ids is left alone", func(t *testing.T) {
+		got, diags := r.modelToNetwork(ctx, base(igmpProxyModel{
+			Downstream:           types.StringValue("lan"),
+			DownstreamNetworkIDs: types.SetNull(types.StringType),
+			Upstream:             types.BoolValue(false),
+		}))
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if got.IGMPProxyFor == nil || *got.IGMPProxyFor != "lan" {
+			t.Errorf("IGMPProxyFor = %v, want lan", got.IGMPProxyFor)
+		}
+	})
+
+	t.Run("read reports the ids and some", func(t *testing.T) {
+		forVal := "some"
+		network := &unifi.Network{
+			ID:                            "n1",
+			Purpose:                       unifi.PurposeWAN,
+			WANType:                       strPtr("dhcp"),
+			IGMPProxyFor:                  &forVal,
+			IGMPProxyUpstream:             true,
+			IGMPProxyDownstreamNetworkIDs: []string{"5f1"},
+		}
+		model := base(igmpProxyModel{
+			Downstream:           types.StringNull(),
+			DownstreamNetworkIDs: types.SetNull(types.StringType),
+			Upstream:             types.BoolNull(),
+		})
+		if diags := r.networkToModel(ctx, network, model, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+		attrs := model.IGMPProxy.Attributes()
+		if got := attrs["downstream"].(types.String).ValueString(); got != "some" {
+			t.Errorf("downstream = %q, want some", got)
+		}
+		if got := attrs["downstream_network_ids"].(types.Set); !got.Equal(ids("5f1")) {
+			t.Errorf("downstream_network_ids = %v, want [5f1]", got)
+		}
+	})
 }

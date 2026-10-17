@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -283,14 +284,16 @@ func (m loadBalanceModel) AttributeTypes() map[string]attr.Type {
 
 // igmpProxyModel describes the IGMP proxy configuration nested object.
 type igmpProxyModel struct {
-	Downstream types.String `tfsdk:"downstream"`
-	Upstream   types.Bool   `tfsdk:"upstream"`
+	Downstream           types.String `tfsdk:"downstream"`
+	DownstreamNetworkIDs types.Set    `tfsdk:"downstream_network_ids"`
+	Upstream             types.Bool   `tfsdk:"upstream"`
 }
 
 func (m igmpProxyModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"downstream": types.StringType,
-		"upstream":   types.BoolType,
+		"downstream":             types.StringType,
+		"downstream_network_ids": types.SetType{ElemType: types.StringType},
+		"upstream":               types.BoolType,
 	}
 }
 
@@ -305,6 +308,15 @@ func (m dhcpv6PDModel) AttributeTypes() map[string]attr.Type {
 		"size":      types.Int64Type,
 		"size_auto": types.BoolType,
 	}
+}
+
+// igmpProxyForDownstream is the igmp_proxy_for value that goes with a
+// downstream network list: some when it is non-empty, none otherwise.
+func igmpProxyForDownstream(networkIDs []string) string {
+	if len(networkIDs) > 0 {
+		return "some"
+	}
+	return "none"
 }
 
 // dhcpv6WanModel describes the DHCPv6 WAN configuration nested object.
@@ -832,12 +844,18 @@ func (r *wanResource) Schema(
 					"downstream": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
-						MarkdownDescription: "IGMP proxy downstream target (none, lan, guest)",
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
+						MarkdownDescription: "IGMP proxy downstream target (`none`, `lan`, `guest`). UniFi OS gateways take the downstream side from `downstream_network_ids` instead and report `some` here while that set is non-empty; they reject `lan` and `guest`. Left unset it follows the set, so it is not carried over from state at plan time.",
 						Validators: []validator.String{
-							stringvalidator.OneOf("none", "lan", "guest"),
+							stringvalidator.OneOf("none", "lan", "guest", "some"),
+						},
+					},
+					"downstream_network_ids": schema.SetAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "IDs of the LAN networks the proxy forwards multicast onto (UniFi OS gateways). Setting it also sets `downstream` to `some`, or `none` when empty, unless `downstream` names a target itself.",
+						PlanModifiers: []planmodifier.Set{
+							setplanmodifier.UseStateForUnknown(),
 						},
 					},
 					"upstream": schema.BoolAttribute{
@@ -1864,6 +1882,17 @@ func (r *wanResource) modelToNetwork(
 			if !igmp.Downstream.IsNull() && !igmp.Downstream.IsUnknown() {
 				network.IGMPProxyFor = igmp.Downstream.ValueStringPointer()
 			}
+			if !igmp.DownstreamNetworkIDs.IsNull() && !igmp.DownstreamNetworkIDs.IsUnknown() {
+				var networkIDs []string
+				diags.Append(igmp.DownstreamNetworkIDs.ElementsAs(ctx, &networkIDs, false)...)
+				network.IGMPProxyDownstreamNetworkIDs = networkIDs
+				// An explicit lan or guest stays as configured; otherwise
+				// some/none follows the list.
+				if network.IGMPProxyFor == nil || *network.IGMPProxyFor == "some" || *network.IGMPProxyFor == "none" {
+					igmpProxyFor := igmpProxyForDownstream(networkIDs)
+					network.IGMPProxyFor = &igmpProxyFor
+				}
+			}
 			if !igmp.Upstream.IsNull() && !igmp.Upstream.IsUnknown() {
 				network.IGMPProxyUpstream = igmp.Upstream.ValueBool()
 			}
@@ -2199,7 +2228,7 @@ func (r *wanResource) networkToModel(
 	}
 
 	// IGMP Settings — only populate if model already has it or API has data
-	hasIGMPData := network.IGMPProxyFor != nil || network.IGMPProxyUpstream
+	hasIGMPData := network.IGMPProxyFor != nil || network.IGMPProxyUpstream || len(network.IGMPProxyDownstreamNetworkIDs) > 0
 	if !model.IGMPProxy.IsNull() || hasIGMPData {
 		var currentIGMP igmpProxyModel
 		if !model.IGMPProxy.IsNull() && !model.IGMPProxy.IsUnknown() {
@@ -2209,6 +2238,13 @@ func (r *wanResource) networkToModel(
 		if network.IGMPProxyFor != nil {
 			currentIGMP.Downstream = types.StringValue(*network.IGMPProxyFor)
 		}
+		networkIDs := network.IGMPProxyDownstreamNetworkIDs
+		if networkIDs == nil {
+			networkIDs = []string{}
+		}
+		downstreamNetworkIDs, d := types.SetValueFrom(ctx, types.StringType, networkIDs)
+		diags.Append(d...)
+		currentIGMP.DownstreamNetworkIDs = downstreamNetworkIDs
 		currentIGMP.Upstream = types.BoolValue(network.IGMPProxyUpstream)
 		igmpObj, d := types.ObjectValueFrom(ctx, currentIGMP.AttributeTypes(), currentIGMP)
 		diags.Append(d...)
