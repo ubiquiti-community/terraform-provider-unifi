@@ -387,6 +387,7 @@ func Test_portProfileResource_modelToAPIPortProfile(t *testing.T) {
 				Name:    "test",
 				OpMode:  "switch",
 				Autoneg: true,
+				Forward: "all",
 			},
 			want1: nil,
 		},
@@ -667,5 +668,19 @@ func Test_customizeTaggedVLANMgmt(t *testing.T) {
 					mode, known, tt.wantMode, tt.wantKnown)
 			}
 		})
+	}
+}
+
+func Test_forwardForTaggedVLANMgmt(t *testing.T) {
+	tests := map[string]string{
+		"":          "all",
+		"auto":      "all",
+		"block_all": "native",
+		"custom":    "customize",
+	}
+	for mode, want := range tests {
+		if got := forwardForTaggedVLANMgmt(mode); got != want {
+			t.Errorf("forwardForTaggedVLANMgmt(%q) = %q, want %q", mode, got, want)
+		}
 	}
 }
