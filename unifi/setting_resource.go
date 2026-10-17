@@ -29,6 +29,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
@@ -1852,6 +1853,11 @@ func (r *settingResource) ModifyPlan(
 		return
 	}
 
+	r.planGlobalSwitchUnsetUnknown(ctx, req, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	var configSyslog types.Object
 	var configEnabled types.Bool
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("syslog"), &configSyslog)...)
@@ -1891,6 +1897,49 @@ func (r *settingResource) ModifyPlan(
 		return
 	}
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, ncPath, obj)...)
+}
+
+// planGlobalSwitchUnsetUnknown plans the global_switch fields left out of
+// configuration as unknown. Adding the block to a setting whose state has none
+// otherwise leaves them null, and the read-back after the apply then fails as
+// an inconsistent result. Fields the plan already knows are left alone.
+func (r *settingResource) planGlobalSwitchUnsetUnknown(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	gsPath := path.Root("global_switch")
+	var plan types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, gsPath, &plan)...)
+	if resp.Diagnostics.HasError() || plan.IsNull() || plan.IsUnknown() {
+		return
+	}
+
+	attrs := plan.Attributes()
+	changed := false
+	for name, typ := range plan.AttributeTypes(ctx) {
+		if v, ok := attrs[name]; !ok || !v.IsNull() {
+			continue
+		}
+		unknown, err := typ.ValueFromTerraform(
+			ctx, tftypes.NewValue(typ.TerraformType(ctx), tftypes.UnknownValue))
+		if err != nil {
+			resp.Diagnostics.AddError("Error planning global_switch", err.Error())
+			return
+		}
+		attrs[name] = unknown
+		changed = true
+	}
+	if !changed {
+		return
+	}
+
+	obj, d := types.ObjectValue(plan.AttributeTypes(ctx), attrs)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, gsPath, obj)...)
 }
 
 func (r *settingResource) Configure(
