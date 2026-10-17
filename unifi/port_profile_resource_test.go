@@ -586,3 +586,29 @@ func TestAccPortProfileList_basic(t *testing.T) {
 		},
 	})
 }
+
+func Test_customizeIsRewritten(t *testing.T) {
+	vlan := func(v int64) *int64 { return &v }
+
+	tests := []struct {
+		name   string
+		tagged string
+		native *int64
+		want   bool
+	}{
+		{"custom keeps customize on an untagged native network", "custom", nil, false},
+		{"custom keeps customize on a zero VLAN id", "custom", vlan(0), false},
+		{"custom keeps customize on a tagged native network", "custom", vlan(10), false},
+		{"auto is still refused on an untagged native network", "auto", nil, true},
+		{"unset mode is still refused on a zero VLAN id", "", vlan(0), true},
+		{"block_all is still refused on an untagged native network", "block_all", nil, true},
+		{"auto is accepted on a tagged native network", "auto", vlan(10), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := customizeIsRewritten(tt.tagged, tt.native); got != tt.want {
+				t.Errorf("customizeIsRewritten(%q, %v) = %v, want %v", tt.tagged, tt.native, got, tt.want)
+			}
+		})
+	}
+}
