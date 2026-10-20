@@ -74,4 +74,10 @@ resource "unifi_wan" "pppoe" {
 
   username    = var.isp_username
   password_wo = var.isp_password
+
+  # RFC 4638 "baby jumbo" frames: a 1508-byte WAN interface leaves room for the
+  # 8-byte PPPoE header, so the session itself carries a full 1500-byte MTU.
+  # Leave both unset to keep whatever MTU the controller already has.
+  interface_mtu_enabled = true
+  interface_mtu         = 1508
 }
