@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### ✨ Features
 
+- **`unifi_wan`: `interface_mtu` and `interface_mtu_enabled`.** Sets the WAN interface MTU, e.g. `1508` for PPPoE with RFC 4638 ("baby jumbo") so the session carries a full 1500. Both are Optional+Computed and taken from the controller when not set.
 - **`unifi_wlan`: `roaming_assistant_na` and `roaming_assistant_6e`.** UniFi Network 10.x moved assisted roaming from the device's radio table to the WLAN; these nested objects (`enabled`, `rssi`) replace the deprecated device-level `radio_table.assisted_roaming_*` attributes.
 
 ### ⚠️ Breaking Changes
@@ -34,6 +35,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **`unifi_wan`: an update no longer resets a WAN MTU set in the UniFi UI.** go-unifi always sends `interface_mtu_enabled` (it has no `omitempty`), and the resource did not model it, so every update to a WAN sent `false` and silently returned an MTU override (such as a PPPoE 1508) to the default. The MTU is now read into state and written back unchanged when the configuration does not manage it.
 - **`unifi_network`: `ipv6.interface_type` no longer overwrites the controller's value on an adopted network.** The nested `ipv6` group carries no schema `Default`, but its `ModifyPlan` reproduced the old flat `ipv6_interface_type` default and re-asserted `none` on every plan whose configuration omitted the block, which brought back the overwrite v0.59.0 removed (#550): importing a network with static IPv6 again proposed `static` -> `none`. The default is now applied on create only; once a prior value exists it is kept, matching the leaf's `UseStateForUnknown` and its documentation (#544).
 - **`unifi_network`: creating a network without `setting_preference` no longer fails with `api.err.InvalidPayload`.** Since v0.59.0 dropped the attribute's static default (#550) it is unknown on create, and the write path turned that unknown into an empty string, which the controller rejects. The request now omits an unset `setting_preference` so the controller applies its own default; a configured value is sent as before.
 - **`unifi_setting`: Region Blocking and IPS suppression work again on controllers without the standalone `usg_geo` and `ips_suppression` documents (Network 10.0.x).** Both writes went only to the standalone keys, which those controllers reject with `api.err.Invalid`; the geo fallback also required the legacy fields to already exist on the `usg` document, which a fresh site never has. When the controller has no standalone document, `usg.geo_ip_filtering` is now merged into the `usg` setting as the flat `geo_ip_filtering_*` fields and `ips.suppression` is merged into the `ips` setting, and both are read back from there. Measured on Network 10.0.162: nested suppression is only accepted when at least one network is listed in `ips.enabled_networks`.

@@ -927,6 +927,116 @@ func Test_wanResource_pppoeCredentials(t *testing.T) {
 	})
 }
 
+// Test_wanResource_interfaceMTU guards the WAN interface MTU. go-unifi sends
+// interface_mtu_enabled on every write (no omitempty), so before these
+// attributes existed any update to a WAN reset an MTU set in the UI, e.g. a
+// PPPoE "baby jumbo" 1508, back to the default.
+func Test_wanResource_interfaceMTU(t *testing.T) {
+	r := &wanResource{}
+	ctx := context.Background()
+	mtu1508 := int64(1508)
+
+	uiConfigured := func() *unifi.Network {
+		return &unifi.Network{
+			ID:                  "n1",
+			Purpose:             unifi.PurposeWAN,
+			WANType:             strPtr("pppoe"),
+			InterfaceMtu:        &mtu1508,
+			InterfaceMtuEnabled: true,
+		}
+	}
+
+	t.Run("MTU set in the UI survives an update that does not manage it", func(t *testing.T) {
+		state := &wanResourceModel{}
+		applyWANDefaults(state)
+		if diags := r.networkToModel(ctx, uiConfigured(), state, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+		// The configuration never mentions MTU: Optional+Computed with
+		// UseStateForUnknown plans both attributes as their prior state.
+		plan := *state
+		plan.Name = types.StringValue("renamed")
+		r.applyPlanToState(ctx, &plan, state)
+
+		got, diags := r.modelToNetwork(ctx, state)
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if !got.InterfaceMtuEnabled {
+			t.Error("InterfaceMtuEnabled = false, want true kept from the controller")
+		}
+		if got.InterfaceMtu == nil || *got.InterfaceMtu != 1508 {
+			t.Errorf("InterfaceMtu = %v, want 1508 kept from the controller", got.InterfaceMtu)
+		}
+	})
+
+	t.Run("configured MTU is sent", func(t *testing.T) {
+		state := &wanResourceModel{}
+		applyWANDefaults(state)
+		network := uiConfigured()
+		network.InterfaceMtu = nil
+		network.InterfaceMtuEnabled = false
+		if diags := r.networkToModel(ctx, network, state, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+		plan := *state
+		plan.InterfaceMTU = types.Int64Value(1508)
+		plan.InterfaceMTUEnabled = types.BoolValue(true)
+		r.applyPlanToState(ctx, &plan, state)
+
+		got, diags := r.modelToNetwork(ctx, state)
+		if diags.HasError() {
+			t.Fatalf("modelToNetwork: %v", diags)
+		}
+		if !got.InterfaceMtuEnabled || got.InterfaceMtu == nil || *got.InterfaceMtu != 1508 {
+			t.Errorf(
+				"InterfaceMtu = %v enabled=%v, want 1508 enabled",
+				got.InterfaceMtu,
+				got.InterfaceMtuEnabled,
+			)
+		}
+	})
+
+	t.Run("read maps an absent MTU to null", func(t *testing.T) {
+		model := &wanResourceModel{}
+		applyWANDefaults(model)
+		network := uiConfigured()
+		network.InterfaceMtu = nil
+		network.InterfaceMtuEnabled = false
+		if diags := r.networkToModel(ctx, network, model, "default"); diags.HasError() {
+			t.Fatalf("networkToModel: %v", diags)
+		}
+		if !model.InterfaceMTU.IsNull() {
+			t.Errorf("interface_mtu = %v, want null", model.InterfaceMTU)
+		}
+		if model.InterfaceMTUEnabled.ValueBool() {
+			t.Error("interface_mtu_enabled = true, want false")
+		}
+	})
+
+	t.Run("create keeps configured MTU over the controller echo", func(t *testing.T) {
+		state := &wanResourceModel{
+			InterfaceMTU:        types.Int64Null(),
+			InterfaceMTUEnabled: types.BoolValue(false),
+			Dslite:              types.ObjectNull(wanDsliteModel{}.AttributeTypes()),
+		}
+		config := &wanResourceModel{
+			InterfaceMTU:        types.Int64Value(1508),
+			InterfaceMTUEnabled: types.BoolValue(true),
+			Dslite:              types.ObjectNull(wanDsliteModel{}.AttributeTypes()),
+		}
+		plan := *config
+		r.overlayConfig(ctx, state, config, &plan)
+		if state.InterfaceMTU.ValueInt64() != 1508 || !state.InterfaceMTUEnabled.ValueBool() {
+			t.Errorf(
+				"interface_mtu = %v enabled=%v, want 1508 enabled",
+				state.InterfaceMTU,
+				state.InterfaceMTUEnabled,
+			)
+		}
+	})
+}
+
 func Test_wanResource_modelToNetwork(t *testing.T) {
 	t.Run("minimal model converts correctly", func(t *testing.T) {
 		r := &wanResource{}

@@ -117,6 +117,8 @@ type wanResourceModel struct {
 	IPv6SettingPreference types.String `tfsdk:"ipv6_setting_preference"`
 	SingleNetworkLAN      types.String `tfsdk:"single_network_lan"`
 	MACOverrideEnabled    types.Bool   `tfsdk:"mac_override_enabled"`
+	InterfaceMTU          types.Int64  `tfsdk:"interface_mtu"`
+	InterfaceMTUEnabled   types.Bool   `tfsdk:"interface_mtu_enabled"`
 	Dslite                types.Object `tfsdk:"dslite"`
 
 	// Provider Capabilities
@@ -907,6 +909,31 @@ func (r *wanResource) Schema(
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"interface_mtu": schema.Int64Attribute{
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "MTU of the WAN interface, in bytes. Only applied when " +
+					"`interface_mtu_enabled` is `true`. For PPPoE with RFC 4638 (\"baby jumbo\" " +
+					"frames), set `1508` so the PPPoE session itself can carry a 1500-byte MTU. " +
+					"Taken from the controller when not set.",
+				Validators: []validator.Int64{
+					// The controller's own bounds for interface_mtu.
+					int64validator.Between(68, 65536),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"interface_mtu_enabled": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "Whether `interface_mtu` overrides the WAN interface's default MTU. " +
+					"Taken from the controller when not set, so an MTU configured in the UniFi UI " +
+					"is preserved by applies that do not manage it.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"dslite": schema.SingleNestedAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -1263,6 +1290,12 @@ func (r *wanResource) overlayConfig(
 	if !config.IPv6SettingPreference.IsNull() {
 		state.IPv6SettingPreference = plan.IPv6SettingPreference
 	}
+	if !config.InterfaceMTU.IsNull() {
+		state.InterfaceMTU = plan.InterfaceMTU
+	}
+	if !config.InterfaceMTUEnabled.IsNull() {
+		state.InterfaceMTUEnabled = plan.InterfaceMTUEnabled
+	}
 	// The controller can force dslite.remote_host_auto back to `true`
 	// server-side; re-assert each DS-Lite leaf the plan knows so the create
 	// result matches the plan (#281). A leaf not set in config is unknown in
@@ -1522,6 +1555,12 @@ func (r *wanResource) applyPlanToState(
 	}
 	if !plan.MACOverrideEnabled.IsNull() && !plan.MACOverrideEnabled.IsUnknown() {
 		state.MACOverrideEnabled = plan.MACOverrideEnabled
+	}
+	if !plan.InterfaceMTU.IsNull() && !plan.InterfaceMTU.IsUnknown() {
+		state.InterfaceMTU = plan.InterfaceMTU
+	}
+	if !plan.InterfaceMTUEnabled.IsNull() && !plan.InterfaceMTUEnabled.IsUnknown() {
+		state.InterfaceMTUEnabled = plan.InterfaceMTUEnabled
 	}
 	// DS-Lite: re-assert every leaf the plan knows and keep the state's value
 	// for the rest, as the flat attributes were merged leaf by leaf.
@@ -1886,6 +1925,16 @@ func (r *wanResource) modelToNetwork(
 	if !model.MACOverrideEnabled.IsNull() && !model.MACOverrideEnabled.IsUnknown() {
 		network.MACOverrideEnabled = model.MACOverrideEnabled.ValueBool()
 	}
+	// interface_mtu_enabled has no omitempty in go-unifi, so it is always on the
+	// wire: an update that left it out of the model would send `false` and
+	// silently drop an MTU set in the UI. State always carries the controller's
+	// value (networkToModel), so an unmanaged MTU round-trips unchanged.
+	if !model.InterfaceMTU.IsNull() && !model.InterfaceMTU.IsUnknown() {
+		network.InterfaceMtu = model.InterfaceMTU.ValueInt64Pointer()
+	}
+	if !model.InterfaceMTUEnabled.IsNull() && !model.InterfaceMTUEnabled.IsUnknown() {
+		network.InterfaceMtuEnabled = model.InterfaceMTUEnabled.ValueBool()
+	}
 	dslite, ok, d := util.ObjectAs[wanDsliteModel](ctx, model.Dslite)
 	diags.Append(d...)
 	if ok {
@@ -2222,6 +2271,8 @@ func (r *wanResource) networkToModel(
 	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
 	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)
 	model.MACOverrideEnabled = types.BoolValue(network.MACOverrideEnabled)
+	model.InterfaceMTU = types.Int64PointerValue(network.InterfaceMtu)
+	model.InterfaceMTUEnabled = types.BoolValue(network.InterfaceMtuEnabled)
 	dsliteObj, d := types.ObjectValueFrom(ctx, wanDsliteModel{}.AttributeTypes(), wanDsliteModel{
 		RemoteHost:     types.StringPointerValue(network.WANDsliteRemoteHost),
 		RemoteHostAuto: types.BoolValue(network.WANDsliteRemoteHostAuto),
