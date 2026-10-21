@@ -80,7 +80,7 @@ resource "unifi_wlan" "wifi" {
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
 - `ap_group` (Attributes) Access point group assignment. (see [below for nested schema](#nestedatt--ap_group))
-- `bandsteering_mode` (String, Deprecated) **Moved to `unifi_device.bandsteering_mode`.** Per-SSID band steering mode (`off`, `equal`, `prefer_5g`), which steers dual-band capable clients toward the less congested / higher-throughput band. UniFi Network 10.x moved band steering off the WLAN back to the access point, so this attribute no longer reaches the controller: set `bandsteering_mode` on the `unifi_device` resource for the AP instead. Still accepted and preserved in state for one release.
+- `bandsteering_mode` (String, Deprecated) **Moved to `unifi_device.bandsteering_mode`.** Per-SSID band steering mode (`off`, `equal`, `prefer_5g`), which steers dual-band capable clients toward the less congested / higher-throughput band. UniFi Network 10.x moved band steering off the WLAN back to the access point, so this attribute no longer reaches the controller: set `bandsteering_mode` on the `unifi_device` resource for the AP instead. Still accepted for one release; a declared value is kept, an undeclared one is null.
 - `bc_filter_list` (Set of String) List of MAC addresses for the broadcast filter. The controller may populate this on its own, so it is computed when unset.
 - `bss_transition` (Boolean) Improves client roaming by providing connection details of nearby APs.
 - `dtim_6e` (Number) DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
