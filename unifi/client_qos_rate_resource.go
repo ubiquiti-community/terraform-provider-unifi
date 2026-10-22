@@ -388,7 +388,7 @@ func (r *clientQosRateResource) Read(
 	// Get the ClientGroup from the API
 	clientGroup, err := r.client.GetClientGroup(ctx, site, id)
 	if _, ok := err.(*unifi.NotFoundError); ok {
-		resp.State.RemoveResource(ctx)
+		removeResourceOnRead(ctx, resp, clientQosRateIdentityModel{ID: state.ID, Site: state.Site})
 		return
 	}
 	if err != nil {

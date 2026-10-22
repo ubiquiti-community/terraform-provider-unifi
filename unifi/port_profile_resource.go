@@ -751,7 +751,11 @@ func (r *portProfileResource) Read(
 	portProfile, err := r.client.GetPortProfile(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(
+				ctx,
+				resp,
+				portProfileIdentityModel{ID: state.ID, Site: state.Site},
+			)
 			return
 		}
 		resp.Diagnostics.AddError(
