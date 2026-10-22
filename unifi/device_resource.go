@@ -1564,7 +1564,7 @@ func (r *deviceResource) Read(
 	}
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(ctx, resp, deviceIdentityModel{MAC: state.MAC})
 			return
 		}
 		resp.Diagnostics.AddError(

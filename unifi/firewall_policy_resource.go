@@ -865,7 +865,7 @@ func (r *firewallPolicyResource) Read(
 	fp, err := r.client.GetFirewallPolicy(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(ctx, resp, identity)
 			return
 		}
 		resp.Diagnostics.AddError(
