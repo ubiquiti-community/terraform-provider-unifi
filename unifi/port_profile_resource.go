@@ -353,10 +353,11 @@ func (r *portProfileResource) Schema(
 			"forward": schema.StringAttribute{
 				Description: "The type forwarding to use for the port profile. Can be " +
 					"`all`, `native`, `customize` or `disabled`. `customize` requires a " +
-					"native network that carries a VLAN id: the controller silently " +
-					"stores `all` for a profile whose native network is untagged, which " +
-					"the provider rejects at plan time rather than letting the apply " +
-					"leave the resource tainted.",
+					"native network that carries a VLAN id, unless `tagged_vlan_mgmt` is " +
+					"`custom`: otherwise the controller silently stores `all` for a " +
+					"profile whose native network is untagged, which the provider " +
+					"rejects at plan time rather than letting the apply leave the " +
+					"resource tainted.",
 				Optional: true,
 				Computed: true,
 				Default:  stringdefault.StaticString("all"),
@@ -974,8 +975,10 @@ func (r *portProfileResource) ModifyPlan(
 		return // not configured yet (e.g. during validation)
 	}
 
-	var forward, nativeID, site types.String
+	var forward, nativeID, site, taggedMgmt types.String
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("forward"), &forward)...)
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("tagged_vlan_mgmt"), &taggedMgmt)...)
 	resp.Diagnostics.Append(
 		req.Plan.GetAttribute(ctx, path.Root("native_networkconf_id"), &nativeID)...)
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("site"), &site)...)
@@ -1004,7 +1007,7 @@ func (r *portProfileResource) ModifyPlan(
 		// real error, and a transient read must not block an unrelated change.
 		return
 	}
-	if network.VLAN != nil && *network.VLAN != 0 {
+	if !customizeIsRewritten(taggedMgmt.ValueString(), network.VLAN) {
 		return
 	}
 
@@ -1017,11 +1020,23 @@ func (r *portProfileResource) ModifyPlan(
 				"post-apply read would then disagree with the plan, failing with "+
 				"\"Provider produced inconsistent result after apply\" and leaving the "+
 				"resource tainted.\n\n"+
-				"Either set forward = \"all\" for this profile, or point "+
-				"native_networkconf_id at a network that carries a VLAN id.",
+				"Either set forward = \"all\" for this profile, set "+
+				"tagged_vlan_mgmt = \"custom\" (the controller keeps customize "+
+				"for it), or point native_networkconf_id at a network that carries "+
+				"a VLAN id.",
 			networkName(network),
 		),
 	)
+}
+
+// customizeIsRewritten reports whether the controller stores forward = "all"
+// for a customize profile: custom keeps customize whatever the native network,
+// the other modes keep it only on a native network with a VLAN id.
+func customizeIsRewritten(taggedVLANMgmt string, nativeVLAN *int64) bool {
+	if taggedVLANMgmt == "custom" {
+		return false
+	}
+	return nativeVLAN == nil || *nativeVLAN == 0
 }
 
 // networkName returns a network's name for diagnostics, falling back to its ID.
