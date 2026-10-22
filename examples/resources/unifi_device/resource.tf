@@ -80,3 +80,17 @@ resource "unifi_device" "us_8_60w" {
     }
   }
 }
+
+# Etherlighting on switches that support it (e.g. USW Pro Max). Colors per
+# link speed or network are site-wide; see unifi_setting's etherlighting block.
+resource "unifi_device" "usw_pro_max_24_poe" {
+  mac  = "01:23:45:67:89:AD"
+  name = "Switch with Etherlighting"
+
+  etherlighting = {
+    mode       = "speed"         # speed, network
+    brightness = 100             # 1-100
+    behavior   = "breath"        # steady, breath
+    led_mode   = "etherlighting" # etherlighting, standard
+  }
+}

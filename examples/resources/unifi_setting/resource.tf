@@ -107,3 +107,41 @@ resource "unifi_setting" "device_isolation" {
     ]
   }
 }
+
+# Site-wide Etherlighting colors: per link speed (used by switches in `speed`
+# mode) and per network (used in `network` mode). Colors are 6-digit hex codes
+# without the leading `#`.
+resource "unifi_setting" "etherlighting" {
+  site = "default"
+
+  etherlighting = {
+    speed_overrides = [
+      {
+        speed = "FE"
+        color = "ff0000"
+      },
+      {
+        speed = "GbE"
+        color = "00ff00"
+      },
+      {
+        speed = "2.5GbE"
+        color = "0000ff"
+      },
+      {
+        speed = "5GbE"
+        color = "ffff00"
+      },
+      {
+        speed = "10GbE"
+        color = "ffffff"
+      }
+    ]
+    network_overrides = [
+      {
+        network = unifi_network.guest.id
+        color   = "ffa500"
+      }
+    ]
+  }
+}
