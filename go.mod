@@ -226,3 +226,5 @@ tool (
 	github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 	gotest.tools/gotestsum
 )
+
+replace github.com/ubiquiti-community/go-unifi => github.com/kubicgruenfeld/go-unifi v0.0.0-20261005121814-23217e64eb48

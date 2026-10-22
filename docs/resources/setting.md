@@ -137,9 +137,11 @@ resource "unifi_setting" "device_isolation" {
 - `igmp_snooping` (Attributes) Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates. (see [below for nested schema](#nestedatt--igmp_snooping))
 - `ips` (Attributes) Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset. (see [below for nested schema](#nestedatt--ips))
 - `lcm` (Attributes) LCD/display (LCM) settings for devices with a screen. (see [below for nested schema](#nestedatt--lcm))
+- `mdns` (Attributes) Multicast DNS (Settings > Networks > Multicast DNS): which networks mDNS is reflected between, and which services. Options not exposed by this block are preserved across updates. (see [below for nested schema](#nestedatt--mdns))
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
 - `network_optimization` (Attributes) Automated network optimization settings. (see [below for nested schema](#nestedatt--network_optimization))
 - `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
+- `radio_ai` (Attributes) Radio AI / Nightly Channel Optimization (Settings > WiFi > Radio Manager): when the controller re-plans channels and which channels and widths it may use. Options not exposed by this block are preserved across updates. (see [below for nested schema](#nestedatt--radio_ai))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
 - `site` (String) The name of the site to associate the settings with.
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
@@ -312,6 +314,33 @@ Optional:
 - `touch_event` (Boolean) Whether touch events on the display are enabled.
 
 
+<a id="nestedatt--mdns"></a>
+### Nested Schema for `mdns`
+
+Optional:
+
+- `custom_services` (Attributes List) Additional services reflected in `custom` mode. (see [below for nested schema](#nestedatt--mdns--custom_services))
+- `enabled_for` (String) Networks mDNS is enabled for: `all`, `some` (the networks with `multicast_dns` enabled on `unifi_network`), or `none`.
+- `mode` (String) Which services are reflected: `all`, `auto`, or `custom` (only `predefined_services` and `custom_services`).
+- `predefined_services` (List of String) Codes of the predefined services reflected in `custom` mode, e.g. `google_chromecast`, `apple_airPlay`, `printers`.
+
+Read-Only:
+
+- `enabled_for_network_ids` (List of String) IDs of the networks mDNS is enabled for when `enabled_for` is `some`. Read-only: the controller derives this list from each network's `mdns_enabled` flag and ignores writes to it, so choose the networks with `multicast_dns` on `unifi_network`.
+
+<a id="nestedatt--mdns--custom_services"></a>
+### Nested Schema for `mdns.custom_services`
+
+Required:
+
+- `address` (String) Service type, e.g. `_myservice._tcp.local`.
+
+Optional:
+
+- `name` (String) Display name of the service.
+
+
+
 <a id="nestedatt--mgmt"></a>
 ### Nested Schema for `mgmt`
 
@@ -379,6 +408,50 @@ Optional:
 - `ntp_server_3` (String) Third NTP server.
 - `ntp_server_4` (String) Fourth NTP server.
 - `setting_preference` (String) Configuration mode: `auto` or `manual`.
+
+
+<a id="nestedatt--radio_ai"></a>
+### Nested Schema for `radio_ai`
+
+Optional:
+
+- `auto_adjust_channels_to_country` (Boolean) Restrict the channel lists to the site's country.
+- `auto_channel_presets_type` (String) Channel preset: `maximum_speed`, `conservative` or `custom` (the `channels_*` lists).
+- `auto_enabled` (Boolean) Whether the scheduled (nightly) optimization runs.
+- `channels_6e` (List of Number) 6 GHz channels Radio AI may use.
+- `channels_blacklist` (Attributes List) Channels Radio AI must not use. (see [below for nested schema](#nestedatt--radio_ai--channels_blacklist))
+- `channels_na` (List of Number) 5 GHz channels Radio AI may use.
+- `channels_ng` (List of Number) 2.4 GHz channels Radio AI may use.
+- `cron_expr` (String) Cron expression for the scheduled optimization, e.g. `0 4 * * *`.
+- `enabled` (Boolean) Whether Radio AI is enabled.
+- `exclude_devices` (List of String) MAC addresses of access points excluded from optimization.
+- `high_priority_devices` (List of String) MAC addresses of access points optimized first.
+- `ht_modes_na` (List of Number) 5 GHz channel widths (MHz) Radio AI may use.
+- `ht_modes_ng` (List of Number) 2.4 GHz channel widths (MHz) Radio AI may use.
+- `optimize` (List of String) What is optimized: `channel` and/or `power`.
+- `radios` (List of String) Radio bands included: `ng`, `na`, `6e`.
+- `radios_configuration` (Attributes List) Per-band channel width and DFS use. (see [below for nested schema](#nestedatt--radio_ai--radios_configuration))
+- `setting_preference` (String) `auto` or `manual`.
+
+<a id="nestedatt--radio_ai--channels_blacklist"></a>
+### Nested Schema for `radio_ai.channels_blacklist`
+
+Required:
+
+- `channel` (Number) Channel number.
+- `channel_width` (Number) Channel width in MHz.
+- `radio` (String) Band: `ng`, `na` or `6e`.
+
+
+<a id="nestedatt--radio_ai--radios_configuration"></a>
+### Nested Schema for `radio_ai.radios_configuration`
+
+Required:
+
+- `channel_width` (Number) Channel width in MHz.
+- `dfs` (Boolean) Whether DFS channels may be used.
+- `radio` (String) Band: `ng`, `na` or `6e`.
+
 
 
 <a id="nestedatt--radius"></a>
