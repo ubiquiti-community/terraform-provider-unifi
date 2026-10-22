@@ -2510,9 +2510,17 @@ func (r *deviceResource) modelToAPIDevice(
 // getDeviceDiff(existing, target), which compares port_overrides as a single JSON
 // value, that one difference sends the ENTIRE array. The endpoint full-replaces it
 // with a copy that has been round-tripped through DevicePortOverrides, so every
-// port on the device loses the fields the struct does not model (stp_edge_state,
-// stp_bpdu_guard_enabled, multicast_router_mode, sd_wan_underlay_port) and every
-// field at its zero value (omitempty drops false, "" and []).
+// port on the device loses every field at its zero value (omitempty drops false,
+// "" and []).
+//
+// The fields DevicePortOverrides models but the port_override schema does not
+// expose are the same problem without the op_mode special case: a declared entry
+// never carries them, so any controller-side value (stp_edge_state "auto",
+// multicast_router_mode "NONE", link_debounce_auto, a qos_profile, …) makes the
+// declared entry differ, sends the whole array, and deletes the field on every
+// port. They are copied over unconditionally, since config cannot set them.
+// Test_carryUnwritableFields_coversEveryUnexposedField fails when go-unifi grows a
+// field that is neither in the schema nor carried here.
 //
 // Carrying the controller's value forward keeps the marshalled entry identical, so
 // the diff stays empty and nothing is written. No value is ever sourced from
@@ -2523,6 +2531,23 @@ func carryUnwritableFields(
 	if declared.OpMode == "" && current.OpMode != "" {
 		declared.OpMode = current.OpMode
 	}
+
+	declared.EeeEnabled = current.EeeEnabled
+	declared.LdMode = current.LdMode
+	declared.LinkDebounce = current.LinkDebounce
+	declared.LinkDebounceAuto = current.LinkDebounceAuto
+	declared.MulticastRouterMode = current.MulticastRouterMode
+	declared.PrecisionTimeProtocolEnabled = current.PrecisionTimeProtocolEnabled
+	declared.QOSProfile = current.QOSProfile
+	declared.RoutedNetworkID = current.RoutedNetworkID
+	declared.SdWANUnderlayPort = current.SdWANUnderlayPort
+	declared.SdWANUnderlayPortNetworkID = current.SdWANUnderlayPortNetworkID
+	declared.StablePortEnabled = current.StablePortEnabled
+	declared.StpBpduGuardEnabled = current.StpBpduGuardEnabled
+	declared.StpEdgeState = current.StpEdgeState
+	declared.StpUplink = current.StpUplink
+	declared.TrustedPortMAC = current.TrustedPortMAC
+	declared.UnitID = current.UnitID
 	return declared
 }
 
