@@ -352,14 +352,15 @@ func (r *portProfileResource) Schema(
 			},
 			"forward": schema.StringAttribute{
 				Description: "The type forwarding to use for the port profile. Can be " +
-					"`all`, `native`, `customize` or `disabled`. `customize` requires a " +
-					"native network that carries a VLAN id: the controller silently " +
-					"stores `all` for a profile whose native network is untagged, which " +
-					"the provider rejects at plan time rather than letting the apply " +
-					"leave the resource tainted.",
+					"`all`, `native`, `customize` or `disabled`. When unset it follows " +
+					"`tagged_vlan_mgmt`, which is what the controller stores for that mode: " +
+					"`all` for `auto`, `native` for `block_all`, `customize` for `custom`. " +
+					"`customize` requires a native network that carries a VLAN id: the " +
+					"controller silently stores `all` for a profile whose native network is " +
+					"untagged, which the provider rejects at plan time rather than letting " +
+					"the apply leave the resource tainted.",
 				Optional: true,
 				Computed: true,
-				Default:  stringdefault.StaticString("all"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("all", "native", "customize", "disabled"),
 				},
@@ -1178,6 +1179,12 @@ func (r *portProfileResource) modelToAPIPortProfile(
 	if !model.TaggedVLANMgmt.IsNull() && !model.TaggedVLANMgmt.IsUnknown() {
 		portProfile.TaggedVLANMgmt = model.TaggedVLANMgmt.ValueString()
 	}
+
+	// The controller stores forward in step with tagged_vlan_mgmt, so an unset
+	// forward is derived from it rather than defaulted.
+	if model.Forward.IsNull() || model.Forward.IsUnknown() {
+		portProfile.Forward = forwardForTaggedVLANMgmt(portProfile.TaggedVLANMgmt)
+	}
 	if !model.FecMode.IsNull() {
 		portProfile.FecMode = model.FecMode.ValueString()
 	}
@@ -1607,5 +1614,18 @@ func (r *portProfileResource) List(
 				return
 			}
 		}
+	}
+}
+
+// forwardForTaggedVLANMgmt is the forward mode the controller stores for a
+// tagged VLAN management mode.
+func forwardForTaggedVLANMgmt(taggedVLANMgmt string) string {
+	switch taggedVLANMgmt {
+	case "block_all":
+		return "native"
+	case "custom":
+		return "customize"
+	default:
+		return "all"
 	}
 }
