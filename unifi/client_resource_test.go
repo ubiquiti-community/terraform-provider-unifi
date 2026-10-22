@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 
@@ -1201,4 +1202,63 @@ func TestAccClientList_basic(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccClientFramework_disappears refreshes a client that was deleted outside
+// Terraform: the plan must propose re-creating it instead of failing. With a
+// CLI that does not persist resource identities (OpenTofu, Terraform < 1.12)
+// the stored identity is null, and the refresh used to fail with "Missing
+// Resource Identity After Read" because Read removed the resource from state
+// without returning an identity.
+func TestAccClientFramework_disappears(t *testing.T) {
+	const mac = "01:23:45:67:89:af"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccClientFrameworkConfig_disappears(mac),
+				Check:  resource.TestCheckResourceAttr("unifi_client.test", "mac", mac),
+			},
+			{
+				PreConfig:          func() { testAccDeleteClientByMAC(t, mac) },
+				Config:             testAccClientFrameworkConfig_disappears(mac),
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+// testAccDeleteClientByMAC deletes a client behind Terraform's back, straight
+// through the controller API.
+func testAccDeleteClientByMAC(t *testing.T, mac string) {
+	t.Helper()
+
+	ctx := context.Background()
+	client, err := unifi.New(ctx, &unifi.Config{
+		BaseURL:        os.Getenv("UNIFI_API"),
+		Username:       os.Getenv("UNIFI_USERNAME"),
+		Password:       os.Getenv("UNIFI_PASSWORD"),
+		APIKey:         os.Getenv("UNIFI_API_KEY"),
+		AllowInsecure:  true,
+		TimeoutSeconds: new(30),
+	})
+	if err != nil {
+		t.Fatalf("connecting to the controller: %v", err)
+	}
+
+	if err := client.DeleteClientByMAC(ctx, "default", mac); err != nil {
+		t.Fatalf("deleting client %s out of band: %v", mac, err)
+	}
+}
+
+func testAccClientFrameworkConfig_disappears(mac string) string {
+	return fmt.Sprintf(`
+resource "unifi_client" "test" {
+	name = "tfacc-client-disappears"
+	mac  = %q
+}
+`, mac)
 }

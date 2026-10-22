@@ -522,7 +522,7 @@ func (r *clientResource) Read(
 		if err != nil {
 			if _, ok := err.(*unifi.NotFoundError); ok {
 				// Client was deleted externally - remove from state
-				resp.State.RemoveResource(ctx)
+				removeResourceOnRead(ctx, resp, id)
 				return
 			}
 			resp.Diagnostics.AddError(
