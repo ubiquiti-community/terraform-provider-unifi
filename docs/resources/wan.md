@@ -224,7 +224,8 @@ Optional:
 
 Optional:
 
-- `downstream` (String) IGMP proxy downstream target (none, lan, guest)
+- `downstream` (String) IGMP proxy downstream target (`none`, `lan`, `guest`). UniFi OS gateways take the downstream side from `downstream_network_ids` instead and report `some` here while that set is non-empty; they reject `lan` and `guest`. Left unset it follows the set, so it is not carried over from state at plan time.
+- `downstream_network_ids` (Set of String) IDs of the LAN networks the proxy forwards multicast onto (UniFi OS gateways). Setting it also sets `downstream` to `some`, or `none` when empty, unless `downstream` names a target itself.
 - `upstream` (Boolean) Whether IGMP proxy upstream is enabled
 
 
