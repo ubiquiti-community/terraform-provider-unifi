@@ -219,8 +219,8 @@ func wlanWPA3PlanShape() types.Object {
 // assign a default profile) and mac_auth_enabled defaults to false. The group
 // has no schema Default on purpose: a Default carrying the computed profile_id
 // can never equal the prior state, so it would trip the framework's plan-change
-// gate on every plan and re-plan bandsteering_mode as unknown forever. See
-// planRadiusDefaults.
+// gate on every plan and re-plan any Computed attribute without
+// UseStateForUnknown as unknown forever. See planRadiusDefaults.
 func wlanRadiusPlanShape() types.Object {
 	return types.ObjectValueMust(wlanRadiusAttrTypes(), map[string]attr.Value{
 		"profile_id":       types.StringUnknown(),
@@ -631,10 +631,9 @@ func (r *wlanFrameworkResource) Schema(
 					"UniFi Network 10.x moved band steering off the WLAN back to the access " +
 					"point, so this attribute no longer reaches the controller: set " +
 					"`bandsteering_mode` on the `unifi_device` resource for the AP instead. " +
-					"Still accepted and preserved in state for one release.",
+					"Still accepted for one release; a declared value is kept, an undeclared one is null.",
 				DeprecationMessage: "Deprecated: UniFi Network 10.x moved band steering off the WLAN to the access point, where the provider already exposes it as `unifi_device.bandsteering_mode`. This attribute no longer reaches the controller and will be removed in a future release.",
 				Optional:           true,
-				Computed:           true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("off", "equal", "prefer_5g"),
 				},
@@ -1695,7 +1694,9 @@ func (r *wlanFrameworkResource) readPassphraseWO(
 	return passphraseWO
 }
 
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
+// applyPlanToState merges plan values into state, preserving state values where
+// plan is null/unknown. bandsteering_mode is Optional-only and takes the plan
+// as is, null included (#569).
 func (r *wlanFrameworkResource) applyPlanToState(
 	ctx context.Context,
 	plan *wlanFrameworkResourceModel,
@@ -1747,9 +1748,7 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	if !plan.WLANBands.IsNull() && !plan.WLANBands.IsUnknown() {
 		state.WLANBands = plan.WLANBands
 	}
-	if !plan.BandsteeringMode.IsNull() && !plan.BandsteeringMode.IsUnknown() {
-		state.BandsteeringMode = plan.BandsteeringMode
-	}
+	state.BandsteeringMode = plan.BandsteeringMode
 	if !plan.MulticastEnhance.IsNull() && !plan.MulticastEnhance.IsUnknown() {
 		state.MulticastEnhance = plan.MulticastEnhance
 	}
@@ -2332,10 +2331,8 @@ func (r *wlanFrameworkResource) wlanToModel(
 		model.WLANBand = types.StringValue("both")
 	}
 
-	// Deprecated no-op: v10 moved band steering to the access point, so the
-	// WLAN never reports it. Keep whatever the model already carries — the
-	// declared value on create/update, the prior state on read — and resolve a
-	// never-configured Unknown to null (#388).
+	// Deprecated no-op: the WLAN never reports band steering (#388). Keep what
+	// the model carries; an Unknown resolves to null.
 	if model.BandsteeringMode.IsUnknown() {
 		model.BandsteeringMode = types.StringNull()
 	}

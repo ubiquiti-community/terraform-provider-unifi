@@ -19,6 +19,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -424,6 +425,51 @@ func Test_wlanFrameworkResource_Schema_computedControllerFields(t *testing.T) {
 		if !attr.IsComputed() {
 			t.Errorf("attribute %q must be Computed (controller-managed, #323)", key)
 		}
+	}
+}
+
+// Test_wlanFrameworkResource_Schema_bandsteeringModeNotComputed guards #569:
+// Computed would let the framework plan the never-read null as unknown.
+func Test_wlanFrameworkResource_Schema_bandsteeringModeNotComputed(t *testing.T) {
+	resp := &fwresource.SchemaResponse{}
+	(&wlanFrameworkResource{}).Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+
+	attr := wlanSchemaAttribute(t, resp.Schema, "bandsteering_mode")
+	if attr == nil {
+		return
+	}
+	if !attr.IsOptional() {
+		t.Error("bandsteering_mode must stay Optional (#569)")
+	}
+	if attr.IsComputed() {
+		t.Error("bandsteering_mode must not be Computed (#569)")
+	}
+}
+
+// Test_wlanPlan_bandsteeringModeStaysNull guards #569: with the prior state a
+// live controller produces (bandsteering_mode null, mac_filter.policy "allow"
+// against its "deny" Default), the attribute must plan as a known null.
+func Test_wlanPlan_bandsteeringModeStaysNull(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp fwresource.SchemaResponse
+	(&wlanFrameworkResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("schema: %v", schemaResp.Diagnostics)
+	}
+
+	f := planFixture{ctx: ctx, t: t, overrides: map[string]attr.Value{
+		"bandsteering_mode": types.StringNull(),
+		"mac_filter.policy": types.StringValue("allow"),
+	}}
+	prior, config := f.object(schemaResp.Schema, "")
+
+	planned := planResourceChange(t, "unifi_wlan", schemaResp.Schema, prior, prior, config)
+	var attrs map[string]tftypes.Value
+	if err := planned.As(&attrs); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	if got := attrs["bandsteering_mode"]; !got.IsKnown() || !got.IsNull() {
+		t.Errorf("bandsteering_mode planned as %v, want known null (#569)", got)
 	}
 }
 
@@ -1338,8 +1384,8 @@ func Test_wlanToModel_bandsteeringMode(t *testing.T) {
 // demo controller. This controller does not persist wlanconf
 // bandsteering_mode (it accepts and ignores the key — the same shape as any
 // controller without per-SSID band steering), so this test pins the graceful
-// path: the declared value applies cleanly, is kept in state, and can be
-// changed in place. The controller-echo path is covered by
+// path: the declared value applies cleanly, is kept in state, can be changed
+// in place and removed. The controller-echo path is covered by
 // Test_wlanToModel_bandsteeringMode.
 func TestAccWLANFramework_bandsteeringMode(t *testing.T) {
 	if os.Getenv("TF_ACC") == "" {
@@ -1366,11 +1412,23 @@ func TestAccWLANFramework_bandsteeringMode(t *testing.T) {
 						"unifi_wlan.test_bs", "bandsteering_mode", "equal"),
 				),
 			},
+			{
+				Config: testAccWLANFrameworkConfig_bandsteering(userGroupID, ""),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckNoResourceAttr(
+						"unifi_wlan.test_bs", "bandsteering_mode"),
+				),
+			},
 		},
 	})
 }
 
+// testAccWLANFrameworkConfig_bandsteering omits bandsteering_mode when mode is empty.
 func testAccWLANFrameworkConfig_bandsteering(userGroupID, mode string) string {
+	bandsteering := ""
+	if mode != "" {
+		bandsteering = fmt.Sprintf("\tbandsteering_mode = %q\n", mode)
+	}
 	return fmt.Sprintf(`
 data "unifi_ap_group" "default" {
 	name = "All APs"
@@ -1386,10 +1444,9 @@ resource "unifi_wlan" "test_bs" {
 	passphrase        = "pwd12345678"
 	user_group_id     = %q
 	network_id        = data.unifi_network.default.id
-	bandsteering_mode = %q
-	ap_group = {
+%s	ap_group = {
 		ids = [data.unifi_ap_group.default.id]
 	}
 }
-`, userGroupID, mode)
+`, userGroupID, bandsteering)
 }

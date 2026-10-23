@@ -57,7 +57,10 @@ func TestPlanUnchangedConfigIsEmpty(t *testing.T) {
 		{
 			"unifi_wlan",
 			&wlanFrameworkResource{},
-			nil,
+			map[string]attr.Value{
+				// What a live controller stores; the "deny" Default trips the gate (#569).
+				"mac_filter.policy": types.StringValue("allow"),
+			},
 			func(t *testing.T, planned map[string]tftypes.Value) {
 				radius := plannedObject(t, planned["radius"], "radius")
 				var b bool
