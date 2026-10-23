@@ -75,6 +75,11 @@ func (r *siteFrameworkResource) Metadata(
 	resp.TypeName = req.ProviderTypeName + "_site"
 }
 
+// siteIdentityModel describes the resource identity data model.
+type siteIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
+
 // IdentitySchema implements [resource.ResourceWithIdentity].
 func (r *siteFrameworkResource) IdentitySchema(
 	_ context.Context,
@@ -248,7 +253,7 @@ func (r *siteFrameworkResource) Read(
 		site, err = r.client.GetSite(ctx, state.ID.ValueString())
 		if err != nil {
 			if _, ok := err.(*unifi.NotFoundError); ok {
-				resp.State.RemoveResource(ctx)
+				removeResourceOnRead(ctx, resp, siteIdentityModel{ID: state.ID})
 				return
 			} else {
 				resp.Diagnostics.AddError(
@@ -262,7 +267,7 @@ func (r *siteFrameworkResource) Read(
 		site, err = r.client.GetSiteByName(ctx, state.Name.ValueString())
 		if err != nil {
 			if _, ok := err.(*unifi.NotFoundError); ok {
-				resp.State.RemoveResource(ctx)
+				removeResourceOnRead(ctx, resp, siteIdentityModel{ID: state.ID})
 				return
 			}
 			resp.Diagnostics.AddError(
