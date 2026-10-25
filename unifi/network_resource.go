@@ -1,9 +1,13 @@
 package unifi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +33,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -857,7 +862,7 @@ func (r *networkResource) Schema(
 							},
 						},
 						PlanModifiers: []planmodifier.Object{
-							objectplanmodifier.UseStateForUnknown(),
+							objectplanmodifier.UseNonNullStateForUnknown(),
 						},
 					},
 					"enabled": schema.BoolAttribute{
@@ -874,7 +879,7 @@ func (r *networkResource) Schema(
 							validators.IPv4Validator(),
 						},
 						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.UseNonNullStateForUnknown(),
 						},
 					},
 					"stop": schema.StringAttribute{
@@ -885,7 +890,7 @@ func (r *networkResource) Schema(
 							validators.IPv4Validator(),
 						},
 						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
+							stringplanmodifier.UseNonNullStateForUnknown(),
 						},
 					},
 					"gateway_enabled": schema.BoolAttribute{
@@ -1703,20 +1708,68 @@ func (r *networkResource) Read(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
+// networkDiffOptions groups the keys of each nested attribute and each derived
+// pair, because the controller validates the merged document and rejects a
+// flag sent without its stored companion.
+var networkDiffOptions = unifi.DiffOptions{
+	Groups: [][]string{
+		{"vlan_enabled", "vlan"},
+		{"dhcpguard_enabled", "dhcpd_ip_1", "dhcpd_ip_2", "dhcpd_ip_3"},
+		{"dhcpd_enabled", "dhcpd_start", "dhcpd_stop"},
+		{"dhcpd_boot_enabled", "dhcpd_boot_server", "dhcpd_boot_filename"},
+		{"dhcpd_ntp_enabled", "dhcpd_ntp_1", "dhcpd_ntp_2"},
+		{"dhcpd_dns_enabled", "dhcpd_dns_1", "dhcpd_dns_2", "dhcpd_dns_3", "dhcpd_dns_4"},
+		{"dhcpd_wins_enabled", "dhcpd_wins_1", "dhcpd_wins_2"},
+		{"dhcp_relay_enabled", "dhcp_relay_servers"},
+		{"ipv6_interface_type", "ipv6_client_address_assignment", "ipv6_subnet"},
+		{
+			"ipv6_ra_enabled",
+			"ipv6_ra_priority",
+			"ipv6_ra_preferred_lifetime",
+			"ipv6_ra_valid_lifetime",
+		},
+		{
+			"ipv6_pd_interface",
+			"ipv6_pd_prefixid",
+			"ipv6_pd_start",
+			"ipv6_pd_stop",
+			"ipv6_pd_auto_prefixid_enabled",
+		},
+		{"dhcpdv6_enabled", "dhcpdv6_start", "dhcpdv6_stop", "dhcpdv6_leasetime"},
+		{"dhcpdv6_dns_auto", "dhcpdv6_dns_1", "dhcpdv6_dns_2", "dhcpdv6_dns_3", "dhcpdv6_dns_4"},
+	},
+}
+
+// Update sends only the keys whose encoding differs between the prior state and
+// the plan, so the controller keeps every field the configuration does not set.
 func (r *networkResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var data networkResourceModel
-
-	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	var prior networkResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	updateTimeout, timeoutDiags := data.Timeouts.Update(ctx, 20*time.Minute)
+	mergedRaw, err := util.ResolveUnknowns(req.Plan.Raw, req.State.Raw)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Updating network",
+			"Could not resolve the planned values from prior state, no request was sent: "+
+				err.Error(),
+		)
+		return
+	}
+	var merged networkResourceModel
+	resp.Diagnostics.Append(
+		tfsdk.Plan{Schema: req.Plan.Schema, Raw: mergedRaw}.Get(ctx, &merged)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateTimeout, timeoutDiags := merged.Timeouts.Update(ctx, 20*time.Minute)
 	resp.Diagnostics.Append(timeoutDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -1724,72 +1777,87 @@ func (r *networkResource) Update(
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
-	// Convert to unifi.Network
-	network, diags := r.modelToNetwork(ctx, &data)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	site := data.Site.ValueString()
+	site := prior.Site.ValueString()
 	if site == "" {
 		site = r.client.Site
 	}
+	id := prior.ID.ValueString()
 
-	network.ID = data.ID.ValueString()
-
-	// modelToNetwork zero-values the DHCP guarding fields when the
-	// dhcp_guarding block is absent from configuration (and the DHCP server
-	// option fields when dhcp_server is absent), and the controller treats
-	// the resulting PUT literally — silently wiping settings configured
-	// outside Terraform on every unrelated update. Preserve the controller's
-	// current values instead.
-	if data.DhcpGuarding.IsNull() || data.DhcpServer.IsNull() {
-		current, err := r.client.GetNetwork(ctx, site, network.ID)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error Updating network",
-				fmt.Sprintf(
-					"Could not read the network to preserve its unmanaged DHCP settings: %s",
-					err,
-				),
-			)
-			return
-		}
-		preserveUnmanagedDhcpGuarding(data.DhcpGuarding, network, current)
-
-		relayEnabled := false
-		if !data.DhcpRelay.IsNull() && !data.DhcpRelay.IsUnknown() {
-			var relay dhcpRelayModel
-			resp.Diagnostics.Append(
-				data.DhcpRelay.As(ctx, &relay, basetypes.ObjectAsOptions{})...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			relayEnabled = relay.Enabled.ValueBool()
-		}
-		preserveUnmanagedDhcpServer(data.DhcpServer, relayEnabled, network, current)
-	}
-
-	// Update the network
-	updatedNetwork, err := r.client.UpdateNetwork(ctx, site, network)
-	if err != nil {
-		resp.Diagnostics.AddError(
+	if !prior.Vlan.IsNull() && merged.Vlan.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("vlan"),
 			"Error Updating network",
-			err.Error(),
+			"vlan cannot be removed from network with ID "+id+", no request was sent. The "+
+				"controller rejects a null vlan (api.err.InvalidPayload) and treats an "+
+				"untagged network as VLAN 1, which the Default network holds "+
+				"(api.err.VlanUsed).",
 		)
 		return
 	}
 
-	// Convert back to model, passing the plan data to preserve null values
-	var planData networkResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	// A dhcp_guarding or dhcp_server block left out of the configuration is
+	// unmanaged, so the target keeps the prior block and sends none of its keys.
+	// With DHCP relay on, an absent dhcp_server must turn the DHCP server off.
+	target := merged
+	if target.DhcpGuarding.IsNull() {
+		target.DhcpGuarding = prior.DhcpGuarding
+	}
+	if target.DhcpServer.IsNull() && !dhcpRelayEnabled(ctx, merged.DhcpRelay) {
+		target.DhcpServer = prior.DhcpServer
+	}
+
+	before, diags := r.modelToNetwork(ctx, &prior)
+	resp.Diagnostics.Append(diags...)
+	after, diags := r.modelToNetwork(ctx, &target)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	diags = r.networkToModel(ctx, updatedNetwork, &data, site, &planData)
-	resp.Diagnostics.Append(diags...)
+	patch, err := unifi.Diff(before, after, networkDiffOptions)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Updating network",
+			"Could not build the update for network with ID "+id+", no request was sent: "+
+				err.Error(),
+		)
+		return
+	}
+
+	// Without a dhcp_server block in prior state, the prior side does not
+	// describe the controller's DHCP settings, so adding the block sends every
+	// key it sets. A boot object left to the controller sends nothing.
+	if prior.DhcpServer.IsNull() && !target.DhcpServer.IsNull() {
+		keys := dhcpServerKeys
+		if dhcpBootSet(ctx, target.DhcpServer) {
+			keys = slices.Concat(keys, dhcpBootKeys)
+		}
+		if err := setEncodedKeys(patch, after, keys); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating network",
+				"Could not build the update for network with ID "+id+", no request was sent: "+
+					err.Error(),
+			)
+			return
+		}
+	}
+
+	updatedNetwork, err := r.client.UpdateNetworkPatch(ctx, site, id, patch)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Updating network",
+			fmt.Sprintf(
+				"Could not update network with ID %s: %s\n\nThe request set %s. The controller "+
+					"validates the stored network merged with these keys, so the error can "+
+					"concern a field this update did not change.",
+				id, err, strings.Join(slices.Sorted(maps.Keys(patch)), ", "),
+			),
+		)
+		return
+	}
+
+	result := merged
+	resp.Diagnostics.Append(r.networkToModel(ctx, updatedNetwork, &result, site, &merged)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1797,7 +1865,7 @@ func (r *networkResource) Update(
 	// Save updated data into Terraform state. Identity is immutable once set:
 	// carry the incoming identity through unchanged, deriving a fresh one from
 	// state only when it was absent.
-	idModel := networkIdentityModel{ID: data.ID, Site: data.Site}
+	idModel := networkIdentityModel{ID: result.ID, Site: result.Site}
 	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
 		if resp.Diagnostics.HasError() {
@@ -1805,7 +1873,7 @@ func (r *networkResource) Update(
 		}
 	}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 }
 
 func (r *networkResource) Delete(
@@ -1893,73 +1961,59 @@ func (r *networkResource) ImportState(
 	}
 }
 
-// preserveUnmanagedDhcpGuarding copies the controller's current DHCP guarding
-// fields onto an outgoing network update when the configuration does not
-// manage the dhcp_guarding block (planned is null). Without this, an update
-// built from the model alone carries dhcpguard_enabled=false and empty
-// dhcpd_ip_1..3, disabling guarding that was configured outside Terraform.
-// Returns true when the fields were preserved.
-func preserveUnmanagedDhcpGuarding(
-	planned types.Object,
-	network *unifi.Network,
-	current *unifi.Network,
-) bool {
-	if !planned.IsNull() {
+// dhcpServerKeys are the keys a dhcp_server block encodes, apart from its boot
+// object, whose keys are dhcpBootKeys.
+var (
+	dhcpServerKeys = []string{
+		"dhcpd_enabled", "dhcpd_start", "dhcpd_stop", "dhcpd_leasetime",
+		"dhcpd_gateway_enabled", "dhcpd_conflict_checking", "dhcpd_time_offset_enabled",
+		"dhcpd_ntp_enabled", "dhcpd_ntp_1", "dhcpd_ntp_2",
+		"dhcpd_dns_enabled", "dhcpd_dns_1", "dhcpd_dns_2", "dhcpd_dns_3", "dhcpd_dns_4",
+		"dhcpd_wins_enabled", "dhcpd_wins_1", "dhcpd_wins_2",
+		"dhcpd_wpad_url", "dhcpd_tftp_server", "dhcpd_unifi_controller",
+	}
+	dhcpBootKeys = []string{"dhcpd_boot_enabled", "dhcpd_boot_server", "dhcpd_boot_filename"}
+)
+
+// dhcpBootSet reports whether a known dhcp_server object holds a known boot
+// object.
+func dhcpBootSet(ctx context.Context, server types.Object) bool {
+	var ds dhcpServerModel
+	if server.IsNull() || server.IsUnknown() ||
+		server.As(ctx, &ds, basetypes.ObjectAsOptions{}).HasError() {
 		return false
 	}
-	network.DHCPguardEnabled = current.DHCPguardEnabled
-	network.DHCPDIP1 = current.DHCPDIP1
-	network.DHCPDIP2 = current.DHCPDIP2
-	network.DHCPDIP3 = current.DHCPDIP3
-	return true
+	return !ds.Boot.IsNull() && !ds.Boot.IsUnknown()
 }
 
-// preserveUnmanagedDhcpServer copies the controller's current DHCP server
-// option fields onto an outgoing network update when the configuration does
-// not manage the dhcp_server block (planned is null). modelToNetwork
-// zero-fills these fields in that case, and go-unifi serializes them for
-// corporate/guest networks (since go-unifi#73 that includes empty
-// dhcpd_dns_1..4 and pointer-to-empty dhcpd_ntp_1..2, so an empty value now
-// actively clears the slot). Without preserving, any unrelated update would
-// reset the controller's DHCP configuration — range, lease time, DNS, NTP,
-// WINS, boot options — configured outside Terraform. Skipped when DHCP relay
-// is enabled: relay requires the built-in DHCP server disabled, and
-// modelToNetwork's zero-filling is intentional there. Returns true when the
-// fields were preserved.
-func preserveUnmanagedDhcpServer(
-	planned types.Object,
-	relayEnabled bool,
-	network *unifi.Network,
-	current *unifi.Network,
-) bool {
-	if !planned.IsNull() || relayEnabled {
+// setEncodedKeys copies into patch each of keys that the encoding of n holds.
+func setEncodedKeys(patch map[string]any, n *unifi.Network, keys []string) error {
+	b, err := json.Marshal(n)
+	if err != nil {
+		return fmt.Errorf("unable to encode network: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var encoded map[string]any
+	if err := dec.Decode(&encoded); err != nil {
+		return fmt.Errorf("unable to decode network: %w", err)
+	}
+	for _, k := range keys {
+		if v, ok := encoded[k]; ok {
+			patch[k] = v
+		}
+	}
+	return nil
+}
+
+// dhcpRelayEnabled reports whether a known dhcp_relay object enables the relay.
+func dhcpRelayEnabled(ctx context.Context, relay types.Object) bool {
+	var dr dhcpRelayModel
+	if relay.IsNull() || relay.IsUnknown() ||
+		relay.As(ctx, &dr, basetypes.ObjectAsOptions{}).HasError() {
 		return false
 	}
-	network.DHCPDEnabled = current.DHCPDEnabled
-	network.DHCPDStart = current.DHCPDStart
-	network.DHCPDStop = current.DHCPDStop
-	network.DHCPDLeaseTime = current.DHCPDLeaseTime
-	network.DHCPDGatewayEnabled = current.DHCPDGatewayEnabled
-	network.DHCPDConflictChecking = current.DHCPDConflictChecking
-	network.DHCPDBootEnabled = current.DHCPDBootEnabled
-	network.DHCPDBootServer = current.DHCPDBootServer
-	network.DHCPDBootFilename = current.DHCPDBootFilename
-	network.DHCPDTimeOffsetEnabled = current.DHCPDTimeOffsetEnabled
-	network.DHCPDDNSEnabled = current.DHCPDDNSEnabled
-	network.DHCPDDNS1 = current.DHCPDDNS1
-	network.DHCPDDNS2 = current.DHCPDDNS2
-	network.DHCPDDNS3 = current.DHCPDDNS3
-	network.DHCPDDNS4 = current.DHCPDDNS4
-	network.DHCPDNtpEnabled = current.DHCPDNtpEnabled
-	network.DHCPDNtp1 = current.DHCPDNtp1
-	network.DHCPDNtp2 = current.DHCPDNtp2
-	network.DHCPDWinsEnabled = current.DHCPDWinsEnabled
-	network.DHCPDWins1 = current.DHCPDWins1
-	network.DHCPDWins2 = current.DHCPDWins2
-	network.DHCPDWPAdUrl = current.DHCPDWPAdUrl
-	network.DHCPDTFTPServer = current.DHCPDTFTPServer
-	network.DHCPDUnifiController = current.DHCPDUnifiController
-	return true
+	return dr.Enabled.ValueBool()
 }
 
 // networkIPv6FromAPI builds the ipv6 object from the controller's values. An
@@ -2092,7 +2146,7 @@ func (r *networkResource) modelToNetwork(
 		GatewayType:             model.GatewayType.ValueStringPointer(),
 		LteLanEnabled:           boolPointerIfKnown(model.LteLan),
 		VLANEnabled:             !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
-		Enabled:                 model.Enabled.ValueBool(),
+		Enabled:                 model.Enabled.ValueBoolPointer(),
 		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
 		IPAliases:               []string{},
 	}
@@ -2208,13 +2262,7 @@ func (r *networkResource) modelToNetwork(
 	// controller reject the request. We therefore skip the DHCP-server defaults
 	// when relay is enabled. ModifyPlan additionally pins setting_preference to
 	// "manual" so the controller honors the relay instead of auto-managing it.
-	relayEnabled := false
-	if !model.DhcpRelay.IsNull() && !model.DhcpRelay.IsUnknown() {
-		var dr dhcpRelayModel
-		if d := model.DhcpRelay.As(ctx, &dr, basetypes.ObjectAsOptions{}); !d.HasError() {
-			relayEnabled = dr.Enabled.ValueBool()
-		}
-	}
+	relayEnabled := dhcpRelayEnabled(ctx, model.DhcpRelay)
 
 	// Handle DHCP server configuration
 	if !model.DhcpServer.IsNull() && !model.DhcpServer.IsUnknown() {
@@ -2564,6 +2612,12 @@ func boolPointerIfKnown(v types.Bool) *bool {
 	return v.ValueBoolPointer()
 }
 
+// networkEnabled reads the enabled flag of a networkconf document. The default
+// LAN is stored without the key, which means enabled; an explicit false is kept.
+func networkEnabled(enabled *bool) types.Bool {
+	return types.BoolValue(enabled == nil || *enabled)
+}
+
 func boolOrDefault(prior types.Bool, def bool) types.Bool {
 	if prior.IsNull() || prior.IsUnknown() {
 		return types.BoolValue(def)
@@ -2592,7 +2646,7 @@ func (r *networkResource) networkToModel(
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringPointerValue(network.Name)
-	model.Enabled = types.BoolValue(network.Enabled)
+	model.Enabled = networkEnabled(network.Enabled)
 	model.IgmpSnooping = types.BoolValue(network.IGMPSnooping)
 	model.NetworkIsolation = types.BoolValue(network.NetworkIsolationEnabled)
 
