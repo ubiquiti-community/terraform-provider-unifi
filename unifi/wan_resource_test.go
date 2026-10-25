@@ -970,7 +970,7 @@ func Test_wanResource_modelToNetwork(t *testing.T) {
 		if got.Purpose != "wan" {
 			t.Errorf("expected Purpose=wan, got %v", got.Purpose)
 		}
-		if !got.Enabled {
+		if got.Enabled == nil || !*got.Enabled {
 			t.Error("expected Enabled=true")
 		}
 	})
@@ -987,7 +987,7 @@ func Test_wanResource_networkToModel(t *testing.T) {
 			Name:    &name,
 			Purpose: "wan",
 			WANType: &wanType,
-			Enabled: true,
+			Enabled: new(true),
 		}
 		model := &wanResourceModel{}
 		applyWANDefaults(model)
@@ -1196,7 +1196,7 @@ func TestWAN_nestedGroupsRoundTrip(t *testing.T) {
 		Purpose:                 unifi.PurposeWAN,
 		WANNetworkGroup:         new("WAN"),
 		WANType:                 new("dhcp"),
-		Enabled:                 true,
+		Enabled:                 new(true),
 		WANIPV6DNS1:             new("2606:4700:4700::1111"),
 		WANIPV6DNS2:             new(""),
 		WANIPV6DNSPreference:    new("manual"),

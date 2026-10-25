@@ -1655,7 +1655,7 @@ func (r *wanResource) modelToNetwork(
 		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
 		WANNetworkGroup: new(networkGroup),
 		HiddenID:        networkGroup,
-		Enabled:         model.Enabled.ValueBool(),
+		Enabled:         model.Enabled.ValueBoolPointer(),
 	}
 
 	// WAN Type — type has a Default so it's always known;
@@ -2217,7 +2217,7 @@ func (r *wanResource) networkToModel(
 
 	// Additional Settings
 	model.ReportWANEvent = types.BoolValue(network.ReportWANEvent)
-	model.Enabled = types.BoolValue(network.Enabled)
+	model.Enabled = networkEnabled(network.Enabled)
 	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
 	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
 	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)

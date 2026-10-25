@@ -695,7 +695,7 @@ func (d *networkDataSource) setDataSourceData(
 	model.NetworkGroup = types.StringPointerValue(network.NetworkGroup)
 
 	// Shared with resource fields
-	model.Enabled = types.BoolValue(network.Enabled)
+	model.Enabled = networkEnabled(network.Enabled)
 	model.AutoScale = types.BoolPointerValue(network.AutoScaleEnabled)
 	model.Subnet = types.StringPointerValue(network.IPSubnet)
 	model.DomainName = types.StringPointerValue(network.DomainName)

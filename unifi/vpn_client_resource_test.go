@@ -796,7 +796,7 @@ func Test_vpnClientResource_networkToModel(t *testing.T) {
 		network := &unifi.Network{
 			ID:                           "net-1",
 			Name:                         &name,
-			Enabled:                      true,
+			Enabled:                      new(true),
 			IPSubnet:                     &subnet,
 			WireguardClientMode:          &mode,
 			WireguardClientPeerIP:        &ip,
@@ -831,7 +831,7 @@ func Test_vpnClientResource_networkToModel(t *testing.T) {
 		network := &unifi.Network{
 			ID:                           "net-wo",
 			Name:                         &name,
-			Enabled:                      true,
+			Enabled:                      new(true),
 			IPSubnet:                     &subnet,
 			WireguardClientMode:          &mode,
 			WireguardClientPeerIP:        &ip,
