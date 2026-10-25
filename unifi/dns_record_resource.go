@@ -377,7 +377,11 @@ func (r *dnsRecordFrameworkResource) Read(
 	dnsRecord, err := r.client.GetDNSRecord(ctx, site, lookupID)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(
+				ctx,
+				resp,
+				dnsRecordIdentityModel{ID: data.ID, Site: types.StringValue(site)},
+			)
 			return
 		}
 		resp.Diagnostics.AddError(

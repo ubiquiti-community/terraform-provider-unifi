@@ -719,7 +719,11 @@ func (r *siteToSiteVPNResource) Read(
 	network, err := r.client.GetNetwork(ctx, site, lookupID)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(
+				ctx,
+				resp,
+				siteToSiteVPNIdentityModel{ID: data.ID, Site: data.Site},
+			)
 			return
 		}
 		resp.Diagnostics.AddError(
