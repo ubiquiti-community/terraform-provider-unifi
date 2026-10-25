@@ -807,14 +807,6 @@ func Test_wanResource_Read(t *testing.T) {
 	t.Skip("requires terraform state machinery")
 }
 
-func Test_wanResource_Update(t *testing.T) {
-	t.Skip("requires terraform state machinery")
-}
-
-func Test_wanResource_applyPlanToState(t *testing.T) {
-	t.Skip("requires complex state setup")
-}
-
 func Test_wanResource_Delete(t *testing.T) {
 	t.Skip("requires terraform state machinery")
 }

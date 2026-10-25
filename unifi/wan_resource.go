@@ -3,7 +3,9 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -589,6 +591,9 @@ func (r *wanResource) Schema(
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "IPv6 DNS configuration",
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseNonNullStateForUnknown(),
+						},
 						Attributes: map[string]schema.Attribute{
 							"primary": schema.StringAttribute{
 								Optional:            true,
@@ -1301,7 +1306,7 @@ func (r *wanResource) overlayConfig(
 	// setting_preference / ipv6_setting_preference are Computed: the controller
 	// may echo back "auto" in the create response even when the user asked for
 	// "manual". When the user explicitly set them, keep their value so the result
-	// stays consistent with the plan (mirrors applyPlanToState on the Update path).
+	// stays consistent with the plan.
 	if !config.SettingPreference.IsNull() {
 		state.SettingPreference = plan.SettingPreference
 	}
@@ -1417,27 +1422,55 @@ func (r *wanResource) Read(
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// wanDiffOptions groups the keys of each nested attribute, so a change to one
+// leaf sends the whole object as planned, because the controller validates the
+// merged document.
+var wanDiffOptions = unifi.DiffOptions{
+	Groups: [][]string{
+		{"wan_vlan_enabled", "wan_vlan"},
+		{"wan_egress_qos_enabled", "wan_egress_qos"},
+		{"wan_dns1", "wan_dns2", "wan_dns_preference"},
+		{"wan_ipv6_dns1", "wan_ipv6_dns2", "wan_ipv6_dns_preference"},
+		{"wan_dhcp_cos", "wan_dhcp_options"},
+		{"wan_dhcpv6_cos", "wan_dhcpv6_options", "ipv6_wan_delegation_type"},
+		{"wan_dhcpv6_pd_size", "wan_dhcpv6_pd_size_auto"},
+		{"wan_smartq_enabled", "wan_smartq_up_rate", "wan_smartq_down_rate"},
+		{"upnp_enabled", "upnp_wan_interface", "upnp_nat_pmp_enabled", "upnp_secure_mode"},
+		{"wan_load_balance_type", "wan_load_balance_weight", "wan_failover_priority"},
+		{"igmp_proxy_for", "igmp_proxy_upstream"},
+	},
+}
+
+// Update sends only the keys whose encoding differs between the prior state and
+// the plan, so the controller keeps every field the configuration does not set.
 func (r *wanResource) Update(
 	ctx context.Context,
 	req resource.UpdateRequest,
 	resp *resource.UpdateResponse,
 ) {
-	var state wanResourceModel
-	var plan wanResourceModel
-
-	// Step 1: Read the current state (which already contains API values from previous reads)
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	var prior wanResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Read the plan data
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	mergedRaw, err := util.ResolveUnknowns(req.Plan.Raw, req.State.Raw)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			"Could not resolve the planned values from prior state, no request was sent: "+
+				err.Error(),
+		)
+		return
+	}
+	var merged wanResourceModel
+	resp.Diagnostics.Append(
+		tfsdk.Plan{Schema: req.Plan.Schema, Raw: mergedRaw}.Get(ctx, &merged)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	updateTimeout, timeoutDiags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	updateTimeout, timeoutDiags := merged.Timeouts.Update(ctx, 20*time.Minute)
 	resp.Diagnostics.Append(timeoutDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -1445,58 +1478,63 @@ func (r *wanResource) Update(
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
-	// Step 2: Apply the plan changes to the state object
-	r.applyPlanToState(ctx, &plan, &state)
-	state.Timeouts = plan.Timeouts
+	site := prior.Site.ValueString()
+	if site == "" {
+		site = r.client.Site
+	}
+	id := prior.ID.ValueString()
 
-	state.PasswordWO = r.readPasswordWO(ctx, req.Config, &resp.Diagnostics)
+	target := merged
+	target.PasswordWO = r.readPasswordWO(ctx, req.Config, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Step 3: Convert the updated state to API format
-	network, diags := r.modelToNetwork(ctx, &state)
+	before, diags := r.modelToNetwork(ctx, &prior)
+	resp.Diagnostics.Append(diags...)
+	after, diags := r.modelToNetwork(ctx, &target)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	site := state.Site.ValueString()
-	if site == "" {
-		site = r.client.Site
-	}
-
-	// Step 4: Send to API
-	network.ID = state.ID.ValueString()
-	updatedNetwork, err := r.client.UpdateNetwork(ctx, site, network)
+	patch, err := unifi.Diff(before, after, wanDiffOptions)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client Error",
-			fmt.Sprintf("Unable to update WAN network, got error: %s", err),
+			"Could not build the update for WAN network with ID "+id+", no request was sent: "+
+				err.Error(),
 		)
 		return
 	}
 
-	// Step 5: Update state with API response
-	diags = r.networkToModel(ctx, updatedNetwork, &state, site)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	updatedNetwork, err := r.client.UpdateNetworkPatch(ctx, site, id, patch)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Client Error",
+			fmt.Sprintf(
+				"Unable to update WAN network with ID %s, got error: %s\n\nThe request set %s. "+
+					"The controller validates the stored network merged with these keys, so the "+
+					"error can concern a field this update did not change.",
+				id, err, strings.Join(slices.Sorted(maps.Keys(patch)), ", "),
+			),
+		)
 		return
 	}
 
-	// Step 6: Re-assert the planned DS-Lite values. The controller overrides
-	// dslite.remote_host_auto server-side (it forces `true` when the AFTR is
-	// auto-detected for the interface), so the post-apply read returns `true`
-	// where the plan set `false` and the consistency check fails (#281). Keep
-	// the planned leaves the user set; the next Read reconciles state with the
-	// controller. (networkToModel runs after applyPlanToState, so its value
-	// would otherwise win.)
-	state.Dslite = util.OverlayKnownObject(ctx, plan.Dslite, state.Dslite)
+	result := merged
+	resp.Diagnostics.Append(r.networkToModel(ctx, updatedNetwork, &result, site)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	// The controller can force dslite.remote_host_auto to true, so state keeps
+	// the planned DS-Lite values until the next Read (#281).
+	result.Dslite = util.OverlayKnownObject(ctx, merged.Dslite, result.Dslite)
 
 	// Save updated data into Terraform state. Identity is immutable once set:
 	// carry the incoming identity through unchanged, deriving a fresh one from
 	// state only when it was absent.
-	identity := wanIdentityModel{ID: state.ID, Site: state.Site}
+	identity := wanIdentityModel{ID: result.ID, Site: result.Site}
 	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
@@ -1504,85 +1542,7 @@ func (r *wanResource) Update(
 		}
 	}
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-}
-
-// applyPlanToState merges plan values into state, preserving state values where plan is null/unknown.
-func (r *wanResource) applyPlanToState(
-	ctx context.Context,
-	plan *wanResourceModel,
-	state *wanResourceModel,
-) {
-	// Apply plan values to state, but only if plan value is not null/unknown
-	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
-		state.Name = plan.Name
-	}
-	if !plan.Type.IsNull() && !plan.Type.IsUnknown() {
-		state.Type = plan.Type
-	}
-	if !plan.TypeV6.IsNull() && !plan.TypeV6.IsUnknown() {
-		state.TypeV6 = plan.TypeV6
-	}
-	if !plan.Vlan.IsNull() && !plan.Vlan.IsUnknown() {
-		state.Vlan = plan.Vlan
-	}
-	if !plan.EgressQoS.IsNull() && !plan.EgressQoS.IsUnknown() {
-		state.EgressQoS = plan.EgressQoS
-	}
-	if !plan.DNS.IsNull() && !plan.DNS.IsUnknown() {
-		state.DNS = plan.DNS
-	}
-	if !plan.DHCP.IsNull() && !plan.DHCP.IsUnknown() {
-		state.DHCP = plan.DHCP
-	}
-	if !plan.DHCPv6.IsNull() && !plan.DHCPv6.IsUnknown() {
-		state.DHCPv6 = plan.DHCPv6
-	}
-	if !plan.SmartQ.IsNull() && !plan.SmartQ.IsUnknown() {
-		state.SmartQ = plan.SmartQ
-	}
-	if !plan.UPnP.IsNull() && !plan.UPnP.IsUnknown() {
-		state.UPnP = plan.UPnP
-	}
-	if !plan.LoadBalance.IsNull() && !plan.LoadBalance.IsUnknown() {
-		state.LoadBalance = plan.LoadBalance
-	}
-	if !plan.IGMPProxy.IsNull() && !plan.IGMPProxy.IsUnknown() {
-		state.IGMPProxy = plan.IGMPProxy
-	}
-	if !plan.ReportWANEvent.IsNull() && !plan.ReportWANEvent.IsUnknown() {
-		state.ReportWANEvent = plan.ReportWANEvent
-	}
-	if !plan.Enabled.IsNull() && !plan.Enabled.IsUnknown() {
-		state.Enabled = plan.Enabled
-	}
-	if !plan.IPAliases.IsNull() && !plan.IPAliases.IsUnknown() {
-		state.IPAliases = plan.IPAliases
-	}
-	if !plan.ProviderCapabilities.IsNull() && !plan.ProviderCapabilities.IsUnknown() {
-		state.ProviderCapabilities = plan.ProviderCapabilities
-	}
-	if !plan.SettingPreference.IsNull() && !plan.SettingPreference.IsUnknown() {
-		state.SettingPreference = plan.SettingPreference
-	}
-	if !plan.IPv6SettingPreference.IsNull() && !plan.IPv6SettingPreference.IsUnknown() {
-		state.IPv6SettingPreference = plan.IPv6SettingPreference
-	}
-	if !plan.SingleNetworkLAN.IsNull() && !plan.SingleNetworkLAN.IsUnknown() {
-		state.SingleNetworkLAN = plan.SingleNetworkLAN
-	}
-	if !plan.MACOverrideEnabled.IsNull() && !plan.MACOverrideEnabled.IsUnknown() {
-		state.MACOverrideEnabled = plan.MACOverrideEnabled
-	}
-	if !plan.InterfaceMTU.IsNull() && !plan.InterfaceMTU.IsUnknown() {
-		state.InterfaceMTU = plan.InterfaceMTU
-	}
-	if !plan.InterfaceMTUEnabled.IsNull() && !plan.InterfaceMTUEnabled.IsUnknown() {
-		state.InterfaceMTUEnabled = plan.InterfaceMTUEnabled
-	}
-	// DS-Lite: re-assert every leaf the plan knows and keep the state's value
-	// for the rest, as the flat attributes were merged leaf by leaf.
-	state.Dslite = util.OverlayKnownObject(ctx, plan.Dslite, state.Dslite)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 }
 
 func (r *wanResource) Delete(
