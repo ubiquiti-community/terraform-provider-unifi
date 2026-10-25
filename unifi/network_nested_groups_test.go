@@ -478,7 +478,7 @@ func TestNetworkIPv6_vlanOnlyPreservesPrevious(t *testing.T) {
 		ID:                          "net-vo",
 		Name:                        stringPtr("VLAN only"),
 		Purpose:                     unifi.PurposeVLANOnly,
-		Enabled:                     true,
+		Enabled:                     new(true),
 		IPV6ClientAddressAssignment: stringPtr("slaac"),
 		IPV6RaEnabled:               false,
 		IPV6RaPriority:              stringPtr("medium"),

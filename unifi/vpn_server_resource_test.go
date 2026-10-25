@@ -1076,7 +1076,7 @@ func Test_vpnServerResource_networkToModel(t *testing.T) {
 		network := &unifi.Network{
 			ID:                  "net-123",
 			Name:                &name,
-			Enabled:             true,
+			Enabled:             new(true),
 			IPSubnet:            &subnet,
 			VPNType:             &vpnType,
 			WireguardPrivateKey: &privKey,
@@ -1130,7 +1130,7 @@ func Test_vpnServerResource_networkToModel(t *testing.T) {
 		network := &unifi.Network{
 			ID:       "net-456",
 			Name:     &name,
-			Enabled:  true,
+			Enabled:  new(true),
 			IPSubnet: &subnet,
 			VPNType:  &vpnType,
 			// IPSecPreSharedKey is nil (API does not return it on read)
@@ -1351,7 +1351,7 @@ func TestVPNServer_openvpnCertPairsRoundTrip(t *testing.T) {
 		ID:                      "vpn-1",
 		Name:                    str("ovpn"),
 		Purpose:                 unifi.PurposeUserVPN,
-		Enabled:                 true,
+		Enabled:                 new(true),
 		IPSubnet:                str("10.120.0.1/24"),
 		VPNType:                 str("openvpn-server"),
 		LocalPort:               &port,

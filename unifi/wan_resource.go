@@ -1712,7 +1712,7 @@ func (r *wanResource) modelToNetwork(
 		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
 		WANNetworkGroup: new(networkGroup),
 		HiddenID:        networkGroup,
-		Enabled:         model.Enabled.ValueBool(),
+		Enabled:         model.Enabled.ValueBoolPointer(),
 	}
 
 	// WAN Type — type has a Default so it's always known;

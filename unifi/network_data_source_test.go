@@ -411,7 +411,7 @@ func Test_networkDataSource_setDataSourceData(t *testing.T) {
 				ID:      "net-001",
 				Name:    &name,
 				Purpose: "corporate",
-				Enabled: true,
+				Enabled: new(true),
 			},
 			site:    "default",
 			checkID: "net-001",
