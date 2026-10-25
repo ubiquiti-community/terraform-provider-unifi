@@ -957,7 +957,7 @@ func (r *vpnServerResource) modelToNetwork(
 	network := &unifi.Network{
 		Name:              model.Name.ValueStringPointer(),
 		Purpose:           unifi.PurposeUserVPN,
-		Enabled:           model.Enabled.ValueBool(),
+		Enabled:           model.Enabled.ValueBoolPointer(),
 		IPSubnet:          model.Subnet.ValueStringPointer(),
 		IPV6Subnet:        model.SubnetIPv6.ValueStringPointer(),
 		SettingPreference: new("manual"),
@@ -1120,7 +1120,7 @@ func (r *vpnServerResource) networkToModel(
 	model.ID = types.StringValue(network.ID)
 	model.Site = types.StringValue(site)
 	model.Name = types.StringPointerValue(network.Name)
-	model.Enabled = types.BoolValue(network.Enabled)
+	model.Enabled = networkEnabled(network.Enabled)
 	if network.IPSubnet != nil {
 		model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
 	} else {

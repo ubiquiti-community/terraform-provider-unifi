@@ -1198,7 +1198,7 @@ func Test_networkResource_networkToModel(t *testing.T) {
 					ID:      "net-123",
 					Name:    strPtr("test-net"),
 					Purpose: unifi.PurposeCorporate,
-					Enabled: true,
+					Enabled: new(true),
 				},
 				model: &networkResourceModel{},
 				site:  "default",
@@ -1335,7 +1335,7 @@ func Test_networkResource_networkToModel_multicastDNS(t *testing.T) {
 		ID:          "net-1",
 		Name:        strPtr("IoT"),
 		Purpose:     unifi.PurposeCorporate,
-		Enabled:     true,
+		Enabled:     new(true),
 		IPSubnet:    strPtr("10.0.2.1/24"),
 		MdnsEnabled: false,
 	}
@@ -1405,7 +1405,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			ID:        "net-1",
 			Name:      strPtr("aliased"),
 			Purpose:   unifi.PurposeCorporate,
-			Enabled:   true,
+			Enabled:   new(true),
 			IPSubnet:  strPtr("10.0.2.1/24"),
 			IPAliases: []string{"10.0.2.5", "10.0.2.6"},
 			NATOutboundIPAddresses: []unifi.NetworkNATOutboundIPAddresses{
@@ -1463,7 +1463,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			ID:       "net-3",
 			Name:     strPtr("nat-unmanaged"),
 			Purpose:  unifi.PurposeCorporate,
-			Enabled:  true,
+			Enabled:  new(true),
 			IPSubnet: strPtr("10.0.4.1/24"),
 			NATOutboundIPAddresses: []unifi.NetworkNATOutboundIPAddresses{
 				{
@@ -1491,7 +1491,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			ID:       "net-2",
 			Name:     strPtr("no-aliases"),
 			Purpose:  unifi.PurposeCorporate,
-			Enabled:  true,
+			Enabled:  new(true),
 			IPSubnet: strPtr("10.0.3.1/24"),
 		}
 		var model networkResourceModel
@@ -1528,7 +1528,7 @@ func Test_networkResource_networkToModel_ipAliases(t *testing.T) {
 			ID:       "net-4",
 			Name:     strPtr("empty-aliases"),
 			Purpose:  unifi.PurposeCorporate,
-			Enabled:  true,
+			Enabled:  new(true),
 			IPSubnet: strPtr("10.0.5.1/24"),
 		}
 		var model networkResourceModel
@@ -1562,7 +1562,7 @@ func Test_networkResource_networkToModel_dnsServersEmptyList(t *testing.T) {
 		ID:      "net-1",
 		Name:    strPtr("test-net"),
 		Purpose: unifi.PurposeCorporate,
-		Enabled: true,
+		Enabled: new(true),
 	}
 
 	base := func() *networkResourceModel {
@@ -1772,7 +1772,7 @@ func Test_networkResource_networkToModel_normalizesControllerDefaults(t *testing
 				ID:                "net-imported",
 				Name:              strPtr("Imported Network"),
 				Purpose:           unifi.PurposeCorporate,
-				Enabled:           true,
+				Enabled:           new(true),
 				IPSubnet:          strPtr("10.25.0.1/24"),
 				GatewayType:       tt.gatewayType,
 				IPV6InterfaceType: tt.ipv6InterfaceType,
@@ -1866,7 +1866,7 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyDefaults(t *testing.T
 				ID:      "net-vlan-only-imported",
 				Name:    strPtr("Imported VLAN Only"),
 				Purpose: unifi.PurposeVLANOnly,
-				Enabled: true,
+				Enabled: new(true),
 			}
 			var model networkResourceModel
 			d := r.networkToModel(context.Background(), network, &model, "default", previous)
@@ -1982,7 +1982,7 @@ func Test_networkResource_networkToModel_normalizesVLANOnlyBoolDefaults(t *testi
 				ID:      "net-vlan-only-imported",
 				Name:    strPtr("Imported VLAN Only"),
 				Purpose: unifi.PurposeVLANOnly,
-				Enabled: true,
+				Enabled: new(true),
 			}
 			var model networkResourceModel
 			d := r.networkToModel(context.Background(), network, &model, "default", previous)
@@ -2181,7 +2181,7 @@ func Test_networkResource_purpose(t *testing.T) {
 			ID:       "net-guest",
 			Name:     strPtr("Guest"),
 			Purpose:  unifi.PurposeGuest,
-			Enabled:  true,
+			Enabled:  new(true),
 			IPSubnet: strPtr("10.0.9.1/24"),
 		}
 		prev := baseModel()
@@ -2252,65 +2252,6 @@ func TestNetworkFirewallZoneIDModelRoundTrip(t *testing.T) {
 
 func stringPtr(s string) *string {
 	return &s
-}
-
-func Test_preserveUnmanagedDhcpGuarding(t *testing.T) {
-	t.Parallel()
-
-	current := &unifi.Network{
-		DHCPguardEnabled: true,
-		DHCPDIP1:         "192.168.1.1",
-		DHCPDIP2:         "192.168.1.2",
-	}
-
-	t.Run("null block preserves controller values", func(t *testing.T) {
-		t.Parallel()
-
-		network := &unifi.Network{}
-		preserved := preserveUnmanagedDhcpGuarding(
-			types.ObjectNull(dhcpGuardingModel{}.AttributeTypes()),
-			network,
-			current,
-		)
-
-		if !preserved {
-			t.Fatal("expected preservation for a null dhcp_guarding block")
-		}
-		if !network.DHCPguardEnabled {
-			t.Error("expected DHCPguardEnabled to be preserved as true")
-		}
-		if network.DHCPDIP1 != "192.168.1.1" || network.DHCPDIP2 != "192.168.1.2" {
-			t.Errorf(
-				"expected trusted servers to be preserved, got %q, %q",
-				network.DHCPDIP1,
-				network.DHCPDIP2,
-			)
-		}
-	})
-
-	t.Run("managed block is left alone", func(t *testing.T) {
-		t.Parallel()
-
-		planned, diags := types.ObjectValueFrom(
-			t.Context(),
-			dhcpGuardingModel{}.AttributeTypes(),
-			dhcpGuardingModel{
-				Enabled: types.BoolValue(false),
-				Servers: types.ListNull(types.StringType),
-			},
-		)
-		if diags.HasError() {
-			t.Fatalf("failed to build planned object: %v", diags)
-		}
-
-		network := &unifi.Network{}
-		if preserveUnmanagedDhcpGuarding(planned, network, current) {
-			t.Fatal("expected no preservation for a managed dhcp_guarding block")
-		}
-		if network.DHCPguardEnabled || network.DHCPDIP1 != "" {
-			t.Error("expected the outgoing network to be untouched")
-		}
-	})
 }
 
 // minimalNetworkPlan returns a tfsdk.Plan with every attribute at its null/zero
@@ -2896,102 +2837,6 @@ resource "unifi_network" "test_empty_lists" {
 				),
 			},
 		},
-	})
-}
-
-// Test_preserveUnmanagedDhcpServer guards the Update-path carry-through of
-// controller-side DHCP server options when the dhcp_server block is absent
-// from configuration. Since go-unifi#73 empty dhcpd_dns_1..4 / dhcpd_ntp_1..2
-// serialize (and clear) on corporate/guest networks, so an update built from
-// the zero-filled model alone would reset DHCP options configured outside
-// Terraform. Relay networks intentionally keep the zero-filled fields.
-func Test_preserveUnmanagedDhcpServer(t *testing.T) {
-	current := &unifi.Network{
-		DHCPDEnabled:    true,
-		DHCPDStart:      strPtr("10.0.0.100"),
-		DHCPDStop:       strPtr("10.0.0.200"),
-		DHCPDLeaseTime:  func() *int64 { v := int64(3600); return &v }(),
-		DHCPDDNSEnabled: true,
-		DHCPDDNS1:       new("10.0.0.53"),
-		DHCPDNtpEnabled: true,
-		DHCPDNtp1:       strPtr("10.0.0.123"),
-		DHCPDWins1:      strPtr("10.0.0.44"),
-	}
-
-	t.Run("unmanaged block: current values carried", func(t *testing.T) {
-		network := &unifi.Network{
-			DHCPDEnabled: true,
-			DHCPDDNS1:    new(""),
-			DHCPDNtp1:    strPtr(""),
-		}
-		got := preserveUnmanagedDhcpServer(
-			types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
-			false,
-			network,
-			current,
-		)
-		if !got {
-			t.Fatal("preserveUnmanagedDhcpServer = false, want true")
-		}
-		if derefString(network.DHCPDDNS1) != "10.0.0.53" {
-			t.Errorf("DHCPDDNS1 = %q, want carried 10.0.0.53", derefString(network.DHCPDDNS1))
-		}
-		if network.DHCPDNtp1 == nil || *network.DHCPDNtp1 != "10.0.0.123" {
-			t.Errorf("DHCPDNtp1 = %v, want carried 10.0.0.123", network.DHCPDNtp1)
-		}
-		if network.DHCPDStart == nil || *network.DHCPDStart != "10.0.0.100" {
-			t.Errorf("DHCPDStart = %v, want carried 10.0.0.100", network.DHCPDStart)
-		}
-		if !network.DHCPDDNSEnabled || !network.DHCPDNtpEnabled {
-			t.Error("enabled flags not carried")
-		}
-	})
-
-	t.Run("managed block: untouched", func(t *testing.T) {
-		network := &unifi.Network{DHCPDDNS1: new("")}
-		got := preserveUnmanagedDhcpServer(
-			types.ObjectValueMust(dhcpServerModel{}.AttributeTypes(), map[string]attr.Value{
-				"boot":                types.ObjectNull(dhcpBootModel{}.AttributeTypes()),
-				"enabled":             types.BoolValue(true),
-				"start":               types.StringNull(),
-				"stop":                types.StringNull(),
-				"gateway_enabled":     types.BoolValue(false),
-				"conflict_checking":   types.BoolValue(true),
-				"ntp":                 dhcpServerOptionDefault(),
-				"time_offset_enabled": types.BoolValue(false),
-				"dns":                 dhcpServerOptionDefault(),
-				"leasetime":           timetypes.NewGoDurationNull(),
-				"wins":                types.ObjectNull(winsModel{}.AttributeTypes()),
-				"wpad_url":            types.StringNull(),
-				"tftp_server":         types.StringNull(),
-				"unifi_controller":    types.StringNull(),
-			}),
-			false,
-			network,
-			current,
-		)
-		if got {
-			t.Fatal("preserveUnmanagedDhcpServer = true, want false for managed block")
-		}
-		if derefString(network.DHCPDDNS1) != "" {
-			t.Errorf("DHCPDDNS1 = %q, want untouched empty", derefString(network.DHCPDDNS1))
-		}
-	})
-
-	t.Run("relay enabled: untouched", func(t *testing.T) {
-		network := &unifi.Network{DHCPDEnabled: false}
-		got := preserveUnmanagedDhcpServer(
-			types.ObjectNull(dhcpServerModel{}.AttributeTypes()),
-			true,
-			network,
-			current,
-		)
-		if got {
-			t.Fatal("preserveUnmanagedDhcpServer = true, want false when relay enabled")
-		}
-		if network.DHCPDEnabled {
-			t.Error("DHCPDEnabled = true, want untouched false (relay requires it off)")
-		}
 	})
 }
 

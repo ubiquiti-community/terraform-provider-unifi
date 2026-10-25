@@ -1054,7 +1054,7 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 	network := &unifi.Network{
 		Purpose:               unifi.PurposeSiteVPN,
 		Name:                  new(model.Name.ValueString()),
-		Enabled:               model.Enabled.ValueBool(),
+		Enabled:               model.Enabled.ValueBoolPointer(),
 		VPNType:               new("ipsec-vpn"),
 		IPSecInterface:        optStr(model.Interface),
 		IPSecPeerIP:           optStr(model.PeerIP),
@@ -1128,7 +1128,7 @@ func (r *siteToSiteVPNResource) networkToModel(
 	if network.Name != nil {
 		model.Name = types.StringValue(*network.Name)
 	}
-	model.Enabled = types.BoolValue(network.Enabled)
+	model.Enabled = networkEnabled(network.Enabled)
 	model.Interface = stringPtrOrNull(network.IPSecInterface)
 	// Verbatim: the controller may hold a hostname, which an IPv4 type rejects.
 	if network.IPSecPeerIP != nil && *network.IPSecPeerIP != "" {

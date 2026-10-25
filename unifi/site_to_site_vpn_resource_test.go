@@ -88,7 +88,7 @@ func TestSiteToSiteVPNModelRoundTrip(t *testing.T) {
 		ID:                "net-1",
 		Name:              unifi.Ptr("HQ-to-Branch"),
 		Purpose:           unifi.PurposeSiteVPN,
-		Enabled:           true,
+		Enabled:           new(true),
 		VPNType:           unifi.Ptr("ipsec-vpn"),
 		IPSecInterface:    unifi.Ptr("wan"),
 		IPSecPeerIP:       unifi.Ptr("203.0.113.9"),
@@ -1053,7 +1053,7 @@ func Test_siteToSiteVPNResource_modelToNetwork(t *testing.T) {
 		if network.VPNType == nil || *network.VPNType != "ipsec-vpn" {
 			t.Errorf("VPNType = %v, want ipsec-vpn", network.VPNType)
 		}
-		if !network.Enabled {
+		if network.Enabled == nil || !*network.Enabled {
 			t.Error("Enabled should be true")
 		}
 		if !network.IPSecPfs {
@@ -1100,7 +1100,7 @@ func Test_siteToSiteVPNResource_networkToModel(t *testing.T) {
 			ID:             "net-42",
 			Name:           &name,
 			Purpose:        unifi.PurposeSiteVPN,
-			Enabled:        true,
+			Enabled:        new(true),
 			IPSecInterface: &iface,
 			RemoteVPNSubnets: []string{
 				"192.168.10.0/24",
