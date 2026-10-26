@@ -411,7 +411,11 @@ func (r *powerSupervisorResource) Read(
 	supervisor, err := r.client.GetPowerSupervisor(ctx, site, data.ID.ValueString())
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(
+				ctx,
+				resp,
+				powerSupervisorIdentityModel{ID: data.ID, Site: data.Site},
+			)
 			return
 		}
 		resp.Diagnostics.AddError(
