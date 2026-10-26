@@ -975,10 +975,16 @@ func (r *portProfileResource) ModifyPlan(
 		return // not configured yet (e.g. during validation)
 	}
 
-	var forward, nativeID, site, taggedMgmt types.String
+	var forward, nativeID, site, taggedMgmt, configTaggedMgmt, priorTaggedMgmt types.String
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("forward"), &forward)...)
 	resp.Diagnostics.Append(
 		req.Plan.GetAttribute(ctx, path.Root("tagged_vlan_mgmt"), &taggedMgmt)...)
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("tagged_vlan_mgmt"), &configTaggedMgmt)...)
+	if !req.State.Raw.IsNull() {
+		resp.Diagnostics.Append(
+			req.State.GetAttribute(ctx, path.Root("tagged_vlan_mgmt"), &priorTaggedMgmt)...)
+	}
 	resp.Diagnostics.Append(
 		req.Plan.GetAttribute(ctx, path.Root("native_networkconf_id"), &nativeID)...)
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("site"), &site)...)
@@ -995,6 +1001,10 @@ func (r *portProfileResource) ModifyPlan(
 	if nativeID.IsNull() || nativeID.IsUnknown() || nativeID.ValueString() == "" {
 		return
 	}
+	mode, known := customizeTaggedVLANMgmt(taggedMgmt, configTaggedMgmt, priorTaggedMgmt)
+	if !known {
+		return
+	}
 
 	siteName := site.ValueString()
 	if siteName == "" {
@@ -1007,7 +1017,7 @@ func (r *portProfileResource) ModifyPlan(
 		// real error, and a transient read must not block an unrelated change.
 		return
 	}
-	if !customizeIsRewritten(taggedMgmt.ValueString(), network.VLAN) {
+	if !customizeIsRewritten(mode, network.VLAN) {
 		return
 	}
 
@@ -1037,6 +1047,26 @@ func customizeIsRewritten(taggedVLANMgmt string, nativeVLAN *int64) bool {
 		return false
 	}
 	return nativeVLAN == nil || *nativeVLAN == 0
+}
+
+// customizeTaggedVLANMgmt resolves the tagged_vlan_mgmt that the customize
+// check judges. The attribute is Optional+Computed, so when configuration
+// leaves it out it plans unknown on any update; the controller keeps the
+// stored mode, which prior state holds. On create there is no prior mode and
+// the controller assigns its default, so the empty mode keeps the refusal. A
+// value set by an expression that is unknown until apply cannot be judged,
+// so the second return is false and the check is skipped.
+func customizeTaggedVLANMgmt(planned, configured, prior types.String) (string, bool) {
+	if !planned.IsUnknown() {
+		return planned.ValueString(), true
+	}
+	if configured.IsUnknown() {
+		return "", false
+	}
+	if prior.IsNull() || prior.IsUnknown() {
+		return "", true
+	}
+	return prior.ValueString(), true
 }
 
 // networkName returns a network's name for diagnostics, falling back to its ID.
