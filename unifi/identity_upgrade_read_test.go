@@ -19,6 +19,9 @@ import (
 // identity from the state instead of failing with "Unexpected Identity
 // Change" (unifi_firewall_group, unifi_firewall_rule) or keeping a null id
 // (unifi_network, unifi_wlan).
+//
+// It also covers the state v0.60.0 left behind after such a refresh: a
+// version 1 identity with a null id, which must be repaired rather than kept.
 func TestRefreshWithoutStoredIdentity(t *testing.T) {
 	ctx := context.Background()
 
@@ -123,63 +126,73 @@ func TestRefreshWithoutStoredIdentity(t *testing.T) {
 		t.Fatalf("GetResourceIdentitySchemas: %v", err)
 	}
 
+	stored := map[string]struct {
+		version int64
+		raw     *tfprotov6.RawState
+	}{
+		"none":                 {0, &tfprotov6.RawState{}},
+		"null id from v0.60.0": {1, &tfprotov6.RawState{JSON: []byte(`{"id":null,"site":"default"}`)}},
+	}
+
 	for _, tc := range cases {
-		t.Run(tc.typeName, func(t *testing.T) {
-			upgraded, err := srv.UpgradeResourceIdentity(
-				ctx,
-				&tfprotov6.UpgradeResourceIdentityRequest{
-					TypeName:    tc.typeName,
-					Version:     0,
-					RawIdentity: &tfprotov6.RawState{},
-				},
-			)
-			if err != nil {
-				t.Fatalf("UpgradeResourceIdentity: %v", err)
-			}
-			failOnErrorDiagnostics(t, "upgrade", upgraded.Diagnostics)
-
-			stateType := schemas.ResourceSchemas[tc.typeName].ValueType()
-			values := map[string]tftypes.Value{
-				"id":   tftypes.NewValue(tftypes.String, tc.id),
-				"site": tftypes.NewValue(tftypes.String, "default"),
-			}
-			for k, v := range tc.state {
-				values[k] = v
-			}
-			state, err := tfprotov6.NewDynamicValue(
-				stateType,
-				objectWithNulls(t, stateType, values),
-			)
-			if err != nil {
-				t.Fatalf("state: %v", err)
-			}
-
-			read, err := srv.ReadResource(ctx, &tfprotov6.ReadResourceRequest{
-				TypeName:        tc.typeName,
-				CurrentState:    &state,
-				CurrentIdentity: upgraded.UpgradedIdentity,
-			})
-			if err != nil {
-				t.Fatalf("ReadResource: %v", err)
-			}
-			failOnErrorDiagnostics(t, "read", read.Diagnostics)
-
-			identityType := identitySchemas.IdentitySchemas[tc.typeName].ValueType()
-			got, err := read.NewIdentity.IdentityData.Unmarshal(identityType)
-			if err != nil {
-				t.Fatalf("unmarshal identity: %v", err)
-			}
-			var attrs map[string]tftypes.Value
-			if err := got.As(&attrs); err != nil {
-				t.Fatalf("identity is not an object: %v", err)
-			}
-			for attr, want := range map[string]string{"id": tc.id, "site": "default"} {
-				var s string
-				if err := attrs[attr].As(&s); err != nil || s != want {
-					t.Errorf("identity %s = %v, want %q", attr, attrs[attr], want)
+		for storedName, si := range stored {
+			t.Run(tc.typeName+"/"+storedName, func(t *testing.T) {
+				upgraded, err := srv.UpgradeResourceIdentity(
+					ctx,
+					&tfprotov6.UpgradeResourceIdentityRequest{
+						TypeName:    tc.typeName,
+						Version:     si.version,
+						RawIdentity: si.raw,
+					},
+				)
+				if err != nil {
+					t.Fatalf("UpgradeResourceIdentity: %v", err)
 				}
-			}
-		})
+				failOnErrorDiagnostics(t, "upgrade", upgraded.Diagnostics)
+
+				stateType := schemas.ResourceSchemas[tc.typeName].ValueType()
+				values := map[string]tftypes.Value{
+					"id":   tftypes.NewValue(tftypes.String, tc.id),
+					"site": tftypes.NewValue(tftypes.String, "default"),
+				}
+				for k, v := range tc.state {
+					values[k] = v
+				}
+				state, err := tfprotov6.NewDynamicValue(
+					stateType,
+					objectWithNulls(t, stateType, values),
+				)
+				if err != nil {
+					t.Fatalf("state: %v", err)
+				}
+
+				read, err := srv.ReadResource(ctx, &tfprotov6.ReadResourceRequest{
+					TypeName:        tc.typeName,
+					CurrentState:    &state,
+					CurrentIdentity: upgraded.UpgradedIdentity,
+				})
+				if err != nil {
+					t.Fatalf("ReadResource: %v", err)
+				}
+				failOnErrorDiagnostics(t, "read", read.Diagnostics)
+
+				identityType := identitySchemas.IdentitySchemas[tc.typeName].ValueType()
+				got, err := read.NewIdentity.IdentityData.Unmarshal(identityType)
+				if err != nil {
+					t.Fatalf("unmarshal identity: %v", err)
+				}
+				var attrs map[string]tftypes.Value
+				if err := got.As(&attrs); err != nil {
+					t.Fatalf("identity is not an object: %v", err)
+				}
+				for attr, want := range map[string]string{"id": tc.id, "site": "default"} {
+					var s string
+					if err := attrs[attr].As(&s); err != nil || s != want {
+						t.Errorf("identity %s = %v, want %q", attr, attrs[attr], want)
+					}
+				}
+			})
+		}
 	}
 }
 
