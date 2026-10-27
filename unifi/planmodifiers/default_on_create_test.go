@@ -94,6 +94,77 @@ func TestStringDefaultOnCreate(t *testing.T) {
 	}
 }
 
+// The keep-null variant differs only on an update whose prior value is null:
+// a controller that stores no value must not be given the default (#544).
+func TestStringDefaultOnCreateKeepNull(t *testing.T) {
+	ctx := context.Background()
+	m := StringDefaultOnCreateKeepNull("1h0m0s")
+
+	nullState := tfsdk.State{Raw: tftypes.Value{}}
+	existingState := tfsdk.State{
+		Raw: tftypes.NewValue(tftypes.String, "1h0m0s"),
+	}
+
+	for _, tc := range []struct {
+		name   string
+		config types.String
+		state  tfsdk.State
+		prior  types.String
+		want   types.String
+	}{
+		{
+			name:   "create with nothing configured gets the default",
+			config: types.StringNull(),
+			state:  nullState,
+			prior:  types.StringNull(),
+			want:   types.StringValue("1h0m0s"),
+		},
+		{
+			name:   "update keeps the controller value",
+			config: types.StringNull(),
+			state:  existingState,
+			prior:  types.StringValue("30m0s"),
+			want:   types.StringValue("30m0s"),
+		},
+		{
+			name:   "update keeps a controller without a value",
+			config: types.StringNull(),
+			state:  existingState,
+			prior:  types.StringNull(),
+			want:   types.StringNull(),
+		},
+		{
+			name:   "a configured value is never overridden",
+			config: types.StringValue("10m0s"),
+			state:  existingState,
+			prior:  types.StringNull(),
+			want:   types.StringValue("10m0s"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := planmodifier.StringRequest{
+				ConfigValue: tc.config,
+				State:       tc.state,
+				StateValue:  tc.prior,
+				PlanValue:   tc.config,
+			}
+			if tc.config.IsNull() {
+				req.PlanValue = types.StringUnknown()
+			}
+			resp := &planmodifier.StringResponse{PlanValue: req.PlanValue}
+
+			m.PlanModifyString(ctx, req, resp)
+
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("modifier: %v", resp.Diagnostics)
+			}
+			if !resp.PlanValue.Equal(tc.want) {
+				t.Errorf("plan = %v, want %v", resp.PlanValue, tc.want)
+			}
+		})
+	}
+}
+
 func TestStringDefaultOnCreateDescription(t *testing.T) {
 	d := StringDefaultOnCreate("IPV4").Description(context.Background())
 	if d == "" {
