@@ -1720,6 +1720,8 @@ func (r *wlanFrameworkResource) applyPlanToState(
 	state.WPA = util.OverlayKnownObject(ctx, plan.WPA, state.WPA)
 	state.Radius = util.OverlayKnownObject(ctx, plan.Radius, state.Radius)
 	state.ApGroup = util.OverlayKnownObject(ctx, plan.ApGroup, state.ApGroup)
+	state.RoamingAssistantNa = util.OverlayKnownObject(ctx, plan.RoamingAssistantNa, state.RoamingAssistantNa)
+	state.RoamingAssistant6E = util.OverlayKnownObject(ctx, plan.RoamingAssistant6E, state.RoamingAssistant6E)
 	if !plan.PMFMode.IsNull() && !plan.PMFMode.IsUnknown() {
 		state.PMFMode = plan.PMFMode
 	}
