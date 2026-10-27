@@ -50,8 +50,11 @@ func TestSiteIdentityUpgradeV0(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var schemaResp fwresource.IdentitySchemaResponse
 			r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &schemaResp)
-			if got := schemaResp.IdentitySchema.GetVersion(); got != 1 {
-				t.Fatalf("identity schema version = %d, want 1", got)
+			if got := schemaResp.IdentitySchema.GetVersion(); got != 2 {
+				t.Fatalf("identity schema version = %d, want 2", got)
+			}
+			if _, ok := r.UpgradeIdentity(ctx)[1]; !ok {
+				t.Fatal("missing identity upgrader for version 1")
 			}
 			upgrader, ok := r.UpgradeIdentity(ctx)[0]
 			if !ok {
@@ -101,7 +104,7 @@ func TestSiteIdentityUpgradeV0(t *testing.T) {
 	}
 }
 
-func TestUpgradeSiteIdentityV0Branches(t *testing.T) {
+func TestUpgradeSiteIdentityBranches(t *testing.T) {
 	ctx := context.Background()
 
 	upgrade := func(t *testing.T, r fwresource.ResourceWithIdentity, client *Client, raw *tfprotov6.RawState) (map[string]tftypes.Value, fwresource.UpgradeIdentityResponse) {
@@ -111,7 +114,7 @@ func TestUpgradeSiteIdentityV0Branches(t *testing.T) {
 		resp := fwresource.UpgradeIdentityResponse{
 			Identity: &tfsdk.ResourceIdentity{Schema: schemaResp.IdentitySchema},
 		}
-		upgradeSiteIdentityV0(
+		upgradeSiteIdentity(
 			ctx,
 			client,
 			fwresource.UpgradeIdentityRequest{RawIdentity: raw},
@@ -173,13 +176,15 @@ func TestUpgradeSiteIdentityV0Branches(t *testing.T) {
 	// A state written by Terraform < 1.12 has no identity, but Terraform
 	// 1.12+ still requests the upgrade. Filling only site made the result a
 	// stored identity with a null id, which Read then either rejected as an
-	// identity change or kept.
+	// identity change or kept. v0.60.0 stored that null-id identity as
+	// version 1, so it has to upgrade to no identity as well.
 	for name, raw := range map[string]*tfprotov6.RawState{
 		"no stored identity":       nil,
 		"empty stored identity":    {},
 		"empty object":             {JSON: []byte(`{}`)},
 		"null identity":            {JSON: []byte(`null`)},
 		"identity with empty keys": {JSON: []byte(`{"id":"","site":""}`)},
+		"null id from v0.60.0":     {JSON: []byte(`{"id":null,"site":"default"}`)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, resp := upgrade(t, &firewallGroupResource{}, &Client{Site: "default"}, raw)

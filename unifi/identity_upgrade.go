@@ -28,21 +28,25 @@ import (
 // null, which the framework treats as no identity yet, so Read derives it
 // from the state. Filling site alone would make it a stored identity with a
 // null id, which Read then has to pass through unchanged.
+//
+// v0.60.0 did exactly that and stored version 1 identities such as
+// {"id": null, "site": "default"}. Version 2 sends those through the same
+// upgrader, which treats an identity without an id as absent so Read can
+// derive a complete one.
 func siteIdentityUpgraders(client func() *Client) map[int64]resource.IdentityUpgrader {
-	return map[int64]resource.IdentityUpgrader{
-		0: {
-			IdentityUpgrader: func(
-				ctx context.Context,
-				req resource.UpgradeIdentityRequest,
-				resp *resource.UpgradeIdentityResponse,
-			) {
-				upgradeSiteIdentityV0(ctx, client(), req, resp)
-			},
+	upgrader := resource.IdentityUpgrader{
+		IdentityUpgrader: func(
+			ctx context.Context,
+			req resource.UpgradeIdentityRequest,
+			resp *resource.UpgradeIdentityResponse,
+		) {
+			upgradeSiteIdentity(ctx, client(), req, resp)
 		},
 	}
+	return map[int64]resource.IdentityUpgrader{0: upgrader, 1: upgrader}
 }
 
-func upgradeSiteIdentityV0(
+func upgradeSiteIdentity(
 	ctx context.Context,
 	client *Client,
 	req resource.UpgradeIdentityRequest,
@@ -68,16 +72,19 @@ func upgradeSiteIdentityV0(
 		return
 	}
 	attrs := make(map[string]tftypes.Value, len(obj.AttributeTypes))
-	stored := false
 	for name, t := range obj.AttributeTypes {
-		var v any
-		if s, ok := prior[name].(string); ok && s != "" {
-			v = s
-			stored = true
-		}
-		attrs[name] = tftypes.NewValue(t, v)
+		attrs[name] = tftypes.NewValue(t, nil)
 	}
-	if t, ok := obj.AttributeTypes["site"]; ok && stored && attrs["site"].IsNull() &&
+	if id, ok := prior["id"].(string); !ok || id == "" {
+		resp.Identity.Raw = tftypes.NewValue(obj, attrs)
+		return
+	}
+	for name, t := range obj.AttributeTypes {
+		if s, ok := prior[name].(string); ok && s != "" {
+			attrs[name] = tftypes.NewValue(t, s)
+		}
+	}
+	if t, ok := obj.AttributeTypes["site"]; ok && attrs["site"].IsNull() &&
 		client != nil && client.Site != "" {
 		attrs["site"] = tftypes.NewValue(t, client.Site)
 	}

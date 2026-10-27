@@ -241,7 +241,7 @@ func (r *vpnServerResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		// The optional "site" attribute defaults to the provider site on
 		// import. Identities stored by older provider versions ({id} only)
 		// are version 0 and go through siteIdentityUpgraders, which fills
