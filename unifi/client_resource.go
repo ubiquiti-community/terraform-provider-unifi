@@ -1076,7 +1076,15 @@ func (r *clientResource) clientToModel(
 	} else {
 		model.FixedIP = types.StringValue("")
 	}
-	model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
+	// Same echo for fixed AP: with fixed_ap_enabled=false the controller keeps
+	// the last fixed_ap_mac. Reading it back puts the MAC in the plan, and the
+	// next update sends it with fixed_ap_enabled=true, pinning the client to
+	// that AP. Mirror a disabled fixed AP as null so updates leave it off.
+	if client.FixedApEnabled {
+		model.FixedApMAC = util.MACValueOrNull(client.FixedApMAC)
+	} else {
+		model.FixedApMAC = hwtypes.NewMACAddressNull()
+	}
 	model.NetworkID = util.StringValueOrNull(client.VirtualNetworkOverrideID)
 
 	// Populate qos_rate from the client's UserGroupID by looking up the client group.
