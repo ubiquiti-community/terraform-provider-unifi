@@ -1346,7 +1346,7 @@ func (r *wanResource) Read(
 	// identity support. When an identity comes in it must be passed through
 	// unchanged: Terraform treats any modification of a non-null identity
 	// (including filling a null attribute) as an error.
-	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
 	var identity wanIdentityModel
 	if haveIdentity {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
@@ -1497,7 +1497,7 @@ func (r *wanResource) Update(
 	// carry the incoming identity through unchanged, deriving a fresh one from
 	// state only when it was absent.
 	identity := wanIdentityModel{ID: state.ID, Site: state.Site}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return

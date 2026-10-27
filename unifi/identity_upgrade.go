@@ -21,6 +21,13 @@ import (
 // provider's configured site, which is what Read derives for a resource that
 // does not set site itself. The result must be complete: Read passes a stored
 // identity through unchanged, and the framework rejects a null one.
+//
+// Terraform 1.12 and newer also ask for this upgrade when no identity was
+// stored at all (a state written by Terraform < 1.12 or migrated from
+// paultyng/unifi). That case upgrades to an identity with every attribute
+// null, which the framework treats as no identity yet, so Read derives it
+// from the state. Filling site alone would make it a stored identity with a
+// null id, which Read then has to pass through unchanged.
 func siteIdentityUpgraders(client func() *Client) map[int64]resource.IdentityUpgrader {
 	return map[int64]resource.IdentityUpgrader{
 		0: {
@@ -61,14 +68,18 @@ func upgradeSiteIdentityV0(
 		return
 	}
 	attrs := make(map[string]tftypes.Value, len(obj.AttributeTypes))
+	stored := false
 	for name, t := range obj.AttributeTypes {
 		var v any
 		if s, ok := prior[name].(string); ok && s != "" {
 			v = s
-		} else if name == "site" && client != nil && client.Site != "" {
-			v = client.Site
+			stored = true
 		}
 		attrs[name] = tftypes.NewValue(t, v)
+	}
+	if t, ok := obj.AttributeTypes["site"]; ok && stored && attrs["site"].IsNull() &&
+		client != nil && client.Site != "" {
+		attrs["site"] = tftypes.NewValue(t, client.Site)
 	}
 	resp.Identity.Raw = tftypes.NewValue(obj, attrs)
 }
