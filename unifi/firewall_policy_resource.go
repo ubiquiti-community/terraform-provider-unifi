@@ -840,7 +840,7 @@ func (r *firewallPolicyResource) Read(
 	// identity support. This also lets Read work from an identity-only state
 	// (the refresh right after an identity-based import).
 	var identity firewallPolicyIdentityModel
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -968,7 +968,7 @@ func (r *firewallPolicyResource) Update(
 		ID:   plan.ID,
 		Site: plan.Site,
 	}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return

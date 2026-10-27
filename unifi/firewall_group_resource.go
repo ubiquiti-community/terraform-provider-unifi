@@ -266,7 +266,7 @@ func (r *firewallGroupResource) Read(
 	// identity support. This also lets Read work from an identity-only state
 	// (the refresh right after an identity-based import).
 	var identity firewallGroupIdentityModel
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -403,7 +403,7 @@ func (r *firewallGroupResource) Update(
 		ID:   state.ID,
 		Site: state.Site,
 	}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
