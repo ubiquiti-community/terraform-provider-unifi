@@ -25,7 +25,8 @@ import (
 var fakeSettingDocuments = map[string]string{
 	"dpi": `{"key":"dpi","enabled":true,"fingerprintingEnabled":true}`,
 	"rsyslogd": `{"key":"rsyslogd","enabled":true,"debug":true,"ip":"192.0.2.14","port":514,
-		"log_all_contents":true,"netconsole_enabled":false,"this_controller":true,
+		"log_all_contents":true,"netconsole_enabled":false,"netconsole_host":"192.0.2.15",
+		"netconsole_port":6666,"this_controller":true,
 		"this_controller_encrypted_only":true}`,
 	"ntp": `{"key":"ntp","ntp_server_1":"time.cloudflare.com","ntp_server_2":"",
 		"ntp_server_3":"","ntp_server_4":"","setting_preference":"manual"}`,
@@ -271,6 +272,48 @@ func TestSettingImportReadsEverySection(t *testing.T) {
 	var dpiEnabled bool
 	if err := plannedDpi["enabled"].As(&dpiEnabled); err != nil || dpiEnabled {
 		t.Errorf("dpi.enabled planned %v (%v), want the default false", plannedDpi["enabled"], err)
+	}
+
+	// A configured netconsole that leaves port out keeps the imported port
+	// while another section changes; only its enabled default applies.
+	var syslogAttrs, ncAttrs, ntpAttrs map[string]tftypes.Value
+	if err := priorAttrs["syslog"].As(&syslogAttrs); err != nil {
+		t.Fatalf("syslog as object: %v", err)
+	}
+	if err := syslogAttrs["netconsole"].As(&ncAttrs); err != nil {
+		t.Fatalf("syslog.netconsole as object: %v", err)
+	}
+	partialNC := map[string]tftypes.Value{
+		"enabled": tftypes.NewValue(tftypes.Bool, nil),
+		"host":    ncAttrs["host"],
+		"port":    tftypes.NewValue(tftypes.Number, nil),
+	}
+	partialSyslog := make(map[string]tftypes.Value, len(syslogAttrs))
+	for name, v := range syslogAttrs {
+		partialSyslog[name] = tftypes.NewValue(v.Type(), nil)
+	}
+	partialSyslog["enabled"] = syslogAttrs["enabled"]
+	partialSyslog["ip"] = syslogAttrs["ip"]
+	partialSyslog["netconsole"] = tftypes.NewValue(syslogAttrs["netconsole"].Type(), partialNC)
+	configAttrs["syslog"] = tftypes.NewValue(priorAttrs["syslog"].Type(), partialSyslog)
+	if err := priorAttrs["ntp"].As(&ntpAttrs); err != nil {
+		t.Fatalf("ntp as object: %v", err)
+	}
+	ntpAttrs["ntp_server_2"] = tftypes.NewValue(tftypes.String, "time.google.com")
+	configAttrs["ntp"] = tftypes.NewValue(priorAttrs["ntp"].Type(), ntpAttrs)
+	planned = planResourceChange(
+		t, "unifi_setting", s, prior, proposed(configAttrs),
+		tftypes.NewValue(prior.Type(), configAttrs),
+	)
+	plannedAttrs = plannedObject(t, planned, "planned")
+	plannedNC := plannedObject(
+		t, plannedObject(t, plannedAttrs["syslog"], "syslog")["netconsole"], "syslog.netconsole",
+	)
+	if !plannedNC["port"].Equal(tftypes.NewValue(tftypes.Number, 6666)) {
+		t.Errorf("syslog.netconsole.port planned %v, want the imported 6666", plannedNC["port"])
+	}
+	if !plannedNC["enabled"].Equal(tftypes.NewValue(tftypes.Bool, false)) {
+		t.Errorf("syslog.netconsole.enabled planned %v, want the default false", plannedNC["enabled"])
 	}
 
 	// An unrelated change to the one section the configuration manages.

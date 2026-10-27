@@ -1956,7 +1956,7 @@ func (r *settingResource) ModifyPlan(
 
 	ncPath := path.Root("syslog").AtName("netconsole")
 	var planNC types.Object
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, ncPath, &planNC)...)
+	resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, ncPath, &planNC)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
