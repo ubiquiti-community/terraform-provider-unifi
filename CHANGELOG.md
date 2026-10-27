@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_client`: an update no longer re-enables a fixed AP that was turned off.** With `fixed_ap_enabled = false` the controller keeps echoing the last `fixed_ap_mac`, and the provider read it back into state. The stale MAC then reached the plan, and any later update of the client sent it with `fixed_ap_enabled = true`, pinning the client to that access point again. A disabled fixed AP now reads as a null `fixed_ap_mac`, so updates leave it off; an enabled fixed AP still reports its MAC. Same defect as the `fixed_ip` and `local_dns_record` echoes fixed in #386 and #387.
+
 ## [v0.60.0] - 2026-10-26
 
 One breaking change and the fixes that followed it. The headline is the
