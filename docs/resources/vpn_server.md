@@ -106,6 +106,7 @@ resource "unifi_vpn_server" "openvpn" {
 - `openvpn` (Attributes) OpenVPN server configuration. Exactly one of `wireguard`, `l2tp`, or `openvpn` must be specified. (see [below for nested schema](#nestedatt--openvpn))
 - `radiusprofile_id` (String) The ID of the RADIUS profile to use for authentication. Applicable to L2TP and OpenVPN server types.
 - `site` (String) The name of the site to associate the VPN server with.
+- `subnet_ipv6` (String) The VPN server's IPv6 subnet in CIDR notation, in the same gateway form as `subnet` (e.g., `fd00:db8::1/64`): the UI's "IPv6 Gateway/Subnet". Clients get an address in it (`unifi_wireguard_peer.interface_ipv6`). The controller only accepts it when a server is created, so changing it replaces the server (and with it the server's key).
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `wan` (Attributes) WAN binding configuration for the VPN server. (see [below for nested schema](#nestedatt--wan))
 - `wireguard` (Attributes) WireGuard VPN server configuration. Exactly one of `wireguard`, `l2tp`, or `openvpn` must be specified. (see [below for nested schema](#nestedatt--wireguard))
@@ -205,6 +206,7 @@ Optional:
 
 Optional:
 
+- `ip_version` (String) The address family the server listens on, `v4` or `v6`: one per server (the UI's IP Address choice between the WAN's IPv4 and IPv6 addresses). Defaults to `v4`, which is also what a server without the setting does.
 - `port` (Number) UDP port for the WireGuard server to listen on.
 - `private_key` (String, Sensitive) WireGuard private key for this server (base64). If not specified, the provider generates one at create time (the controller does not generate it and rejects a server without a key).
 

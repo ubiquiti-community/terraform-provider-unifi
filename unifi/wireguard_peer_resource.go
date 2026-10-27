@@ -64,13 +64,14 @@ type wireguardPeerIdentityModel struct {
 
 // wireguardPeerResourceModel describes the resource data model.
 type wireguardPeerResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Site        types.String `tfsdk:"site"`
-	NetworkID   types.String `tfsdk:"network_id"`
-	Name        types.String `tfsdk:"name"`
-	InterfaceIP types.String `tfsdk:"interface_ip"`
-	PublicKey   types.String `tfsdk:"public_key"`
-	AllowedIPs  types.List   `tfsdk:"allowed_ips"`
+	ID            types.String `tfsdk:"id"`
+	Site          types.String `tfsdk:"site"`
+	NetworkID     types.String `tfsdk:"network_id"`
+	Name          types.String `tfsdk:"name"`
+	InterfaceIP   types.String `tfsdk:"interface_ip"`
+	InterfaceIPv6 types.String `tfsdk:"interface_ipv6"`
+	PublicKey     types.String `tfsdk:"public_key"`
+	AllowedIPs    types.List   `tfsdk:"allowed_ips"`
 
 	PresharedKey   types.String   `tfsdk:"preshared_key"`
 	PresharedKeyWO types.String   `tfsdk:"preshared_key_wo"`
@@ -178,6 +179,15 @@ func (r *wireguardPeerResource) Schema(
 				Required: true,
 				Validators: []validator.String{
 					validators.IPv4Validator(),
+				},
+			},
+			"interface_ipv6": schema.StringAttribute{
+				MarkdownDescription: "The peer's IPv6 tunnel address, without prefix length " +
+					"(e.g. `fd00:db8::2`), for a server with `subnet_ipv6`: within that " +
+					"subnet. Left unset, the peer has no IPv6 address.",
+				Optional: true,
+				Validators: []validator.String{
+					validators.IPv6Validator(),
 				},
 			},
 			"public_key": schema.StringAttribute{
@@ -581,10 +591,11 @@ func (r *wireguardPeerResource) modelToPeer(
 	model *wireguardPeerResourceModel,
 ) (*unifi.WireGuardPeer, diag.Diagnostics) {
 	peer := &unifi.WireGuardPeer{
-		Name:        model.Name.ValueString(),
-		InterfaceIP: model.InterfaceIP.ValueString(),
-		PublicKey:   model.PublicKey.ValueString(),
-		AllowedIPs:  []string{},
+		Name:          model.Name.ValueString(),
+		InterfaceIP:   model.InterfaceIP.ValueString(),
+		InterfaceIPv6: model.InterfaceIPv6.ValueStringPointer(),
+		PublicKey:     model.PublicKey.ValueString(),
+		AllowedIPs:    []string{},
 	}
 
 	// The peer endpoints are full replaces: a write that omits preshared_key
@@ -617,6 +628,11 @@ func (r *wireguardPeerResource) peerToModel(
 	model.NetworkID = types.StringValue(peer.NetworkID)
 	model.Name = types.StringValue(peer.Name)
 	model.InterfaceIP = types.StringValue(peer.InterfaceIP)
+	if peer.InterfaceIPv6 != nil && *peer.InterfaceIPv6 != "" {
+		model.InterfaceIPv6 = types.StringValue(*peer.InterfaceIPv6)
+	} else {
+		model.InterfaceIPv6 = types.StringNull()
+	}
 	model.PublicKey = types.StringValue(peer.PublicKey)
 
 	// The controller returns the key in clear text and omits the field when the

@@ -580,3 +580,56 @@ list "unifi_wireguard_peer" "test" {
 		},
 	})
 }
+
+// TestWireguardPeerIPv6 covers interface_ipv6, the peer's address in a
+// server's subnet_ipv6, as the controller returns it for a peer of a server
+// created with "IPv6 Gateway/Subnet" (Network 10.x).
+func TestWireguardPeerIPv6(t *testing.T) {
+	r := &wireguardPeerResource{}
+	ctx := context.Background()
+
+	model := &wireguardPeerResourceModel{
+		Name:           types.StringValue("laptop"),
+		InterfaceIP:    types.StringValue("10.8.0.7"),
+		InterfaceIPv6:  types.StringValue("fd00:db8::7"),
+		PublicKey:      types.StringValue("pub"),
+		AllowedIPs:     types.ListNull(types.StringType),
+		PresharedKey:   types.StringNull(),
+		PresharedKeyWO: types.StringNull(),
+	}
+	peer, diags := r.modelToPeer(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToPeer: %v", diags)
+	}
+	if peer.InterfaceIPv6 == nil || *peer.InterfaceIPv6 != "fd00:db8::7" {
+		t.Errorf("InterfaceIPv6 = %v, want fd00:db8::7", peer.InterfaceIPv6)
+	}
+
+	model.InterfaceIPv6 = types.StringNull()
+	peer, diags = r.modelToPeer(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("modelToPeer: %v", diags)
+	}
+	if peer.InterfaceIPv6 != nil {
+		t.Errorf("InterfaceIPv6 = %q, want nil (off the wire)", *peer.InterfaceIPv6)
+	}
+
+	v6 := "fd00:db8::8"
+	if diags := r.peerToModel(ctx, &unifi.WireGuardPeer{
+		ID: "p1", Name: "n", InterfaceIP: "10.8.0.8", InterfaceIPv6: &v6, PublicKey: "pub",
+	}, model, "default"); diags.HasError() {
+		t.Fatalf("peerToModel: %v", diags)
+	}
+	if model.InterfaceIPv6.ValueString() != "fd00:db8::8" {
+		t.Errorf("interface_ipv6 = %v, want fd00:db8::8", model.InterfaceIPv6)
+	}
+
+	if diags := r.peerToModel(ctx, &unifi.WireGuardPeer{
+		ID: "p2", Name: "n", InterfaceIP: "10.8.0.9", PublicKey: "pub",
+	}, model, "default"); diags.HasError() {
+		t.Fatalf("peerToModel: %v", diags)
+	}
+	if !model.InterfaceIPv6.IsNull() {
+		t.Errorf("interface_ipv6 = %v, want null", model.InterfaceIPv6)
+	}
+}
