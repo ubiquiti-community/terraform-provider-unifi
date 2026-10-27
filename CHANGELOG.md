@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_radius_profile`: `interim_update.interval` no longer overwrites a profile the controller stores without one.** The static `1h0m0s` default planned `null -> 1h0m0s` on every adopted profile whose controller document has no interval (the built-in Default profile has none), and `ignore_changes` could not suppress it: Terraform core passes the prior null as configuration, and the default filled it in again. The `1h0m0s` default now applies when a profile is created; an existing profile keeps the controller's value, which may be none. The new `planmodifiers.StringDefaultOnCreateKeepNull` holds a null prior value on update instead of falling back to the default (#544).
+
 ## [v0.60.0] - 2026-10-26
 
 One breaking change and the fixes that followed it. The headline is the
