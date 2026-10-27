@@ -224,7 +224,7 @@ Optional:
 
 Optional:
 
-- `downstream` (String) IGMP proxy downstream target (none, lan, guest)
+- `downstream` (String) IGMP proxy downstream target (none, all, some, lan, guest). With `some`, the controller keeps its list of downstream networks.
 - `upstream` (Boolean) Whether IGMP proxy upstream is enabled
 
 
