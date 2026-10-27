@@ -1461,3 +1461,40 @@ func TestVPNServer_openvpnCertPairsRoundTrip(t *testing.T) {
 		t.Errorf("known openvpn leaves dropped: auth=%v port=%v", back.AuthKey, back.LocalPort)
 	}
 }
+
+// The controller returns no public key; it is derived from the private key,
+// as `wg pubkey` does.
+func Test_vpnServerResource_wireguardPublicKey(t *testing.T) {
+	const priv = "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="
+	const pub = "7B+2Z3odPbDNsfVr+F8invj6/mBKLVaolOHXZoCaBA0=" // from `wg pubkey`
+
+	if got, err := wireGuardPublicKey(priv); err != nil || got != pub {
+		t.Errorf("wireGuardPublicKey = %q, %v, want %q", got, err, pub)
+	}
+
+	ctx := context.Background()
+	r := &vpnServerResource{}
+	var model vpnServerResourceModel
+	if d := r.networkToModel(ctx, &unifi.Network{
+		ID:                  "net-1",
+		Name:                new("wg"),
+		Enabled:             true,
+		IPSubnet:            new("10.100.0.1/24"),
+		VPNType:             new("wireguard-server"),
+		WireguardPrivateKey: new(priv),
+		LocalPort:           new(int64(51820)),
+	}, &model, "default", &vpnServerResourceModel{}); d.HasError() {
+		t.Fatalf("unexpected diags: %v", d)
+	}
+	var wg vpnServerWireguardModel
+	if d := model.Wireguard.As(
+		ctx,
+		&wg,
+		struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{},
+	); d.HasError() {
+		t.Fatalf("reading wireguard: %v", d)
+	}
+	if wg.PublicKey.ValueString() != pub {
+		t.Errorf("public_key = %q, want %q", wg.PublicKey.ValueString(), pub)
+	}
+}
