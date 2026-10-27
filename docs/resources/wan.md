@@ -65,7 +65,7 @@ resource "unifi_wan" "secondary" {
     failover_priority = 2  # 1-10
   }
 
-  # Multicast/IGMP proxy: downstream is none | lan | guest.
+  # Multicast/IGMP proxy: downstream is none | all | some | lan | guest.
   igmp_proxy = {
     downstream = "lan"
     upstream   = true
