@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting`: importing a site's settings no longer plans an update that rewrites the live values.** `Read` refreshed only the sections already in state, so an import read nothing, and every section the configuration set (IGMP snooping, NTP, syslog, mgmt, ...) planned as an update that rewrote the controller's values. An import now reads every section the controller holds a document for, in full, and plans no changes for a configuration that matches the controller, whether it sets a section in full or only in part. A section the configuration does not set is carried in state and is never written back: `Update` now writes only the sections the configuration sets. To support this, `igmp_snooping`, `connectivity` and `global_switch` are now Optional+Computed; those three plus `radius` and `usg` keep their prior value when the configuration omits them; and the leaf defaults of `auto_speedtest`, `dpi`, `lcm`, `network_optimization` and `syslog` apply only to a section the configuration sets, as `syslog.netconsole.enabled` already did. The setting acceptance tests now import through an import block and require an empty plan.
+
 ## [v0.60.0] - 2026-10-26
 
 One breaking change and the fixes that followed it. The headline is the

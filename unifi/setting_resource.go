@@ -22,13 +22,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/go-unifi/unifi/settings"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
@@ -639,7 +640,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether periodic automated speed tests are enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"cron_expr": schema.StringAttribute{
 						MarkdownDescription: "Cron expression controlling when the speed test runs (e.g. `0 * * * *`).",
@@ -674,13 +674,11 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether DPI is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"fingerprinting_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Whether device fingerprinting is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -696,7 +694,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether the device display is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(true),
 					},
 					"brightness": schema.Int64Attribute{
 						MarkdownDescription: "Display brightness (1-100).",
@@ -714,13 +711,11 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Sync display settings across devices.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"touch_event": schema.BoolAttribute{
 						MarkdownDescription: "Whether touch events on the display are enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(true),
 					},
 				},
 			},
@@ -736,7 +731,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether automated network optimization is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -802,7 +796,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether remote syslog is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"ip": schema.StringAttribute{
 						MarkdownDescription: "Remote syslog server IP address.",
@@ -828,33 +821,26 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Log all available facilities.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"debug": schema.BoolAttribute{
 						MarkdownDescription: "Enable debug logging.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"this_controller": schema.SingleNestedAttribute{
 						MarkdownDescription: "Forwarding of this controller's own events to the remote syslog server.",
 						Optional:            true,
 						Computed:            true,
-						Default: objectdefault.StaticValue(
-							settingSyslogThisControllerDefault(),
-						),
 						Attributes: map[string]schema.Attribute{
 							"enabled": schema.BoolAttribute{
 								MarkdownDescription: "Also log this controller's events.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
 							},
 							"encrypted_only": schema.BoolAttribute{
 								MarkdownDescription: "Only send this controller's logs over an encrypted channel.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
 							},
 						},
 					},
@@ -1246,6 +1232,9 @@ func (r *settingResource) Schema(
 				MarkdownDescription: "RADIUS settings.",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"accounting_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable RADIUS accounting.",
@@ -1294,6 +1283,9 @@ func (r *settingResource) Schema(
 				MarkdownDescription: "USG settings.",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"broadcast_ping": schema.BoolAttribute{
 						MarkdownDescription: "Enable broadcast ping.",
@@ -1554,6 +1546,10 @@ func (r *settingResource) Schema(
 			"igmp_snooping": schema.SingleNestedAttribute{
 				MarkdownDescription: "Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Whether IGMP snooping is enabled for the site.",
@@ -1580,6 +1576,10 @@ func (r *settingResource) Schema(
 					"pre-shared key are not exposed and are preserved across updates, " +
 					"as are any options this block does not model.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable Wireless Meshing for the site.",
@@ -1626,6 +1626,10 @@ func (r *settingResource) Schema(
 					"On current controllers jumbo frames are only honored here, not via `unifi_device.jumboframe_enabled`. " +
 					"Options not exposed by this block are preserved across updates.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"acl_device_isolation": schema.ListAttribute{
 						MarkdownDescription: "Network IDs with Client Device Isolation " +
@@ -1835,20 +1839,106 @@ func nestSettingState(state map[string]any) {
 	})
 }
 
-// ModifyPlan reproduces the flat syslog.netconsole_enabled default for the
-// nested netconsole object without a schema Default: the framework applies a
-// leaf Default even when its parent object is null in configuration and then
-// re-plans the default-less Computed parent as unknown, so a Default there
-// would both trip the framework's plan-change gate whenever the controller
-// has netconsole enabled and be discarded by UseStateForUnknown anyway. As
-// with the flat attribute, the default only applies when the syslog block is
-// configured; an omitted syslog block keeps the controller's values.
+// settingSectionDefaults are the leaf defaults of the setting sections. They
+// are not schema Defaults for the reason given on ModifyPlan, which applies
+// them to a section the configuration sets.
+var settingSectionDefaults = []struct {
+	section  path.Path
+	defaults map[string]attr.Value
+}{
+	{path.Root("auto_speedtest"), map[string]attr.Value{
+		"enabled": types.BoolValue(false),
+	}},
+	{path.Root("dpi"), map[string]attr.Value{
+		"enabled":                types.BoolValue(false),
+		"fingerprinting_enabled": types.BoolValue(false),
+	}},
+	{path.Root("lcm"), map[string]attr.Value{
+		"enabled":     types.BoolValue(true),
+		"sync":        types.BoolValue(false),
+		"touch_event": types.BoolValue(true),
+	}},
+	{path.Root("network_optimization"), map[string]attr.Value{
+		"enabled": types.BoolValue(false),
+	}},
+	{path.Root("syslog"), map[string]attr.Value{
+		"enabled":          types.BoolValue(false),
+		"log_all_contents": types.BoolValue(false),
+		"debug":            types.BoolValue(false),
+		"this_controller":  settingSyslogThisControllerDefault(),
+	}},
+	{path.Root("syslog").AtName("this_controller"), map[string]attr.Value{
+		"enabled":        types.BoolValue(false),
+		"encrypted_only": types.BoolValue(false),
+	}},
+}
+
+// ModifyPlan applies the section leaf defaults (settingSectionDefaults and
+// the flat syslog.netconsole_enabled default for the nested netconsole
+// object) without schema Defaults: the framework applies a leaf Default even
+// when its parent object is null in configuration and then re-plans the
+// default-less Computed attributes as unknown. A section the configuration
+// leaves out is still in the plan when the prior state holds it (an import
+// reads every section), so a Default there would overwrite the controller's
+// value, trip the framework's plan-change gate and be discarded by
+// UseStateForUnknown anyway. As with the flat attributes, a default only
+// applies when its section is configured; an omitted section keeps the
+// controller's values.
 func (r *settingResource) ModifyPlan(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
 	resp *resource.ModifyPlanResponse,
 ) {
 	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	// Terraform proposes a configured section with every leaf the
+	// configuration leaves out set to null, which differs from a prior state
+	// that holds those leaves (an import reads every section in full), so the
+	// framework re-plans them as unknown. Keep their prior values, as
+	// UseStateForUnknown does for a section the configuration omits entirely.
+	if !req.State.Raw.IsNull() {
+		for name, a := range req.Plan.Schema.GetAttributes() {
+			// The sections; timeouts carries its own object type.
+			if _, ok := a.GetType().(types.ObjectType); !ok {
+				continue
+			}
+			sectionPath := path.Root(name)
+			var plan, config, prior types.Object
+			resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, sectionPath, &plan)...)
+			resp.Diagnostics.Append(req.Config.GetAttribute(ctx, sectionPath, &config)...)
+			resp.Diagnostics.Append(req.State.GetAttribute(ctx, sectionPath, &prior)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			restored, d := keepPriorUnconfigured(ctx, plan, config, prior)
+			resp.Diagnostics.Append(d...)
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, sectionPath, restored)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
+	}
+
+	for _, s := range settingSectionDefaults {
+		var configSection types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, s.section, &configSection)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if configSection.IsNull() || configSection.IsUnknown() {
+			continue
+		}
+		configAttrs := configSection.Attributes()
+		for name, def := range s.defaults {
+			if v, ok := configAttrs[name]; ok && v.IsNull() {
+				resp.Diagnostics.Append(
+					resp.Plan.SetAttribute(ctx, s.section.AtName(name), def)...)
+			}
+		}
+	}
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -1891,6 +1981,44 @@ func (r *settingResource) ModifyPlan(
 		return
 	}
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, ncPath, obj)...)
+}
+
+// keepPriorUnconfigured returns plan with every attribute that is unknown in
+// plan and null in config replaced by its prior value, null included,
+// descending into the nested objects the configuration sets.
+func keepPriorUnconfigured(
+	ctx context.Context,
+	plan, config, prior types.Object,
+) (types.Object, diag.Diagnostics) {
+	if plan.IsNull() || plan.IsUnknown() || config.IsNull() || config.IsUnknown() ||
+		prior.IsNull() || prior.IsUnknown() {
+		return plan, nil
+	}
+	var diags diag.Diagnostics
+	configAttrs := config.Attributes()
+	priorAttrs := prior.Attributes()
+	attrs := plan.Attributes()
+	for name, planned := range attrs {
+		configured, priorValue := configAttrs[name], priorAttrs[name]
+		if configured == nil || priorValue == nil {
+			continue
+		}
+		if planned.IsUnknown() && configured.IsNull() && !priorValue.IsUnknown() {
+			attrs[name] = priorValue
+			continue
+		}
+		plannedObj, ok1 := planned.(types.Object)
+		configuredObj, ok2 := configured.(types.Object)
+		priorObj, ok3 := priorValue.(types.Object)
+		if ok1 && ok2 && ok3 {
+			nested, d := keepPriorUnconfigured(ctx, plannedObj, configuredObj, priorObj)
+			diags.Append(d...)
+			attrs[name] = nested
+		}
+	}
+	obj, d := types.ObjectValue(plan.AttributeTypes(ctx), attrs)
+	diags.Append(d...)
+	return obj, diags
 }
 
 func (r *settingResource) Configure(
@@ -2297,8 +2425,20 @@ func (r *settingResource) Update(
 		site = r.client.Site
 	}
 
+	// Write only the sections the configuration sets. A section can be planned
+	// without being configured: an import reads every section and
+	// UseStateForUnknown carries it forward. Writing it back would rebuild the
+	// document from the model and reset the controller fields it does not
+	// cover.
+	var config settingResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Update each configured setting type
-	if !plan.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsUnknown() {
+	if !config.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsNull() &&
+		!plan.AutoSpeedtest.IsUnknown() {
 		var as settingAutoSpeedtestModel
 		resp.Diagnostics.Append(plan.AutoSpeedtest.As(ctx, &as, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2311,7 +2451,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Country.IsNull() && !plan.Country.IsUnknown() {
+	if !config.Country.IsNull() && !plan.Country.IsNull() && !plan.Country.IsUnknown() {
 		var m settingCountryModel
 		resp.Diagnostics.Append(plan.Country.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2324,7 +2464,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Dpi.IsNull() && !plan.Dpi.IsUnknown() {
+	if !config.Dpi.IsNull() && !plan.Dpi.IsNull() && !plan.Dpi.IsUnknown() {
 		var m settingDpiModel
 		resp.Diagnostics.Append(plan.Dpi.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2337,7 +2477,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() {
+	if !config.Lcm.IsNull() && !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() {
 		var m settingLcmModel
 		resp.Diagnostics.Append(plan.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2350,7 +2490,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.NetworkOpt.IsNull() && !plan.NetworkOpt.IsUnknown() {
+	if !config.NetworkOpt.IsNull() && !plan.NetworkOpt.IsNull() && !plan.NetworkOpt.IsUnknown() {
 		var m settingNetworkOptimizationModel
 		resp.Diagnostics.Append(plan.NetworkOpt.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2363,7 +2503,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() {
+	if !config.Ntp.IsNull() && !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() {
 		var m settingNtpModel
 		resp.Diagnostics.Append(plan.Ntp.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2376,7 +2516,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Syslog.IsNull() && !plan.Syslog.IsUnknown() {
+	if !config.Syslog.IsNull() && !plan.Syslog.IsNull() && !plan.Syslog.IsUnknown() {
 		var m settingSyslogModel
 		resp.Diagnostics.Append(plan.Syslog.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2392,7 +2532,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Doh.IsNull() && !plan.Doh.IsUnknown() {
+	if !config.Doh.IsNull() && !plan.Doh.IsNull() && !plan.Doh.IsUnknown() {
 		var doh settingDohModel
 		resp.Diagnostics.Append(plan.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2409,7 +2549,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Ips.IsNull() && !plan.Ips.IsUnknown() {
+	if !config.Ips.IsNull() && !plan.Ips.IsNull() && !plan.Ips.IsUnknown() {
 		var ips settingIpsModel
 		resp.Diagnostics.Append(plan.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2439,7 +2579,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Mgmt.IsNull() && !plan.Mgmt.IsUnknown() {
+	if !config.Mgmt.IsNull() && !plan.Mgmt.IsNull() && !plan.Mgmt.IsUnknown() {
 		var mgmt settingMgmtModel
 		resp.Diagnostics.Append(plan.Mgmt.As(ctx, &mgmt, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2464,7 +2604,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Radius.IsNull() && !plan.Radius.IsUnknown() {
+	if !config.Radius.IsNull() && !plan.Radius.IsNull() && !plan.Radius.IsUnknown() {
 		var radius settingRadiusModel
 		resp.Diagnostics.Append(plan.Radius.As(ctx, &radius, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2489,7 +2629,7 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.USG.IsNull() && !plan.USG.IsUnknown() {
+	if !config.USG.IsNull() && !plan.USG.IsNull() && !plan.USG.IsUnknown() {
 		var usg settingUSGModel
 		resp.Diagnostics.Append(plan.USG.As(ctx, &usg, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2516,7 +2656,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.IgmpSnooping.IsNull() && !plan.IgmpSnooping.IsUnknown() {
+	if !config.IgmpSnooping.IsNull() && !plan.IgmpSnooping.IsNull() &&
+		!plan.IgmpSnooping.IsUnknown() {
 		var igmp settingIgmpSnoopingModel
 		resp.Diagnostics.Append(plan.IgmpSnooping.As(ctx, &igmp, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2604,6 +2745,7 @@ func (r *settingResource) ImportState(
 			resp.State.SetAttribute(ctx, path.Root("id"), identity.Site)...)
 		resp.Diagnostics.Append(
 			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		r.readImportedSettings(ctx, identity.Site.ValueString(), &resp.State, &resp.Diagnostics)
 		return
 	}
 
@@ -2612,6 +2754,154 @@ func (r *settingResource) ImportState(
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), req.ID)...)
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), req.ID)...)
+	r.readImportedSettings(ctx, req.ID, &resp.State, &resp.Diagnostics)
+}
+
+// readImportedSettings reads every section the controller holds a document for
+// into a freshly imported state.
+//
+// readSettings refreshes only the sections already in state, and for most of
+// them only the leaves already in state, so an import used to read nothing:
+// every section the configuration sets then planned as an update that
+// rewrote the live values. Seeding each present section with a value whose
+// every leaf is known makes readSettings read the whole document; a section
+// whose document the controller lacks stays null. The sections the
+// configuration does not set are kept by UseStateForUnknown and are not
+// written back (see Update).
+func (r *settingResource) readImportedSettings(
+	ctx context.Context,
+	site string,
+	state *tfsdk.State,
+	diags *diag.Diagnostics,
+) {
+	if diags.HasError() {
+		return
+	}
+	var data settingResourceModel
+	diags.Append(state.Get(ctx, &data)...)
+	if diags.HasError() {
+		return
+	}
+
+	rawSettings, err := r.client.ListSettings(ctx, site)
+	if err != nil {
+		diags.AddError("Error Listing Settings", err.Error())
+		return
+	}
+	present := make(map[string]bool, len(rawSettings))
+	for _, raw := range rawSettings {
+		present[raw.Key] = true
+	}
+
+	for _, section := range []struct {
+		value     *types.Object
+		setting   settings.Setting
+		attrTypes map[string]attr.Type
+	}{
+		{&data.AutoSpeedtest, (*settings.AutoSpeedtest)(nil), autoSpeedtestAttrTypes},
+		{&data.Country, (*settings.Country)(nil), countryAttrTypes},
+		{&data.Dpi, (*settings.Dpi)(nil), dpiAttrTypes},
+		{&data.Lcm, (*settings.Lcm)(nil), lcmAttrTypes},
+		{&data.NetworkOpt, (*settings.NetworkOptimization)(nil), networkOptimizationAttrTypes},
+		{&data.Ntp, (*settings.Ntp)(nil), ntpAttrTypes},
+		{&data.Syslog, (*settings.Rsyslogd)(nil), syslogAttrTypes},
+		{&data.Doh, (*settings.Doh)(nil), dohAttrTypes},
+		{&data.Ips, (*settings.Ips)(nil), ipsAttrTypes},
+		{&data.Mgmt, (*settings.Mgmt)(nil), mgmtAttrTypes},
+		{&data.Radius, (*settings.Radius)(nil), radiusAttrTypes},
+		{&data.USG, (*settings.Usg)(nil), usgAttrTypes},
+		{&data.IgmpSnooping, (*settings.IgmpSnooping)(nil), igmpSnoopingAttrTypes},
+		{&data.Connectivity, (*settings.Connectivity)(nil), connectivityAttrTypes},
+		{&data.GlobalSwitch, (*settings.GlobalSwitch)(nil), globalSwitchAttrTypes},
+	} {
+		key, err := settings.GetSettingKey(section.setting)
+		if err != nil {
+			diags.AddError("Error Importing Settings", err.Error())
+			return
+		}
+		if !present[key] {
+			continue
+		}
+		value, d := knownObject(ctx, section.attrTypes)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		*section.value = value
+	}
+
+	// The controller stores only a hash of the SSH password, and
+	// mgmtSettingToModel keeps whatever the prior value was: leave it unset
+	// rather than importing the seed's empty string.
+	if !data.Mgmt.IsNull() {
+		mgmt := data.Mgmt.Attributes()
+		if sshObj, ok := mgmt["ssh"].(types.Object); ok {
+			ssh := sshObj.Attributes()
+			ssh["password"] = types.StringNull()
+			var d diag.Diagnostics
+			mgmt["ssh"], d = types.ObjectValue(mgmtSSHAttrTypes, ssh)
+			diags.Append(d...)
+			data.Mgmt, d = types.ObjectValue(mgmtAttrTypes, mgmt)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+		}
+	}
+
+	r.readSettings(ctx, site, &data, diags)
+	if diags.HasError() {
+		return
+	}
+	diags.Append(state.Set(ctx, &data)...)
+}
+
+// knownObject returns an object of attrTypes whose every leaf is known: zero
+// scalars, empty lists, and nested objects built the same way. The section
+// readers populate only the leaves that are known in the model they are
+// given, so this asks them for every leaf.
+func knownObject(
+	ctx context.Context,
+	attrTypes map[string]attr.Type,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	values := make(map[string]attr.Value, len(attrTypes))
+	for name, t := range attrTypes {
+		if obj, ok := t.(types.ObjectType); ok {
+			nested, d := knownObject(ctx, obj.AttrTypes)
+			diags.Append(d...)
+			values[name] = nested
+			continue
+		}
+		tfType := t.TerraformType(ctx)
+		var zero tftypes.Value
+		switch {
+		case tfType.Is(tftypes.Bool):
+			zero = tftypes.NewValue(tfType, false)
+		case tfType.Is(tftypes.Number):
+			zero = tftypes.NewValue(tfType, 0)
+		case tfType.Is(tftypes.String):
+			zero = tftypes.NewValue(tfType, "")
+			if _, ok := t.(timetypes.GoDurationType); ok {
+				// The duration type rejects an empty string.
+				zero = tftypes.NewValue(tfType, "0s")
+			}
+		default:
+			zero = tftypes.NewValue(tfType, []tftypes.Value{})
+		}
+		value, err := t.ValueFromTerraform(ctx, zero)
+		if err != nil {
+			diags.AddError("Error Importing Settings", err.Error())
+			continue
+		}
+		values[name] = value
+	}
+	if diags.HasError() {
+		return types.ObjectNull(attrTypes), diags
+	}
+	obj, d := types.ObjectValue(attrTypes, values)
+	diags.Append(d...)
+	return obj, diags
 }
 
 func (r *settingResource) readSettings(

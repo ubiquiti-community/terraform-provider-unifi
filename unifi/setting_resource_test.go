@@ -106,16 +106,9 @@ func TestAccSettingResource_mgmt(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_setting.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"mgmt.%",
-					"mgmt.auto_upgrade.%",
-					"mgmt.auto_upgrade.enabled",
-					"mgmt.ssh.%",
-					"mgmt.ssh.enabled",
-				},
+				ResourceName:    "unifi_setting.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 		},
 	})
@@ -147,17 +140,9 @@ func TestAccSettingResource_radius(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_setting.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"radius.secret", // Secret is sensitive and won't be in state after import
-					"radius.%",
-					"radius.accounting_enabled",
-					"radius.acct_port",
-					"radius.auth_port",
-					"radius.interim_update_interval",
-				},
+				ResourceName:    "unifi_setting.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 		},
 	})
@@ -179,13 +164,9 @@ func TestAccSettingResource_usg(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_setting.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"usg.%",
-					"usg.ftp_module",
-				},
+				ResourceName:    "unifi_setting.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 		},
 	})
@@ -442,15 +423,11 @@ func testAccCheckGlobalSwitchRaw(
 	}
 }
 
-// TestAccSettingResource_import exercises both import paths: the classic
-// string import (the import id is the site name, with state verification) and
-// the Terraform 1.12+ identity-based import block.
-//
-// The config intentionally manages no setting sections: readSettings only
-// refreshes sections already present in state, so a freshly imported setting
-// has every section null and any configured section would make the
-// post-import plan non-empty (the same reason the string-import tests above
-// need ImportStateVerifyIgnore for their section attributes).
+// TestAccSettingResource_import exercises both import paths: an import block
+// with the site name as id and the Terraform 1.12+ identity-based import
+// block. An import reads every section the controller has; the configuration
+// here manages none of them, so they are carried as computed values and both
+// imports must plan no changes.
 func TestAccSettingResource_import(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
@@ -467,11 +444,11 @@ func TestAccSettingResource_import(t *testing.T) {
 					),
 				),
 			},
-			// Classic string import (the import id is the site name).
+			// Import block with the site name as id.
 			{
-				ResourceName:      "unifi_setting.test_import",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:    "unifi_setting.test_import",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 			// Identity-based import (import block with identity, Terraform 1.12+).
 			{
@@ -706,13 +683,9 @@ func TestAccSettingResource_doh(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_setting.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"doh.%",
-					"doh.state",
-				},
+				ResourceName:    "unifi_setting.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 			{
 				Config: testAccSettingConfig_dohOff(),
@@ -765,17 +738,9 @@ func TestAccSettingResource_dohCustomServers(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_setting.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"doh.%",
-					"doh.state",
-					"doh.custom_servers.#",
-					"doh.custom_servers.0.server_name",
-					"doh.custom_servers.0.sdns_stamp",
-					"doh.custom_servers.0.enabled",
-				},
+				ResourceName:    "unifi_setting.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 		},
 	})
@@ -805,14 +770,9 @@ func TestAccSettingResource_ips(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:      "unifi_setting.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"ips.%",
-					"ips.ips_mode",
-					"ips.restrict_torrents",
-				},
+				ResourceName:    "unifi_setting.test",
+				ImportState:     true,
+				ImportStateKind: resource.ImportBlockWithID,
 			},
 			{
 				Config: testAccSettingConfig_ipsDisabled(),
