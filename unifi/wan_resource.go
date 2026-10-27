@@ -2225,6 +2225,14 @@ func (r *wanResource) networkToModel(
 	// key and an explicit false decode the same, a false only replaces a value
 	// the model does not hold yet, and then as true; a known prior value (an
 	// explicit `enabled = false` included) is kept.
+	//
+	// Limitation: because go-unifi cannot tell an absent `enabled` key from
+	// an explicit false, a WAN read without a known prior value (import,
+	// create, list) defaults to enabled, and an explicit false stored on the
+	// controller is not detected. The durable fix is to distinguish the two
+	// at decode time (ubiquiti-community/go-unifi#109,
+	// ubiquiti-community/terraform-provider-unifi#608); this interim rule
+	// addresses #600.
 	if network.Enabled || model.Enabled.IsNull() || model.Enabled.IsUnknown() {
 		model.Enabled = types.BoolValue(true)
 	}
