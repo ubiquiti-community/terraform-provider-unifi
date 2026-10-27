@@ -30,8 +30,20 @@ func StringDefaultOnCreate(def string) planmodifier.String {
 	return stringDefaultOnCreate{def: def}
 }
 
+// StringDefaultOnCreateKeepNull is StringDefaultOnCreate for an attribute the
+// controller may store no value for: on update it holds the prior state value
+// even when that is null, instead of falling back to def. Without that, every
+// adopted resource whose controller document lacks the field plans
+// `null -> def` and writes it, which is #544 again: the built-in RADIUS
+// profile stores no interim update interval and was planned a `1h` one that
+// even ignore_changes could not suppress.
+func StringDefaultOnCreateKeepNull(def string) planmodifier.String {
+	return stringDefaultOnCreate{def: def, keepNull: true}
+}
+
 type stringDefaultOnCreate struct {
-	def string
+	def      string
+	keepNull bool
 }
 
 func (m stringDefaultOnCreate) Description(_ context.Context) string {
@@ -62,7 +74,7 @@ func (m stringDefaultOnCreate) PlanModifyString(
 
 	// On update, hold whatever the controller last reported, so an attribute
 	// the configuration does not manage is not rewritten.
-	if !req.StateValue.IsNull() {
+	if !req.StateValue.IsNull() || m.keepNull {
 		resp.PlanValue = req.StateValue
 		return
 	}
