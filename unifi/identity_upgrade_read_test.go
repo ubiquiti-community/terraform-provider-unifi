@@ -130,8 +130,11 @@ func TestRefreshWithoutStoredIdentity(t *testing.T) {
 		version int64
 		raw     *tfprotov6.RawState
 	}{
-		"none":                 {0, &tfprotov6.RawState{}},
-		"null id from v0.60.0": {1, &tfprotov6.RawState{JSON: []byte(`{"id":null,"site":"default"}`)}},
+		"none": {0, &tfprotov6.RawState{}},
+		"null id from v0.60.0": {
+			1,
+			&tfprotov6.RawState{JSON: []byte(`{"id":null,"site":"default"}`)},
+		},
 	}
 
 	for _, tc := range cases {
