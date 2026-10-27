@@ -111,6 +111,7 @@ type vpnServerWireguardModel struct {
 	PrivateKey types.String `tfsdk:"private_key"`
 	PublicKey  types.String `tfsdk:"public_key"`
 	Port       types.Int64  `tfsdk:"port"`
+	IPVersion  types.String `tfsdk:"ip_version"`
 }
 
 func (m vpnServerWireguardModel) AttributeTypes() map[string]attr.Type {
@@ -118,6 +119,7 @@ func (m vpnServerWireguardModel) AttributeTypes() map[string]attr.Type {
 		"private_key": types.StringType,
 		"public_key":  types.StringType,
 		"port":        types.Int64Type,
+		"ip_version":  types.StringType,
 	}
 }
 
@@ -217,6 +219,7 @@ type vpnServerResourceModel struct {
 	Name            types.String         `tfsdk:"name"`
 	Enabled         types.Bool           `tfsdk:"enabled"`
 	Subnet          cidrtypes.IPv4Prefix `tfsdk:"subnet"`
+	SubnetIPv6      cidrtypes.IPv6Prefix `tfsdk:"subnet_ipv6"`
 	DNS             types.Object         `tfsdk:"dns"`
 	WAN             types.Object         `tfsdk:"wan"`
 	RADIUSProfileID types.String         `tfsdk:"radiusprofile_id"`
@@ -317,6 +320,18 @@ func (r *vpnServerResource) Schema(
 				Required:   true,
 				CustomType: cidrtypes.IPv4PrefixType{},
 			},
+			"subnet_ipv6": schema.StringAttribute{
+				MarkdownDescription: "The VPN server's IPv6 subnet in CIDR notation, in the same gateway " +
+					"form as `subnet` (e.g., `fd00:db8::1/64`): the UI's \"IPv6 Gateway/Subnet\". " +
+					"Clients get an address in it (`unifi_wireguard_peer.interface_ipv6`). " +
+					"The controller only accepts it when a server is created, so changing " +
+					"it replaces the server (and with it the server's key).",
+				Optional:   true,
+				CustomType: cidrtypes.IPv6PrefixType{},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
 			"dns": schema.SingleNestedAttribute{
 				MarkdownDescription: "DNS configuration pushed to VPN clients.",
 				Optional:            true,
@@ -398,6 +413,18 @@ func (r *vpnServerResource) Schema(
 						Default:             int64default.StaticInt64(51820),
 						Validators: []validator.Int64{
 							int64validator.Between(1, 65535),
+						},
+					},
+					"ip_version": schema.StringAttribute{
+						MarkdownDescription: "The address family the server listens on, `v4` or `v6`: " +
+							"one per server (the UI's IP Address choice between the WAN's IPv4 " +
+							"and IPv6 addresses). Defaults to `v4`, which is also what a server " +
+							"without the setting does.",
+						Optional: true,
+						Computed: true,
+						Default:  stringdefault.StaticString("v4"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("v4", "v6"),
 						},
 					},
 				},
@@ -932,6 +959,7 @@ func (r *vpnServerResource) modelToNetwork(
 		Purpose:           unifi.PurposeUserVPN,
 		Enabled:           model.Enabled.ValueBool(),
 		IPSubnet:          model.Subnet.ValueStringPointer(),
+		IPV6Subnet:        model.SubnetIPv6.ValueStringPointer(),
 		SettingPreference: new("manual"),
 	}
 
@@ -1031,6 +1059,7 @@ func (r *vpnServerResource) modelToNetwork(
 				}
 			}
 			network.LocalPort = wireguard.Port.ValueInt64Pointer()
+			network.WireguardInterfaceBindingModeIPVersion = wireguard.IPVersion.ValueStringPointer()
 		}
 	}
 
@@ -1096,6 +1125,11 @@ func (r *vpnServerResource) networkToModel(
 		model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
 	} else {
 		model.Subnet = cidrtypes.NewIPv4PrefixNull()
+	}
+	if network.IPV6Subnet != nil && *network.IPV6Subnet != "" {
+		model.SubnetIPv6 = cidrtypes.NewIPv6PrefixValue(*network.IPV6Subnet)
+	} else {
+		model.SubnetIPv6 = cidrtypes.NewIPv6PrefixNull()
 	}
 
 	// Build DNS nested object
@@ -1182,6 +1216,11 @@ func (r *vpnServerResource) networkToModel(
 			PrivateKey: privateKeyVal,
 			PublicKey:  strPtrToType(network.WireguardPublicKey),
 			Port:       types.Int64PointerValue(network.LocalPort),
+			// A server without the setting listens on IPv4.
+			IPVersion: types.StringValue("v4"),
+		}
+		if v := network.WireguardInterfaceBindingModeIPVersion; v != nil && *v != "" {
+			wireguardValue.IPVersion = types.StringValue(*v)
 		}
 		// The controller does not return the public key: derive it.
 		if wireguardValue.PublicKey.IsNull() && !privateKeyVal.IsNull() &&
