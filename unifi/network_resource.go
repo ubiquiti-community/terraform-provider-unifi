@@ -1625,7 +1625,7 @@ func (r *networkResource) Read(
 	// identity support. When an identity comes in it must be passed through
 	// unchanged: Terraform treats any modification of a non-null identity
 	// (including filling a null attribute) as an error.
-	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
 	var idModel networkIdentityModel
 	if haveIdentity {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
@@ -1798,7 +1798,7 @@ func (r *networkResource) Update(
 	// carry the incoming identity through unchanged, deriving a fresh one from
 	// state only when it was absent.
 	idModel := networkIdentityModel{ID: data.ID, Site: data.Site}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &idModel)...)
 		if resp.Diagnostics.HasError() {
 			return

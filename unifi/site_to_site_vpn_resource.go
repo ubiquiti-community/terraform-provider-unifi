@@ -664,7 +664,7 @@ func (r *siteToSiteVPNResource) Read(
 	// Get the resource identity, tolerating null/empty identities (state
 	// written by older provider versions).
 	var identity siteToSiteVPNIdentityModel
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -712,7 +712,7 @@ func (r *siteToSiteVPNResource) Read(
 	// Terraform rejects any modification of an existing stored identity
 	// (including filling a null attribute), so pass an incoming identity
 	// through unchanged and only derive one when none is stored yet.
-	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsFullyNull()) {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, siteToSiteVPNIdentityModel{
 			ID:   data.ID,
 			Site: data.Site,
@@ -767,7 +767,7 @@ func (r *siteToSiteVPNResource) Update(
 	}
 	// Pass an existing identity through unchanged; only derive one when
 	// none is stored yet (see Read).
-	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsFullyNull()) {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, siteToSiteVPNIdentityModel{
 			ID:   data.ID,
 			Site: data.Site,
