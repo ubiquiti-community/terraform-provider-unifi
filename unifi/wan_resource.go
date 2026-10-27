@@ -830,14 +830,15 @@ func (r *wanResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"downstream": schema.StringAttribute{
-						Optional:            true,
-						Computed:            true,
-						MarkdownDescription: "IGMP proxy downstream target (none, lan, guest)",
+						Optional: true,
+						Computed: true,
+						MarkdownDescription: "IGMP proxy downstream target (none, all, some, lan, guest). " +
+							"With `some`, the controller keeps its list of downstream networks.",
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
 						},
 						Validators: []validator.String{
-							stringvalidator.OneOf("none", "lan", "guest"),
+							stringvalidator.OneOf("none", "all", "some", "lan", "guest"),
 						},
 					},
 					"upstream": schema.BoolAttribute{
@@ -2217,7 +2218,16 @@ func (r *wanResource) networkToModel(
 
 	// Additional Settings
 	model.ReportWANEvent = types.BoolValue(network.ReportWANEvent)
-	model.Enabled = types.BoolValue(network.Enabled)
+	// The controller omits `enabled` from WAN networks (Network 10.x has no
+	// enable toggle for a WAN), and go-unifi decodes the missing key as false.
+	// Reading that false would plan `enabled = false` on import and then send
+	// it with every update, switching the uplink off (#600). Since an omitted
+	// key and an explicit false decode the same, a false only replaces a value
+	// the model does not hold yet, and then as true; a known prior value (an
+	// explicit `enabled = false` included) is kept.
+	if network.Enabled || model.Enabled.IsNull() || model.Enabled.IsUnknown() {
+		model.Enabled = types.BoolValue(true)
+	}
 	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
 	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
 	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)

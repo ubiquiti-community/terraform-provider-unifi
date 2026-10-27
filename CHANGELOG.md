@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_wan`: an imported WAN no longer reads as disabled, and `igmp_proxy.downstream` accepts the controller's `all` and `some`.** Network 10.x returns no `enabled` key for a WAN, which go-unifi decodes as `false`, so importing a WAN planned `enabled = false` and every later update sent `"enabled": false` to the uplink (#600). A WAN the controller reports without the key now reads as enabled; a known prior value, including an explicit `enabled = false`, is kept, because an absent key and an explicit false decode the same. `igmp_proxy.downstream` accepted only `none`, `lan` and `guest`, rejecting the controller's own `all` and `some`; with `some` the controller keeps its list of downstream networks, which the provider does not send.
+
 ## [v0.60.0] - 2026-10-26
 
 One breaking change and the fixes that followed it. The headline is the
