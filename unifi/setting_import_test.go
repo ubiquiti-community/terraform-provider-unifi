@@ -313,7 +313,10 @@ func TestSettingImportReadsEverySection(t *testing.T) {
 		t.Errorf("syslog.netconsole.port planned %v, want the imported 6666", plannedNC["port"])
 	}
 	if !plannedNC["enabled"].Equal(tftypes.NewValue(tftypes.Bool, false)) {
-		t.Errorf("syslog.netconsole.enabled planned %v, want the default false", plannedNC["enabled"])
+		t.Errorf(
+			"syslog.netconsole.enabled planned %v, want the default false",
+			plannedNC["enabled"],
+		)
 	}
 
 	// An unrelated change to the one section the configuration manages.
