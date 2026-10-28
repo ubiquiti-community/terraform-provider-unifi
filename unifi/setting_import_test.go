@@ -503,7 +503,10 @@ func TestSettingImportByIdentityReadsEverySection(t *testing.T) {
 			t.Fatalf("radius: %v", d)
 		}
 		if !radius.Secret.IsNull() {
-			t.Errorf("radius.secret imported as %v, want null: never import the secret", radius.Secret)
+			t.Errorf(
+				"radius.secret imported as %v, want null: never import the secret",
+				radius.Secret,
+			)
 		}
 	}
 	if len(fc.puts) != 0 {
