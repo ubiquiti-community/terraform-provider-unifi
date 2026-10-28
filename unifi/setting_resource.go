@@ -2206,7 +2206,10 @@ func (r *settingResource) Create(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
+		var suppressionConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("ips").AtName("suppression"), &suppressionConfig)...)
+		r.persistIpsSuppression(ctx, site, suppressionConfig, suppression, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2283,7 +2286,10 @@ func (r *settingResource) Create(
 		}
 		// Newer controllers store Region Blocking under the standalone
 		// usg_geo setting and ignore the usg geo fields (#374).
-		r.persistUsgGeoFiltering(ctx, site, &usg, &resp.Diagnostics)
+		var geoConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("usg").AtName("geo_ip_filtering"), &geoConfig)...)
+		r.persistUsgGeoFiltering(ctx, site, geoConfig, &usg, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2573,7 +2579,10 @@ func (r *settingResource) Update(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
+		var suppressionConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("ips").AtName("suppression"), &suppressionConfig)...)
+		r.persistIpsSuppression(ctx, site, suppressionConfig, suppression, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2650,7 +2659,10 @@ func (r *settingResource) Update(
 		}
 		// Newer controllers store Region Blocking under the standalone
 		// usg_geo setting and ignore the usg geo fields (#374).
-		r.persistUsgGeoFiltering(ctx, site, &usg, &resp.Diagnostics)
+		var geoConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("usg").AtName("geo_ip_filtering"), &geoConfig)...)
+		r.persistUsgGeoFiltering(ctx, site, geoConfig, &usg, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -3637,9 +3649,13 @@ func applyUsgGeoIPFiltering(setting *usgWithGeo, data map[string]any) {
 func (r *settingResource) persistUsgGeoFiltering(
 	ctx context.Context,
 	site string,
+	config types.Object,
 	model *settingUSGModel,
 	diags *diag.Diagnostics,
 ) {
+	if config.IsNull() {
+		return
+	}
 	geo, ok, d := util.ObjectAs[settingUsgGeoIPFilteringModel](ctx, model.GeoIPFiltering)
 	diags.Append(d...)
 	if !ok || !usgGeoConfigured(&geo) {
@@ -4590,10 +4606,11 @@ func ipsSuppressionConfigured(plan *settingIpsSuppressionModel) bool {
 func (r *settingResource) persistIpsSuppression(
 	ctx context.Context,
 	site string,
+	config types.Object,
 	suppression *settings.IpsSuppression,
 	diags *diag.Diagnostics,
 ) {
-	if suppression == nil {
+	if config.IsNull() || suppression == nil {
 		return
 	}
 

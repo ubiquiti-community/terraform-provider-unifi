@@ -703,11 +703,68 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 		for _, key := range []string{
 			"auto_speedtest", "country", "dpi", "lcm", "network_optimization", "ntp",
 			"rsyslogd", "doh", "ips", "mgmt", "radius", "usg", "igmp_snooping",
-			"connectivity", "global_switch",
+			"connectivity", "global_switch", "usg_geo", "ips_suppression",
 		} {
 			if !written[key] {
 				t.Errorf("update did not write the configured %s section (wrote %v)", key, fc.puts)
 			}
+		}
+	})
+
+	// usg.geo_ip_filtering and ips.suppression live in their own documents.
+	// Carried from the imported state into the plan, they are not written
+	// when the configuration of their section leaves them out.
+	t.Run("side documents left out", func(t *testing.T) {
+		fc.puts = nil
+		config := plan
+		var usg settingUSGModel
+		if d := plan.USG.As(ctx, &usg, basetypes.ObjectAsOptions{}); d.HasError() {
+			t.Fatalf("usg: %v", d)
+		}
+		if usg.GeoIPFiltering.IsNull() {
+			t.Fatal("usg.geo_ip_filtering imported as null, want the controller's value")
+		}
+		usg.GeoIPFiltering = types.ObjectNull(usgGeoIPFilteringAttrTypes)
+		config.USG, d = types.ObjectValueFrom(ctx, usgAttrTypes, usg)
+		if d.HasError() {
+			t.Fatalf("usg: %v", d)
+		}
+		var ips settingIpsModel
+		if d := plan.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{}); d.HasError() {
+			t.Fatalf("ips: %v", d)
+		}
+		if ips.Suppression.IsNull() {
+			t.Fatal("ips.suppression imported as null, want the controller's value")
+		}
+		ips.Suppression = types.ObjectNull(ipsSuppressionAttrTypes)
+		config.Ips, d = types.ObjectValueFrom(ctx, ipsAttrTypes, ips)
+		if d.HasError() {
+			t.Fatalf("ips: %v", d)
+		}
+		configPlan := tfsdk.Plan{Schema: state.Schema}
+		if d := configPlan.Set(ctx, &config); d.HasError() {
+			t.Fatalf("building config: %v", d)
+		}
+
+		resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
+		r.Update(ctx, fwresource.UpdateRequest{
+			State:    state,
+			Plan:     planned,
+			Config:   tfsdk.Config(configPlan),
+			Identity: importResp.Identity,
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("Update: %v", resp.Diagnostics)
+		}
+		written := map[string]bool{}
+		for _, key := range fc.puts {
+			written[key] = true
+		}
+		if !written["usg"] || !written["ips"] {
+			t.Errorf("update did not write the configured usg and ips sections (wrote %v)", fc.puts)
+		}
+		if written["usg_geo"] || written["ips_suppression"] {
+			t.Errorf("update wrote %v, want neither usg_geo nor ips_suppression", fc.puts)
 		}
 	})
 }
