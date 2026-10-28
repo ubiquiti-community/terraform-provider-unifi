@@ -140,11 +140,30 @@ func TestAccSettingResource_radius(t *testing.T) {
 				),
 			},
 			{
+				// An import leaves the RADIUS secret out of state, so this
+				// configuration plans one update after import and an import
+				// block step cannot be used. Verify the imported radius section
+				// instead. The import also reads every other section the
+				// controller has, which the configuration does not manage.
 				ResourceName:      "unifi_setting.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{
 					"radius.secret", // Secret is sensitive and won't be in state after import
+					"auto_speedtest.",
+					"connectivity.",
+					"country.",
+					"doh.",
+					"dpi.",
+					"global_switch.",
+					"igmp_snooping.",
+					"ips.",
+					"lcm.",
+					"mgmt.",
+					"network_optimization.",
+					"ntp.",
+					"syslog.",
+					"usg.",
 				},
 			},
 		},
