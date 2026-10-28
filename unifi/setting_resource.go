@@ -2848,6 +2848,16 @@ func (r *settingResource) readImportedSettings(
 			}
 		}
 	}
+	if !data.Radius.IsNull() {
+		radius := data.Radius.Attributes()
+		radius["secret"] = types.StringNull()
+		var d diag.Diagnostics
+		data.Radius, d = types.ObjectValue(radiusAttrTypes, radius)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+	}
 
 	r.readSettings(ctx, site, &data, diags)
 	if diags.HasError() {
@@ -3834,11 +3844,15 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.DNSVerification.IsNull() && !plan.DNSVerification.IsUnknown() {
+		dns := setting.DNSVerification
+		if dns == nil {
+			dns = &settings.SettingUsgDNSVerification{}
+		}
 		dnsVerif := dnsVerificationModel{
-			Domain:             types.StringValue(setting.DNSVerification.Domain),
-			PrimaryDNSServer:   types.StringValue(setting.DNSVerification.PrimaryDNSServer),
-			SecondaryDNSServer: types.StringValue(setting.DNSVerification.SecondaryDNSServer),
-			SettingPreference:  types.StringValue(setting.DNSVerification.SettingPreference),
+			Domain:             types.StringValue(dns.Domain),
+			PrimaryDNSServer:   types.StringValue(dns.PrimaryDNSServer),
+			SecondaryDNSServer: types.StringValue(dns.SecondaryDNSServer),
+			SettingPreference:  types.StringValue(dns.SettingPreference),
 		}
 		objValue, _ := types.ObjectValueFrom(ctx, usgDNSVerificationAttrTypes, dnsVerif)
 		model.DNSVerification = objValue

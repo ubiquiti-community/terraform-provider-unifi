@@ -140,9 +140,12 @@ func TestAccSettingResource_radius(t *testing.T) {
 				),
 			},
 			{
-				ResourceName:    "unifi_setting.test",
-				ImportState:     true,
-				ImportStateKind: resource.ImportBlockWithID,
+				ResourceName:      "unifi_setting.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"radius.secret", // Secret is sensitive and won't be in state after import
+				},
 			},
 		},
 	})

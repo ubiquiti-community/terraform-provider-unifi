@@ -497,8 +497,58 @@ func TestSettingImportByIdentityReadsEverySection(t *testing.T) {
 			t.Errorf("%s imported as %v, want the controller's document", name, section)
 		}
 	}
+	if !imported.Radius.IsNull() {
+		var radius settingRadiusModel
+		if d := imported.Radius.As(ctx, &radius, basetypes.ObjectAsOptions{}); d.HasError() {
+			t.Fatalf("radius: %v", d)
+		}
+		if !radius.Secret.IsNull() {
+			t.Errorf("radius.secret imported as %v, want null: never import the secret", radius.Secret)
+		}
+	}
 	if len(fc.puts) != 0 {
 		t.Errorf("import wrote %v, want no writes", fc.puts)
+	}
+}
+
+// A usg document without dns_verification imports dns_verification as an
+// empty object, and the refresh that follows reads it the same way.
+func TestSettingImportWithoutUSGDNSVerification(t *testing.T) {
+	ctx := context.Background()
+	docs := maps.Clone(fakeSettingDocuments)
+	docs["usg"] = `{"key":"usg","broadcast_ping":false,"ftp_module":true,
+		"mss_clamp":"auto","timeout_setting_preference":"auto","upnp_enabled":false}`
+	fc := &fakeSettingController{docs: docs}
+	r := &settingResource{client: newSettingFakeControllerClient(t, fc)}
+
+	resp := importSettings(ctx, t, r, false)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState: %v", resp.Diagnostics)
+	}
+	var imported settingResourceModel
+	if d := resp.State.Get(ctx, &imported); d.HasError() {
+		t.Fatalf("reading imported state: %v", d)
+	}
+	var usg settingUSGModel
+	if d := imported.USG.As(ctx, &usg, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("usg: %v", d)
+	}
+	var dns dnsVerificationModel
+	if d := usg.DNSVerification.As(ctx, &dns, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("usg.dns_verification: %v", d)
+	}
+	if !dns.Domain.Equal(types.StringValue("")) ||
+		!dns.SettingPreference.Equal(types.StringValue("")) {
+		t.Errorf("usg.dns_verification = %+v, want known empty values", dns)
+	}
+
+	readResp := &fwresource.ReadResponse{State: resp.State, Identity: resp.Identity}
+	r.Read(ctx, fwresource.ReadRequest{State: resp.State, Identity: resp.Identity}, readResp)
+	if readResp.Diagnostics.HasError() {
+		t.Fatalf("Read: %v", readResp.Diagnostics)
+	}
+	if diffs, _ := resp.State.Raw.Diff(readResp.State.Raw); len(diffs) != 0 {
+		t.Errorf("refresh after import changed the state: %v", diffs)
 	}
 }
 
