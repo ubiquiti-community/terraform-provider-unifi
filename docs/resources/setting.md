@@ -128,6 +128,8 @@ resource "unifi_setting" "device_isolation" {
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `auto_speedtest` (Attributes) Periodic automated internet speed test settings. (see [below for nested schema](#nestedatt--auto_speedtest))
 - `connectivity` (Attributes) Wireless meshing and uplink connectivity (Settings > WiFi > Wireless Meshing). Disabling meshing frees the standby mesh radio and doubles the per-band SSID budget: with meshing on, APs reserve a hidden backhaul SSID and allow 4 SSIDs per band instead of 8. The controller-generated mesh SSID and pre-shared key are not exposed and are preserved across updates, as are any options this block does not model. (see [below for nested schema](#nestedatt--connectivity))
 - `country` (Attributes) Regulatory country settings. (see [below for nested schema](#nestedatt--country))
@@ -141,6 +143,8 @@ resource "unifi_setting" "device_isolation" {
 - `network_optimization` (Attributes) Automated network optimization settings. (see [below for nested schema](#nestedatt--network_optimization))
 - `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
+- `radius_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `radius.secret` (Terraform 1.11+). Used at apply time but never written to state. It sits at the root rather than inside `radius` because Terraform does not allow a write-only attribute inside a computed nested attribute. Requires the `radius` block (`radius = {}` is enough) and is mutually exclusive with `radius.secret`. Because nothing is stored, a secret changed outside Terraform produces no diff; increment `radius_secret_wo_version` to send a new value.
+- `radius_secret_wo_version` (Number) Version counter for `radius_secret_wo`. Increment this value to trigger a RADIUS secret update.
 - `site` (String) The name of the site to associate the settings with.
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
@@ -390,7 +394,7 @@ Optional:
 - `acct_port` (Number) RADIUS accounting port.
 - `auth_port` (Number) RADIUS authentication port.
 - `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
-- `secret` (String, Sensitive) RADIUS shared secret.
+- `secret` (String, Sensitive) RADIUS shared secret. Stored in state; use the root-level `radius_secret_wo` to avoid persisting the secret.
 
 
 <a id="nestedatt--syslog"></a>

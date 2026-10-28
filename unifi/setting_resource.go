@@ -27,6 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	ui "github.com/ubiquiti-community/go-unifi/unifi"
@@ -306,6 +307,12 @@ type settingResourceModel struct {
 	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
 	Connectivity  types.Object   `tfsdk:"connectivity"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
+
+	// The write-only RADIUS secret sits at the root rather than inside
+	// radius: Terraform rejects a WriteOnly child of a Computed nested
+	// attribute, and radius is Optional+Computed.
+	RadiusSecretWO        types.String `tfsdk:"radius_secret_wo"`
+	RadiusSecretWOVersion types.Int64  `tfsdk:"radius_secret_wo_version"`
 }
 
 // settingGlobalSwitchModel is the nested global_switch block (Settings > Networks
@@ -1276,10 +1283,11 @@ func (r *settingResource) Schema(
 						Computed:   true,
 					},
 					"secret": schema.StringAttribute{
-						MarkdownDescription: "RADIUS shared secret.",
-						Optional:            true,
-						Computed:            true,
-						Sensitive:           true,
+						MarkdownDescription: "RADIUS shared secret. Stored in state; use " +
+							"the root-level `radius_secret_wo` to avoid persisting the secret.",
+						Optional:  true,
+						Computed:  true,
+						Sensitive: true,
 						Validators: []validator.String{
 							stringvalidator.LengthBetween(1, 48),
 							stringvalidator.RegexMatches(
@@ -1288,6 +1296,37 @@ func (r *settingResource) Schema(
 							),
 						},
 					},
+				},
+			},
+			"radius_secret_wo": schema.StringAttribute{
+				MarkdownDescription: "Write-only equivalent of `radius.secret` (Terraform " +
+					"1.11+). Used at apply time but never written to state. It sits at the " +
+					"root rather than inside `radius` because Terraform does not allow a " +
+					"write-only attribute inside a computed nested attribute. Requires the " +
+					"`radius` block (`radius = {}` is enough) and is mutually exclusive " +
+					"with `radius.secret`. Because nothing is stored, a secret changed " +
+					"outside Terraform produces no diff; increment `radius_secret_wo_version` " +
+					"to send a new value.",
+				Optional:  true,
+				Sensitive: true,
+				WriteOnly: true,
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 48),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[^\\\ "']+$`),
+						"must not contain backslashes, spaces, single quotes, or double quotes",
+					),
+					stringvalidator.ConflictsWith(path.MatchRoot("radius").AtName("secret")),
+					stringvalidator.AlsoRequires(path.MatchRoot("radius")),
+				},
+			},
+			"radius_secret_wo_version": schema.Int64Attribute{
+				MarkdownDescription: "Version counter for `radius_secret_wo`. Increment " +
+					"this value to trigger a RADIUS secret update.",
+				Optional: true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+					int64validator.AlsoRequires(path.MatchRoot("radius_secret_wo")),
 				},
 			},
 			"usg": schema.SingleNestedAttribute{
@@ -2128,6 +2167,13 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
+		secretWO := r.readRadiusSecretWO(ctx, req.Config, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !secretWO.IsNull() && !secretWO.IsUnknown() {
+			setting.Secret = secretWO.ValueString()
+		}
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Radius Setting", err.Error())
 			return
@@ -2483,6 +2529,13 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
+		secretWO := r.readRadiusSecretWO(ctx, req.Config, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !secretWO.IsNull() && !secretWO.IsUnknown() {
+			setting.Secret = secretWO.ValueString()
+		}
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Radius Setting", err.Error())
 			return
@@ -3207,6 +3260,18 @@ func (r *settingResource) radiusSettingToModel(
 	}
 
 	return model
+}
+
+// readRadiusSecretWO reads the write-only radius_secret_wo attribute. Write-only
+// values are only available through the request config, never plan or state.
+func (r *settingResource) readRadiusSecretWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var secretWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("radius_secret_wo"), &secretWO)...)
+	return secretWO
 }
 
 // USG conversion functions.

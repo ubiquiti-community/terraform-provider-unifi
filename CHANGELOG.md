@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### ✨ Features
+
+- **`unifi_setting`: write-only RADIUS shared secret.** `radius_secret_wo` (Terraform 1.11+) sends the RADIUS shared secret at apply time without persisting it to state; increment `radius_secret_wo_version` to send a new value. It is mutually exclusive with `radius.secret`, which keeps its current behaviour, and requires the `radius` block. The pair sits at the root of the resource rather than inside `radius` because Terraform does not allow a write-only attribute inside a computed nested attribute, and `radius` is Optional+Computed.
+
 ## [v0.60.0] - 2026-10-26
 
 One breaking change and the fixes that followed it. The headline is the
