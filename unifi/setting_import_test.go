@@ -2,15 +2,19 @@ package unifi
 
 import (
 	"context"
+	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -47,10 +51,19 @@ var fakeSettingDocuments = map[string]string{
 		"setting_preference":"auto"}}`,
 }
 
-// newSettingFakeControllerClient serves fakeSettingDocuments from a minimal
-// fake controller (old-style API: 302 on /, cookie login at /api/login) and
-// records the setting key of every PUT to it.
-func newSettingFakeControllerClient(t *testing.T, puts *[]string) *Client {
+// fakeSettingController is a minimal fake controller (old-style API: 302 on
+// /, cookie login at /api/login) serving the site setting documents in docs.
+// A key in unreadable is listed but its own document cannot be read, and
+// failList makes listing the settings fail. Every PUT's setting key is
+// recorded in puts.
+type fakeSettingController struct {
+	docs       map[string]string
+	unreadable map[string]bool
+	failList   bool
+	puts       []string
+}
+
+func newSettingFakeControllerClient(t *testing.T, fc *fakeSettingController) *Client {
 	t.Helper()
 
 	reply := func(w http.ResponseWriter, docs ...string) {
@@ -71,20 +84,26 @@ func newSettingFakeControllerClient(t *testing.T, puts *[]string) *Client {
 		reply(w)
 	})
 	mux.HandleFunc("/api/s/default/get/setting", func(w http.ResponseWriter, r *http.Request) {
-		keys := make([]string, 0, len(fakeSettingDocuments))
-		for key := range fakeSettingDocuments {
+		if fc.failList {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"meta":{"rc":"error","msg":"api.err.Invalid"},"data":[]}`))
+			return
+		}
+		keys := make([]string, 0, len(fc.docs))
+		for key := range fc.docs {
 			keys = append(keys, key)
 		}
 		sort.Strings(keys)
 		docs := make([]string, 0, len(keys))
 		for _, key := range keys {
-			docs = append(docs, fakeSettingDocuments[key])
+			docs = append(docs, fc.docs[key])
 		}
 		reply(w, docs...)
 	})
 	mux.HandleFunc("/api/s/default/get/setting/", func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/api/s/default/get/setting/")
-		if doc, ok := fakeSettingDocuments[key]; ok {
+		if doc, ok := fc.docs[key]; ok && !fc.unreadable[key] {
 			reply(w, doc)
 			return
 		}
@@ -92,7 +111,7 @@ func newSettingFakeControllerClient(t *testing.T, puts *[]string) *Client {
 	})
 	mux.HandleFunc("/api/s/default/set/setting/", func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/api/s/default/set/setting/")
-		*puts = append(*puts, key)
+		fc.puts = append(fc.puts, key)
 		raw, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("reading PUT body: %v", err)
@@ -122,8 +141,8 @@ func newSettingFakeControllerClient(t *testing.T, puts *[]string) *Client {
 // an unrelated update must write only the section the configuration sets.
 func TestSettingImportReadsEverySection(t *testing.T) {
 	ctx := context.Background()
-	var puts []string
-	r := &settingResource{client: newSettingFakeControllerClient(t, &puts)}
+	fc := &fakeSettingController{docs: fakeSettingDocuments}
+	r := &settingResource{client: newSettingFakeControllerClient(t, fc)}
 
 	var schemaResp fwresource.SchemaResponse
 	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
@@ -369,7 +388,534 @@ func TestSettingImportReadsEverySection(t *testing.T) {
 	if updateResp.Diagnostics.HasError() {
 		t.Fatalf("Update: %v", updateResp.Diagnostics)
 	}
-	if strings.Join(puts, ",") != "ntp" {
-		t.Errorf("update wrote %v, want only the configured ntp section", puts)
+	if strings.Join(fc.puts, ",") != "ntp" {
+		t.Errorf("update wrote %v, want only the configured ntp section", fc.puts)
 	}
+}
+
+// allSettingDocuments holds a document for every section the resource models.
+var allSettingDocuments = map[string]string{
+	"auto_speedtest": `{"key":"auto_speedtest","enabled":true,"cron_expr":"0 8 * * *"}`,
+	"country":        `{"key":"country","code":840}`,
+	"lcm": `{"key":"lcm","enabled":true,"brightness":80,"idle_timeout":300,"sync":true,
+		"touch_event":true}`,
+	"network_optimization": `{"key":"network_optimization","enabled":true}`,
+	"doh": `{"key":"doh","state":"off","server_names":["cloudflare"],
+		"custom_servers":[]}`,
+	"ips": `{"key":"ips","ips_mode":"disabled","honeypot_enabled":false,
+		"restrict_torrents":false,"content_filtering_blocking_page_enabled":true,
+		"memory_optimized":true,"advanced_filtering_preference":"manual",
+		"enabled_categories":[],"enabled_networks":["lan-a"],"honeypot":[]}`,
+	"radius": `{"key":"radius","accounting_enabled":false,"acct_port":1813,"auth_port":1812,
+		"interim_update_interval":3600,"x_secret":"radius-secret"}`,
+	"connectivity":  `{"key":"connectivity","enabled":false,"uplink_type":"gateway"}`,
+	"dpi":           fakeSettingDocuments["dpi"],
+	"rsyslogd":      fakeSettingDocuments["rsyslogd"],
+	"ntp":           fakeSettingDocuments["ntp"],
+	"mgmt":          fakeSettingDocuments["mgmt"],
+	"igmp_snooping": fakeSettingDocuments["igmp_snooping"],
+	"global_switch": fakeSettingDocuments["global_switch"],
+	"usg":           fakeSettingDocuments["usg"],
+}
+
+// importSettings runs ImportState for the site "default" against r, by
+// identity when byIdentity is set and by import id otherwise.
+func importSettings(
+	ctx context.Context,
+	t *testing.T,
+	r *settingResource,
+	byIdentity bool,
+) *fwresource.ImportStateResponse {
+	t.Helper()
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	var identityResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &identityResp)
+	newIdentity := func() *tfsdk.ResourceIdentity {
+		return &tfsdk.ResourceIdentity{
+			Raw: tftypes.NewValue(
+				identityResp.IdentitySchema.Type().TerraformType(ctx), nil,
+			),
+			Schema: identityResp.IdentitySchema,
+		}
+	}
+	resp := &fwresource.ImportStateResponse{
+		State: tfsdk.State{
+			Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+			Schema: schemaResp.Schema,
+		},
+		Identity: newIdentity(),
+	}
+	req := fwresource.ImportStateRequest{ID: "default"}
+	if byIdentity {
+		identity := newIdentity()
+		if d := identity.Set(
+			ctx,
+			settingIdentityModel{Site: types.StringValue("default")},
+		); d.HasError() {
+			t.Fatalf("building import identity: %v", d)
+		}
+		req = fwresource.ImportStateRequest{Identity: identity}
+	}
+	r.ImportState(ctx, req, resp)
+	return resp
+}
+
+// An import block keyed by resource identity (Terraform 1.12+) reads every
+// section the controller has, exactly like an import by id.
+func TestSettingImportByIdentityReadsEverySection(t *testing.T) {
+	ctx := context.Background()
+	fc := &fakeSettingController{docs: allSettingDocuments}
+	r := &settingResource{client: newSettingFakeControllerClient(t, fc)}
+
+	resp := importSettings(ctx, t, r, true)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("ImportState: %v", resp.Diagnostics)
+	}
+	var imported settingResourceModel
+	if d := resp.State.Get(ctx, &imported); d.HasError() {
+		t.Fatalf("reading imported state: %v", d)
+	}
+	for name, section := range map[string]types.Object{
+		"auto_speedtest":       imported.AutoSpeedtest,
+		"country":              imported.Country,
+		"dpi":                  imported.Dpi,
+		"lcm":                  imported.Lcm,
+		"network_optimization": imported.NetworkOpt,
+		"ntp":                  imported.Ntp,
+		"syslog":               imported.Syslog,
+		"doh":                  imported.Doh,
+		"ips":                  imported.Ips,
+		"mgmt":                 imported.Mgmt,
+		"radius":               imported.Radius,
+		"usg":                  imported.USG,
+		"igmp_snooping":        imported.IgmpSnooping,
+		"connectivity":         imported.Connectivity,
+		"global_switch":        imported.GlobalSwitch,
+	} {
+		if section.IsNull() || section.IsUnknown() {
+			t.Errorf("%s imported as %v, want the controller's document", name, section)
+		}
+	}
+	if len(fc.puts) != 0 {
+		t.Errorf("import wrote %v, want no writes", fc.puts)
+	}
+}
+
+// An import fails cleanly, writing nothing, when the controller cannot list
+// its settings or cannot return a document it listed.
+func TestSettingImportReportsControllerErrors(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		fc   *fakeSettingController
+		want string
+	}{
+		{
+			name: "settings cannot be listed",
+			fc:   &fakeSettingController{docs: fakeSettingDocuments, failList: true},
+			want: "Error Listing Settings",
+		},
+		{
+			name: "a listed document cannot be read",
+			fc: &fakeSettingController{
+				docs:       fakeSettingDocuments,
+				unreadable: map[string]bool{"ntp": true},
+			},
+			want: "Error Reading NTP Setting",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &settingResource{client: newSettingFakeControllerClient(t, tc.fc)}
+			resp := importSettings(ctx, t, r, false)
+			if !resp.Diagnostics.HasError() {
+				t.Fatal("ImportState succeeded, want an error")
+			}
+			if got := resp.Diagnostics.Errors()[0].Summary(); got != tc.want {
+				t.Errorf("error summary = %q, want %q", got, tc.want)
+			}
+			if len(tc.fc.puts) != 0 {
+				t.Errorf("import wrote %v, want no writes", tc.fc.puts)
+			}
+		})
+	}
+}
+
+// readImportedSettings leaves state alone after an earlier import error, and
+// reports a state it cannot decode before it reaches the controller.
+func TestReadImportedSettingsStopsBeforeTheController(t *testing.T) {
+	ctx := context.Background()
+	// No client: reaching the controller would panic.
+	r := &settingResource{}
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+
+	t.Run("earlier error", func(t *testing.T) {
+		state := tfsdk.State{
+			Raw:    tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), nil),
+			Schema: schemaResp.Schema,
+		}
+		var diags diag.Diagnostics
+		diags.AddError("earlier", "import id was invalid")
+		r.readImportedSettings(ctx, "default", &state, &diags)
+		if len(diags.Errors()) != 1 {
+			t.Errorf("diagnostics = %v, want only the earlier error", diags)
+		}
+		if !state.Raw.IsNull() {
+			t.Errorf("state = %v, want it left null", state.Raw)
+		}
+	})
+
+	t.Run("undecodable state", func(t *testing.T) {
+		reduced := schemaResp.Schema
+		reduced.Attributes = maps.Clone(schemaResp.Schema.Attributes)
+		delete(reduced.Attributes, "ntp")
+		state := tfsdk.State{
+			Raw:    tftypes.NewValue(reduced.Type().TerraformType(ctx), nil),
+			Schema: reduced,
+		}
+		var diags diag.Diagnostics
+		r.readImportedSettings(ctx, "default", &state, &diags)
+		if !diags.HasError() {
+			t.Error("readImportedSettings accepted a state without the ntp section")
+		}
+	})
+}
+
+// After an import every section is in the plan. When the configuration sets
+// all of them, an update writes each one; and an update whose configuration
+// cannot be decoded writes nothing.
+func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
+	ctx := context.Background()
+	fc := &fakeSettingController{docs: allSettingDocuments}
+	r := &settingResource{client: newSettingFakeControllerClient(t, fc)}
+
+	importResp := importSettings(ctx, t, r, false)
+	if importResp.Diagnostics.HasError() {
+		t.Fatalf("ImportState: %v", importResp.Diagnostics)
+	}
+	state := importResp.State
+	var plan settingResourceModel
+	if d := state.Get(ctx, &plan); d.HasError() {
+		t.Fatalf("reading imported state: %v", d)
+	}
+	var ntp settingNtpModel
+	if d := plan.Ntp.As(ctx, &ntp, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("ntp: %v", d)
+	}
+	ntp.NtpServer2 = types.StringValue("time.google.com")
+	var d diag.Diagnostics
+	plan.Ntp, d = types.ObjectValueFrom(ctx, ntpAttrTypes, ntp)
+	if d.HasError() {
+		t.Fatalf("ntp: %v", d)
+	}
+	planned := tfsdk.Plan{Schema: state.Schema}
+	if d := planned.Set(ctx, &plan); d.HasError() {
+		t.Fatalf("building plan: %v", d)
+	}
+
+	t.Run("undecodable configuration", func(t *testing.T) {
+		fc.puts = nil
+		resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
+		r.Update(ctx, fwresource.UpdateRequest{
+			State:    state,
+			Plan:     planned,
+			Config:   tfsdk.Config{Schema: state.Schema},
+			Identity: importResp.Identity,
+		}, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("Update accepted a configuration it cannot decode")
+		}
+		if len(fc.puts) != 0 {
+			t.Errorf("update wrote %v, want no writes", fc.puts)
+		}
+	})
+
+	t.Run("every section configured", func(t *testing.T) {
+		fc.puts = nil
+		resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
+		r.Update(ctx, fwresource.UpdateRequest{
+			State:    state,
+			Plan:     planned,
+			Config:   tfsdk.Config(planned),
+			Identity: importResp.Identity,
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("Update: %v", resp.Diagnostics)
+		}
+		written := map[string]bool{}
+		for _, key := range fc.puts {
+			written[key] = true
+		}
+		for _, key := range []string{
+			"auto_speedtest", "country", "dpi", "lcm", "network_optimization", "ntp",
+			"rsyslogd", "doh", "ips", "mgmt", "radius", "usg", "igmp_snooping",
+			"connectivity", "global_switch",
+		} {
+			if !written[key] {
+				t.Errorf("update did not write the configured %s section (wrote %v)", key, fc.puts)
+			}
+		}
+	})
+}
+
+// keepPriorUnconfigured skips an attribute the configuration or the prior
+// state does not carry, and leaves non-object values and unknown or null
+// objects untouched.
+func TestKeepPriorUnconfiguredSkipsMissingAttributes(t *testing.T) {
+	ctx := context.Background()
+	full := map[string]attr.Type{"a": types.StringType, "b": types.StringType}
+	plan := types.ObjectValueMust(full, map[string]attr.Value{
+		"a": types.StringUnknown(),
+		"b": types.StringUnknown(),
+	})
+	prior := types.ObjectValueMust(full, map[string]attr.Value{
+		"a": types.StringValue("prior-a"),
+		"b": types.StringValue("prior-b"),
+	})
+	// The configuration carries only "a".
+	config := types.ObjectValueMust(
+		map[string]attr.Type{"a": types.StringType},
+		map[string]attr.Value{"a": types.StringNull()},
+	)
+
+	got, d := keepPriorUnconfigured(ctx, plan, config, prior)
+	if d.HasError() {
+		t.Fatalf("keepPriorUnconfigured: %v", d)
+	}
+	attrs := got.Attributes()
+	if !attrs["a"].Equal(types.StringValue("prior-a")) {
+		t.Errorf("a = %v, want the prior value", attrs["a"])
+	}
+	if !attrs["b"].IsUnknown() {
+		t.Errorf("b = %v, want it left unknown: the configuration does not carry it", attrs["b"])
+	}
+
+	for name, tc := range map[string]struct{ plan, config, prior types.Object }{
+		"unknown plan":  {types.ObjectUnknown(full), config, prior},
+		"null config":   {plan, types.ObjectNull(full), prior},
+		"unknown prior": {plan, config, types.ObjectUnknown(full)},
+	} {
+		got, d := keepPriorUnconfigured(ctx, tc.plan, tc.config, tc.prior)
+		if d.HasError() || !got.Equal(tc.plan) {
+			t.Errorf("%s: got %v (%v), want the plan unchanged", name, got, d)
+		}
+	}
+}
+
+// failingStringType is a string type whose values cannot be built.
+type failingStringType struct {
+	basetypes.StringType
+}
+
+func (failingStringType) ValueFromTerraform(
+	context.Context,
+	tftypes.Value,
+) (attr.Value, error) {
+	return nil, errors.New("cannot build a value")
+}
+
+// knownObject reports a type whose zero value cannot be built rather than
+// returning a partial seed.
+func TestKnownObjectReportsUnbuildableTypes(t *testing.T) {
+	attrTypes := map[string]attr.Type{
+		"ok":     types.StringType,
+		"broken": failingStringType{},
+	}
+	got, d := knownObject(context.Background(), attrTypes)
+	if !d.HasError() {
+		t.Fatal("knownObject built a seed for a type it cannot build")
+	}
+	if !got.IsNull() {
+		t.Errorf("seed = %v, want null on error", got)
+	}
+}
+
+// settingModifyPlanRequest builds a ModifyPlan request and response from raw
+// values, each paired with its own schema, so the defensive error branches
+// can be driven with a mismatched schema.
+func settingModifyPlanRequest(
+	planSchema, configSchema, stateSchema schema.Schema,
+	plan, config, state tftypes.Value,
+) (fwresource.ModifyPlanRequest, *fwresource.ModifyPlanResponse) {
+	req := fwresource.ModifyPlanRequest{
+		Plan:   tfsdk.Plan{Schema: planSchema, Raw: plan},
+		Config: tfsdk.Config{Schema: configSchema, Raw: config},
+		State:  tfsdk.State{Schema: stateSchema, Raw: state},
+	}
+	return req, &fwresource.ModifyPlanResponse{
+		Plan: tfsdk.Plan{Schema: planSchema, Raw: plan},
+	}
+}
+
+// withoutAttribute returns s and raw (an object of s) without attribute name.
+func withoutAttribute(
+	ctx context.Context,
+	t *testing.T,
+	s schema.Schema,
+	raw tftypes.Value,
+	name string,
+) (schema.Schema, tftypes.Value) {
+	t.Helper()
+	reduced := s
+	reduced.Attributes = maps.Clone(s.Attributes)
+	delete(reduced.Attributes, name)
+	var attrs map[string]tftypes.Value
+	if err := raw.As(&attrs); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	attrs = maps.Clone(attrs)
+	delete(attrs, name)
+	return reduced, tftypes.NewValue(reduced.Type().TerraformType(ctx), attrs)
+}
+
+// ModifyPlan stops with a diagnostic, rather than planning from half-read
+// values, when a request does not match the resource schema.
+func TestSettingModifyPlanReportsMismatchedRequests(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	s := schemaResp.Schema
+	schemaType := s.Type().TerraformType(ctx)
+
+	f := planFixture{ctx: ctx, t: t}
+	prior, _ := f.object(s, "")
+	var priorAttrs map[string]tftypes.Value
+	if err := prior.As(&priorAttrs); err != nil {
+		t.Fatalf("prior as object: %v", err)
+	}
+	// A configuration that sets auto_speedtest but leaves enabled out, so
+	// its default applies.
+	configAttrs := make(map[string]tftypes.Value, len(priorAttrs))
+	for name, v := range priorAttrs {
+		configAttrs[name] = tftypes.NewValue(v.Type(), nil)
+	}
+	speedtestType := priorAttrs["auto_speedtest"].Type()
+	configAttrs["auto_speedtest"] = tftypes.NewValue(speedtestType, map[string]tftypes.Value{
+		"enabled":   tftypes.NewValue(tftypes.Bool, nil),
+		"cron_expr": tftypes.NewValue(tftypes.String, "0 * * * *"),
+	})
+	config := tftypes.NewValue(schemaType, configAttrs)
+	nullState := tftypes.NewValue(schemaType, nil)
+
+	t.Run("prior state without a section", func(t *testing.T) {
+		stateSchema, state := withoutAttribute(ctx, t, s, prior, "ntp")
+		req, resp := settingModifyPlanRequest(s, s, stateSchema, prior, config, state)
+		r.ModifyPlan(ctx, req, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("ModifyPlan accepted a prior state without the ntp section")
+		}
+	})
+
+	t.Run("prior section of another shape", func(t *testing.T) {
+		// The prior state's ntp section holds a number where the plan holds a
+		// string, so its value cannot be carried into the plan.
+		stateSchema := s
+		stateSchema.Attributes = maps.Clone(s.Attributes)
+		ntpAttr, ok := s.Attributes["ntp"].(schema.SingleNestedAttribute)
+		if !ok {
+			t.Fatalf("ntp is %T, want schema.SingleNestedAttribute", s.Attributes["ntp"])
+		}
+		ntpAttr.Attributes = maps.Clone(ntpAttr.Attributes)
+		ntpAttr.Attributes["ntp_server_1"] = schema.Int64Attribute{Optional: true, Computed: true}
+		stateSchema.Attributes["ntp"] = ntpAttr
+		stateAttrs := maps.Clone(priorAttrs)
+		var ntp map[string]tftypes.Value
+		if err := priorAttrs["ntp"].As(&ntp); err != nil {
+			t.Fatalf("ntp as object: %v", err)
+		}
+		ntp = maps.Clone(ntp)
+		ntp["ntp_server_1"] = tftypes.NewValue(tftypes.Number, 1)
+		stateAttrs["ntp"] = tftypes.NewValue(
+			stateSchema.Attributes["ntp"].GetType().TerraformType(ctx), ntp,
+		)
+		state := tftypes.NewValue(stateSchema.Type().TerraformType(ctx), stateAttrs)
+
+		// The plan leaves ntp_server_1 unknown and the configuration sets ntp
+		// without it, so the prior value is the one that would be carried.
+		planAttrs := maps.Clone(priorAttrs)
+		planNtp := maps.Clone(ntp)
+		planNtp["ntp_server_1"] = tftypes.NewValue(tftypes.String, tftypes.UnknownValue)
+		planAttrs["ntp"] = tftypes.NewValue(priorAttrs["ntp"].Type(), planNtp)
+		plan := tftypes.NewValue(schemaType, planAttrs)
+		cfgAttrs := maps.Clone(configAttrs)
+		cfgNtp := maps.Clone(planNtp)
+		cfgNtp["ntp_server_1"] = tftypes.NewValue(tftypes.String, nil)
+		cfgAttrs["ntp"] = tftypes.NewValue(priorAttrs["ntp"].Type(), cfgNtp)
+
+		req, resp := settingModifyPlanRequest(
+			s, s, stateSchema, plan, tftypes.NewValue(schemaType, cfgAttrs), state,
+		)
+		r.ModifyPlan(ctx, req, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("ModifyPlan carried a prior value of another type into the plan")
+		}
+	})
+
+	t.Run("configuration without a defaulted section", func(t *testing.T) {
+		configSchema, reducedConfig := withoutAttribute(ctx, t, s, config, "auto_speedtest")
+		req, resp := settingModifyPlanRequest(
+			s, configSchema, s, prior, reducedConfig, nullState,
+		)
+		r.ModifyPlan(ctx, req, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("ModifyPlan accepted a configuration without the auto_speedtest section")
+		}
+	})
+
+	t.Run("plan without the last defaulted object", func(t *testing.T) {
+		// The configuration sets syslog.this_controller without its enabled
+		// leaf, and the plan's syslog has no this_controller to default.
+		planSchema := s
+		planSchema.Attributes = maps.Clone(s.Attributes)
+		syslogAttr, ok := s.Attributes["syslog"].(schema.SingleNestedAttribute)
+		if !ok {
+			t.Fatalf("syslog is %T, want schema.SingleNestedAttribute", s.Attributes["syslog"])
+		}
+		syslogAttr.Attributes = maps.Clone(syslogAttr.Attributes)
+		delete(syslogAttr.Attributes, "this_controller")
+		planSchema.Attributes["syslog"] = syslogAttr
+		var syslog map[string]tftypes.Value
+		if err := priorAttrs["syslog"].As(&syslog); err != nil {
+			t.Fatalf("syslog as object: %v", err)
+		}
+		planSyslog := maps.Clone(syslog)
+		delete(planSyslog, "this_controller")
+		planAttrs := maps.Clone(priorAttrs)
+		planAttrs["syslog"] = tftypes.NewValue(
+			syslogAttr.GetType().TerraformType(ctx), planSyslog,
+		)
+		plan := tftypes.NewValue(planSchema.Type().TerraformType(ctx), planAttrs)
+
+		cfgSyslog := maps.Clone(syslog)
+		var thisController map[string]tftypes.Value
+		if err := syslog["this_controller"].As(&thisController); err != nil {
+			t.Fatalf("this_controller as object: %v", err)
+		}
+		thisController = maps.Clone(thisController)
+		thisController["enabled"] = tftypes.NewValue(tftypes.Bool, nil)
+		cfgSyslog["this_controller"] = tftypes.NewValue(
+			syslog["this_controller"].Type(), thisController,
+		)
+		cfgAttrs := maps.Clone(configAttrs)
+		cfgAttrs["syslog"] = tftypes.NewValue(priorAttrs["syslog"].Type(), cfgSyslog)
+
+		req, resp := settingModifyPlanRequest(
+			planSchema, s, s, plan, tftypes.NewValue(schemaType, cfgAttrs), nullState,
+		)
+		r.ModifyPlan(ctx, req, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("ModifyPlan applied a default to a plan without syslog.this_controller")
+		}
+	})
+
+	t.Run("plan without a defaulted section", func(t *testing.T) {
+		planSchema, plan := withoutAttribute(ctx, t, s, prior, "auto_speedtest")
+		req, resp := settingModifyPlanRequest(planSchema, s, s, plan, config, nullState)
+		r.ModifyPlan(ctx, req, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("ModifyPlan applied a default to a plan without the auto_speedtest section")
+		}
+	})
 }
