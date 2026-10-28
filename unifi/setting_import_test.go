@@ -1095,3 +1095,97 @@ func TestSettingModifyPlanReportsMismatchedRequests(t *testing.T) {
 		}
 	})
 }
+
+// Create follows the same rule as Update: usg.geo_ip_filtering and
+// ips.suppression are written to their own documents only when the
+// configuration of their section sets them.
+func TestSettingCreateWritesSideDocumentsOnlyWhenConfigured(t *testing.T) {
+	ctx := context.Background()
+	fc := &fakeSettingController{docs: allSettingDocuments}
+	r := &settingResource{client: newSettingFakeControllerClient(t, fc)}
+
+	// The imported state gives a plan with every section known.
+	importResp := importSettings(ctx, t, r, false)
+	if importResp.Diagnostics.HasError() {
+		t.Fatalf("ImportState: %v", importResp.Diagnostics)
+	}
+	s := importResp.State.Schema
+	var plan settingResourceModel
+	if d := importResp.State.Get(ctx, &plan); d.HasError() {
+		t.Fatalf("reading imported state: %v", d)
+	}
+	planned := tfsdk.Plan{Schema: s}
+	if d := planned.Set(ctx, &plan); d.HasError() {
+		t.Fatalf("building plan: %v", d)
+	}
+
+	leftOut := plan
+	var usg settingUSGModel
+	if d := plan.USG.As(ctx, &usg, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("usg: %v", d)
+	}
+	usg.GeoIPFiltering = types.ObjectNull(usgGeoIPFilteringAttrTypes)
+	var d diag.Diagnostics
+	leftOut.USG, d = types.ObjectValueFrom(ctx, usgAttrTypes, usg)
+	if d.HasError() {
+		t.Fatalf("usg: %v", d)
+	}
+	var ips settingIpsModel
+	if d := plan.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("ips: %v", d)
+	}
+	ips.Suppression = types.ObjectNull(ipsSuppressionAttrTypes)
+	leftOut.Ips, d = types.ObjectValueFrom(ctx, ipsAttrTypes, ips)
+	if d.HasError() {
+		t.Fatalf("ips: %v", d)
+	}
+	leftOutConfig := tfsdk.Plan{Schema: s}
+	if d := leftOutConfig.Set(ctx, &leftOut); d.HasError() {
+		t.Fatalf("building config: %v", d)
+	}
+
+	var identityResp fwresource.IdentitySchemaResponse
+	r.IdentitySchema(ctx, fwresource.IdentitySchemaRequest{}, &identityResp)
+
+	for _, tc := range []struct {
+		name          string
+		config        tfsdk.Config
+		sideDocuments bool
+	}{
+		{"side documents configured", tfsdk.Config(planned), true},
+		{"side documents left out", tfsdk.Config(leftOutConfig), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fc.puts = nil
+			resp := &fwresource.CreateResponse{
+				State: tfsdk.State{
+					Raw:    tftypes.NewValue(s.Type().TerraformType(ctx), nil),
+					Schema: s,
+				},
+				Identity: &tfsdk.ResourceIdentity{
+					Raw: tftypes.NewValue(
+						identityResp.IdentitySchema.Type().TerraformType(ctx), nil,
+					),
+					Schema: identityResp.IdentitySchema,
+				},
+			}
+			r.Create(ctx, fwresource.CreateRequest{Plan: planned, Config: tc.config}, resp)
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("Create: %v", resp.Diagnostics)
+			}
+			written := map[string]bool{}
+			for _, key := range fc.puts {
+				written[key] = true
+			}
+			if !written["usg"] || !written["ips"] {
+				t.Errorf("create did not write the configured usg and ips sections (wrote %v)",
+					fc.puts)
+			}
+			if written["usg_geo"] != tc.sideDocuments ||
+				written["ips_suppression"] != tc.sideDocuments {
+				t.Errorf("create wrote %v, want usg_geo and ips_suppression written = %v",
+					fc.puts, tc.sideDocuments)
+			}
+		})
+	}
+}
