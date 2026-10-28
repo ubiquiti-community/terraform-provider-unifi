@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"maps"
@@ -55,12 +56,13 @@ var fakeSettingDocuments = map[string]string{
 // /, cookie login at /api/login) serving the site setting documents in docs.
 // A key in unreadable is listed but its own document cannot be read, and
 // failList makes listing the settings fail. Every PUT's setting key is
-// recorded in puts.
+// recorded in puts, and its body under that key in bodies.
 type fakeSettingController struct {
 	docs       map[string]string
 	unreadable map[string]bool
 	failList   bool
 	puts       []string
+	bodies     map[string][]byte
 }
 
 func newSettingFakeControllerClient(t *testing.T, fc *fakeSettingController) *Client {
@@ -116,6 +118,10 @@ func newSettingFakeControllerClient(t *testing.T, fc *fakeSettingController) *Cl
 		if err != nil {
 			t.Errorf("reading PUT body: %v", err)
 		}
+		if fc.bodies == nil {
+			fc.bodies = map[string][]byte{}
+		}
+		fc.bodies[key] = raw
 		reply(w, string(raw))
 	})
 
@@ -767,6 +773,66 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 			t.Errorf("update wrote %v, want neither usg_geo nor ips_suppression", fc.puts)
 		}
 	})
+}
+
+// An ips update after an import writes the honeypot carried from state once:
+// the planned list replaces the controller's instead of being appended to it.
+func TestSettingUpdateWritesIpsHoneypotOnce(t *testing.T) {
+	ctx := context.Background()
+	docs := maps.Clone(allSettingDocuments)
+	docs["ips"] = `{"key":"ips","ips_mode":"disabled","honeypot_enabled":true,
+		"restrict_torrents":false,"content_filtering_blocking_page_enabled":true,
+		"memory_optimized":true,"advanced_filtering_preference":"manual",
+		"enabled_categories":[],"enabled_networks":["lan-a"],
+		"honeypot":[{"ip_address":"192.0.2.53","network_id":"lan-a","version":"v4"}]}`
+	fc := &fakeSettingController{docs: docs}
+	r := &settingResource{client: newSettingFakeControllerClient(t, fc)}
+
+	importResp := importSettings(ctx, t, r, false)
+	if importResp.Diagnostics.HasError() {
+		t.Fatalf("ImportState: %v", importResp.Diagnostics)
+	}
+	state := importResp.State
+	var plan settingResourceModel
+	if d := state.Get(ctx, &plan); d.HasError() {
+		t.Fatalf("reading imported state: %v", d)
+	}
+	var ips settingIpsModel
+	if d := plan.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{}); d.HasError() {
+		t.Fatalf("ips: %v", d)
+	}
+	ips.IPSMode = types.StringValue("ips")
+	var d diag.Diagnostics
+	plan.Ips, d = types.ObjectValueFrom(ctx, ipsAttrTypes, ips)
+	if d.HasError() {
+		t.Fatalf("ips: %v", d)
+	}
+	planned := tfsdk.Plan{Schema: state.Schema}
+	if d := planned.Set(ctx, &plan); d.HasError() {
+		t.Fatalf("building plan: %v", d)
+	}
+
+	resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
+	r.Update(ctx, fwresource.UpdateRequest{
+		State:    state,
+		Plan:     planned,
+		Config:   tfsdk.Config(planned),
+		Identity: importResp.Identity,
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Update: %v", resp.Diagnostics)
+	}
+	var written struct {
+		Honeypot []struct {
+			IPAddress string `json:"ip_address"`
+		} `json:"honeypot"`
+	}
+	if err := json.Unmarshal(fc.bodies["ips"], &written); err != nil {
+		t.Fatalf("decoding the ips write %q: %v", fc.bodies["ips"], err)
+	}
+	if len(written.Honeypot) != 1 || written.Honeypot[0].IPAddress != "192.0.2.53" {
+		t.Errorf("update wrote honeypot %+v, want the controller's one entry", written.Honeypot)
+	}
 }
 
 // keepPriorUnconfigured skips an attribute the configuration or the prior

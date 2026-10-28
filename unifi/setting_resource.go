@@ -4716,6 +4716,7 @@ func (r *settingResource) ipsModelToSetting(
 		if diags.HasError() {
 			return setting, suppression
 		}
+		setting.Honeypot = nil
 		for _, h := range honeypots {
 			setting.Honeypot = append(setting.Honeypot, settings.SettingIpsHoneypot{
 				IPAddress: h.IPAddress.ValueString(),
