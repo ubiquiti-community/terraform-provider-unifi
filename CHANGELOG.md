@@ -2,7 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.60.0] - 2026-10-26
+
+One breaking change and the fixes that followed it. The headline is the
+attribute nesting shipped as v0.60.0-beta.0 on 2026-10-07: groups of flat,
+prefix-named attributes across sixteen resources and data sources become
+nested objects. Every resource involved bumps its schema version and ships a
+state upgrader, so state migrates on the next plan, but **configuration must
+change**; the full mapping is below.
+
+Also in this release: assisted roaming on `unifi_wlan` for Network 10.x; a
+refresh fix for resources deleted outside Terraform, which failed every plan
+with `Missing Resource Identity After Read` on CLIs without resource identity
+support (OpenTofu < 1.12, Terraform < 1.12); and three fixes measured on
+Network 10.0.x controllers for `unifi_network` and `unifi_setting`.
 
 ### ✨ Features
 
