@@ -1840,6 +1840,125 @@ func Test_settingResource_connectivitySettingToModel(t *testing.T) {
 	}
 }
 
+// TestRadioAiRawSetting: only the configured radio_ai fields reach the
+// controller, so the partial PUT leaves blacklists, per-radio configuration
+// and HT modes intact; channels travel as numeric strings.
+func TestRadioAiRawSetting(t *testing.T) {
+	ctx := context.Background()
+	strList := func(v ...string) types.List {
+		l, _ := types.ListValueFrom(ctx, types.StringType, append([]string{}, v...))
+		return l
+	}
+	intList := func(v ...int64) types.List {
+		l, _ := types.ListValueFrom(ctx, types.Int64Type, v)
+		return l
+	}
+
+	t.Run("only configured fields are sent", func(t *testing.T) {
+		raw, d := radioAiRawSetting(ctx, &settingRadioAiModel{
+			Enabled:        types.BoolValue(true),
+			CronExpr:       types.StringNull(),
+			Radios:         strList("na"),
+			Optimize:       types.ListUnknown(types.StringType),
+			ChannelsNg:     intList(1, 6, 11),
+			ChannelsNa:     types.ListNull(types.Int64Type),
+			Channels6E:     types.ListUnknown(types.Int64Type),
+			ExcludeDevices: types.ListNull(types.StringType),
+		})
+		if d.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", d)
+		}
+		if raw.Key != "radio_ai" {
+			t.Errorf("Key = %q, want radio_ai", raw.Key)
+		}
+		if len(raw.Data) != 3 {
+			t.Fatalf("want exactly enabled, radios and channels_ng, got %v", raw.Data)
+		}
+		if v, ok := raw.Data["enabled"].(bool); !ok || !v {
+			t.Errorf("enabled = %v, want a true bool", raw.Data["enabled"])
+		}
+		if got := fmt.Sprint(raw.Data["radios"]); got != "[na]" {
+			t.Errorf("radios = %s, want [na]", got)
+		}
+		channels, ok := raw.Data["channels_ng"].([]string)
+		if !ok || fmt.Sprint(channels) != "[1 6 11]" {
+			t.Errorf("channels_ng = %#v, want []string{1 6 11}", raw.Data["channels_ng"])
+		}
+	})
+
+	t.Run("an empty list is sent, not dropped", func(t *testing.T) {
+		raw, _ := radioAiRawSetting(ctx, &settingRadioAiModel{
+			Enabled:        types.BoolNull(),
+			CronExpr:       types.StringNull(),
+			Radios:         strList(),
+			Optimize:       types.ListNull(types.StringType),
+			ChannelsNg:     types.ListNull(types.Int64Type),
+			ChannelsNa:     types.ListNull(types.Int64Type),
+			Channels6E:     types.ListNull(types.Int64Type),
+			ExcludeDevices: types.ListNull(types.StringType),
+		})
+		radios, present := raw.Data["radios"]
+		if !present || len(radios.([]string)) != 0 {
+			t.Errorf("radios = %#v, want an empty list", radios)
+		}
+	})
+
+	t.Run("nothing configured sends nothing", func(t *testing.T) {
+		raw, _ := radioAiRawSetting(ctx, &settingRadioAiModel{
+			Enabled:        types.BoolUnknown(),
+			CronExpr:       types.StringUnknown(),
+			Radios:         types.ListNull(types.StringType),
+			Optimize:       types.ListNull(types.StringType),
+			ChannelsNg:     types.ListNull(types.Int64Type),
+			ChannelsNa:     types.ListNull(types.Int64Type),
+			Channels6E:     types.ListNull(types.Int64Type),
+			ExcludeDevices: types.ListNull(types.StringType),
+		})
+		if len(raw.Data) != 0 {
+			t.Errorf("want an empty payload, got %v", raw.Data)
+		}
+	})
+}
+
+func Test_settingResource_radioAiSettingToModel(t *testing.T) {
+	ctx := context.Background()
+	r := &settingResource{}
+
+	// The controller stores channels as numeric strings; go-unifi reads both.
+	var setting settings.RadioAi
+	if err := json.Unmarshal([]byte(`{
+		"key": "radio_ai",
+		"enabled": true,
+		"cron_expr": "0 3 * * *",
+		"channels_ng": ["1", "6", "11"],
+		"ht_modes_ng": ["20"],
+		"optimize": ["channel"]
+	}`), &setting); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	got, d := r.radioAiSettingToModel(ctx, &setting)
+	if d.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", d)
+	}
+	if !got.Enabled.ValueBool() || got.CronExpr.ValueString() != "0 3 * * *" {
+		t.Errorf("enabled/cron_expr = %v/%v", got.Enabled, got.CronExpr)
+	}
+	var channels []int64
+	got.ChannelsNg.ElementsAs(ctx, &channels, false)
+	if fmt.Sprint(channels) != "[1 6 11]" {
+		t.Errorf("channels_ng = %v, want [1 6 11]", channels)
+	}
+	// Lists the controller does not store read back empty, not null, so an
+	// explicit [] in config does not plan a change forever.
+	if got.Radios.IsNull() || len(got.Radios.Elements()) != 0 {
+		t.Errorf("radios = %v, want an empty list", got.Radios)
+	}
+	if _, d := types.ObjectValueFrom(ctx, radioAiAttrTypes, got); d.HasError() {
+		t.Fatalf("model does not match radioAiAttrTypes: %v", d)
+	}
+}
+
 func Test_settingResource_globalSwitchSettingToModel(t *testing.T) {
 	r := &settingResource{}
 	var gsDiags diag.Diagnostics

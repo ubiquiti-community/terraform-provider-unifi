@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -306,7 +307,26 @@ type settingResourceModel struct {
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
 	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
 	Connectivity  types.Object   `tfsdk:"connectivity"`
+	RadioAi       types.Object   `tfsdk:"radio_ai"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
+}
+
+// settingRadioAiModel is the nested radio_ai block (Settings > WiFi > Channel
+// AI / nightly channel optimization). The optimizer rewrites the channel of
+// every radio in the bands listed in radios on its schedule, overriding a
+// channel set on the device, so leaving a band out of radios is how a channel
+// is pinned while the others stay optimized. Only these fields are exposed;
+// the rest (blacklists, per-radio configuration, HT modes, ...) are preserved
+// by the partial write.
+type settingRadioAiModel struct {
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	CronExpr       types.String `tfsdk:"cron_expr"`
+	Radios         types.List   `tfsdk:"radios"`
+	Optimize       types.List   `tfsdk:"optimize"`
+	ChannelsNg     types.List   `tfsdk:"channels_ng"`
+	ChannelsNa     types.List   `tfsdk:"channels_na"`
+	Channels6E     types.List   `tfsdk:"channels_6e"`
+	ExcludeDevices types.List   `tfsdk:"exclude_devices"`
 }
 
 // settingGlobalSwitchModel is the nested global_switch block (Settings > Networks
@@ -571,6 +591,17 @@ var (
 		"mlo_mesh_enabled": types.BoolType,
 		"uplink_type":      types.StringType,
 		"uplink_host":      types.StringType,
+	}
+
+	radioAiAttrTypes = map[string]attr.Type{
+		"enabled":         types.BoolType,
+		"cron_expr":       types.StringType,
+		"radios":          types.ListType{ElemType: types.StringType},
+		"optimize":        types.ListType{ElemType: types.StringType},
+		"channels_ng":     types.ListType{ElemType: types.Int64Type},
+		"channels_na":     types.ListType{ElemType: types.Int64Type},
+		"channels_6e":     types.ListType{ElemType: types.Int64Type},
+		"exclude_devices": types.ListType{ElemType: types.StringType},
 	}
 )
 
@@ -1617,6 +1648,64 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"radio_ai": schema.SingleNestedAttribute{
+				MarkdownDescription: "Channel AI, the nightly channel optimization " +
+					"(Settings > WiFi > Channel AI). On its schedule the optimizer " +
+					"rewrites the channel of every radio in the bands listed in " +
+					"`radios`, overriding a channel set on the device, so leaving a " +
+					"band out of `radios` is how its channel is pinned while the " +
+					"others stay optimized. Options this block does not model " +
+					"(channel blacklists, per-radio configuration, HT modes) are " +
+					"preserved across updates.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Run the optimizer on its schedule.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"cron_expr": schema.StringAttribute{
+						MarkdownDescription: "When the optimizer runs, as a cron " +
+							"expression in the controller's time zone (e.g. `0 3 * * *`).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"radios": radioAiStringList(
+						"Bands the optimizer may change: `ng` (2.4 GHz), `na` "+
+							"(5 GHz), `6e` (6 GHz).",
+						stringvalidator.OneOf("ng", "na", "6e"),
+					),
+					"optimize": radioAiStringList(
+						"What the optimizer adjusts: `channel`, `power`.",
+						stringvalidator.OneOf("channel", "power"),
+					),
+					"channels_ng": radioAiChannelList(
+						"2.4 GHz channels the optimizer may choose from.",
+						int64validator.Between(1, 14),
+					),
+					"channels_na": radioAiChannelList(
+						"5 GHz channels the optimizer may choose from.",
+						int64validator.Between(34, 177),
+					),
+					"channels_6e": radioAiChannelList(
+						"6 GHz channels the optimizer may choose from.",
+						int64validator.Between(1, 233),
+					),
+					"exclude_devices": radioAiStringList(
+						"MAC addresses of devices the optimizer leaves alone.",
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`),
+							"must be a lowercase MAC address",
+						),
+					),
+				},
+			},
 			"global_switch": schema.SingleNestedAttribute{
 				MarkdownDescription: "Site-wide switch settings (Settings > Networks > Global Switch Settings). " +
 					"On current controllers jumbo frames are only honored here, not via `unifi_device.jumboframe_enabled`. " +
@@ -2243,6 +2332,11 @@ func (r *settingResource) Create(
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
 	r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+
+	var radioAiConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("radio_ai"), &radioAiConfig)...)
+	r.persistRadioAi(ctx, site, radioAiConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2612,6 +2706,13 @@ func (r *settingResource) Update(
 		resp.Diagnostics.Append(
 			req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
 		r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+	}
+
+	if settingSectionChanged(plan.RadioAi, state.RadioAi) {
+		var radioAiConfig types.Object
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root("radio_ai"), &radioAiConfig)...)
+		r.persistRadioAi(ctx, site, radioAiConfig, &resp.Diagnostics)
 	}
 	if resp.Diagnostics.HasError() {
 		return
@@ -3046,6 +3147,28 @@ func (r *settingResource) readSettings(
 		data.Connectivity = objValue
 	} else {
 		data.Connectivity = types.ObjectNull(connectivityAttrTypes)
+	}
+
+	// Channel AI
+	if !data.RadioAi.IsNull() && !data.RadioAi.IsUnknown() {
+		_, raSetting, err := ui.GetSetting[*settings.RadioAi](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Channel AI Setting", err.Error())
+			return
+		}
+		model, d := r.radioAiSettingToModel(ctx, raSetting)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		objValue, d := types.ObjectValueFrom(ctx, radioAiAttrTypes, model)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.RadioAi = objValue
+	} else {
+		data.RadioAi = types.ObjectNull(radioAiAttrTypes)
 	}
 
 	// Global switch settings
@@ -3994,6 +4117,155 @@ func (r *settingResource) connectivitySettingToModel(
 		UplinkType:     stringOrNull(setting.UplinkType),
 		UplinkHost:     stringOrNull(setting.UplinkHost),
 	}
+}
+
+// Channel AI conversion functions.
+
+// radioAiStringList is a radio_ai list of strings: optional, kept from state
+// when omitted, each element checked by elem.
+func radioAiStringList(description string, elem validator.String) schema.ListAttribute {
+	return schema.ListAttribute{
+		MarkdownDescription: description,
+		ElementType:         types.StringType,
+		Optional:            true,
+		Computed:            true,
+		Validators: []validator.List{
+			listvalidator.ValueStringsAre(elem),
+		},
+		PlanModifiers: []planmodifier.List{
+			listplanmodifier.UseStateForUnknown(),
+		},
+	}
+}
+
+// radioAiChannelList is a radio_ai list of channel numbers.
+func radioAiChannelList(description string, elem validator.Int64) schema.ListAttribute {
+	return schema.ListAttribute{
+		MarkdownDescription: description,
+		ElementType:         types.Int64Type,
+		Optional:            true,
+		Computed:            true,
+		Validators: []validator.List{
+			listvalidator.ValueInt64sAre(elem),
+		},
+		PlanModifiers: []planmodifier.List{
+			listplanmodifier.UseStateForUnknown(),
+		},
+	}
+}
+
+// persistRadioAi writes the radio_ai fields set in config, if any. Like
+// persistConnectivity, obj must come from config, not the plan, and the
+// controller merges the partial PUT into the stored setting.
+func (r *settingResource) persistRadioAi(
+	ctx context.Context,
+	site string,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) {
+	if obj.IsNull() || obj.IsUnknown() {
+		return
+	}
+	var model settingRadioAiModel
+	diags.Append(obj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return
+	}
+
+	setting, d := radioAiRawSetting(ctx, &model)
+	diags.Append(d...)
+	if diags.HasError() || len(setting.Data) == 0 {
+		return
+	}
+	if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		diags.AddError("Error Updating Channel AI Setting", err.Error())
+	}
+}
+
+const radioAiSettingKey = "radio_ai"
+
+// radioAiRawSetting builds a partial radio_ai payload containing only the
+// fields set in the model. Channels go out as numeric strings, the form the
+// controller's own UI stores them in.
+func radioAiRawSetting(
+	ctx context.Context,
+	model *settingRadioAiModel,
+) (*settings.RawSetting, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	data := map[string]any{}
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		data["enabled"] = model.Enabled.ValueBool()
+	}
+	if !model.CronExpr.IsNull() && !model.CronExpr.IsUnknown() {
+		data["cron_expr"] = model.CronExpr.ValueString()
+	}
+	stringLists := map[string]types.List{
+		"radios":          model.Radios,
+		"optimize":        model.Optimize,
+		"exclude_devices": model.ExcludeDevices,
+	}
+	for key, list := range stringLists {
+		if list.IsNull() || list.IsUnknown() {
+			continue
+		}
+		values := []string{}
+		diags.Append(list.ElementsAs(ctx, &values, false)...)
+		data[key] = values
+	}
+	channels := map[string]types.List{
+		"channels_ng": model.ChannelsNg,
+		"channels_na": model.ChannelsNa,
+		"channels_6e": model.Channels6E,
+	}
+	for key, list := range channels {
+		if list.IsNull() || list.IsUnknown() {
+			continue
+		}
+		var values []int64
+		diags.Append(list.ElementsAs(ctx, &values, false)...)
+		out := make([]string, len(values))
+		for i, v := range values {
+			out[i] = fmt.Sprint(v)
+		}
+		data[key] = out
+	}
+	return &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: radioAiSettingKey},
+		Data:        data,
+	}, diags
+}
+
+func (r *settingResource) radioAiSettingToModel(
+	ctx context.Context,
+	setting *settings.RadioAi,
+) (*settingRadioAiModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	stringList := func(v []string) types.List {
+		if v == nil {
+			v = []string{}
+		}
+		l, d := types.ListValueFrom(ctx, types.StringType, v)
+		diags.Append(d...)
+		return l
+	}
+	int64List := func(v []int64) types.List {
+		if v == nil {
+			v = []int64{}
+		}
+		l, d := types.ListValueFrom(ctx, types.Int64Type, v)
+		diags.Append(d...)
+		return l
+	}
+	return &settingRadioAiModel{
+		Enabled:        types.BoolValue(setting.Enabled),
+		CronExpr:       stringOrNull(setting.CronExpr),
+		Radios:         stringList(setting.Radios),
+		Optimize:       stringList(setting.Optimize),
+		ChannelsNg:     int64List(setting.ChannelsNg),
+		ChannelsNa:     int64List(setting.ChannelsNa),
+		Channels6E:     int64List(setting.Channels6E),
+		ExcludeDevices: stringList(setting.ExcludeDevices),
+	}, diags
 }
 
 // DoH conversion functions.
