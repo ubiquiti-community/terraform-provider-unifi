@@ -91,6 +91,21 @@ resource "unifi_setting" "wired_site" {
   }
 }
 
+# Keep Channel AI optimizing 5 GHz every night but leave 2.4 GHz alone: the
+# optimizer rewrites the channel of every radio in the bands listed in radios,
+# so a band left out keeps the channel it has (set it on the device). Useful
+# for 2.4 GHz-only IoT devices that do not follow a channel change.
+resource "unifi_setting" "channel_ai" {
+  site = "default"
+
+  radio_ai = {
+    enabled   = true
+    cron_expr = "0 3 * * *"
+    radios    = ["na"]
+    optimize  = ["channel"]
+  }
+}
+
 # Client Device Isolation (Settings > Networks > "Device Isolation (ACL)") is a
 # switch ACL listing the networks whose devices may not talk to each other. It
 # covers same-network traffic across access points, which unifi_wlan's

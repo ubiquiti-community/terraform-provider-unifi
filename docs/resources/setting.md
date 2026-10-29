@@ -105,6 +105,21 @@ resource "unifi_setting" "wired_site" {
   }
 }
 
+# Keep Channel AI optimizing 5 GHz every night but leave 2.4 GHz alone: the
+# optimizer rewrites the channel of every radio in the bands listed in radios,
+# so a band left out keeps the channel it has (set it on the device). Useful
+# for 2.4 GHz-only IoT devices that do not follow a channel change.
+resource "unifi_setting" "channel_ai" {
+  site = "default"
+
+  radio_ai = {
+    enabled   = true
+    cron_expr = "0 3 * * *"
+    radios    = ["na"]
+    optimize  = ["channel"]
+  }
+}
+
 # Client Device Isolation (Settings > Networks > "Device Isolation (ACL)") is a
 # switch ACL listing the networks whose devices may not talk to each other. It
 # covers same-network traffic across access points, which unifi_wlan's
@@ -140,6 +155,7 @@ resource "unifi_setting" "device_isolation" {
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
 - `network_optimization` (Attributes) Automated network optimization settings. (see [below for nested schema](#nestedatt--network_optimization))
 - `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
+- `radio_ai` (Attributes) Channel AI, the nightly channel optimization (Settings > WiFi > Channel AI). On its schedule the optimizer rewrites the channel of every radio in the bands listed in `radios`, overriding a channel set on the device, so leaving a band out of `radios` is how its channel is pinned while the others stay optimized. Options this block does not model (channel blacklists, per-radio configuration, HT modes) are preserved across updates. (see [below for nested schema](#nestedatt--radio_ai))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
 - `site` (String) The name of the site to associate the settings with.
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
@@ -379,6 +395,21 @@ Optional:
 - `ntp_server_3` (String) Third NTP server.
 - `ntp_server_4` (String) Fourth NTP server.
 - `setting_preference` (String) Configuration mode: `auto` or `manual`.
+
+
+<a id="nestedatt--radio_ai"></a>
+### Nested Schema for `radio_ai`
+
+Optional:
+
+- `channels_6e` (List of Number) 6 GHz channels the optimizer may choose from.
+- `channels_na` (List of Number) 5 GHz channels the optimizer may choose from.
+- `channels_ng` (List of Number) 2.4 GHz channels the optimizer may choose from.
+- `cron_expr` (String) When the optimizer runs, as a cron expression in the controller's time zone (e.g. `0 3 * * *`).
+- `enabled` (Boolean) Run the optimizer on its schedule.
+- `exclude_devices` (List of String) MAC addresses of devices the optimizer leaves alone.
+- `optimize` (List of String) What the optimizer adjusts: `channel`, `power`.
+- `radios` (List of String) Bands the optimizer may change: `ng` (2.4 GHz), `na` (5 GHz), `6e` (6 GHz).
 
 
 <a id="nestedatt--radius"></a>
