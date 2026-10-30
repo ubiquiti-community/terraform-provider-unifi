@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting`: `ips.enabled_networks` keeps the configured networks when `ips.suppression` is set on controllers without the standalone `ips_suppression` document.** There suppression is written nested in the `ips` document in a second update. Measured on Network 10.0.162, that controller drops `enabled_networks` from the first update while the document holds no suppression, then fills it with every network on the site when the suppression arrives without it, so the apply failed with *inconsistent result after apply* (`[Default, configured]` read back). The nested write now carries the configured `enabled_networks`. This was the only failure in the nightly acceptance run since 2026-09-29.
+
 ## [v0.60.0] - 2026-10-26
 
 One breaking change and the fixes that followed it. The headline is the

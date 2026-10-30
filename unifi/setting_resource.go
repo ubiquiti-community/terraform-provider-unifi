@@ -2078,7 +2078,7 @@ func (r *settingResource) Create(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
+		r.persistIpsSuppression(ctx, site, suppression, setting.EnabledNetworks, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2433,7 +2433,7 @@ func (r *settingResource) Update(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
+		r.persistIpsSuppression(ctx, site, suppression, setting.EnabledNetworks, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -4287,6 +4287,7 @@ func (r *settingResource) persistIpsSuppression(
 	ctx context.Context,
 	site string,
 	suppression *settings.IpsSuppression,
+	enabledNetworks []string,
 	diags *diag.Diagnostics,
 ) {
 	if suppression == nil {
@@ -4315,10 +4316,9 @@ func (r *settingResource) persistIpsSuppression(
 		); probeErr == nil && !hasStandalone {
 			ipsData, found, readErr := r.readRawSettingData(ctx, site, ipsSettingKey)
 			if readErr == nil && found {
-				ipsData["suppression"] = raw.Data
 				nested := &settings.RawSetting{
 					BaseSetting: settings.BaseSetting{Key: ipsSettingKey},
-					Data:        ipsData,
+					Data:        nestIpsSuppression(ipsData, raw.Data, enabledNetworks),
 				}
 				if writeErr := r.client.UpdateSetting(ctx, site, nested); writeErr != nil {
 					diags.AddError("Error Updating IPS Suppression Setting", writeErr.Error())
@@ -4333,6 +4333,25 @@ func (r *settingResource) persistIpsSuppression(
 		}
 	}
 	diags.AddError("Error Updating IPS Suppression Setting", err.Error())
+}
+
+// nestIpsSuppression merges suppression into the raw ips document for
+// controllers without the standalone ips_suppression document, carrying the
+// enabled_networks just written with the typed ips update. Measured on Network
+// 10.0.162: that controller drops enabled_networks from an ips update whose
+// document holds no suppression yet, and fills it with every network when the
+// suppression is then written without it. Writing both together keeps the
+// configured list.
+func nestIpsSuppression(
+	ipsData map[string]any,
+	suppression map[string]any,
+	enabledNetworks []string,
+) map[string]any {
+	ipsData["suppression"] = suppression
+	if enabledNetworks != nil {
+		ipsData["enabled_networks"] = enabledNetworks
+	}
+	return ipsData
 }
 
 // ipsModelToSetting returns the ips setting plus, separately, the suppression
