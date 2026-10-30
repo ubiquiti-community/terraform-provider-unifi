@@ -21,7 +21,10 @@ func TestSettingGlobalSwitchPlansUnsetFieldsUnknown(t *testing.T) {
 	if !ok {
 		t.Fatal("schema type is not an object")
 	}
-	gsType := schemaType.AttributeTypes["global_switch"].(tftypes.Object)
+	gsType, ok := schemaType.AttributeTypes["global_switch"].(tftypes.Object)
+	if !ok {
+		t.Fatal("global_switch type is not an object")
+	}
 
 	f := planFixture{ctx: ctx, t: t}
 	prior, config := f.object(schemaResp.Schema, "")
@@ -96,7 +99,11 @@ func TestSettingGlobalSwitchPlansUnsetFieldsUnknown(t *testing.T) {
 		got := planned(t, withGlobalSwitch(prior, priorGS), withGlobalSwitch(prior, proposedGS))
 		for _, name := range unset {
 			if !got[name].IsKnown() || got[name].IsNull() {
-				t.Errorf("global_switch.%s plans %v, want the value kept from state", name, got[name])
+				t.Errorf(
+					"global_switch.%s plans %v, want the value kept from state",
+					name,
+					got[name],
+				)
 			}
 		}
 	})
