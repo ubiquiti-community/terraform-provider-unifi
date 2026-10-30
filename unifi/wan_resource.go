@@ -1888,7 +1888,8 @@ func (r *wanResource) modelToNetwork(
 				network.IGMPProxyDownstreamNetworkIDs = networkIDs
 				// An explicit lan or guest stays as configured; otherwise
 				// some/none follows the list.
-				if network.IGMPProxyFor == nil || *network.IGMPProxyFor == "some" || *network.IGMPProxyFor == "none" {
+				if network.IGMPProxyFor == nil || *network.IGMPProxyFor == "some" ||
+					*network.IGMPProxyFor == "none" {
 					igmpProxyFor := igmpProxyForDownstream(networkIDs)
 					network.IGMPProxyFor = &igmpProxyFor
 				}
