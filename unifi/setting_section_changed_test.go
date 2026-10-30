@@ -23,6 +23,10 @@ func TestSettingSectionChanged(t *testing.T) {
 		})
 	}
 	sshNull := types.ObjectNull(sshType)
+	sshSet := types.ObjectValueMust(
+		sshType,
+		map[string]attr.Value{"enabled": types.BoolValue(true)},
+	)
 	state := obj(types.BoolNull(), types.Int64Value(4), sshNull)
 
 	cases := []struct {
@@ -37,12 +41,7 @@ func TestSettingSectionChanged(t *testing.T) {
 			false,
 		},
 		{"known leaf changed", obj(types.BoolUnknown(), types.Int64Value(5), sshNull), true},
-		{
-			"nested leaf set",
-			obj(types.BoolNull(), types.Int64Value(4),
-				types.ObjectValueMust(sshType, map[string]attr.Value{"enabled": types.BoolValue(true)})),
-			true,
-		},
+		{"nested leaf set", obj(types.BoolNull(), types.Int64Value(4), sshSet), true},
 	}
 	for _, c := range cases {
 		if got := settingSectionChanged(c.plan, state); got != c.want {
