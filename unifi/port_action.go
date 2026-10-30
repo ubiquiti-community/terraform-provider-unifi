@@ -136,6 +136,13 @@ func (a *portAction) Invoke(
 	deviceMAC := config.DeviceMAC.ValueString()
 	portNumber := config.PortNumber.ValueInt64()
 
+	// This does the same unlocked read-device/modify-port_overrides/PUT-device
+	// sequence as unifi_device_port and unifi_device's port_override, so it
+	// takes the same per-device lock (keyed the same way, cleanMAC(mac)) to
+	// avoid racing either of them and silently dropping one side's change.
+	unlock := a.client.lockDevice(cleanMAC(deviceMAC))
+	defer unlock()
+
 	// Get the device first to retrieve its ID
 	device, err := a.client.GetDeviceByMAC(ctx, a.client.Site, deviceMAC)
 	if err != nil {
@@ -185,6 +192,30 @@ func (a *portAction) Invoke(
 				portNumber,
 				deviceMAC,
 				err.Error(),
+			),
+		)
+		return
+	}
+
+	// UpdateDevice's PUT provisions asynchronously. Wait for the device to
+	// settle back to connected before returning (and releasing the deferred
+	// lock above) so a concurrent unifi_device_port/unifi_device writer that
+	// then acquires the lock can't read pre-update port_overrides.
+	if _, err := waitForDeviceState(
+		ctx,
+		a.client,
+		a.client.Site, deviceMAC,
+		ui.DeviceStateConnected,
+		[]ui.DeviceState{ui.DeviceStateAdopting, ui.DeviceStateProvisioning},
+		3*time.Minute,
+	); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Waiting for Device Port Update",
+			fmt.Sprintf(
+				"Could not wait for device %s to settle after updating port %d: %s",
+				deviceMAC,
+				portNumber,
+				err,
 			),
 		)
 		return
