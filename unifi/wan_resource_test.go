@@ -1367,7 +1367,10 @@ func Test_wanResource_igmpDownstreamNetworkIDs(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got.IGMPProxyDownstreamNetworkIDs, []string{"5f1", "5f2"}) &&
 			!reflect.DeepEqual(got.IGMPProxyDownstreamNetworkIDs, []string{"5f2", "5f1"}) {
-			t.Errorf("IGMPProxyDownstreamNetworkIDs = %v, want 5f1 and 5f2", got.IGMPProxyDownstreamNetworkIDs)
+			t.Errorf(
+				"IGMPProxyDownstreamNetworkIDs = %v, want 5f1 and 5f2",
+				got.IGMPProxyDownstreamNetworkIDs,
+			)
 		}
 		if got.IGMPProxyFor == nil || *got.IGMPProxyFor != "some" {
 			t.Errorf("IGMPProxyFor = %v, want some", got.IGMPProxyFor)
@@ -1427,11 +1430,22 @@ func Test_wanResource_igmpDownstreamNetworkIDs(t *testing.T) {
 			t.Fatalf("networkToModel: %v", diags)
 		}
 		attrs := model.IGMPProxy.Attributes()
-		if got := attrs["downstream"].(types.String).ValueString(); got != "some" {
+		downstream, ok := attrs["downstream"].(types.String)
+		if !ok {
+			t.Fatalf("downstream is %T, want types.String", attrs["downstream"])
+		}
+		if got := downstream.ValueString(); got != "some" {
 			t.Errorf("downstream = %q, want some", got)
 		}
-		if got := attrs["downstream_network_ids"].(types.Set); !got.Equal(ids("5f1")) {
-			t.Errorf("downstream_network_ids = %v, want [5f1]", got)
+		networkIDs, ok := attrs["downstream_network_ids"].(types.Set)
+		if !ok {
+			t.Fatalf(
+				"downstream_network_ids is %T, want types.Set",
+				attrs["downstream_network_ids"],
+			)
+		}
+		if !networkIDs.Equal(ids("5f1")) {
+			t.Errorf("downstream_network_ids = %v, want [5f1]", networkIDs)
 		}
 	})
 }
