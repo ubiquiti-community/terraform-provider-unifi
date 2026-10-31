@@ -88,6 +88,12 @@ resource "unifi_wan" "pppoe" {
 
   username    = var.isp_username
   password_wo = var.isp_password
+
+  # RFC 4638 "baby jumbo" frames: a 1508-byte WAN interface leaves room for the
+  # 8-byte PPPoE header, so the session itself carries a full 1500-byte MTU.
+  # Leave both unset to keep whatever MTU the controller already has.
+  interface_mtu_enabled = true
+  interface_mtu         = 1508
 }
 ```
 
@@ -109,6 +115,8 @@ resource "unifi_wan" "pppoe" {
 - `egress_qos` (Attributes) Egress QoS configuration (see [below for nested schema](#nestedatt--egress_qos))
 - `enabled` (Boolean) Whether the WAN network is enabled
 - `igmp_proxy` (Attributes) IGMP proxy configuration (see [below for nested schema](#nestedatt--igmp_proxy))
+- `interface_mtu` (Number) MTU of the WAN interface, in bytes. Only applied when `interface_mtu_enabled` is `true`. For PPPoE with RFC 4638 ("baby jumbo" frames), set `1508` so the PPPoE session itself can carry a 1500-byte MTU. Taken from the controller when not set.
+- `interface_mtu_enabled` (Boolean) Whether `interface_mtu` overrides the WAN interface's default MTU. Taken from the controller when not set, so an MTU configured in the UniFi UI is preserved by applies that do not manage it.
 - `ip_aliases` (List of String) IP aliases
 - `ipv6_setting_preference` (String) Whether WAN IPv6 settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `load_balance` (Attributes) Load balance configuration (see [below for nested schema](#nestedatt--load_balance))
@@ -224,7 +232,8 @@ Optional:
 
 Optional:
 
-- `downstream` (String) IGMP proxy downstream target (none, lan, guest)
+- `downstream` (String) IGMP proxy downstream target (`none`, `lan`, `guest`). UniFi OS gateways take the downstream side from `downstream_network_ids` instead and report `some` here while that set is non-empty; they reject `lan` and `guest`. Left unset it follows the set, so it is not carried over from state at plan time.
+- `downstream_network_ids` (Set of String) IDs of the LAN networks the proxy forwards multicast onto (UniFi OS gateways). Setting it also sets `downstream` to `some`, or `none` when empty, unless `downstream` names a target itself.
 - `upstream` (Boolean) Whether IGMP proxy upstream is enabled
 
 

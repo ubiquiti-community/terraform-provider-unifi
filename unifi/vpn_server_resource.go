@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -240,7 +241,7 @@ func (r *vpnServerResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		// The optional "site" attribute defaults to the provider site on
 		// import. Identities stored by older provider versions ({id} only)
 		// are version 0 and go through siteIdentityUpgraders, which fills
@@ -680,7 +681,7 @@ func (r *vpnServerResource) Read(
 	// Get the resource identity, tolerating null/empty identities (state
 	// written by older provider versions).
 	var identity vpnServerIdentityModel
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -743,7 +744,7 @@ func (r *vpnServerResource) Read(
 	// Terraform rejects any modification of an existing stored identity
 	// (including filling a null attribute), so pass an incoming identity
 	// through unchanged and only derive one when none is stored yet.
-	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsFullyNull()) {
 		idModel := vpnServerIdentityModel{ID: data.ID, Site: data.Site}
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	}
@@ -806,7 +807,7 @@ func (r *vpnServerResource) Update(
 
 	// Pass an existing identity through unchanged; only derive one when
 	// none is stored yet (see Read).
-	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsNull()) {
+	if resp.Identity != nil && (req.Identity == nil || req.Identity.Raw.IsFullyNull()) {
 		idModel := vpnServerIdentityModel{ID: data.ID, Site: data.Site}
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, &idModel)...)
 	}
@@ -1182,6 +1183,13 @@ func (r *vpnServerResource) networkToModel(
 			PublicKey:  strPtrToType(network.WireguardPublicKey),
 			Port:       types.Int64PointerValue(network.LocalPort),
 		}
+		// The controller does not return the public key: derive it.
+		if wireguardValue.PublicKey.IsNull() && !privateKeyVal.IsNull() &&
+			!privateKeyVal.IsUnknown() {
+			if pub, err := wireGuardPublicKey(privateKeyVal.ValueString()); err == nil {
+				wireguardValue.PublicKey = types.StringValue(pub)
+			}
+		}
 		var d diag.Diagnostics
 		model.Wireguard, d = types.ObjectValueFrom(
 			ctx,
@@ -1383,4 +1391,18 @@ func generateWireGuardPrivateKey() (string, error) {
 	key[31] &= 127
 	key[31] |= 64
 	return base64.StdEncoding.EncodeToString(key[:]), nil
+}
+
+// wireGuardPublicKey returns the base64-encoded public key of a WireGuard
+// private key.
+func wireGuardPublicKey(privateKey string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(privateKey)
+	if err != nil {
+		return "", err
+	}
+	key, err := ecdh.X25519().NewPrivateKey(raw)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(key.PublicKey().Bytes()), nil
 }

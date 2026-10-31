@@ -113,6 +113,7 @@ resource "unifi_vpn_client" "wireguard_with_psk" {
 
 - `default_route` (Boolean) Specifies whether to use the VPN as the default route.
 - `enabled` (Boolean) Specifies whether the VPN client is enabled.
+- `ipv6_subnet` (String) The local IPv6 address for the WireGuard tunnel in CIDR notation (e.g., `2001:db8::2/64`). In file mode it defaults to the IPv6 entry of the configuration's `Address` line. When not configured, the controller's value is kept, so an address set in the UI survives updates made through Terraform.
 - `pull_dns` (Boolean) Specifies whether to pull DNS servers from the VPN.
 - `site` (String) The name of the site to associate the VPN client with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))

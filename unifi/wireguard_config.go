@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
+	"net/netip"
 	"strconv"
 	"strings"
 )
@@ -133,4 +134,17 @@ func parseWireGuardBase64Config(b64Content string) (*wireguardConfigParsed, erro
 	}
 
 	return parseWireGuardConfig(string(decoded))
+}
+
+// ipv6FromAddress returns the first IPv6 prefix of a WireGuard `Address` value
+// (e.g. "10.0.0.2/30, 2001:db8::2/64" -> "2001:db8::2/64"), or "" if it has none.
+func ipv6FromAddress(address string) string {
+	for _, a := range strings.Split(address, ",") {
+		a = strings.TrimSpace(a)
+		if prefix, err := netip.ParsePrefix(a); err == nil && prefix.Addr().Is6() &&
+			!prefix.Addr().Is4In6() {
+			return a
+		}
+	}
+	return ""
 }

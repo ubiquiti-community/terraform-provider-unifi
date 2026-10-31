@@ -218,7 +218,7 @@ func (r *firewallRuleResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -585,7 +585,7 @@ func (r *firewallRuleResource) Read(
 	// identity support. This also lets Read work from an identity-only state
 	// (the refresh right after an identity-based import).
 	var identity firewallRuleIdentityModel
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -694,7 +694,7 @@ func (r *firewallRuleResource) Update(
 		ID:   state.ID,
 		Site: state.Site,
 	}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return

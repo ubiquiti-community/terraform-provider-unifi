@@ -106,7 +106,7 @@ func (r *wireguardPeerResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -338,7 +338,7 @@ func (r *wireguardPeerResource) Read(
 	// identity support. When an identity comes in it must be passed through
 	// unchanged: Terraform treats any modification of a non-null identity
 	// (including filling a null attribute) as an error.
-	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
 	var identity wireguardPeerIdentityModel
 	if haveIdentity {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
@@ -460,7 +460,7 @@ func (r *wireguardPeerResource) Update(
 		NetworkID: data.NetworkID,
 		Site:      data.Site,
 	}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return

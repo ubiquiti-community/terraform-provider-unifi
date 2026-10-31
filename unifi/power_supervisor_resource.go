@@ -115,7 +115,7 @@ func (r *powerSupervisorResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -389,7 +389,7 @@ func (r *powerSupervisorResource) Read(
 	// Fall back to the resource identity when the state carries no ID (e.g.
 	// old states, or a state written by an identity-based import).
 	if data.ID.IsNull() || data.ID.IsUnknown() {
-		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 			var identity powerSupervisorIdentityModel
 			resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 			if resp.Diagnostics.HasError() {
@@ -429,7 +429,7 @@ func (r *powerSupervisorResource) Read(
 	// A stored identity must be passed through unchanged: Terraform treats
 	// any modification of a non-null identity (including filling a null
 	// attribute) as an error. Only derive identity from state when none exists.
-	if req.Identity == nil || req.Identity.Raw.IsNull() {
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
 			ID:   data.ID,
 			Site: data.Site,
@@ -476,7 +476,7 @@ func (r *powerSupervisorResource) Update(
 	// A stored identity must be passed through unchanged: Terraform treats
 	// any modification of a non-null identity (including filling a null
 	// attribute) as an error. Only derive identity from state when none exists.
-	if req.Identity == nil || req.Identity.Raw.IsNull() {
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, powerSupervisorIdentityModel{
 			ID:   data.ID,
 			Site: data.Site,

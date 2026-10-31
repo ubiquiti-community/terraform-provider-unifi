@@ -21,21 +21,32 @@ import (
 // provider's configured site, which is what Read derives for a resource that
 // does not set site itself. The result must be complete: Read passes a stored
 // identity through unchanged, and the framework rejects a null one.
+//
+// Terraform 1.12 and newer also ask for this upgrade when no identity was
+// stored at all (a state written by Terraform < 1.12 or migrated from
+// paultyng/unifi). That case upgrades to an identity with every attribute
+// null, which the framework treats as no identity yet, so Read derives it
+// from the state. Filling site alone would make it a stored identity with a
+// null id, which Read then has to pass through unchanged.
+//
+// v0.60.0 did exactly that and stored version 1 identities such as
+// {"id": null, "site": "default"}. Version 2 sends those through the same
+// upgrader, which treats an identity without an id as absent so Read can
+// derive a complete one.
 func siteIdentityUpgraders(client func() *Client) map[int64]resource.IdentityUpgrader {
-	return map[int64]resource.IdentityUpgrader{
-		0: {
-			IdentityUpgrader: func(
-				ctx context.Context,
-				req resource.UpgradeIdentityRequest,
-				resp *resource.UpgradeIdentityResponse,
-			) {
-				upgradeSiteIdentityV0(ctx, client(), req, resp)
-			},
+	upgrader := resource.IdentityUpgrader{
+		IdentityUpgrader: func(
+			ctx context.Context,
+			req resource.UpgradeIdentityRequest,
+			resp *resource.UpgradeIdentityResponse,
+		) {
+			upgradeSiteIdentity(ctx, client(), req, resp)
 		},
 	}
+	return map[int64]resource.IdentityUpgrader{0: upgrader, 1: upgrader}
 }
 
-func upgradeSiteIdentityV0(
+func upgradeSiteIdentity(
 	ctx context.Context,
 	client *Client,
 	req resource.UpgradeIdentityRequest,
@@ -62,13 +73,20 @@ func upgradeSiteIdentityV0(
 	}
 	attrs := make(map[string]tftypes.Value, len(obj.AttributeTypes))
 	for name, t := range obj.AttributeTypes {
-		var v any
+		attrs[name] = tftypes.NewValue(t, nil)
+	}
+	if id, ok := prior["id"].(string); !ok || id == "" {
+		resp.Identity.Raw = tftypes.NewValue(obj, attrs)
+		return
+	}
+	for name, t := range obj.AttributeTypes {
 		if s, ok := prior[name].(string); ok && s != "" {
-			v = s
-		} else if name == "site" && client != nil && client.Site != "" {
-			v = client.Site
+			attrs[name] = tftypes.NewValue(t, s)
 		}
-		attrs[name] = tftypes.NewValue(t, v)
+	}
+	if t, ok := obj.AttributeTypes["site"]; ok && attrs["site"].IsNull() &&
+		client != nil && client.Site != "" {
+		attrs["site"] = tftypes.NewValue(t, client.Site)
 	}
 	resp.Identity.Raw = tftypes.NewValue(obj, attrs)
 }

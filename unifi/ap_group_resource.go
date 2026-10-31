@@ -96,7 +96,7 @@ func (r *apGroupResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -268,7 +268,7 @@ func (r *apGroupResource) Read(
 	// Fall back to the resource identity when the state carries no ID (e.g.
 	// old states, or a state written by an identity-based import).
 	if state.ID.IsNull() || state.ID.IsUnknown() {
-		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 			var identity apGroupIdentityModel
 			resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 			if resp.Diagnostics.HasError() {
@@ -307,7 +307,7 @@ func (r *apGroupResource) Read(
 	// A stored identity must be passed through unchanged: Terraform treats
 	// any modification of a non-null identity (including filling a null
 	// attribute) as an error. Only derive identity from state when none exists.
-	if req.Identity == nil || req.Identity.Raw.IsNull() {
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, apGroupIdentityModel{
 			ID:   state.ID,
 			Site: state.Site,
@@ -405,7 +405,7 @@ func (r *apGroupResource) Update(
 	// A stored identity must be passed through unchanged: Terraform treats
 	// any modification of a non-null identity (including filling a null
 	// attribute) as an error. Only derive identity from state when none exists.
-	if req.Identity == nil || req.Identity.Raw.IsNull() {
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, apGroupIdentityModel{
 			ID:   state.ID,
 			Site: state.Site,

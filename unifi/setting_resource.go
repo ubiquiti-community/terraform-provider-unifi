@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -96,6 +97,17 @@ type settingRadiusModel struct {
 	AuthPort              types.Int64          `tfsdk:"auth_port"`
 	InterimUpdateInterval timetypes.GoDuration `tfsdk:"interim_update_interval"`
 	Secret                types.String         `tfsdk:"secret"`
+}
+
+// settingSnmpModel is the `snmp` block: v1/v2c community and one v3 user.
+type settingSnmpModel struct {
+	Enabled           types.Bool   `tfsdk:"enabled"`
+	Community         types.String `tfsdk:"community"`
+	EnabledV3         types.Bool   `tfsdk:"enabled_v3"`
+	Username          types.String `tfsdk:"username"`
+	Password          types.String `tfsdk:"password"`
+	PasswordWO        types.String `tfsdk:"password_wo"`
+	PasswordWOVersion types.Int64  `tfsdk:"password_wo_version"`
 }
 
 type dnsVerificationModel struct {
@@ -302,11 +314,37 @@ type settingResourceModel struct {
 	Ips           types.Object   `tfsdk:"ips"`
 	Mgmt          types.Object   `tfsdk:"mgmt"`
 	Radius        types.Object   `tfsdk:"radius"`
+	Snmp          types.Object   `tfsdk:"snmp"`
 	USG           types.Object   `tfsdk:"usg"`
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
 	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
 	Connectivity  types.Object   `tfsdk:"connectivity"`
+	RadioAi       types.Object   `tfsdk:"radio_ai"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
+
+	// The write-only RADIUS secret sits at the root rather than inside
+	// radius: Terraform rejects a WriteOnly child of a Computed nested
+	// attribute, and radius is Optional+Computed.
+	RadiusSecretWO        types.String `tfsdk:"radius_secret_wo"`
+	RadiusSecretWOVersion types.Int64  `tfsdk:"radius_secret_wo_version"`
+}
+
+// settingRadioAiModel is the nested radio_ai block (Settings > WiFi > Channel
+// AI / nightly channel optimization). The optimizer rewrites the channel of
+// every radio in the bands listed in radios on its schedule, overriding a
+// channel set on the device, so leaving a band out of radios is how a channel
+// is pinned while the others stay optimized. Only these fields are exposed;
+// the rest (blacklists, per-radio configuration, HT modes, ...) are preserved
+// by the partial write.
+type settingRadioAiModel struct {
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	CronExpr       types.String `tfsdk:"cron_expr"`
+	Radios         types.List   `tfsdk:"radios"`
+	Optimize       types.List   `tfsdk:"optimize"`
+	ChannelsNg     types.List   `tfsdk:"channels_ng"`
+	ChannelsNa     types.List   `tfsdk:"channels_na"`
+	Channels6E     types.List   `tfsdk:"channels_6e"`
+	ExcludeDevices types.List   `tfsdk:"exclude_devices"`
 }
 
 // settingGlobalSwitchModel is the nested global_switch block (Settings > Networks
@@ -572,6 +610,27 @@ var (
 		"uplink_type":      types.StringType,
 		"uplink_host":      types.StringType,
 	}
+
+	radioAiAttrTypes = map[string]attr.Type{
+		"enabled":         types.BoolType,
+		"cron_expr":       types.StringType,
+		"radios":          types.ListType{ElemType: types.StringType},
+		"optimize":        types.ListType{ElemType: types.StringType},
+		"channels_ng":     types.ListType{ElemType: types.Int64Type},
+		"channels_na":     types.ListType{ElemType: types.Int64Type},
+		"channels_6e":     types.ListType{ElemType: types.Int64Type},
+		"exclude_devices": types.ListType{ElemType: types.StringType},
+	}
+
+	snmpAttrTypes = map[string]attr.Type{
+		"enabled":             types.BoolType,
+		"community":           types.StringType,
+		"enabled_v3":          types.BoolType,
+		"username":            types.StringType,
+		"password":            types.StringType,
+		"password_wo":         types.StringType,
+		"password_wo_version": types.Int64Type,
+	}
 )
 
 func (r *settingResource) Metadata(
@@ -637,7 +696,7 @@ func (r *settingResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether periodic automated speed tests are enabled.",
+						MarkdownDescription: "Whether periodic automated speed tests are enabled. Taken from the controller when not set (#544).",
 						Optional:            true,
 						Computed:            true,
 					},
@@ -671,7 +730,7 @@ func (r *settingResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether DPI is enabled.",
+						MarkdownDescription: "Whether DPI is enabled. Taken from the controller when not set, so declaring the `dpi` block for one attribute no longer turns deep packet inspection off (#544).",
 						Optional:            true,
 						Computed:            true,
 					},
@@ -708,7 +767,7 @@ func (r *settingResource) Schema(
 						Validators:          []validator.Int64{int64validator.Between(10, 3600)},
 					},
 					"sync": schema.BoolAttribute{
-						MarkdownDescription: "Sync display settings across devices.",
+						MarkdownDescription: "Sync display settings across devices. Taken from the controller when not set (#544).",
 						Optional:            true,
 						Computed:            true,
 					},
@@ -793,7 +852,7 @@ func (r *settingResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether remote syslog is enabled.",
+						MarkdownDescription: "Whether remote syslog is enabled. Taken from the controller when not set, so declaring the `syslog` block to manage its server address no longer disables logging (#544).",
 						Optional:            true,
 						Computed:            true,
 					},
@@ -818,7 +877,7 @@ func (r *settingResource) Schema(
 						},
 					},
 					"log_all_contents": schema.BoolAttribute{
-						MarkdownDescription: "Log all available facilities.",
+						MarkdownDescription: "Log all available facilities. Taken from the controller when not set (#544).",
 						Optional:            true,
 						Computed:            true,
 					},
@@ -1265,15 +1324,125 @@ func (r *settingResource) Schema(
 						Computed:   true,
 					},
 					"secret": schema.StringAttribute{
-						MarkdownDescription: "RADIUS shared secret.",
-						Optional:            true,
-						Computed:            true,
-						Sensitive:           true,
+						MarkdownDescription: "RADIUS shared secret. Stored in state; use " +
+							"the root-level `radius_secret_wo` to avoid persisting the secret.",
+						Optional:  true,
+						Computed:  true,
+						Sensitive: true,
 						Validators: []validator.String{
 							stringvalidator.LengthBetween(1, 48),
 							stringvalidator.RegexMatches(
 								regexp.MustCompile(`^[^\\\ "']+$`),
 								"must not contain backslashes, spaces, single quotes, or double quotes",
+							),
+						},
+					},
+				},
+			},
+			"radius_secret_wo": schema.StringAttribute{
+				MarkdownDescription: "Write-only equivalent of `radius.secret` (Terraform " +
+					"1.11+). Used at apply time but never written to state. It sits at the " +
+					"root rather than inside `radius` because Terraform does not allow a " +
+					"write-only attribute inside a computed nested attribute. Requires the " +
+					"`radius` block (`radius = {}` is enough) and is mutually exclusive " +
+					"with `radius.secret`. Because nothing is stored, a secret changed " +
+					"outside Terraform produces no diff; increment `radius_secret_wo_version` " +
+					"to send a new value.",
+				Optional:  true,
+				Sensitive: true,
+				WriteOnly: true,
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 48),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[^\\\ "']+$`),
+						"must not contain backslashes, spaces, single quotes, or double quotes",
+					),
+					stringvalidator.ConflictsWith(path.MatchRoot("radius").AtName("secret")),
+					stringvalidator.AlsoRequires(path.MatchRoot("radius")),
+				},
+			},
+			"radius_secret_wo_version": schema.Int64Attribute{
+				MarkdownDescription: "Version counter for `radius_secret_wo`. Increment " +
+					"this value to trigger a RADIUS secret update.",
+				Optional: true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+					int64validator.AlsoRequires(path.MatchRoot("radius_secret_wo")),
+				},
+			},
+			"snmp": schema.SingleNestedAttribute{
+				MarkdownDescription: "SNMP agent settings (Settings > System > SNMP): " +
+					"a v1/v2c community and a single SNMPv3 user. Only configured SNMP settings are read; import does not populate this attribute.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable SNMP v1/v2c.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"community": schema.StringAttribute{
+						MarkdownDescription: "SNMP v1/v2c community string.",
+						Optional:            true,
+						Computed:            true,
+						Sensitive:           true,
+						Validators: []validator.String{
+							stringvalidator.LengthBetween(1, 256),
+						},
+					},
+					"enabled_v3": schema.BoolAttribute{
+						MarkdownDescription: "Enable SNMPv3.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"username": schema.StringAttribute{
+						MarkdownDescription: "SNMPv3 username.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^[a-zA-Z0-9_-]{1,30}$`),
+								"must be 1-30 characters of letters, digits, underscores, or hyphens",
+							),
+						},
+					},
+					"password": schema.StringAttribute{
+						MarkdownDescription: "SNMPv3 password, stored in state. The configured value is preserved on read because controllers may omit or mask the password. External password changes are not detected. Mutually exclusive with `password_wo`.",
+						Optional:            true,
+						Sensitive:           true,
+						Validators: []validator.String{
+							stringvalidator.ConflictsWith(
+								path.MatchRoot("snmp").AtName("password_wo"),
+							),
+							stringvalidator.LengthBetween(8, 32),
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^[^'"]+$`),
+								"must not contain single or double quotes",
+							),
+						},
+					},
+					"password_wo": schema.StringAttribute{
+						MarkdownDescription: "Write-only SNMPv3 password (Terraform 1.11+), never stored in plan or state; accepts ephemeral values. Mutually exclusive with `password`. Set `password_wo_version` and change it to rotate this password. Changing only this value does not trigger an update. External password changes are not detected.",
+						Optional:            true,
+						Sensitive:           true,
+						WriteOnly:           true,
+						Validators: []validator.String{
+							stringvalidator.LengthBetween(8, 32),
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^[^'"]+$`),
+								"must not contain single or double quotes",
+							),
+							stringvalidator.AlsoRequires(
+								path.MatchRoot("snmp").AtName("password_wo_version"),
+							),
+						},
+					},
+					"password_wo_version": schema.Int64Attribute{
+						MarkdownDescription: "Positive version for `password_wo`. Required with `password_wo`; change it whenever the write-only password should be applied. The version is stored in state. An unchanged version preserves the controller password during other updates.",
+						Optional:            true,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AlsoRequires(
+								path.MatchRoot("snmp").AtName("password_wo"),
 							),
 						},
 					},
@@ -1621,6 +1790,64 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"radio_ai": schema.SingleNestedAttribute{
+				MarkdownDescription: "Channel AI, the nightly channel optimization " +
+					"(Settings > WiFi > Channel AI). On its schedule the optimizer " +
+					"rewrites the channel of every radio in the bands listed in " +
+					"`radios`, overriding a channel set on the device, so leaving a " +
+					"band out of `radios` is how its channel is pinned while the " +
+					"others stay optimized. Options this block does not model " +
+					"(channel blacklists, per-radio configuration, HT modes) are " +
+					"preserved across updates.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Run the optimizer on its schedule.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"cron_expr": schema.StringAttribute{
+						MarkdownDescription: "When the optimizer runs, as a cron " +
+							"expression in the controller's time zone (e.g. `0 3 * * *`).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"radios": radioAiStringList(
+						"Bands the optimizer may change: `ng` (2.4 GHz), `na` "+
+							"(5 GHz), `6e` (6 GHz).",
+						stringvalidator.OneOf("ng", "na", "6e"),
+					),
+					"optimize": radioAiStringList(
+						"What the optimizer adjusts: `channel`, `power`.",
+						stringvalidator.OneOf("channel", "power"),
+					),
+					"channels_ng": radioAiChannelList(
+						"2.4 GHz channels the optimizer may choose from.",
+						int64validator.Between(1, 14),
+					),
+					"channels_na": radioAiChannelList(
+						"5 GHz channels the optimizer may choose from.",
+						int64validator.Between(34, 177),
+					),
+					"channels_6e": radioAiChannelList(
+						"6 GHz channels the optimizer may choose from.",
+						int64validator.Between(1, 233),
+					),
+					"exclude_devices": radioAiStringList(
+						"MAC addresses of devices the optimizer leaves alone.",
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`),
+							"must be a lowercase MAC address",
+						),
+					),
+				},
+			},
 			"global_switch": schema.SingleNestedAttribute{
 				MarkdownDescription: "Site-wide switch settings (Settings > Networks > Global Switch Settings). " +
 					"On current controllers jumbo frames are only honored here, not via `unifi_device.jumboframe_enabled`. " +
@@ -1893,6 +2120,11 @@ func (r *settingResource) ModifyPlan(
 		return
 	}
 
+	r.planGlobalSwitchUnsetUnknown(ctx, req, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Terraform proposes a configured section with every leaf the
 	// configuration leaves out set to null, which differs from a prior state
 	// that holds those leaves (an import reads every section in full), so the
@@ -2019,6 +2251,49 @@ func keepPriorUnconfigured(
 	obj, d := types.ObjectValue(plan.AttributeTypes(ctx), attrs)
 	diags.Append(d...)
 	return obj, diags
+}
+
+// planGlobalSwitchUnsetUnknown plans the global_switch fields left out of
+// configuration as unknown. Adding the block to a setting whose state has none
+// otherwise leaves them null, and the read-back after the apply then fails as
+// an inconsistent result. Fields the plan already knows are left alone.
+func (r *settingResource) planGlobalSwitchUnsetUnknown(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	gsPath := path.Root("global_switch")
+	var plan types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, gsPath, &plan)...)
+	if resp.Diagnostics.HasError() || plan.IsNull() || plan.IsUnknown() {
+		return
+	}
+
+	attrs := plan.Attributes()
+	changed := false
+	for name, typ := range plan.AttributeTypes(ctx) {
+		if v, ok := attrs[name]; !ok || !v.IsNull() {
+			continue
+		}
+		unknown, err := typ.ValueFromTerraform(
+			ctx, tftypes.NewValue(typ.TerraformType(ctx), tftypes.UnknownValue))
+		if err != nil {
+			resp.Diagnostics.AddError("Error planning global_switch", err.Error())
+			return
+		}
+		attrs[name] = unknown
+		changed = true
+	}
+	if !changed {
+		return
+	}
+
+	obj, d := types.ObjectValue(plan.AttributeTypes(ctx), attrs)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, gsPath, obj)...)
 }
 
 func (r *settingResource) Configure(
@@ -2260,8 +2535,47 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
+		secretWO := r.readRadiusSecretWO(ctx, req.Config, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !secretWO.IsNull() && !secretWO.IsUnknown() {
+			setting.Secret = secretWO.ValueString()
+		}
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Radius Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.Snmp.IsNull() && !data.Snmp.IsUnknown() {
+		var snmp settingSnmpModel
+		resp.Diagnostics.Append(data.Snmp.As(ctx, &snmp, basetypes.ObjectAsOptions{})...)
+		r.readSnmpPasswordWO(
+			ctx,
+			req.Config,
+			&snmp,
+			types.ObjectNull(snmpAttrTypes),
+			&resp.Diagnostics,
+		)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		// Read current remote settings as the base so unset fields keep their remote values
+		_, currentSnmp, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading SNMP Setting", err.Error())
+				return
+			}
+			currentSnmp = &settings.Snmp{}
+		}
+
+		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Creating SNMP Setting", err.Error())
 			return
 		}
 	}
@@ -2334,6 +2648,11 @@ func (r *settingResource) Create(
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
 	r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+
+	var radioAiConfig types.Object
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("radio_ai"), &radioAiConfig)...)
+	r.persistRadioAi(ctx, site, radioAiConfig, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2625,8 +2944,11 @@ func (r *settingResource) Update(
 		}
 	}
 
+	// radius_secret_wo never reaches the radius object, so a version bump is
+	// the only sign that the secret needs writing.
 	if !config.Radius.IsNull() && !plan.Radius.IsNull() && !plan.Radius.IsUnknown() &&
-		settingSectionChanged(plan.Radius, state.Radius) {
+		(settingSectionChanged(plan.Radius, state.Radius) ||
+			!plan.RadiusSecretWOVersion.Equal(state.RadiusSecretWOVersion)) {
 		var radius settingRadiusModel
 		resp.Diagnostics.Append(plan.Radius.As(ctx, &radius, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2645,8 +2967,42 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.radiusModelToSetting(ctx, &radius, currentRadius)
+		secretWO := r.readRadiusSecretWO(ctx, req.Config, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !secretWO.IsNull() && !secretWO.IsUnknown() {
+			setting.Secret = secretWO.ValueString()
+		}
 		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Radius Setting", err.Error())
+			return
+		}
+	}
+
+	if !config.Snmp.IsNull() && !plan.Snmp.IsNull() && !plan.Snmp.IsUnknown() &&
+		settingSectionChanged(plan.Snmp, state.Snmp) {
+		var snmp settingSnmpModel
+		resp.Diagnostics.Append(plan.Snmp.As(ctx, &snmp, basetypes.ObjectAsOptions{})...)
+		r.readSnmpPasswordWO(ctx, req.Config, &snmp, state.Snmp, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		// Read current remote settings as the base so unset fields keep their remote values
+		_, currentSnmp, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
+		if err != nil {
+			var notFound *ui.NotFoundError
+			if !errors.As(err, &notFound) {
+				resp.Diagnostics.AddError("Error Reading SNMP Setting", err.Error())
+				return
+			}
+			currentSnmp = &settings.Snmp{}
+		}
+
+		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
+		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+			resp.Diagnostics.AddError("Error Updating SNMP Setting", err.Error())
 			return
 		}
 	}
@@ -2723,6 +3079,13 @@ func (r *settingResource) Update(
 		resp.Diagnostics.Append(
 			req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
 		r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+	}
+
+	if settingSectionChanged(plan.RadioAi, state.RadioAi) {
+		var radioAiConfig types.Object
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root("radio_ai"), &radioAiConfig)...)
+		r.persistRadioAi(ctx, site, radioAiConfig, &resp.Diagnostics)
 	}
 	if resp.Diagnostics.HasError() {
 		return
@@ -3223,6 +3586,31 @@ func (r *settingResource) readSettings(
 		data.Radius = types.ObjectNull(radiusAttrTypes)
 	}
 
+	// SNMP settings
+	if !data.Snmp.IsNull() && !data.Snmp.IsUnknown() {
+		var prior settingSnmpModel
+		diags.Append(data.Snmp.As(ctx, &prior, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return
+		}
+		_, snmpSetting, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading SNMP Setting", err.Error())
+			return
+		}
+
+		objValue, d := types.ObjectValueFrom(
+			ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting, &prior),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.Snmp = objValue
+	} else {
+		data.Snmp = types.ObjectNull(snmpAttrTypes)
+	}
+
 	// USG settings
 	if !data.USG.IsNull() && !data.USG.IsUnknown() {
 		// Get the current plan/state values
@@ -3316,6 +3704,28 @@ func (r *settingResource) readSettings(
 		data.Connectivity = objValue
 	} else {
 		data.Connectivity = types.ObjectNull(connectivityAttrTypes)
+	}
+
+	// Channel AI
+	if !data.RadioAi.IsNull() && !data.RadioAi.IsUnknown() {
+		_, raSetting, err := ui.GetSetting[*settings.RadioAi](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Channel AI Setting", err.Error())
+			return
+		}
+		model, d := r.radioAiSettingToModel(ctx, raSetting)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		objValue, d := types.ObjectValueFrom(ctx, radioAiAttrTypes, model)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.RadioAi = objValue
+	} else {
+		data.RadioAi = types.ObjectNull(radioAiAttrTypes)
 	}
 
 	// Global switch settings
@@ -3481,6 +3891,87 @@ func (r *settingResource) mgmtSettingToModel(
 	return model
 }
 
+// SNMP conversion functions.
+
+// readSnmpPasswordWO reads the secret from configuration, not the plan (where
+// write-only values are always null). Only a new version applies the secret;
+// unrelated updates with the same version leave the controller password alone.
+func (r *settingResource) readSnmpPasswordWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	model *settingSnmpModel,
+	prior types.Object,
+	diags *diag.Diagnostics,
+) {
+	if diags.HasError() || model.PasswordWOVersion.IsNull() || model.PasswordWOVersion.IsUnknown() {
+		return
+	}
+	if !prior.IsNull() && !prior.IsUnknown() {
+		var previous settingSnmpModel
+		diags.Append(prior.As(ctx, &previous, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() || model.PasswordWOVersion.Equal(previous.PasswordWOVersion) {
+			return
+		}
+	}
+	diags.Append(
+		config.GetAttribute(ctx, path.Root("snmp").AtName("password_wo"), &model.PasswordWO)...)
+}
+
+// snmpModelToSetting overlays the known model values onto base (the current
+// remote setting), so an attribute left unset keeps the controller's value
+// instead of being zeroed; e.g. configuring only the v3 user must not turn
+// v1/v2c off.
+func (r *settingResource) snmpModelToSetting(
+	_ context.Context,
+	model *settingSnmpModel,
+	base *settings.Snmp,
+) *settings.Snmp {
+	setting := base
+
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		setting.Enabled = model.Enabled.ValueBool()
+	}
+	if !model.Community.IsNull() && !model.Community.IsUnknown() {
+		setting.Community = model.Community.ValueString()
+	}
+	if !model.EnabledV3.IsNull() && !model.EnabledV3.IsUnknown() {
+		setting.EnabledV3 = model.EnabledV3.ValueBool()
+	}
+	if !model.Username.IsNull() && !model.Username.IsUnknown() {
+		setting.Username = model.Username.ValueString()
+	}
+	if !model.Password.IsNull() && !model.Password.IsUnknown() {
+		setting.Password = model.Password.ValueString()
+	} else if !model.PasswordWO.IsNull() && !model.PasswordWO.IsUnknown() {
+		setting.Password = model.PasswordWO.ValueString()
+	} else {
+		// Never replay an echoed/masked password from the read base. The SDK
+		// omits an empty x_password, preserving the remote credential.
+		setting.Password = ""
+	}
+
+	return setting
+}
+
+// snmpSettingToModel reads public fields and community from the controller.
+// Passwords may be omitted or masked: retain only the planned/stored password
+// and rotation version, never the API password or the write-only input.
+func (r *settingResource) snmpSettingToModel(
+	_ context.Context,
+	setting *settings.Snmp,
+	prior *settingSnmpModel,
+) *settingSnmpModel {
+	return &settingSnmpModel{
+		Enabled:           types.BoolValue(setting.Enabled),
+		Community:         util.StringValueOrNull(setting.Community),
+		EnabledV3:         types.BoolValue(setting.EnabledV3),
+		Username:          util.StringValueOrNull(setting.Username),
+		Password:          prior.Password,
+		PasswordWO:        types.StringNull(),
+		PasswordWOVersion: prior.PasswordWOVersion,
+	}
+}
+
 // Radius conversion functions.
 func (r *settingResource) radiusModelToSetting(
 	_ context.Context,
@@ -3538,6 +4029,18 @@ func (r *settingResource) radiusSettingToModel(
 	}
 
 	return model
+}
+
+// readRadiusSecretWO reads the write-only radius_secret_wo attribute. Write-only
+// values are only available through the request config, never plan or state.
+func (r *settingResource) readRadiusSecretWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var secretWO types.String
+	diags.Append(config.GetAttribute(ctx, path.Root("radius_secret_wo"), &secretWO)...)
+	return secretWO
 }
 
 // USG conversion functions.
@@ -4272,6 +4775,155 @@ func (r *settingResource) connectivitySettingToModel(
 		UplinkType:     stringOrNull(setting.UplinkType),
 		UplinkHost:     stringOrNull(setting.UplinkHost),
 	}
+}
+
+// Channel AI conversion functions.
+
+// radioAiStringList is a radio_ai list of strings: optional, kept from state
+// when omitted, each element checked by elem.
+func radioAiStringList(description string, elem validator.String) schema.ListAttribute {
+	return schema.ListAttribute{
+		MarkdownDescription: description,
+		ElementType:         types.StringType,
+		Optional:            true,
+		Computed:            true,
+		Validators: []validator.List{
+			listvalidator.ValueStringsAre(elem),
+		},
+		PlanModifiers: []planmodifier.List{
+			listplanmodifier.UseStateForUnknown(),
+		},
+	}
+}
+
+// radioAiChannelList is a radio_ai list of channel numbers.
+func radioAiChannelList(description string, elem validator.Int64) schema.ListAttribute {
+	return schema.ListAttribute{
+		MarkdownDescription: description,
+		ElementType:         types.Int64Type,
+		Optional:            true,
+		Computed:            true,
+		Validators: []validator.List{
+			listvalidator.ValueInt64sAre(elem),
+		},
+		PlanModifiers: []planmodifier.List{
+			listplanmodifier.UseStateForUnknown(),
+		},
+	}
+}
+
+// persistRadioAi writes the radio_ai fields set in config, if any. Like
+// persistConnectivity, obj must come from config, not the plan, and the
+// controller merges the partial PUT into the stored setting.
+func (r *settingResource) persistRadioAi(
+	ctx context.Context,
+	site string,
+	obj types.Object,
+	diags *diag.Diagnostics,
+) {
+	if obj.IsNull() || obj.IsUnknown() {
+		return
+	}
+	var model settingRadioAiModel
+	diags.Append(obj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return
+	}
+
+	setting, d := radioAiRawSetting(ctx, &model)
+	diags.Append(d...)
+	if diags.HasError() || len(setting.Data) == 0 {
+		return
+	}
+	if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		diags.AddError("Error Updating Channel AI Setting", err.Error())
+	}
+}
+
+const radioAiSettingKey = "radio_ai"
+
+// radioAiRawSetting builds a partial radio_ai payload containing only the
+// fields set in the model. Channels go out as numeric strings, the form the
+// controller's own UI stores them in.
+func radioAiRawSetting(
+	ctx context.Context,
+	model *settingRadioAiModel,
+) (*settings.RawSetting, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	data := map[string]any{}
+	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
+		data["enabled"] = model.Enabled.ValueBool()
+	}
+	if !model.CronExpr.IsNull() && !model.CronExpr.IsUnknown() {
+		data["cron_expr"] = model.CronExpr.ValueString()
+	}
+	stringLists := map[string]types.List{
+		"radios":          model.Radios,
+		"optimize":        model.Optimize,
+		"exclude_devices": model.ExcludeDevices,
+	}
+	for key, list := range stringLists {
+		if list.IsNull() || list.IsUnknown() {
+			continue
+		}
+		values := []string{}
+		diags.Append(list.ElementsAs(ctx, &values, false)...)
+		data[key] = values
+	}
+	channels := map[string]types.List{
+		"channels_ng": model.ChannelsNg,
+		"channels_na": model.ChannelsNa,
+		"channels_6e": model.Channels6E,
+	}
+	for key, list := range channels {
+		if list.IsNull() || list.IsUnknown() {
+			continue
+		}
+		var values []int64
+		diags.Append(list.ElementsAs(ctx, &values, false)...)
+		out := make([]string, len(values))
+		for i, v := range values {
+			out[i] = fmt.Sprint(v)
+		}
+		data[key] = out
+	}
+	return &settings.RawSetting{
+		BaseSetting: settings.BaseSetting{Key: radioAiSettingKey},
+		Data:        data,
+	}, diags
+}
+
+func (r *settingResource) radioAiSettingToModel(
+	ctx context.Context,
+	setting *settings.RadioAi,
+) (*settingRadioAiModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	stringList := func(v []string) types.List {
+		if v == nil {
+			v = []string{}
+		}
+		l, d := types.ListValueFrom(ctx, types.StringType, v)
+		diags.Append(d...)
+		return l
+	}
+	int64List := func(v []int64) types.List {
+		if v == nil {
+			v = []int64{}
+		}
+		l, d := types.ListValueFrom(ctx, types.Int64Type, v)
+		diags.Append(d...)
+		return l
+	}
+	return &settingRadioAiModel{
+		Enabled:        types.BoolValue(setting.Enabled),
+		CronExpr:       stringOrNull(setting.CronExpr),
+		Radios:         stringList(setting.Radios),
+		Optimize:       stringList(setting.Optimize),
+		ChannelsNg:     int64List(setting.ChannelsNg),
+		ChannelsNa:     int64List(setting.ChannelsNa),
+		Channels6E:     int64List(setting.Channels6E),
+		ExcludeDevices: stringList(setting.ExcludeDevices),
+	}, diags
 }
 
 // DoH conversion functions.

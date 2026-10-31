@@ -69,6 +69,32 @@ resource "unifi_setting" "combined" {
   }
 }
 
+# Configure only SNMP settings (v1/v2c community plus an SNMPv3 user).
+# The write-only password below requires Terraform 1.11+.
+variable "snmp_password" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
+resource "unifi_setting" "snmp_only" {
+  site = "default"
+
+  snmp = {
+    enabled             = true
+    community           = "my-snmp-community"
+    enabled_v3          = true
+    username            = "monitor"
+    password_wo         = var.snmp_password
+    password_wo_version = 1 # Change this version whenever the password changes.
+
+    # Alternatively, replace the two password_wo fields with:
+    # password = "my-snmpv3-password"
+    # That value is stored in state and preserved on read. Neither password
+    # path detects controller-side password changes. Community is read back.
+  }
+}
+
 # Configure only RADIUS settings
 resource "unifi_setting" "radius_only" {
   site = "default"
@@ -105,6 +131,21 @@ resource "unifi_setting" "wired_site" {
   }
 }
 
+# Keep Channel AI optimizing 5 GHz every night but leave 2.4 GHz alone: the
+# optimizer rewrites the channel of every radio in the bands listed in radios,
+# so a band left out keeps the channel it has (set it on the device). Useful
+# for 2.4 GHz-only IoT devices that do not follow a channel change.
+resource "unifi_setting" "channel_ai" {
+  site = "default"
+
+  radio_ai = {
+    enabled   = true
+    cron_expr = "0 3 * * *"
+    radios    = ["na"]
+    optimize  = ["channel"]
+  }
+}
+
 # Client Device Isolation (Settings > Networks > "Device Isolation (ACL)") is a
 # switch ACL listing the networks whose devices may not talk to each other. It
 # covers same-network traffic across access points, which unifi_wlan's
@@ -128,6 +169,8 @@ resource "unifi_setting" "device_isolation" {
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `auto_speedtest` (Attributes) Periodic automated internet speed test settings. (see [below for nested schema](#nestedatt--auto_speedtest))
 - `connectivity` (Attributes) Wireless meshing and uplink connectivity (Settings > WiFi > Wireless Meshing). Disabling meshing frees the standby mesh radio and doubles the per-band SSID budget: with meshing on, APs reserve a hidden backhaul SSID and allow 4 SSIDs per band instead of 8. The controller-generated mesh SSID and pre-shared key are not exposed and are preserved across updates, as are any options this block does not model. (see [below for nested schema](#nestedatt--connectivity))
 - `country` (Attributes) Regulatory country settings. (see [below for nested schema](#nestedatt--country))
@@ -140,8 +183,12 @@ resource "unifi_setting" "device_isolation" {
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
 - `network_optimization` (Attributes) Automated network optimization settings. (see [below for nested schema](#nestedatt--network_optimization))
 - `ntp` (Attributes) NTP (time server) settings. (see [below for nested schema](#nestedatt--ntp))
+- `radio_ai` (Attributes) Channel AI, the nightly channel optimization (Settings > WiFi > Channel AI). On its schedule the optimizer rewrites the channel of every radio in the bands listed in `radios`, overriding a channel set on the device, so leaving a band out of `radios` is how its channel is pinned while the others stay optimized. Options this block does not model (channel blacklists, per-radio configuration, HT modes) are preserved across updates. (see [below for nested schema](#nestedatt--radio_ai))
 - `radius` (Attributes) RADIUS settings. (see [below for nested schema](#nestedatt--radius))
+- `radius_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `radius.secret` (Terraform 1.11+). Used at apply time but never written to state. It sits at the root rather than inside `radius` because Terraform does not allow a write-only attribute inside a computed nested attribute. Requires the `radius` block (`radius = {}` is enough) and is mutually exclusive with `radius.secret`. Because nothing is stored, a secret changed outside Terraform produces no diff; increment `radius_secret_wo_version` to send a new value.
+- `radius_secret_wo_version` (Number) Version counter for `radius_secret_wo`. Increment this value to trigger a RADIUS secret update.
 - `site` (String) The name of the site to associate the settings with.
+- `snmp` (Attributes) SNMP agent settings (Settings > System > SNMP): a v1/v2c community and a single SNMPv3 user. Only configured SNMP settings are read; import does not populate this attribute. (see [below for nested schema](#nestedatt--snmp))
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `usg` (Attributes) USG settings. (see [below for nested schema](#nestedatt--usg))
@@ -156,7 +203,7 @@ resource "unifi_setting" "device_isolation" {
 Optional:
 
 - `cron_expr` (String) Cron expression controlling when the speed test runs (e.g. `0 * * * *`).
-- `enabled` (Boolean) Whether periodic automated speed tests are enabled.
+- `enabled` (Boolean) Whether periodic automated speed tests are enabled. Taken from the controller when not set (#544).
 
 
 <a id="nestedatt--connectivity"></a>
@@ -206,7 +253,7 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean) Whether DPI is enabled.
+- `enabled` (Boolean) Whether DPI is enabled. Taken from the controller when not set, so declaring the `dpi` block for one attribute no longer turns deep packet inspection off (#544).
 - `fingerprinting_enabled` (Boolean) Whether device fingerprinting is enabled.
 
 
@@ -308,7 +355,7 @@ Optional:
 - `brightness` (Number) Display brightness (1-100).
 - `enabled` (Boolean) Whether the device display is enabled.
 - `idle_timeout` (Number) Seconds of inactivity before the display turns off (10-3600).
-- `sync` (Boolean) Sync display settings across devices.
+- `sync` (Boolean) Sync display settings across devices. Taken from the controller when not set (#544).
 - `touch_event` (Boolean) Whether touch events on the display are enabled.
 
 
@@ -381,6 +428,21 @@ Optional:
 - `setting_preference` (String) Configuration mode: `auto` or `manual`.
 
 
+<a id="nestedatt--radio_ai"></a>
+### Nested Schema for `radio_ai`
+
+Optional:
+
+- `channels_6e` (List of Number) 6 GHz channels the optimizer may choose from.
+- `channels_na` (List of Number) 5 GHz channels the optimizer may choose from.
+- `channels_ng` (List of Number) 2.4 GHz channels the optimizer may choose from.
+- `cron_expr` (String) When the optimizer runs, as a cron expression in the controller's time zone (e.g. `0 3 * * *`).
+- `enabled` (Boolean) Run the optimizer on its schedule.
+- `exclude_devices` (List of String) MAC addresses of devices the optimizer leaves alone.
+- `optimize` (List of String) What the optimizer adjusts: `channel`, `power`.
+- `radios` (List of String) Bands the optimizer may change: `ng` (2.4 GHz), `na` (5 GHz), `6e` (6 GHz).
+
+
 <a id="nestedatt--radius"></a>
 ### Nested Schema for `radius`
 
@@ -390,7 +452,21 @@ Optional:
 - `acct_port` (Number) RADIUS accounting port.
 - `auth_port` (Number) RADIUS authentication port.
 - `interim_update_interval` (String) Interim update interval, as a Go duration string (e.g. `1h`, `3600s`).
-- `secret` (String, Sensitive) RADIUS shared secret.
+- `secret` (String, Sensitive) RADIUS shared secret. Stored in state; use the root-level `radius_secret_wo` to avoid persisting the secret.
+
+
+<a id="nestedatt--snmp"></a>
+### Nested Schema for `snmp`
+
+Optional:
+
+- `community` (String, Sensitive) SNMP v1/v2c community string.
+- `enabled` (Boolean) Enable SNMP v1/v2c.
+- `enabled_v3` (Boolean) Enable SNMPv3.
+- `password` (String, Sensitive) SNMPv3 password, stored in state. The configured value is preserved on read because controllers may omit or mask the password. External password changes are not detected. Mutually exclusive with `password_wo`.
+- `password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only SNMPv3 password (Terraform 1.11+), never stored in plan or state; accepts ephemeral values. Mutually exclusive with `password`. Set `password_wo_version` and change it to rotate this password. Changing only this value does not trigger an update. External password changes are not detected.
+- `password_wo_version` (Number) Positive version for `password_wo`. Required with `password_wo`; change it whenever the write-only password should be applied. The version is stored in state. An unchanged version preserves the controller password during other updates.
+- `username` (String) SNMPv3 username.
 
 
 <a id="nestedatt--syslog"></a>
@@ -400,9 +476,9 @@ Optional:
 
 - `contents` (List of String) Logged facilities (e.g. `device`, `client`, `firewall_default_policy`, `triggers`, `updates`, `admin_activity`, `critical`, `security_detections`, `vpn`).
 - `debug` (Boolean) Enable debug logging.
-- `enabled` (Boolean) Whether remote syslog is enabled.
+- `enabled` (Boolean) Whether remote syslog is enabled. Taken from the controller when not set, so declaring the `syslog` block to manage its server address no longer disables logging (#544).
 - `ip` (String) Remote syslog server IP address.
-- `log_all_contents` (Boolean) Log all available facilities.
+- `log_all_contents` (Boolean) Log all available facilities. Taken from the controller when not set (#544).
 - `netconsole` (Attributes) Netconsole logging settings. (see [below for nested schema](#nestedatt--syslog--netconsole))
 - `port` (Number) Remote syslog server port (1-65535).
 - `this_controller` (Attributes) Forwarding of this controller's own events to the remote syslog server. (see [below for nested schema](#nestedatt--syslog--this_controller))

@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -117,6 +118,8 @@ type wanResourceModel struct {
 	IPv6SettingPreference types.String `tfsdk:"ipv6_setting_preference"`
 	SingleNetworkLAN      types.String `tfsdk:"single_network_lan"`
 	MACOverrideEnabled    types.Bool   `tfsdk:"mac_override_enabled"`
+	InterfaceMTU          types.Int64  `tfsdk:"interface_mtu"`
+	InterfaceMTUEnabled   types.Bool   `tfsdk:"interface_mtu_enabled"`
 	Dslite                types.Object `tfsdk:"dslite"`
 
 	// Provider Capabilities
@@ -283,14 +286,16 @@ func (m loadBalanceModel) AttributeTypes() map[string]attr.Type {
 
 // igmpProxyModel describes the IGMP proxy configuration nested object.
 type igmpProxyModel struct {
-	Downstream types.String `tfsdk:"downstream"`
-	Upstream   types.Bool   `tfsdk:"upstream"`
+	Downstream           types.String `tfsdk:"downstream"`
+	DownstreamNetworkIDs types.Set    `tfsdk:"downstream_network_ids"`
+	Upstream             types.Bool   `tfsdk:"upstream"`
 }
 
 func (m igmpProxyModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"downstream": types.StringType,
-		"upstream":   types.BoolType,
+		"downstream":             types.StringType,
+		"downstream_network_ids": types.SetType{ElemType: types.StringType},
+		"upstream":               types.BoolType,
 	}
 }
 
@@ -305,6 +310,15 @@ func (m dhcpv6PDModel) AttributeTypes() map[string]attr.Type {
 		"size":      types.Int64Type,
 		"size_auto": types.BoolType,
 	}
+}
+
+// igmpProxyForDownstream is the igmp_proxy_for value that goes with a
+// downstream network list: some when it is non-empty, none otherwise.
+func igmpProxyForDownstream(networkIDs []string) string {
+	if len(networkIDs) > 0 {
+		return "some"
+	}
+	return "none"
 }
 
 // dhcpv6WanModel describes the DHCPv6 WAN configuration nested object.
@@ -356,7 +370,7 @@ func (r *wanResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -832,12 +846,18 @@ func (r *wanResource) Schema(
 					"downstream": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
-						MarkdownDescription: "IGMP proxy downstream target (none, lan, guest)",
-						PlanModifiers: []planmodifier.String{
-							stringplanmodifier.UseStateForUnknown(),
-						},
+						MarkdownDescription: "IGMP proxy downstream target (`none`, `lan`, `guest`). UniFi OS gateways take the downstream side from `downstream_network_ids` instead and report `some` here while that set is non-empty; they reject `lan` and `guest`. Left unset it follows the set, so it is not carried over from state at plan time.",
 						Validators: []validator.String{
-							stringvalidator.OneOf("none", "lan", "guest"),
+							stringvalidator.OneOf("none", "lan", "guest", "some"),
+						},
+					},
+					"downstream_network_ids": schema.SetAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "IDs of the LAN networks the proxy forwards multicast onto (UniFi OS gateways). Setting it also sets `downstream` to `some`, or `none` when empty, unless `downstream` names a target itself.",
+						PlanModifiers: []planmodifier.Set{
+							setplanmodifier.UseStateForUnknown(),
 						},
 					},
 					"upstream": schema.BoolAttribute{
@@ -903,6 +923,31 @@ func (r *wanResource) Schema(
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Whether the WAN interface MAC address is overridden.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"interface_mtu": schema.Int64Attribute{
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "MTU of the WAN interface, in bytes. Only applied when " +
+					"`interface_mtu_enabled` is `true`. For PPPoE with RFC 4638 (\"baby jumbo\" " +
+					"frames), set `1508` so the PPPoE session itself can carry a 1500-byte MTU. " +
+					"Taken from the controller when not set.",
+				Validators: []validator.Int64{
+					// The controller's own bounds for interface_mtu.
+					int64validator.Between(68, 65536),
+				},
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"interface_mtu_enabled": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "Whether `interface_mtu` overrides the WAN interface's default MTU. " +
+					"Taken from the controller when not set, so an MTU configured in the UniFi UI " +
+					"is preserved by applies that do not manage it.",
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
@@ -1263,6 +1308,12 @@ func (r *wanResource) overlayConfig(
 	if !config.IPv6SettingPreference.IsNull() {
 		state.IPv6SettingPreference = plan.IPv6SettingPreference
 	}
+	if !config.InterfaceMTU.IsNull() {
+		state.InterfaceMTU = plan.InterfaceMTU
+	}
+	if !config.InterfaceMTUEnabled.IsNull() {
+		state.InterfaceMTUEnabled = plan.InterfaceMTUEnabled
+	}
 	// The controller can force dslite.remote_host_auto back to `true`
 	// server-side; re-assert each DS-Lite leaf the plan knows so the create
 	// result matches the plan (#281). A leaf not set in config is unknown in
@@ -1295,7 +1346,7 @@ func (r *wanResource) Read(
 	// identity support. When an identity comes in it must be passed through
 	// unchanged: Terraform treats any modification of a non-null identity
 	// (including filling a null attribute) as an error.
-	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsNull()
+	haveIdentity := req.Identity != nil && !req.Identity.Raw.IsFullyNull()
 	var identity wanIdentityModel
 	if haveIdentity {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
@@ -1446,7 +1497,7 @@ func (r *wanResource) Update(
 	// carry the incoming identity through unchanged, deriving a fresh one from
 	// state only when it was absent.
 	identity := wanIdentityModel{ID: state.ID, Site: state.Site}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -1522,6 +1573,12 @@ func (r *wanResource) applyPlanToState(
 	}
 	if !plan.MACOverrideEnabled.IsNull() && !plan.MACOverrideEnabled.IsUnknown() {
 		state.MACOverrideEnabled = plan.MACOverrideEnabled
+	}
+	if !plan.InterfaceMTU.IsNull() && !plan.InterfaceMTU.IsUnknown() {
+		state.InterfaceMTU = plan.InterfaceMTU
+	}
+	if !plan.InterfaceMTUEnabled.IsNull() && !plan.InterfaceMTUEnabled.IsUnknown() {
+		state.InterfaceMTUEnabled = plan.InterfaceMTUEnabled
 	}
 	// DS-Lite: re-assert every leaf the plan knows and keep the state's value
 	// for the rest, as the flat attributes were merged leaf by leaf.
@@ -1864,6 +1921,18 @@ func (r *wanResource) modelToNetwork(
 			if !igmp.Downstream.IsNull() && !igmp.Downstream.IsUnknown() {
 				network.IGMPProxyFor = igmp.Downstream.ValueStringPointer()
 			}
+			if !igmp.DownstreamNetworkIDs.IsNull() && !igmp.DownstreamNetworkIDs.IsUnknown() {
+				var networkIDs []string
+				diags.Append(igmp.DownstreamNetworkIDs.ElementsAs(ctx, &networkIDs, false)...)
+				network.IGMPProxyDownstreamNetworkIDs = networkIDs
+				// An explicit lan or guest stays as configured; otherwise
+				// some/none follows the list.
+				if network.IGMPProxyFor == nil || *network.IGMPProxyFor == "some" ||
+					*network.IGMPProxyFor == "none" {
+					igmpProxyFor := igmpProxyForDownstream(networkIDs)
+					network.IGMPProxyFor = &igmpProxyFor
+				}
+			}
 			if !igmp.Upstream.IsNull() && !igmp.Upstream.IsUnknown() {
 				network.IGMPProxyUpstream = igmp.Upstream.ValueBool()
 			}
@@ -1885,6 +1954,16 @@ func (r *wanResource) modelToNetwork(
 	}
 	if !model.MACOverrideEnabled.IsNull() && !model.MACOverrideEnabled.IsUnknown() {
 		network.MACOverrideEnabled = model.MACOverrideEnabled.ValueBool()
+	}
+	// interface_mtu_enabled has no omitempty in go-unifi, so it is always on the
+	// wire: an update that left it out of the model would send `false` and
+	// silently drop an MTU set in the UI. State always carries the controller's
+	// value (networkToModel), so an unmanaged MTU round-trips unchanged.
+	if !model.InterfaceMTU.IsNull() && !model.InterfaceMTU.IsUnknown() {
+		network.InterfaceMtu = model.InterfaceMTU.ValueInt64Pointer()
+	}
+	if !model.InterfaceMTUEnabled.IsNull() && !model.InterfaceMTUEnabled.IsUnknown() {
+		network.InterfaceMtuEnabled = model.InterfaceMTUEnabled.ValueBool()
 	}
 	dslite, ok, d := util.ObjectAs[wanDsliteModel](ctx, model.Dslite)
 	diags.Append(d...)
@@ -2199,7 +2278,8 @@ func (r *wanResource) networkToModel(
 	}
 
 	// IGMP Settings — only populate if model already has it or API has data
-	hasIGMPData := network.IGMPProxyFor != nil || network.IGMPProxyUpstream
+	hasIGMPData := network.IGMPProxyFor != nil || network.IGMPProxyUpstream ||
+		len(network.IGMPProxyDownstreamNetworkIDs) > 0
 	if !model.IGMPProxy.IsNull() || hasIGMPData {
 		var currentIGMP igmpProxyModel
 		if !model.IGMPProxy.IsNull() && !model.IGMPProxy.IsUnknown() {
@@ -2209,6 +2289,13 @@ func (r *wanResource) networkToModel(
 		if network.IGMPProxyFor != nil {
 			currentIGMP.Downstream = types.StringValue(*network.IGMPProxyFor)
 		}
+		networkIDs := network.IGMPProxyDownstreamNetworkIDs
+		if networkIDs == nil {
+			networkIDs = []string{}
+		}
+		downstreamNetworkIDs, d := types.SetValueFrom(ctx, types.StringType, networkIDs)
+		diags.Append(d...)
+		currentIGMP.DownstreamNetworkIDs = downstreamNetworkIDs
 		currentIGMP.Upstream = types.BoolValue(network.IGMPProxyUpstream)
 		igmpObj, d := types.ObjectValueFrom(ctx, currentIGMP.AttributeTypes(), currentIGMP)
 		diags.Append(d...)
@@ -2217,11 +2304,22 @@ func (r *wanResource) networkToModel(
 
 	// Additional Settings
 	model.ReportWANEvent = types.BoolValue(network.ReportWANEvent)
-	model.Enabled = types.BoolValue(network.Enabled)
+	// The controller omits `enabled` from WAN networks (Network 10.x has no
+	// enable toggle for a WAN), and go-unifi decodes the missing key as false.
+	// Reading that false would plan `enabled = false` on import and then send
+	// it with every update, switching the uplink off (#600). Since an omitted
+	// key and an explicit false decode the same, a false only replaces a value
+	// the model does not hold yet, and then as true; a known prior value (an
+	// explicit `enabled = false` included) is kept.
+	if network.Enabled || model.Enabled.IsNull() || model.Enabled.IsUnknown() {
+		model.Enabled = types.BoolValue(true)
+	}
 	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
 	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
 	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)
 	model.MACOverrideEnabled = types.BoolValue(network.MACOverrideEnabled)
+	model.InterfaceMTU = types.Int64PointerValue(network.InterfaceMtu)
+	model.InterfaceMTUEnabled = types.BoolValue(network.InterfaceMtuEnabled)
 	dsliteObj, d := types.ObjectValueFrom(ctx, wanDsliteModel{}.AttributeTypes(), wanDsliteModel{
 		RemoteHost:     types.StringPointerValue(network.WANDsliteRemoteHost),
 		RemoteHostAuto: types.BoolValue(network.WANDsliteRemoteHostAuto),

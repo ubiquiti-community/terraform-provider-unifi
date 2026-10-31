@@ -237,7 +237,7 @@ func (r *portProfileResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -352,14 +352,15 @@ func (r *portProfileResource) Schema(
 			},
 			"forward": schema.StringAttribute{
 				Description: "The type forwarding to use for the port profile. Can be " +
-					"`all`, `native`, `customize` or `disabled`. `customize` requires a " +
-					"native network that carries a VLAN id: the controller silently " +
-					"stores `all` for a profile whose native network is untagged, which " +
-					"the provider rejects at plan time rather than letting the apply " +
-					"leave the resource tainted.",
+					"`all`, `native`, `customize` or `disabled`. When unset it follows " +
+					"`tagged_vlan_mgmt`, which is what the controller stores for that mode: " +
+					"`all` for `auto`, `native` for `block_all`, `customize` for `custom`. " +
+					"`customize` requires a native network that carries a VLAN id, unless " +
+					"`tagged_vlan_mgmt` is `custom`: otherwise the controller silently stores " +
+					"`all` for a profile whose native network is untagged, which the provider " +
+					"rejects at plan time rather than letting the apply leave the resource tainted.",
 				Optional: true,
 				Computed: true,
-				Default:  stringdefault.StaticString("all"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("all", "native", "customize", "disabled"),
 				},
@@ -728,7 +729,7 @@ func (r *portProfileResource) Read(
 	// Fall back to the resource identity when the state carries no ID (e.g.
 	// old states, or a state written by an identity-based import).
 	if state.ID.IsNull() || state.ID.IsUnknown() {
-		if req.Identity != nil && !req.Identity.Raw.IsNull() {
+		if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 			var identity portProfileIdentityModel
 			resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 			if resp.Diagnostics.HasError() {
@@ -771,7 +772,7 @@ func (r *portProfileResource) Read(
 	// A stored identity must be passed through unchanged: Terraform treats
 	// any modification of a non-null identity (including filling a null
 	// attribute) as an error. Only derive identity from state when none exists.
-	if req.Identity == nil || req.Identity.Raw.IsNull() {
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
 			ID:   state.ID,
 			Site: state.Site,
@@ -858,7 +859,7 @@ func (r *portProfileResource) Update(
 	// A stored identity must be passed through unchanged: Terraform treats
 	// any modification of a non-null identity (including filling a null
 	// attribute) as an error. Only derive identity from state when none exists.
-	if req.Identity == nil || req.Identity.Raw.IsNull() {
+	if req.Identity == nil || req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, portProfileIdentityModel{
 			ID:   state.ID,
 			Site: state.Site,
@@ -974,8 +975,16 @@ func (r *portProfileResource) ModifyPlan(
 		return // not configured yet (e.g. during validation)
 	}
 
-	var forward, nativeID, site types.String
+	var forward, nativeID, site, taggedMgmt, configTaggedMgmt, priorTaggedMgmt types.String
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("forward"), &forward)...)
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, path.Root("tagged_vlan_mgmt"), &taggedMgmt)...)
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("tagged_vlan_mgmt"), &configTaggedMgmt)...)
+	if !req.State.Raw.IsNull() {
+		resp.Diagnostics.Append(
+			req.State.GetAttribute(ctx, path.Root("tagged_vlan_mgmt"), &priorTaggedMgmt)...)
+	}
 	resp.Diagnostics.Append(
 		req.Plan.GetAttribute(ctx, path.Root("native_networkconf_id"), &nativeID)...)
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("site"), &site)...)
@@ -992,6 +1001,10 @@ func (r *portProfileResource) ModifyPlan(
 	if nativeID.IsNull() || nativeID.IsUnknown() || nativeID.ValueString() == "" {
 		return
 	}
+	mode, known := customizeTaggedVLANMgmt(taggedMgmt, configTaggedMgmt, priorTaggedMgmt)
+	if !known {
+		return
+	}
 
 	siteName := site.ValueString()
 	if siteName == "" {
@@ -1004,7 +1017,7 @@ func (r *portProfileResource) ModifyPlan(
 		// real error, and a transient read must not block an unrelated change.
 		return
 	}
-	if network.VLAN != nil && *network.VLAN != 0 {
+	if !customizeIsRewritten(mode, network.VLAN) {
 		return
 	}
 
@@ -1017,11 +1030,43 @@ func (r *portProfileResource) ModifyPlan(
 				"post-apply read would then disagree with the plan, failing with "+
 				"\"Provider produced inconsistent result after apply\" and leaving the "+
 				"resource tainted.\n\n"+
-				"Either set forward = \"all\" for this profile, or point "+
-				"native_networkconf_id at a network that carries a VLAN id.",
+				"Either set forward = \"all\" for this profile, set "+
+				"tagged_vlan_mgmt = \"custom\" (the controller keeps customize "+
+				"for it), or point native_networkconf_id at a network that carries "+
+				"a VLAN id.",
 			networkName(network),
 		),
 	)
+}
+
+// customizeIsRewritten reports whether the controller stores forward = "all"
+// for a customize profile: custom keeps customize whatever the native network,
+// the other modes keep it only on a native network with a VLAN id.
+func customizeIsRewritten(taggedVLANMgmt string, nativeVLAN *int64) bool {
+	if taggedVLANMgmt == "custom" {
+		return false
+	}
+	return nativeVLAN == nil || *nativeVLAN == 0
+}
+
+// customizeTaggedVLANMgmt resolves the tagged_vlan_mgmt that the customize
+// check judges. The attribute is Optional+Computed, so when configuration
+// leaves it out it plans unknown on any update; the controller keeps the
+// stored mode, which prior state holds. On create there is no prior mode and
+// the controller assigns its default, so the empty mode keeps the refusal. A
+// value set by an expression that is unknown until apply cannot be judged,
+// so the second return is false and the check is skipped.
+func customizeTaggedVLANMgmt(planned, configured, prior types.String) (string, bool) {
+	if !planned.IsUnknown() {
+		return planned.ValueString(), true
+	}
+	if configured.IsUnknown() {
+		return "", false
+	}
+	if prior.IsNull() || prior.IsUnknown() {
+		return "", true
+	}
+	return prior.ValueString(), true
 }
 
 // networkName returns a network's name for diagnostics, falling back to its ID.
@@ -1177,6 +1222,12 @@ func (r *portProfileResource) modelToAPIPortProfile(
 	}
 	if !model.TaggedVLANMgmt.IsNull() && !model.TaggedVLANMgmt.IsUnknown() {
 		portProfile.TaggedVLANMgmt = model.TaggedVLANMgmt.ValueString()
+	}
+
+	// The controller stores forward in step with tagged_vlan_mgmt, so an unset
+	// forward is derived from it rather than defaulted.
+	if model.Forward.IsNull() || model.Forward.IsUnknown() {
+		portProfile.Forward = forwardForTaggedVLANMgmt(portProfile.TaggedVLANMgmt)
 	}
 	if !model.FecMode.IsNull() {
 		portProfile.FecMode = model.FecMode.ValueString()
@@ -1607,5 +1658,18 @@ func (r *portProfileResource) List(
 				return
 			}
 		}
+	}
+}
+
+// forwardForTaggedVLANMgmt is the forward mode the controller stores for a
+// tagged VLAN management mode.
+func forwardForTaggedVLANMgmt(taggedVLANMgmt string) string {
+	switch taggedVLANMgmt {
+	case "block_all":
+		return "native"
+	case "custom":
+		return "customize"
+	default:
+		return "all"
 	}
 }

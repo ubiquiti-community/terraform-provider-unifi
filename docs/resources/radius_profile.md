@@ -123,7 +123,7 @@ Optional:
 Optional:
 
 - `enabled` (Boolean) Specifies whether to use interim_update.
-- `interval` (String) Specifies the RADIUS interim update interval, as a Go duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s`.
+- `interval` (String) Specifies the RADIUS interim update interval, as a Go duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s` for a newly created profile; an existing profile keeps the controller's value, which may be none.
 
 
 <a id="nestedatt--timeouts"></a>

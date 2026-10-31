@@ -27,6 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -107,11 +108,18 @@ func radiusProfileVlanAttrTypes() map[string]attr.Type {
 // Object-level defaults reproduce the values the flat attributes used to send
 // when the practitioner left a whole group out of configuration, so the
 // request body on create is unchanged by the nesting.
+//
+// interim_update.interval is the exception: its `1h` is applied on create only,
+// by the leaf's plan modifier, so the object default leaves it null. The
+// controller stores no interval on a profile that never set one (the built-in
+// Default profile has none), and a static `1h` planned `null -> 1h0m0s` on
+// every adopted profile, which the configuration could not suppress, not even
+// with ignore_changes (#544).
 
 func radiusProfileInterimUpdateDefault() types.Object {
 	return types.ObjectValueMust(radiusProfileInterimUpdateAttrTypes(), map[string]attr.Value{
 		"enabled":  types.BoolValue(false),
-		"interval": timetypes.NewGoDurationValue(time.Hour),
+		"interval": timetypes.NewGoDurationNull(),
 	})
 }
 
@@ -155,7 +163,7 @@ func (r *radiusProfileResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -227,13 +235,17 @@ func (r *radiusProfileResource) Schema(
 					},
 					"interval": schema.StringAttribute{
 						MarkdownDescription: "Specifies the RADIUS interim update interval, as a Go " +
-							"duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s`.",
+							"duration string (e.g. `1h`, `3600s`). Defaults to `1h0m0s` for a newly " +
+							"created profile; an existing profile keeps the controller's value, " +
+							"which may be none.",
 						CustomType: timetypes.GoDurationType{},
 						Optional:   true,
 						Computed:   true,
-						Default:    stringdefault.StaticString("1h0m0s"),
 						Validators: []validator.String{
 							validators.GoDurationMultipleOf(time.Second),
+						},
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreateKeepNull("1h0m0s"),
 						},
 					},
 				},

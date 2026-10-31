@@ -90,7 +90,7 @@ func (r *firewallZoneResource) IdentitySchema(
 	resp *resource.IdentitySchemaResponse,
 ) {
 	resp.IdentitySchema = identityschema.Schema{
-		Version: 1,
+		Version: 2,
 		Attributes: map[string]identityschema.Attribute{
 			"id": identityschema.StringAttribute{
 				RequiredForImport: true,
@@ -259,7 +259,7 @@ func (r *firewallZoneResource) Read(
 	// identity support. This also lets Read work from an identity-only state
 	// (the refresh right after an identity-based import).
 	var identity firewallZoneIdentityModel
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -348,7 +348,7 @@ func (r *firewallZoneResource) Update(
 		ID:   data.ID,
 		Site: data.Site,
 	}
-	if req.Identity != nil && !req.Identity.Raw.IsNull() {
+	if req.Identity != nil && !req.Identity.Raw.IsFullyNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 		if resp.Diagnostics.HasError() {
 			return
