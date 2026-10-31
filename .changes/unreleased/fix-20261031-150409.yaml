@@ -1,3 +1,0 @@
-kind: fix
-body: '**Routing resources no longer overwrite adopted routes and BGP with schema defaults.** An imported `unifi_static_route` or `unifi_traffic_route` disabled on the controller was re-enabled, a switch static route moved to the gateway, a traffic route''s kill switch turned off (letting traffic leak past the VPN when it is down), and an enabled `unifi_bgp` configuration turned off and renamed. These are now held from state when undeclared; new routes are still created enabled on the default gateway and new BGP configurations keep `frr.conf` / `BGP Configuration` (#691, part of #544)'
-time: 2026-10-31T15:04:09.2457+01:00

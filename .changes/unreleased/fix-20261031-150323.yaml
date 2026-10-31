@@ -1,3 +1,0 @@
-kind: fix
-body: '**`unifi_firewall_rule` applies its defaults on create only.** An adopted rule keeps its `enabled`, `network_type` (`ADDRv4` is no longer rewritten to `NETv4`), `state` flags, `logging` and `protocol_match_excepted`. An omitted `source`/`destination` block no longer plans nulls over the controller''s addresses and ports, which used to end in "inconsistent result after apply". New rules are created exactly as before. (#689, part of #544)'
-time: 2026-10-31T15:03:23.04491+01:00

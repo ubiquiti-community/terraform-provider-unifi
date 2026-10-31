@@ -1,3 +1,0 @@
-kind: fix
-body: '**`unifi_firewall_policy` no longer resets controller values on adopted policies.** `protocol`, `description`, `logging`, `match_opposite_protocol`, `create_allow_respond` and the endpoints'' `port_group_id`, `ip_group_id`, `port_matching_type` and `match_opposite_{ips,networks,ports}` drop their static defaults and keep the controller''s value when not declared. `create_allow_respond` alone was wrong for 333 of 377 policies on a live site, and importing a grouped policy cleared its address and port groups. `enabled` still defaults to `true`, but only for a new policy. (#683, part of #544)'
-time: 2026-10-31T15:02:49.214639+01:00
