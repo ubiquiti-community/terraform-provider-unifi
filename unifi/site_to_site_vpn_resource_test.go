@@ -1423,3 +1423,79 @@ func TestSiteToSiteVPNDynamicSubnetsValid(t *testing.T) {
 // buildDynamicSubnetsConfig builds a tfsdk.Config for the resource schema with
 // every attribute null except dynamic_routing and remote_subnets, for driving
 // the dynamicSubnetsValidator end-to-end.
+
+func TestTunnelIPEnabledPlanModifier(t *testing.T) {
+	ctx := context.Background()
+
+	var schemaResp fwresource.SchemaResponse
+	(&siteToSiteVPNResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatalf("schema terraform type is not an object")
+	}
+	buildConfig := func(tunnelIP types.String) tfsdk.Config {
+		vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+		for name, at := range objType.AttributeTypes {
+			vals[name] = tftypes.NewValue(at, nil)
+		}
+		v, _ := tunnelIP.ToTerraformValue(ctx)
+		vals["tunnel_ip"] = v
+		return tfsdk.Config{Schema: schemaResp.Schema, Raw: tftypes.NewValue(objType, vals)}
+	}
+
+	tests := []struct {
+		name        string
+		configValue types.Bool
+		tunnelIP    types.String
+		planValue   types.Bool
+		want        types.Bool
+	}{
+		{
+			"ip added to existing resource",
+			types.BoolNull(),
+			types.StringValue("169.254.0.1/30"),
+			types.BoolValue(false),
+			types.BoolValue(true),
+		},
+		{
+			"explicit false wins",
+			types.BoolValue(false),
+			types.StringValue("169.254.0.1/30"),
+			types.BoolValue(false),
+			types.BoolValue(false),
+		},
+		{
+			"no ip keeps prior plan",
+			types.BoolNull(),
+			types.StringNull(),
+			types.BoolValue(false),
+			types.BoolValue(false),
+		},
+		{
+			"unknown ip",
+			types.BoolNull(),
+			types.StringUnknown(),
+			types.BoolValue(false),
+			types.BoolUnknown(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := planmodifier.BoolRequest{
+				Path:        path.Root("tunnel_ip_enabled"),
+				Config:      buildConfig(tt.tunnelIP),
+				ConfigValue: tt.configValue,
+			}
+			resp := &planmodifier.BoolResponse{PlanValue: tt.planValue}
+			tunnelIPEnabledPlanModifier{}.PlanModifyBool(ctx, req, resp)
+
+			if resp.Diagnostics.HasError() {
+				t.Fatalf("PlanModifyBool diagnostics: %v", resp.Diagnostics)
+			}
+			if !resp.PlanValue.Equal(tt.want) {
+				t.Errorf("PlanValue = %v, want %v", resp.PlanValue, tt.want)
+			}
+		})
+	}
+}

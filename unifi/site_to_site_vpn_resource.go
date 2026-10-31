@@ -358,9 +358,12 @@ func (r *siteToSiteVPNResource) Schema(
 				},
 			},
 			"tunnel_ip": schema.StringAttribute{
-				MarkdownDescription: "The tunnel IP used for the IPsec connection.",
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "The tunnel IP used for the IPsec connection, in CIDR " +
+					"notation (e.g. `169.254.0.1/30`). Removing it from the configuration " +
+					"keeps the controller's value (the API cannot clear it); set " +
+					"`tunnel_ip_enabled = false` to stop using it.",
+				Optional: true,
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -371,14 +374,15 @@ func (r *siteToSiteVPNResource) Schema(
 				},
 			},
 			"tunnel_ip_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the tunnel IP is used." +
+				MarkdownDescription: "Whether the tunnel IP is used. " +
 					"Set automatically when `tunnel_ip` is " +
 					"configured; declare it explicitly to enable the tunnel IP " +
-					"without pinning a value.",
+					"without pinning a value, or set it to `false` to disable it.",
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
+					tunnelIPEnabledPlanModifier{},
 				},
 			},
 			"key_exchange": schema.StringAttribute{
@@ -1357,4 +1361,40 @@ func (m dynamicSubnetsPlanModifier) PlanModifyBool(
 	resp.PlanValue = types.BoolValue(
 		remoteVPNDynamicSubnetsEnabled(req.ConfigValue, dynamicRouting, remoteSubnets),
 	)
+}
+
+// tunnelIPEnabledPlanModifier plans tunnel_ip_enabled = true when the flag is
+// not configured but tunnel_ip is, mirroring tunnelIPEnabled. Without it,
+// UseStateForUnknown would carry a prior false into the plan when a tunnel IP
+// is added to an existing resource, and the new IP would stay disabled.
+type tunnelIPEnabledPlanModifier struct{}
+
+func (m tunnelIPEnabledPlanModifier) Description(_ context.Context) string {
+	return "Plans true when tunnel_ip is configured and tunnel_ip_enabled is not."
+}
+
+func (m tunnelIPEnabledPlanModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m tunnelIPEnabledPlanModifier) PlanModifyBool(
+	ctx context.Context,
+	req planmodifier.BoolRequest,
+	resp *planmodifier.BoolResponse,
+) {
+	if !req.ConfigValue.IsNull() {
+		return
+	}
+	var tunnelIP types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("tunnel_ip"), &tunnelIP)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if tunnelIP.IsUnknown() {
+		resp.PlanValue = types.BoolUnknown()
+		return
+	}
+	if tunnelIPEnabled(types.BoolNull(), tunnelIP) {
+		resp.PlanValue = types.BoolValue(true)
+	}
 }
