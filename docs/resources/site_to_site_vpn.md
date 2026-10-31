@@ -99,12 +99,12 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
 - `profile` (String) IPsec profile. One of `customized`, `azure_dynamic`, or `azure_static`. Set to `customized` to tune the `ike`/`esp` objects; the controller may derive the ESP values from the IKE ones.
 - `remote_identifier` (String) IKE remote identifier used for peer authentication (the UI's "Remote Identifier"). See `local_identifier`.
 - `remote_identifier_enabled` (Boolean) Whether the remote identifier is used for authentication. See `local_identifier_enabled`.
-- `remote_vpn_dynamic_subnets_enabled` (Boolean) Whether the tunnel advertises dynamically learned subnets. It can be enabled manually, but it is forced on (and cannot be disabled) when `dynamic_routing` is enabled and `remote_subnets` is empty, since the tunnel then relies entirely on learned routes.
+- `remote_vpn_dynamic_subnets_enabled` (Boolean) Whether the tunnel advertises dynamically learned subnets. It can be enabled manually, but it is forced on (and cannot be disabled) when `dynamic_routing` is enabled and `remote_subnets` is empty, since the tunnel then relies entirely on learned routes. When omitted (and not forced on), the current value is kept.
 - `route_distance` (Number) The route distance (administrative metric) for tunnel routes (1-255).
 - `site` (String) The name of the site to associate the VPN with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
-- `tunnel_ip` (String) The tunnel IP used for the IPsec connection.
-- `tunnel_ip_enabled` (Boolean) Whether the tunnel IP is used.Set automatically when `tunnel_ip` is configured; declare it explicitly to enable the tunnel IP without pinning a value.
+- `tunnel_ip` (String) The tunnel IP used for the IPsec connection, in CIDR notation (e.g. `169.254.0.1/30`). Removing it from the configuration keeps the controller's value (the API cannot clear it); set `tunnel_ip_enabled = false` to stop using it.
+- `tunnel_ip_enabled` (Boolean) Whether the tunnel IP is used. Set automatically when `tunnel_ip` is configured; declare it explicitly to enable the tunnel IP without pinning a value, or set it to `false` to disable it.
 
 ### Read-Only
 
