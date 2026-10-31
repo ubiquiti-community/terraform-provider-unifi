@@ -95,13 +95,13 @@ resource "unifi_bgp" "structured" {
 
 - `asn` (Number) The BGP Autonomous System Number. Conflicts with `config`.
 - `config` (String) The raw FRRouting BGP daemon configuration. Conflicts with `asn`, `router_id`, and `peers`.
-- `description` (String) Description of the BGP configuration.
-- `enabled` (Boolean) Enable BGP routing.
+- `description` (String) Description of the BGP configuration. Defaults to `BGP Configuration` for a new configuration; an existing one keeps the controller's value when this is not set (#544).
+- `enabled` (Boolean) Enable BGP routing. Taken from the controller when not set (a new configuration is created disabled), so adopting a running BGP configuration does not switch it off (#544).
 - `peers` (Attributes List) List of BGP peer groups. Conflicts with `config`. (see [below for nested schema](#nestedatt--peers))
 - `router_id` (String) The BGP router ID (typically an IP address). Conflicts with `config`.
 - `site` (String) The name of the site to associate the BGP configuration with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
-- `upload_file_name` (String) The name of the uploaded configuration file.
+- `upload_file_name` (String) The name of the uploaded configuration file. Defaults to `frr.conf` for a new configuration; an existing one keeps the controller's value when this is not set (#544).
 
 ### Read-Only
 

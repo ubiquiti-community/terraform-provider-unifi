@@ -106,8 +106,8 @@ resource "unifi_traffic_route" "network_route" {
 
 - `description` (String) A description of the traffic route (max 128 characters).
 - `destination` (Attributes) Destination filter for this traffic route. Specify exactly one of `domain`, `region`, or `ip`. When omitted, the route matches all internet traffic. (see [below for nested schema](#nestedatt--destination))
-- `enabled` (Boolean) Whether the traffic route is enabled.
-- `kill_switch_enabled` (Boolean) Whether the kill switch is enabled. When enabled, traffic is blocked if the target network/VPN is unavailable.
+- `enabled` (Boolean) Whether the traffic route is enabled. A new route is created enabled; an existing one keeps the controller's value when this is not set, so adopting a disabled route does not re-enable it (#544).
+- `kill_switch_enabled` (Boolean) Whether the kill switch is enabled. When enabled, traffic is blocked if the target network/VPN is unavailable. Taken from the controller when not set (a new route gets `false`), so adopting a route does not switch its kill switch off and leak traffic past the VPN (#544).
 - `network_id` (String) The ID of the network or VPN to route matching traffic through. Defaults to the primary WAN network.
 - `next_hop` (String) The next hop for the traffic route.
 - `site` (String) The name of the site to associate the traffic route with.

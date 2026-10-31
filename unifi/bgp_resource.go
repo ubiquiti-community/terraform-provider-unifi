@@ -18,13 +18,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 )
 
 // frrConfigTemplate is the Go template used to render FRR config from structured attributes.
@@ -205,10 +205,14 @@ func (r *bgpResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable BGP routing.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Enable BGP routing. Taken from the controller when not " +
+					"set (a new configuration is created disabled), so adopting a running BGP " +
+					"configuration does not switch it off (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"config": schema.StringAttribute{
 				MarkdownDescription: "The raw FRRouting BGP daemon configuration. Conflicts with `asn`, `router_id`, and `peers`.",
@@ -272,16 +276,24 @@ func (r *bgpResource) Schema(
 				},
 			},
 			"upload_file_name": schema.StringAttribute{
-				MarkdownDescription: "The name of the uploaded configuration file.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("frr.conf"),
+				MarkdownDescription: "The name of the uploaded configuration file. Defaults " +
+					"to `frr.conf` for a new configuration; an existing one keeps the " +
+					"controller's value when this is not set (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreateKeepNull("frr.conf"),
+				},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Description of the BGP configuration.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("BGP Configuration"),
+				MarkdownDescription: "Description of the BGP configuration. Defaults to " +
+					"`BGP Configuration` for a new configuration; an existing one keeps the " +
+					"controller's value when this is not set (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreateKeepNull("BGP Configuration"),
+				},
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
