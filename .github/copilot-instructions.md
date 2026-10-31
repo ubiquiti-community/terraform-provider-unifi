@@ -929,6 +929,16 @@ import (
 - [ ] Error handling follows Framework patterns
 - [ ] Nested objects map correctly to API fields
 - [ ] Null/empty values handled consistently
+- [ ] Changelog fragment added under `.changes/unreleased/`
+
+## Changelog
+
+Never edit `CHANGELOG.md`: it is generated at release time. Add one changelog
+fragment per user-visible change with `go tool changie new --kind <kind> --body '<entry>'`
+(kinds: `feature`, `breaking`, `deprecation`, `fix`, `docs`, `maintenance`,
+`dependency`) and commit the generated `.changes/unreleased/*.yaml`. The body is
+a bold one-line summary, then the explanation, then `(#PR, from #issue by @user)`.
+See `CONTRIBUTING.md`.
 
 ## Resources for Reference
 

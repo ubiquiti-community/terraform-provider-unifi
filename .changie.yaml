@@ -1,0 +1,60 @@
+# Changelog fragments, assembled into CHANGELOG.md at release time.
+# See CONTRIBUTING.md ("Changelog") for the contributor and release workflow.
+#
+# .changes/vX.Y.Z.md holds the released notes of each version (the source of
+# CHANGELOG.md); .changes/unreleased/*.yaml holds one fragment per change.
+# `go tool changie merge` rebuilds CHANGELOG.md from header.tpl.md and every
+# version file, newest first.
+changesDir: .changes
+unreleasedDir: unreleased
+headerPath: header.tpl.md
+changelogPath: CHANGELOG.md
+versionExt: md
+# Optional free-text intro and **Upgrade notes:** of a release: write them in
+# .changes/unreleased/header.md before `changie batch`; it is rendered under the
+# version heading, before the kinds, and removed by the batch.
+versionHeaderPath: header.md
+versionFormat: '## [{{.Version}}] - {{.Time.Format "2006-01-02"}}'
+kindFormat: '### {{.Kind}}'
+changeFormat: '- {{.Body}}'
+body:
+  minLength: 3
+# The order below is the order of the sections in a release.
+kinds:
+  - key: feature
+    label: ✨ Features
+    auto: minor
+  - key: breaking
+    label: ⚠️ Breaking Changes
+    auto: minor
+  - key: deprecation
+    label: ⚠️ Deprecations
+    auto: minor
+  - key: fix
+    label: 🐛 Bug Fixes
+    auto: patch
+  - key: docs
+    label: 📚 Documentation
+    auto: patch
+  - key: maintenance
+    label: 🔧 Maintenance
+    auto: patch
+  - key: dependency
+    label: 🔧 Dependency Updates
+    auto: patch
+newlines:
+  beforeHeaderFile: 1
+  beforeKind: 1
+  afterKind: 1
+  beforeChangelogVersion: 1
+  endOfVersion: 1
+# header.md ends with a newline of its own, which leaves two blank lines before
+# the first kind. Collapse runs of blank lines in the generated files (the
+# released history has none, so it is left untouched).
+replacements:
+  - path: CHANGELOG.md
+    find: '\n{3,}'
+    replace: "\n\n"
+  - path: .changes/v*.md
+    find: '\n{3,}'
+    replace: "\n\n"

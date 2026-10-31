@@ -2652,6 +2652,7 @@ func carryUnwritableFields(
 
 	declared.EeeEnabled = current.EeeEnabled
 	declared.LdMode = current.LdMode
+	declared.LdStatus = current.LdStatus
 	declared.LinkDebounce = current.LinkDebounce
 	declared.LinkDebounceAuto = current.LinkDebounceAuto
 	declared.MulticastRouterMode = current.MulticastRouterMode
