@@ -640,9 +640,12 @@ func (r *firewallPolicyResource) Schema(
 				Computed: true,
 				// Not a schema Default: the framework applies Defaults before plan
 				// modifiers, so a Default would overwrite the controller's value on
-				// every adopted policy. The create-time `true` is set in ModifyPlan.
+				// every adopted policy. A value has to be chosen on create because
+				// go-unifi always sends `enabled` (no omitempty), so an unknown
+				// would be written as `false`: a new BLOCK policy would silently
+				// not block.
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"protocol": schema.StringAttribute{
@@ -839,10 +842,6 @@ func (r *firewallPolicyResource) ModifyPlan(
 	if req.Plan.Raw.IsNull() {
 		return
 	}
-	firewallPolicyCreateDefaults(ctx, req, resp)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 	var value types.Object
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("schedule"), &value)...)
 	if resp.Diagnostics.HasError() || value.IsNull() || value.IsUnknown() {
@@ -856,33 +855,6 @@ func (r *firewallPolicyResource) ModifyPlan(
 	normalized, diags := types.ObjectValueFrom(ctx, schedule.AttributeTypes(), schedule)
 	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("schedule"), normalized)...)
-}
-
-// firewallPolicyCreateDefaults plans `enabled = true` for a policy being
-// created without it. It cannot be a schema Default: the framework applies
-// Defaults before plan modifiers, so a Default would also overwrite the
-// controller's value on every adopted policy, re-enabling a policy disabled in
-// the UI (#544). On update the attribute's UseStateForUnknown holds the
-// controller's value instead.
-//
-// A value has to be chosen on create because go-unifi always sends `enabled`
-// (no omitempty), so an unknown would be written as `false`: a new BLOCK
-// policy would silently not block.
-func firewallPolicyCreateDefaults(
-	ctx context.Context,
-	req resource.ModifyPlanRequest,
-	resp *resource.ModifyPlanResponse,
-) {
-	if !req.State.Raw.IsNull() {
-		return
-	}
-	var enabled types.Bool
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
-	if resp.Diagnostics.HasError() || !enabled.IsNull() {
-		return
-	}
-	resp.Diagnostics.Append(
-		resp.Plan.SetAttribute(ctx, path.Root("enabled"), types.BoolValue(true))...)
 }
 
 func (r *firewallPolicyResource) Create(

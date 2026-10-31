@@ -524,8 +524,11 @@ func (r *wlanFrameworkResource) Schema(
 					"an existing WLAN keeps the controller's value when unset.",
 				Optional: true,
 				Computed: true,
+				// go-unifi always sends `enabled` (no omitempty), so an unset value
+				// would create a disabled SSID; a schema Default would also switch
+				// on an adopted SSID the controller holds disabled (#544).
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"ap_group": schema.SingleNestedAttribute{
@@ -1252,39 +1255,9 @@ func (r *wlanFrameworkResource) ModifyPlan(
 		return
 	}
 
-	enabledChanged, d := planEnabledOnCreate(ctx, req, &plan)
-	resp.Diagnostics.Append(d...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if changed || radiusChanged || groupsChanged || apGroupChanged || enabledChanged {
+	if changed || radiusChanged || groupsChanged || apGroupChanged {
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 	}
-}
-
-// planEnabledOnCreate plans `enabled = true` for a WLAN being created without
-// the attribute. go-unifi always sends `enabled` (the field has no omitempty),
-// so an unset value would create a disabled SSID; the attribute carries no
-// schema Default because that Default would also apply on update and switch
-// on an adopted SSID the controller holds disabled (#544). On update,
-// UseStateForUnknown holds the controller's value. Returns true when plan
-// changed.
-func planEnabledOnCreate(
-	ctx context.Context,
-	req resource.ModifyPlanRequest,
-	plan *wlanFrameworkResourceModel,
-) (bool, diag.Diagnostics) {
-	if !req.State.Raw.IsNull() || !plan.Enabled.IsUnknown() {
-		return false, nil
-	}
-	var configEnabled types.Bool
-	diags := req.Config.GetAttribute(ctx, path.Root("enabled"), &configEnabled)
-	if diags.HasError() || !configEnabled.IsNull() {
-		return false, diags
-	}
-	plan.Enabled = types.BoolValue(true)
-	return true, diags
 }
 
 // planApGroupDefault gives ap_group its create-time shape (mode `all`, no ids,

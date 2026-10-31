@@ -17,7 +17,7 @@ import (
 // attribute the configuration leaves out is planned at the constant instead of
 // the controller's value. unifi_network and unifi_wan must carry none: every
 // attribute either reads the controller (UseStateForUnknown) or defaults only
-// when no prior value exists (boolDefaultOnCreate / StringDefaultOnCreate).
+// when no prior value exists (BoolDefaultOnCreate / StringDefaultOnCreate).
 func TestNetworkSchemaCarriesNoStaticDefaults(t *testing.T) {
 	assertNoStaticDefaults(t, "unifi_network", &networkResource{})
 }

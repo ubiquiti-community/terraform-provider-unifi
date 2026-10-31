@@ -30,7 +30,7 @@ import (
 // itself when a create omits them (probed with a disabled throwaway policy),
 // so those defaults are simply dropped. `enabled` is the exception: go-unifi
 // always sends it, so a create must pick a value, and it stays `true` on
-// create only (see firewallPolicyCreateDefaults).
+// create only (planmodifiers.BoolDefaultOnCreate).
 var firewallPolicyHeldAttributes = []string{
 	"enabled",
 	"protocol",
