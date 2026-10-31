@@ -30,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
@@ -108,18 +109,22 @@ func (m vpnServerWANModel) AttributeTypes() map[string]attr.Type {
 
 // vpnServerWireguardModel describes the WireGuard-specific server configuration.
 type vpnServerWireguardModel struct {
-	PrivateKey types.String `tfsdk:"private_key"`
-	PublicKey  types.String `tfsdk:"public_key"`
-	Port       types.Int64  `tfsdk:"port"`
-	IPVersion  types.String `tfsdk:"ip_version"`
+	PrivateKey          types.String `tfsdk:"private_key"`
+	PrivateKeyWO        types.String `tfsdk:"private_key_wo"`
+	PrivateKeyWOVersion types.Int64  `tfsdk:"private_key_wo_version"`
+	PublicKey           types.String `tfsdk:"public_key"`
+	Port                types.Int64  `tfsdk:"port"`
+	IPVersion           types.String `tfsdk:"ip_version"`
 }
 
 func (m vpnServerWireguardModel) AttributeTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"private_key": types.StringType,
-		"public_key":  types.StringType,
-		"port":        types.Int64Type,
-		"ip_version":  types.StringType,
+		"private_key":            types.StringType,
+		"private_key_wo":         types.StringType,
+		"private_key_wo_version": types.Int64Type,
+		"public_key":             types.StringType,
+		"port":                   types.Int64Type,
+		"ip_version":             types.StringType,
 	}
 }
 
@@ -389,14 +394,50 @@ func (r *vpnServerResource) Schema(
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"private_key": schema.StringAttribute{
-						MarkdownDescription: "WireGuard private key for this server (base64). If not " +
-							"specified, the provider generates one at create time (the controller " +
-							"does not generate it and rejects a server without a key).",
+						MarkdownDescription: "WireGuard private key for this server (base64). If neither " +
+							"this nor `private_key_wo` is specified, the provider generates one at " +
+							"create time (the controller does not generate it and rejects a server " +
+							"without a key). Stored in state; use `private_key_wo` to avoid " +
+							"persisting the secret.",
 						Optional:  true,
 						Computed:  true,
 						Sensitive: true,
+						Validators: []validator.String{
+							stringvalidator.ConflictsWith(
+								path.MatchRelative().AtParent().AtName("private_key_wo"),
+							),
+						},
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
+							vpnServerPrivateKeyNullWithWO{},
+						},
+					},
+					"private_key_wo": schema.StringAttribute{
+						MarkdownDescription: "Write-only equivalent of `private_key` (Terraform 1.11+). " +
+							"Used at apply time but never written to state, so it can be sourced " +
+							"from an ephemeral resource; `private_key` then stays null in state too. " +
+							"The key is sent on create and whenever `private_key_wo_version` " +
+							"changes; other updates keep the key the controller holds. Mutually " +
+							"exclusive with `private_key`.",
+						Optional:  true,
+						Sensitive: true,
+						WriteOnly: true,
+						Validators: []validator.String{
+							stringvalidator.LengthAtLeast(1),
+							stringvalidator.ConflictsWith(
+								path.MatchRelative().AtParent().AtName("private_key"),
+							),
+						},
+					},
+					"private_key_wo_version": schema.Int64Attribute{
+						MarkdownDescription: "Version counter for `private_key_wo`. Increment this " +
+							"value to send a new `private_key_wo` to the controller (key rotation).",
+						Optional: true,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AlsoRequires(
+								path.MatchRelative().AtParent().AtName("private_key_wo"),
+							),
 						},
 					},
 					"public_key": schema.StringAttribute{
@@ -404,6 +445,7 @@ func (r *vpnServerResource) Schema(
 						Computed:            true,
 						PlanModifiers: []planmodifier.String{
 							stringplanmodifier.UseStateForUnknown(),
+							vpnServerPublicKeyUnknownOnKeyChange{},
 						},
 					},
 					"port": schema.Int64Attribute{
@@ -659,6 +701,17 @@ func (r *vpnServerResource) Create(
 		site = r.client.Site
 	}
 
+	privateKeyWO := r.readPrivateKeyWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(r.resolveWireguardPrivateKey(
+		ctx, network, site, "", privateKeyWO, true,
+	)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -810,6 +863,30 @@ func (r *vpnServerResource) Update(
 	}
 
 	network.ID = data.ID.ValueString()
+
+	privateKeyWO := r.readPrivateKeyWO(ctx, req.Config, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var priorState vpnServerResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &priorState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	sendWO, d := vpnServerSendPrivateKeyWO(ctx, &data, &priorState)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !sendWO {
+		privateKeyWO = types.StringNull()
+	}
+	resp.Diagnostics.Append(r.resolveWireguardPrivateKey(
+		ctx, network, site, network.ID, privateKeyWO, false,
+	)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	updatedNetwork, err := r.client.UpdateNetwork(ctx, site, network)
 	if err != nil {
@@ -1044,19 +1121,11 @@ func (r *vpnServerResource) modelToNetwork(
 		d := model.Wireguard.As(ctx, &wireguard, basetypes.ObjectAsOptions{})
 		diags.Append(d...)
 		if !diags.HasError() {
+			// A null/unknown private_key leaves the field nil: Create and
+			// Update resolve it (private_key_wo, the controller's current key,
+			// or a generated one). See resolveWireguardPrivateKey.
 			if !wireguard.PrivateKey.IsNull() && !wireguard.PrivateKey.IsUnknown() {
 				network.WireguardPrivateKey = wireguard.PrivateKey.ValueStringPointer()
-			} else {
-				// The controller does not generate a key on create (it rejects
-				// with api.err.WireguardMissingPrivateKey), so generate one
-				// provider-side. On update the key is resolved from state via
-				// UseStateForUnknown, so this branch only runs at create.
-				key, err := generateWireGuardPrivateKey()
-				if err != nil {
-					diags.AddError("Unable to generate WireGuard private key", err.Error())
-				} else {
-					network.WireguardPrivateKey = &key
-				}
 			}
 			network.LocalPort = wireguard.Port.ValueInt64Pointer()
 			network.WireguardInterfaceBindingModeIPVersion = wireguard.IPVersion.ValueStringPointer()
@@ -1193,15 +1262,29 @@ func (r *vpnServerResource) networkToModel(
 	// Build VPN-type-specific nested objects
 	switch vpnType {
 	case "wireguard-server":
-		// Preserve private key from prior state if the API doesn't return it
-		privateKeyVal := types.StringPointerValue(network.WireguardPrivateKey)
-		if (privateKeyVal.IsNull() || privateKeyVal.ValueString() == "") &&
-			priorState != nil && !priorState.Wireguard.IsNull() && !priorState.Wireguard.IsUnknown() {
+		apiPrivateKey := types.StringPointerValue(network.WireguardPrivateKey)
+		privateKeyVal := apiPrivateKey
+		privateKeyWOVersion := types.Int64Null()
+		if priorState != nil && !priorState.Wireguard.IsNull() &&
+			!priorState.Wireguard.IsUnknown() {
 			var priorWG vpnServerWireguardModel
 			d := priorState.Wireguard.As(ctx, &priorWG, basetypes.ObjectAsOptions{})
 			diags.Append(d...)
 			if !diags.HasError() {
-				privateKeyVal = priorWG.PrivateKey
+				switch {
+				case priorWG.PrivateKey.IsNull():
+					// A null private_key in prior state (or plan) means the
+					// write-only alternative is in use. Never copy the
+					// controller's echoed private key into state. (After an
+					// import the whole wireguard object is null, so the key
+					// is read back as before.)
+					privateKeyVal = types.StringNull()
+				case privateKeyVal.IsNull() || privateKeyVal.ValueString() == "":
+					// Preserve private key from prior state if the API
+					// doesn't return it.
+					privateKeyVal = priorWG.PrivateKey
+				}
+				privateKeyWOVersion = priorWG.PrivateKeyWOVersion
 			}
 		}
 
@@ -1213,19 +1296,27 @@ func (r *vpnServerResource) networkToModel(
 		}
 
 		wireguardValue := vpnServerWireguardModel{
-			PrivateKey: privateKeyVal,
-			PublicKey:  strPtrToType(network.WireguardPublicKey),
-			Port:       types.Int64PointerValue(network.LocalPort),
+			PrivateKey:          privateKeyVal,
+			PrivateKeyWO:        types.StringNull(),
+			PrivateKeyWOVersion: privateKeyWOVersion,
+			PublicKey:           strPtrToType(network.WireguardPublicKey),
+			Port:                types.Int64PointerValue(network.LocalPort),
 			// A server without the setting listens on IPv4.
 			IPVersion: types.StringValue("v4"),
 		}
 		if v := network.WireguardInterfaceBindingModeIPVersion; v != nil && *v != "" {
 			wireguardValue.IPVersion = types.StringValue(*v)
 		}
-		// The controller does not return the public key: derive it.
-		if wireguardValue.PublicKey.IsNull() && !privateKeyVal.IsNull() &&
-			!privateKeyVal.IsUnknown() {
-			if pub, err := wireGuardPublicKey(privateKeyVal.ValueString()); err == nil {
+		// The controller does not return the public key: derive it from the
+		// key the controller holds (also when private_key is kept out of
+		// state), falling back to the one in state.
+		derivedFrom := apiPrivateKey
+		if derivedFrom.IsNull() || derivedFrom.ValueString() == "" {
+			derivedFrom = privateKeyVal
+		}
+		if wireguardValue.PublicKey.IsNull() && !derivedFrom.IsNull() &&
+			!derivedFrom.IsUnknown() {
+			if pub, err := wireGuardPublicKey(derivedFrom.ValueString()); err == nil {
 				wireguardValue.PublicKey = types.StringValue(pub)
 			}
 		}
@@ -1413,6 +1504,177 @@ func (r *vpnServerResource) List(
 				return
 			}
 		}
+	}
+}
+
+// readPrivateKeyWO reads the write-only key from configuration. Write-only
+// values are never available through plan or state.
+func (r *vpnServerResource) readPrivateKeyWO(
+	ctx context.Context,
+	config tfsdk.Config,
+	diags *diag.Diagnostics,
+) types.String {
+	var privateKeyWO types.String
+	diags.Append(config.GetAttribute(
+		ctx,
+		path.Root("wireguard").AtName("private_key_wo"),
+		&privateKeyWO,
+	)...)
+	return privateKeyWO
+}
+
+// vpnServerSendPrivateKeyWO reports whether an update must send
+// private_key_wo: when private_key_wo_version changes, or when the server
+// moves to the write-only key (the prior state held a private_key, or no
+// WireGuard block at all). Otherwise the controller keeps its current key.
+func vpnServerSendPrivateKeyWO(
+	ctx context.Context,
+	plan, prior *vpnServerResourceModel,
+) (bool, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if plan.Wireguard.IsNull() || plan.Wireguard.IsUnknown() {
+		return false, diags
+	}
+	if prior == nil || prior.Wireguard.IsNull() || prior.Wireguard.IsUnknown() {
+		return true, diags
+	}
+	var planWG, priorWG vpnServerWireguardModel
+	diags.Append(plan.Wireguard.As(ctx, &planWG, basetypes.ObjectAsOptions{})...)
+	diags.Append(prior.Wireguard.As(ctx, &priorWG, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return false, diags
+	}
+	if !priorWG.PrivateKey.IsNull() {
+		return true, diags
+	}
+	return !planWG.PrivateKeyWOVersion.Equal(priorWG.PrivateKeyWOVersion), diags
+}
+
+// resolveWireguardPrivateKey fills network.WireguardPrivateKey for a
+// WireGuard server when private_key did not set it: privateKeyWO when given;
+// otherwise, on update, the key the controller currently holds (so an update
+// never drops or rotates it); otherwise a freshly generated key (the
+// controller does not generate one and rejects a server without a key with
+// api.err.WireguardMissingPrivateKey).
+func (r *vpnServerResource) resolveWireguardPrivateKey(
+	ctx context.Context,
+	network *unifi.Network,
+	site, id string,
+	privateKeyWO types.String,
+	create bool,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if network.VPNType == nil || *network.VPNType != "wireguard-server" {
+		return diags
+	}
+	if !privateKeyWO.IsNull() && !privateKeyWO.IsUnknown() {
+		network.WireguardPrivateKey = privateKeyWO.ValueStringPointer()
+		return diags
+	}
+	if network.WireguardPrivateKey != nil {
+		return diags
+	}
+	if !create && id != "" {
+		current, err := r.client.GetNetwork(ctx, site, id)
+		if err != nil {
+			diags.AddError(
+				"Error Reading VPN Server",
+				"Could not read the current WireGuard private key of VPN server ID "+
+					id+": "+err.Error(),
+			)
+			return diags
+		}
+		if current.WireguardPrivateKey != nil && *current.WireguardPrivateKey != "" {
+			network.WireguardPrivateKey = current.WireguardPrivateKey
+			return diags
+		}
+	}
+	key, err := generateWireGuardPrivateKey()
+	if err != nil {
+		diags.AddError("Unable to generate WireGuard private key", err.Error())
+		return diags
+	}
+	network.WireguardPrivateKey = &key
+	return diags
+}
+
+// vpnServerPrivateKeyNullWithWO plans wireguard.private_key as null when
+// private_key_wo is configured, so neither key reaches the state. It also
+// plans the removal of a key kept in state from before the switch (for
+// example after an import), and keeps a key that is out of state out of it.
+type vpnServerPrivateKeyNullWithWO struct{}
+
+func (vpnServerPrivateKeyNullWithWO) Description(context.Context) string {
+	return "Plans private_key as null when private_key_wo is configured."
+}
+
+func (m vpnServerPrivateKeyNullWithWO) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (vpnServerPrivateKeyNullWithWO) PlanModifyString(
+	ctx context.Context,
+	req planmodifier.StringRequest,
+	resp *planmodifier.StringResponse,
+) {
+	var wo types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(
+		ctx,
+		req.Path.ParentPath().AtName("private_key_wo"),
+		&wo,
+	)...)
+	if !wo.IsNull() {
+		resp.PlanValue = types.StringNull()
+		return
+	}
+	// Once kept out of state, the key stays out after private_key_wo is
+	// removed from the configuration (the controller keeps its key), until a
+	// private_key is configured explicitly.
+	if req.ConfigValue.IsNull() && req.StateValue.IsNull() && !req.State.Raw.IsNull() {
+		var stateWG types.Object
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, req.Path.ParentPath(), &stateWG)...)
+		if !stateWG.IsNull() && !stateWG.IsUnknown() {
+			resp.PlanValue = types.StringNull()
+		}
+	}
+}
+
+// vpnServerPublicKeyUnknownOnKeyChange plans wireguard.public_key as unknown
+// when the private key is about to change: a new private_key, or a
+// private_key_wo sent on this update (see vpnServerSendPrivateKeyWO).
+type vpnServerPublicKeyUnknownOnKeyChange struct{}
+
+func (vpnServerPublicKeyUnknownOnKeyChange) Description(context.Context) string {
+	return "Plans public_key as unknown when the private key changes."
+}
+
+func (m vpnServerPublicKeyUnknownOnKeyChange) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (vpnServerPublicKeyUnknownOnKeyChange) PlanModifyString(
+	ctx context.Context,
+	req planmodifier.StringRequest,
+	resp *planmodifier.StringResponse,
+) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() || resp.PlanValue.IsUnknown() {
+		return
+	}
+	parent := req.Path.ParentPath()
+	var planKey, stateKey types.String
+	var planVersion, stateVersion types.Int64
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, parent.AtName("private_key"), &planKey)...)
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, parent.AtName("private_key"), &stateKey)...)
+	resp.Diagnostics.Append(
+		req.Plan.GetAttribute(ctx, parent.AtName("private_key_wo_version"), &planVersion)...)
+	resp.Diagnostics.Append(
+		req.State.GetAttribute(ctx, parent.AtName("private_key_wo_version"), &stateVersion)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	keyChanged := !planKey.IsUnknown() && !planKey.Equal(stateKey)
+	if keyChanged || !planVersion.Equal(stateVersion) {
+		resp.PlanValue = types.StringUnknown()
 	}
 }
 

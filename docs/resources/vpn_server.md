@@ -208,7 +208,9 @@ Optional:
 
 - `ip_version` (String) The address family the server listens on, `v4` or `v6`: one per server (the UI's IP Address choice between the WAN's IPv4 and IPv6 addresses). Defaults to `v4`, which is also what a server without the setting does.
 - `port` (Number) UDP port for the WireGuard server to listen on.
-- `private_key` (String, Sensitive) WireGuard private key for this server (base64). If not specified, the provider generates one at create time (the controller does not generate it and rejects a server without a key).
+- `private_key` (String, Sensitive) WireGuard private key for this server (base64). If neither this nor `private_key_wo` is specified, the provider generates one at create time (the controller does not generate it and rejects a server without a key). Stored in state; use `private_key_wo` to avoid persisting the secret.
+- `private_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `private_key` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource; `private_key` then stays null in state too. The key is sent on create and whenever `private_key_wo_version` changes; other updates keep the key the controller holds. Mutually exclusive with `private_key`.
+- `private_key_wo_version` (Number) Version counter for `private_key_wo`. Increment this value to send a new `private_key_wo` to the controller (key rotation).
 
 Read-Only:
 

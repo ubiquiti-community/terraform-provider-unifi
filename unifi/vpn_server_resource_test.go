@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
@@ -10,6 +11,8 @@ import (
 	fwlist "github.com/hashicorp/terraform-plugin-framework/list"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
@@ -367,7 +370,86 @@ func TestAccVPNServer_wireguard_custom_wan(t *testing.T) {
 	})
 }
 
+func TestAccVPNServer_wireguard_write_only_private_key(t *testing.T) {
+	const pub1 = "7B+2Z3odPbDNsfVr+F8invj6/mBKLVaolOHXZoCaBA0="
+	noKeyInState := func(extra ...resource.TestCheckFunc) resource.TestCheckFunc {
+		return resource.ComposeTestCheckFunc(append([]resource.TestCheckFunc{
+			resource.TestCheckNoResourceAttr("unifi_vpn_server.test", "wireguard.private_key"),
+			resource.TestCheckNoResourceAttr("unifi_vpn_server.test", "wireguard.private_key_wo"),
+		}, extra...)...)
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_11_0),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: testAccVPNServerConfig_wireguard_write_only_private_key(
+					1, "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg=", 51820,
+				),
+				Check: noKeyInState(
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_server.test", "wireguard.private_key_wo_version", "1"),
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_server.test", "wireguard.public_key", pub1),
+				),
+			},
+			{
+				// Another change without a version bump keeps the key.
+				Config: testAccVPNServerConfig_wireguard_write_only_private_key(
+					1, "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg=", 51821,
+				),
+				Check: noKeyInState(
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_server.test", "wireguard.port", "51821"),
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_server.test", "wireguard.public_key", pub1),
+				),
+			},
+			{
+				// A version bump rotates the key.
+				Config: testAccVPNServerConfig_wireguard_write_only_private_key(
+					2, "uGEwDKZ2Hf2s2Dg59c9K+qYzJEBN5s8fNWVTxZx9kUo=", 51821,
+				),
+				Check: noKeyInState(
+					resource.TestCheckResourceAttr(
+						"unifi_vpn_server.test", "wireguard.private_key_wo_version", "2"),
+					resource.TestCheckResourceAttrWith(
+						"unifi_vpn_server.test", "wireguard.public_key",
+						func(v string) error {
+							if v == "" || v == pub1 {
+								return fmt.Errorf("public_key not rotated: %q", v)
+							}
+							return nil
+						}),
+				),
+			},
+		},
+	})
+}
+
 // --- Config helper functions ---
+
+func testAccVPNServerConfig_wireguard_write_only_private_key(
+	version int,
+	privateKey string,
+	port int,
+) string {
+	return fmt.Sprintf(`
+resource "unifi_vpn_server" "test" {
+  name   = "tfacc-wg-server-wo"
+  subnet = "10.100.2.1/24"
+
+  wireguard = {
+    private_key_wo         = %q
+    private_key_wo_version = %d
+    port                   = %d
+  }
+}
+`, privateKey, version, port)
+}
 
 func testAccVPNServerConfig_wireguard_basic() string {
 	return `
@@ -675,7 +757,9 @@ func Test_vpnServerWANModel_AttributeTypes(t *testing.T) {
 func Test_vpnServerWireguardModel_AttributeTypes(t *testing.T) {
 	m := vpnServerWireguardModel{}
 	got := m.AttributeTypes()
-	for _, key := range []string{"private_key", "public_key", "port"} {
+	for _, key := range []string{
+		"private_key", "private_key_wo", "private_key_wo_version", "public_key", "port",
+	} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("AttributeTypes() missing key %q", key)
 		}
@@ -1621,6 +1705,389 @@ func Test_vpnServerResource_wireguardIPv6(t *testing.T) {
 		}
 		if v := got.WireguardInterfaceBindingModeIPVersion; v != nil {
 			t.Errorf("WireguardInterfaceBindingModeIPVersion = %q, want nil", *v)
+		}
+	})
+}
+
+func Test_vpnServerResource_privateKeyWOSchema(t *testing.T) {
+	r := &vpnServerResource{}
+	resp := &fwresource.SchemaResponse{}
+	r.Schema(context.Background(), fwresource.SchemaRequest{}, resp)
+	wg, ok := resp.Schema.Attributes["wireguard"].(schema.SingleNestedAttribute)
+	if !ok {
+		t.Fatal("wireguard is not a single nested attribute")
+	}
+	wo, ok := wg.Attributes["private_key_wo"].(schema.StringAttribute)
+	if !ok || !wo.WriteOnly || !wo.Sensitive || !wo.Optional || wo.Computed {
+		t.Fatalf("private_key_wo must be an optional, sensitive, write-only string: %+v", wo)
+	}
+	version, ok := wg.Attributes["private_key_wo_version"].(schema.Int64Attribute)
+	if !ok || !version.Optional || version.WriteOnly {
+		t.Fatalf("private_key_wo_version must be an optional int64: %+v", version)
+	}
+}
+
+// vpnServerTestWireguard builds a wireguard object for the unit tests below.
+func vpnServerTestWireguard(
+	t *testing.T,
+	privateKey, privateKeyWO types.String,
+	version types.Int64,
+) types.Object {
+	t.Helper()
+	obj, d := types.ObjectValueFrom(
+		context.Background(),
+		vpnServerWireguardModel{}.AttributeTypes(),
+		vpnServerWireguardModel{
+			PrivateKey:          privateKey,
+			PrivateKeyWO:        privateKeyWO,
+			PrivateKeyWOVersion: version,
+			PublicKey:           types.StringNull(),
+			Port:                types.Int64Value(51820),
+			IPVersion:           types.StringValue("v4"),
+		},
+	)
+	if d.HasError() {
+		t.Fatalf("building wireguard object: %v", d)
+	}
+	return obj
+}
+
+// The controller echoes the private key on every read. With private_key_wo in
+// use (private_key null in prior state) it must not reach the state, while the
+// public key is still derived from it and the version is carried over.
+func Test_vpnServerResource_networkToModel_privateKeyWO(t *testing.T) {
+	const priv = "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="
+	const pub = "7B+2Z3odPbDNsfVr+F8invj6/mBKLVaolOHXZoCaBA0="
+	ctx := context.Background()
+	r := &vpnServerResource{}
+	network := &unifi.Network{
+		ID:                  "net-1",
+		Name:                new("wg"),
+		Enabled:             new(true),
+		IPSubnet:            new("10.100.0.1/24"),
+		VPNType:             new("wireguard-server"),
+		WireguardPrivateKey: new(priv),
+		LocalPort:           new(int64(51820)),
+	}
+	read := func(t *testing.T, prior *vpnServerResourceModel) vpnServerWireguardModel {
+		t.Helper()
+		var model vpnServerResourceModel
+		if d := r.networkToModel(ctx, network, &model, "default", prior); d.HasError() {
+			t.Fatalf("unexpected diags: %v", d)
+		}
+		var wg vpnServerWireguardModel
+		if d := model.Wireguard.As(
+			ctx,
+			&wg,
+			struct{ UnhandledNullAsEmpty, UnhandledUnknownAsEmpty bool }{},
+		); d.HasError() {
+			t.Fatalf("reading wireguard: %v", d)
+		}
+		return wg
+	}
+
+	t.Run("write-only: neither key in state", func(t *testing.T) {
+		wg := read(t, &vpnServerResourceModel{Wireguard: vpnServerTestWireguard(
+			t, types.StringNull(), types.StringNull(), types.Int64Value(3),
+		)})
+		if !wg.PrivateKey.IsNull() {
+			t.Errorf("private_key = %q, want null", wg.PrivateKey.ValueString())
+		}
+		if !wg.PrivateKeyWO.IsNull() {
+			t.Errorf("private_key_wo = %q, want null", wg.PrivateKeyWO.ValueString())
+		}
+		if wg.PrivateKeyWOVersion.ValueInt64() != 3 {
+			t.Errorf("private_key_wo_version = %v, want 3", wg.PrivateKeyWOVersion)
+		}
+		if wg.PublicKey.ValueString() != pub {
+			t.Errorf("public_key = %q, want %q", wg.PublicKey.ValueString(), pub)
+		}
+	})
+
+	t.Run("private_key: echoed key kept in state", func(t *testing.T) {
+		wg := read(t, &vpnServerResourceModel{Wireguard: vpnServerTestWireguard(
+			t, types.StringValue(priv), types.StringNull(), types.Int64Null(),
+		)})
+		if wg.PrivateKey.ValueString() != priv {
+			t.Errorf("private_key = %q, want %q", wg.PrivateKey.ValueString(), priv)
+		}
+		if !wg.PrivateKeyWOVersion.IsNull() {
+			t.Errorf("private_key_wo_version = %v, want null", wg.PrivateKeyWOVersion)
+		}
+	})
+
+	t.Run("create without a key: generated key read back", func(t *testing.T) {
+		wg := read(t, &vpnServerResourceModel{Wireguard: vpnServerTestWireguard(
+			t, types.StringUnknown(), types.StringNull(), types.Int64Null(),
+		)})
+		if wg.PrivateKey.ValueString() != priv {
+			t.Errorf("private_key = %q, want %q", wg.PrivateKey.ValueString(), priv)
+		}
+	})
+
+	t.Run("import: key read back", func(t *testing.T) {
+		wg := read(t, &vpnServerResourceModel{
+			Wireguard: types.ObjectNull(vpnServerWireguardModel{}.AttributeTypes()),
+		})
+		if wg.PrivateKey.ValueString() != priv {
+			t.Errorf("private_key = %q, want %q", wg.PrivateKey.ValueString(), priv)
+		}
+	})
+}
+
+func Test_vpnServerSendPrivateKeyWO(t *testing.T) {
+	ctx := context.Background()
+	const priv = "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="
+	model := func(wg types.Object) *vpnServerResourceModel {
+		return &vpnServerResourceModel{Wireguard: wg}
+	}
+	wo := func(pk types.String, v types.Int64) types.Object {
+		return vpnServerTestWireguard(t, pk, types.StringNull(), v)
+	}
+	null := types.ObjectNull(vpnServerWireguardModel{}.AttributeTypes())
+
+	tests := []struct {
+		name        string
+		plan, prior *vpnServerResourceModel
+		want        bool
+	}{
+		{
+			"same version keeps the controller key",
+			model(wo(types.StringNull(), types.Int64Value(1))),
+			model(wo(types.StringNull(), types.Int64Value(1))),
+			false,
+		},
+		{
+			"no version on either side keeps the controller key",
+			model(wo(types.StringNull(), types.Int64Null())),
+			model(wo(types.StringNull(), types.Int64Null())),
+			false,
+		},
+		{
+			"version bump sends the key",
+			model(wo(types.StringNull(), types.Int64Value(2))),
+			model(wo(types.StringNull(), types.Int64Value(1))),
+			true,
+		},
+		{
+			"switch from private_key sends the key",
+			model(wo(types.StringNull(), types.Int64Null())),
+			model(wo(types.StringValue(priv), types.Int64Null())),
+			true,
+		},
+		{
+			"no prior wireguard block sends the key",
+			model(wo(types.StringNull(), types.Int64Null())),
+			model(null),
+			true,
+		},
+		{
+			"no wireguard block in plan",
+			model(null),
+			model(wo(types.StringNull(), types.Int64Value(1))),
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, d := vpnServerSendPrivateKeyWO(ctx, tt.plan, tt.prior)
+			if d.HasError() {
+				t.Fatalf("unexpected diags: %v", d)
+			}
+			if got != tt.want {
+				t.Errorf("vpnServerSendPrivateKeyWO = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+// The update path must never generate a new key or drop the current one when
+// neither private_key nor a (sent) private_key_wo is available; only create
+// generates one.
+func Test_vpnServerResource_resolveWireguardPrivateKey(t *testing.T) {
+	ctx := context.Background()
+	r := &vpnServerResource{}
+	wgNetwork := func(key *string) *unifi.Network {
+		return &unifi.Network{VPNType: new("wireguard-server"), WireguardPrivateKey: key}
+	}
+
+	n := wgNetwork(nil)
+	if d := r.resolveWireguardPrivateKey(
+		ctx, n, "default", "", types.StringValue("wo-key"), true,
+	); d.HasError() {
+		t.Fatalf("unexpected diags: %v", d)
+	}
+	if n.WireguardPrivateKey == nil || *n.WireguardPrivateKey != "wo-key" {
+		t.Errorf("private_key_wo not sent: %v", n.WireguardPrivateKey)
+	}
+
+	n = wgNetwork(new("explicit"))
+	if d := r.resolveWireguardPrivateKey(
+		ctx, n, "default", "id", types.StringNull(), false,
+	); d.HasError() {
+		t.Fatalf("unexpected diags: %v", d)
+	}
+	if *n.WireguardPrivateKey != "explicit" {
+		t.Errorf("explicit private_key replaced: %q", *n.WireguardPrivateKey)
+	}
+
+	n = wgNetwork(nil)
+	if d := r.resolveWireguardPrivateKey(
+		ctx, n, "default", "", types.StringNull(), true,
+	); d.HasError() {
+		t.Fatalf("unexpected diags: %v", d)
+	}
+	if n.WireguardPrivateKey == nil {
+		t.Fatal("create without a key did not generate one")
+	}
+	if raw, err := base64.StdEncoding.DecodeString(*n.WireguardPrivateKey); err != nil ||
+		len(raw) != 32 {
+		t.Errorf("generated key is not a 32-byte base64 key: %q", *n.WireguardPrivateKey)
+	}
+
+	other := &unifi.Network{VPNType: new("l2tp-server")}
+	if d := r.resolveWireguardPrivateKey(
+		ctx, other, "default", "", types.StringValue("wo-key"), true,
+	); d.HasError() {
+		t.Fatalf("unexpected diags: %v", d)
+	}
+	if other.WireguardPrivateKey != nil {
+		t.Errorf("non-WireGuard server got a key: %q", *other.WireguardPrivateKey)
+	}
+}
+
+// vpnServerTestTFState returns raw resource data (as for config, plan or
+// state) holding only the given wireguard object.
+func vpnServerTestTFState(t *testing.T, s schema.Schema, wg types.Object) tfsdk.State {
+	t.Helper()
+	ctx := context.Background()
+	st := tfsdk.State{Schema: s, Raw: tftypes.NewValue(s.Type().TerraformType(ctx), nil)}
+	if d := st.SetAttribute(ctx, path.Root("wireguard"), wg); d.HasError() {
+		t.Fatalf("building state: %v", d)
+	}
+	return st
+}
+
+func Test_vpnServerPrivateKeyPlanModifiers(t *testing.T) {
+	ctx := context.Background()
+	const priv = "WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="
+	const pub = "7B+2Z3odPbDNsfVr+F8invj6/mBKLVaolOHXZoCaBA0="
+	r := &vpnServerResource{}
+	schemaResp := &fwresource.SchemaResponse{}
+	r.Schema(ctx, fwresource.SchemaRequest{}, schemaResp)
+	s := schemaResp.Schema
+	keyPath := path.Root("wireguard").AtName("private_key")
+	pubPath := path.Root("wireguard").AtName("public_key")
+	wg := func(pk, wo types.String, v types.Int64) types.Object {
+		return vpnServerTestWireguard(t, pk, wo, v)
+	}
+
+	planPrivateKey := func(
+		t *testing.T,
+		config, state types.Object,
+		plan types.String,
+	) types.String {
+		t.Helper()
+		cfg := vpnServerTestTFState(t, s, config)
+		var configValue, stateValue types.String
+		cfg.GetAttribute(ctx, keyPath, &configValue)
+		st := tfsdk.State{Schema: s, Raw: tftypes.NewValue(s.Type().TerraformType(ctx), nil)}
+		if !state.IsNull() {
+			st = vpnServerTestTFState(t, s, state)
+			st.GetAttribute(ctx, keyPath, &stateValue)
+		} else {
+			stateValue = types.StringNull()
+		}
+		req := planmodifier.StringRequest{
+			Path:        keyPath,
+			Config:      tfsdk.Config{Schema: s, Raw: cfg.Raw},
+			ConfigValue: configValue,
+			State:       st,
+			StateValue:  stateValue,
+			PlanValue:   plan,
+		}
+		resp := &planmodifier.StringResponse{PlanValue: plan}
+		vpnServerPrivateKeyNullWithWO{}.PlanModifyString(ctx, req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		return resp.PlanValue
+	}
+	nullWG := types.ObjectNull(vpnServerWireguardModel{}.AttributeTypes())
+
+	t.Run("private_key_wo configured: planned null", func(t *testing.T) {
+		got := planPrivateKey(t,
+			wg(types.StringNull(), types.StringValue(priv), types.Int64Value(1)),
+			nullWG, types.StringUnknown())
+		if !got.IsNull() {
+			t.Errorf("plan = %v, want null", got)
+		}
+	})
+	t.Run("switch to private_key_wo: stored key planned null", func(t *testing.T) {
+		got := planPrivateKey(t,
+			wg(types.StringNull(), types.StringValue(priv), types.Int64Null()),
+			wg(types.StringValue(priv), types.StringNull(), types.Int64Null()),
+			types.StringValue(priv))
+		if !got.IsNull() {
+			t.Errorf("plan = %v, want null", got)
+		}
+	})
+	t.Run("private_key_wo removed: stays out of state", func(t *testing.T) {
+		got := planPrivateKey(t,
+			wg(types.StringNull(), types.StringNull(), types.Int64Null()),
+			wg(types.StringNull(), types.StringNull(), types.Int64Value(1)),
+			types.StringUnknown())
+		if !got.IsNull() {
+			t.Errorf("plan = %v, want null", got)
+		}
+	})
+	t.Run("no key on create: left unknown for generation", func(t *testing.T) {
+		got := planPrivateKey(t,
+			wg(types.StringNull(), types.StringNull(), types.Int64Null()),
+			nullWG, types.StringUnknown())
+		if !got.IsUnknown() {
+			t.Errorf("plan = %v, want unknown", got)
+		}
+	})
+
+	planPublicKey := func(t *testing.T, plan, state types.Object) types.String {
+		t.Helper()
+		pl := vpnServerTestTFState(t, s, plan)
+		st := vpnServerTestTFState(t, s, state)
+		req := planmodifier.StringRequest{
+			Path:       pubPath,
+			Plan:       tfsdk.Plan{Schema: s, Raw: pl.Raw},
+			State:      st,
+			StateValue: types.StringValue(pub),
+			PlanValue:  types.StringValue(pub),
+		}
+		resp := &planmodifier.StringResponse{PlanValue: types.StringValue(pub)}
+		vpnServerPublicKeyUnknownOnKeyChange{}.PlanModifyString(ctx, req, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("unexpected diags: %v", resp.Diagnostics)
+		}
+		return resp.PlanValue
+	}
+	t.Run("same version: public key kept", func(t *testing.T) {
+		v1 := wg(types.StringNull(), types.StringNull(), types.Int64Value(1))
+		if got := planPublicKey(t, v1, v1); got.ValueString() != pub {
+			t.Errorf("plan = %v, want %q", got, pub)
+		}
+	})
+	t.Run("version bump: public key unknown", func(t *testing.T) {
+		got := planPublicKey(t,
+			wg(types.StringNull(), types.StringNull(), types.Int64Value(2)),
+			wg(types.StringNull(), types.StringNull(), types.Int64Value(1)))
+		if !got.IsUnknown() {
+			t.Errorf("plan = %v, want unknown", got)
+		}
+	})
+	t.Run("private_key change: public key unknown", func(t *testing.T) {
+		got := planPublicKey(t,
+			wg(types.StringValue("other"), types.StringNull(), types.Int64Null()),
+			wg(types.StringValue(priv), types.StringNull(), types.Int64Null()))
+		if !got.IsUnknown() {
+			t.Errorf("plan = %v, want unknown", got)
 		}
 	})
 }
