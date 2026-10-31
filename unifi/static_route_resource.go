@@ -19,10 +19,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -103,17 +102,6 @@ func staticRouteGatewayAttrTypes() map[string]attr.Type {
 		"device": types.StringType,
 		"type":   types.StringType,
 	}
-}
-
-// staticRouteGatewayDefault reproduces the values the flat gateway_type and
-// gateway_device attributes sent when the practitioner left them out of
-// configuration (`default` and unset), so the request body on create is
-// unchanged when the whole `gateway` block is omitted.
-func staticRouteGatewayDefault() types.Object {
-	return types.ObjectValueMust(staticRouteGatewayAttrTypes(), map[string]attr.Value{
-		"device": types.StringNull(),
-		"type":   types.StringValue("default"),
-	})
 }
 
 func (r *staticRouteFrameworkResource) Metadata(
@@ -215,16 +203,24 @@ func (r *staticRouteFrameworkResource) Schema(
 				Optional:            true,
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the static route is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the static route is enabled. A new route is " +
+					"created enabled; an existing one keeps the controller's value when this " +
+					"is not set, so adopting a disabled route does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"gateway": schema.SingleNestedAttribute{
-				MarkdownDescription: "The gateway that applies the static route.",
-				Optional:            true,
-				Computed:            true,
-				Default:             objectdefault.StaticValue(staticRouteGatewayDefault()),
+				MarkdownDescription: "The gateway that applies the static route. When not " +
+					"set, a new route uses the default gateway and an existing route keeps " +
+					"the controller's gateway (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"device": schema.StringAttribute{
 						MarkdownDescription: "The MAC address of the gateway device, used when `type` is `switch`.",
@@ -234,10 +230,15 @@ func (r *staticRouteFrameworkResource) Schema(
 						},
 					},
 					"type": schema.StringAttribute{
-						MarkdownDescription: "The type of gateway for the static route. Can be `default` or `switch`.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("default"),
+						MarkdownDescription: "The type of gateway for the static route. Can be " +
+							"`default` or `switch`. A new route defaults to `default`; an " +
+							"existing route keeps the controller's value when this is not set, " +
+							"so adopting a switch route does not move it to the gateway (#544).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
 						Validators: []validator.String{
 							stringvalidator.OneOf("default", "switch"),
 						},
@@ -349,6 +350,7 @@ func (r *staticRouteFrameworkResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	staticRouteCreateDefaults(routing, data.Enabled)
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -758,6 +760,21 @@ func (r *staticRouteFrameworkResource) applyPlanToState(
 	state.Gateway = util.OverlayKnownObject(ctx, plan.Gateway, state.Gateway)
 }
 
+// staticRouteCreateDefaults fills what a new route has always been created
+// with when the configuration leaves it out: enabled, on the default gateway.
+// These used to be schema Defaults, but the framework applies a Default before
+// plan modifiers run, so they also re-enabled every adopted route disabled on
+// the controller and moved switch routes to the gateway (#544). Applying them
+// here, on create only, keeps the create request unchanged.
+func staticRouteCreateDefaults(routing *unifi.Routing, enabled types.Bool) {
+	if enabled.IsUnknown() || enabled.IsNull() {
+		routing.Enabled = true
+	}
+	if routing.GatewayType == "" {
+		routing.GatewayType = "default"
+	}
+}
+
 // modelToRouting converts the Terraform model to the API struct.
 func (r *staticRouteFrameworkResource) modelToRouting(
 	ctx context.Context,
@@ -832,7 +849,7 @@ func (r *staticRouteFrameworkResource) routingToModel(
 	model.Enabled = types.BoolValue(routing.Enabled)
 
 	// The controller omits gateway_type for the default gateway; surface it as
-	// `default` so it matches the schema default.
+	// `default`, the value a new route is created with.
 	gatewayType := routing.GatewayType
 	if gatewayType == "" {
 		gatewayType = "default"

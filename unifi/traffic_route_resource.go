@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -271,16 +271,26 @@ func (r *trafficRouteResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the traffic route is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the traffic route is enabled. A new route is " +
+					"created enabled; an existing one keeps the controller's value when this " +
+					"is not set, so adopting a disabled route does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"kill_switch_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the kill switch is enabled. When enabled, traffic is blocked if the target network/VPN is unavailable.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Whether the kill switch is enabled. When enabled, " +
+					"traffic is blocked if the target network/VPN is unavailable. Taken from " +
+					"the controller when not set (a new route gets `false`), so adopting a " +
+					"route does not switch its kill switch off and leak traffic past the " +
+					"VPN (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"network_id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the network or VPN to route matching traffic through. Defaults to the primary WAN network.",
@@ -387,6 +397,12 @@ func (r *trafficRouteResource) Create(
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	// A new route is created enabled unless the configuration says otherwise.
+	// This used to be a schema Default, which the framework applies before
+	// plan modifiers and so also re-enabled adopted routes (#544).
+	if plan.Enabled.IsUnknown() || plan.Enabled.IsNull() {
+		body.Enabled = true
 	}
 
 	created, err := r.client.CreateTrafficRoute(ctx, site, body)

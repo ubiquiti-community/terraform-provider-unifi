@@ -521,7 +521,7 @@ func Test_staticRouteFrameworkResource_modelToRouting(t *testing.T) {
 		NextHop:   iptypes.NewIPAddressValue("192.168.1.1"),
 		Interface: types.StringNull(),
 		Enabled:   types.BoolValue(true),
-		Gateway:   staticRouteGatewayDefault(),
+		Gateway:   staticRouteDefaultGateway(),
 	}
 	got, diags := r.modelToRouting(context.Background(), model)
 	if diags.HasError() {
@@ -573,8 +573,8 @@ func Test_staticRouteFrameworkResource_routingToModel(t *testing.T) {
 	if model.NextHop.ValueString() != "192.168.1.1" {
 		t.Errorf("NextHop = %q, want %q", model.NextHop.ValueString(), "192.168.1.1")
 	}
-	if !model.Gateway.Equal(staticRouteGatewayDefault()) {
-		t.Errorf("Gateway = %v, want %v", model.Gateway, staticRouteGatewayDefault())
+	if !model.Gateway.Equal(staticRouteDefaultGateway()) {
+		t.Errorf("Gateway = %v, want %v", model.Gateway, staticRouteDefaultGateway())
 	}
 }
 
@@ -701,7 +701,7 @@ func TestStaticRoute_gatewayRoundTrip(t *testing.T) {
 
 	// The object default reproduces the old flat defaults: type "default" and
 	// no device.
-	model.Gateway = staticRouteGatewayDefault()
+	model.Gateway = staticRouteDefaultGateway()
 	api, d = r.modelToRouting(ctx, model)
 	if d.HasError() {
 		t.Fatalf("modelToRouting (default): %v", d)
@@ -720,11 +720,11 @@ func TestStaticRoute_gatewayRoundTrip(t *testing.T) {
 	if d := r.routingToModel(ctx, &unifi.Routing{ID: "rt-1"}, &fresh, "default"); d.HasError() {
 		t.Fatalf("routingToModel (fresh): %v", d)
 	}
-	if !fresh.Gateway.Equal(staticRouteGatewayDefault()) {
+	if !fresh.Gateway.Equal(staticRouteDefaultGateway()) {
 		t.Errorf(
 			"empty gateway read back = %v, want %v",
 			fresh.Gateway,
-			staticRouteGatewayDefault(),
+			staticRouteDefaultGateway(),
 		)
 	}
 
@@ -799,5 +799,15 @@ func TestAccStaticRouteList_basic(t *testing.T) {
 				},
 			},
 		},
+	})
+}
+
+// staticRouteDefaultGateway is the gateway a route on the default gateway
+// reads back as: the controller omits gateway_type, and the read surfaces it
+// as `default`.
+func staticRouteDefaultGateway() types.Object {
+	return types.ObjectValueMust(staticRouteGatewayAttrTypes(), map[string]attr.Value{
+		"device": types.StringNull(),
+		"type":   types.StringValue("default"),
 	})
 }
