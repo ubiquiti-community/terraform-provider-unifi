@@ -55,14 +55,18 @@ var fakeSettingDocuments = map[string]string{
 // fakeSettingController is a minimal fake controller (old-style API: 302 on
 // /, cookie login at /api/login) serving the site setting documents in docs.
 // A key in unreadable is listed but its own document cannot be read, and
-// failList makes listing the settings fail. Every PUT's setting key is
-// recorded in puts, and its body under that key in bodies.
+// failList makes listing the settings fail. listKeysOnly lists every
+// document with its key alone, so writeSetting, which diffs against the
+// listed documents, sends every non-zero field while each document still
+// reads in full. Every PUT's setting key is recorded in puts, and its body
+// under that key in bodies.
 type fakeSettingController struct {
-	docs       map[string]string
-	unreadable map[string]bool
-	failList   bool
-	puts       []string
-	bodies     map[string][]byte
+	docs         map[string]string
+	unreadable   map[string]bool
+	failList     bool
+	listKeysOnly bool
+	puts         []string
+	bodies       map[string][]byte
 }
 
 func newSettingFakeControllerClient(t *testing.T, fc *fakeSettingController) *Client {
@@ -99,6 +103,10 @@ func newSettingFakeControllerClient(t *testing.T, fc *fakeSettingController) *Cl
 		sort.Strings(keys)
 		docs := make([]string, 0, len(keys))
 		for _, key := range keys {
+			if fc.listKeysOnly {
+				docs = append(docs, `{"key":"`+key+`"}`)
+				continue
+			}
 			docs = append(docs, fc.docs[key])
 		}
 		reply(w, docs...)
@@ -728,6 +736,8 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 
 	t.Run("every section configured", func(t *testing.T) {
 		fc.puts = nil
+		fc.listKeysOnly = true
+		defer func() { fc.listKeysOnly = false }()
 		resp := &fwresource.UpdateResponse{State: empty, Identity: importResp.Identity}
 		r.Update(ctx, fwresource.UpdateRequest{
 			State:    empty,
@@ -758,6 +768,8 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 	// when the configuration of their section leaves them out.
 	t.Run("side documents left out", func(t *testing.T) {
 		fc.puts = nil
+		fc.listKeysOnly = true
+		defer func() { fc.listKeysOnly = false }()
 		config := plan
 		var usg settingUSGModel
 		if d := plan.USG.As(ctx, &usg, basetypes.ObjectAsOptions{}); d.HasError() {
@@ -848,6 +860,8 @@ func TestSettingUpdateWritesIpsHoneypotOnce(t *testing.T) {
 		t.Fatalf("building plan: %v", d)
 	}
 
+	// Send the whole planned honeypot list rather than only the changed keys.
+	fc.listKeysOnly = true
 	resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
 	r.Update(ctx, fwresource.UpdateRequest{
 		State:    state,
@@ -1193,6 +1207,8 @@ func TestSettingCreateWritesSideDocumentsOnlyWhenConfigured(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fc.puts = nil
+			fc.listKeysOnly = true
+			defer func() { fc.listKeysOnly = false }()
 			resp := &fwresource.CreateResponse{
 				State: tfsdk.State{
 					Raw:    tftypes.NewValue(s.Type().TerraformType(ctx), nil),

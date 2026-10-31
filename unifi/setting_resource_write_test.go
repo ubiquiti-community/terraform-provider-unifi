@@ -30,15 +30,23 @@ func everySettingBlock(dpiEnabled bool) map[string]any {
 			"brightness":   80,
 			"idle_timeout": 300,
 		},
-		"mgmt":                 map[string]any{"auto_upgrade": true, "auto_upgrade_hour": 3},
+		"mgmt": map[string]any{
+			"auto_upgrade": map[string]any{"enabled": true, "hour": 3},
+		},
 		"network_optimization": map[string]any{"enabled": true},
 		"ntp": map[string]any{
 			"setting_preference": "manual",
 			"ntp_server_1":       "0.pool.ntp.org",
 		},
 		"radius": map[string]any{"accounting_enabled": false, "auth_port": 1812, "acct_port": 1813},
-		"syslog": map[string]any{"enabled": true, "this_controller": true},
-		"usg":    map[string]any{"broadcast_ping": true, "upnp_enabled": false},
+		"syslog": map[string]any{
+			"enabled":         true,
+			"this_controller": map[string]any{"enabled": true},
+		},
+		"usg": map[string]any{
+			"broadcast_ping": true,
+			"upnp":           map[string]any{"enabled": false},
+		},
 	}
 }
 
@@ -141,9 +149,10 @@ func Test_settingResource_writeErrors(t *testing.T) {
 		}
 		return stored
 	}
-	// Any valid prior state will do for Update; it only provides the site.
+	// A prior state without the blocks, so Update counts every block as
+	// changed (settingSectionChanged) and writes it.
 	r0, _ := newSettingsFakeController(t, storedSettingKeys())
-	prior := settingCreate(t, r0, everySettingBlock(true))
+	prior := settingCreate(t, r0, map[string]any{})
 
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
