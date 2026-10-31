@@ -110,22 +110,22 @@ resource "unifi_network" "third_party" {
 - `dhcp_server` (Attributes) DHCP server configuration. (see [below for nested schema](#nestedatt--dhcp_server))
 - `dhcp_v6_server` (Attributes) DHCPv6 server configuration. (see [below for nested schema](#nestedatt--dhcp_v6_server))
 - `domain_name` (String) The domain name for the network.
-- `enabled` (Boolean) Specifies whether the network is enabled.
+- `enabled` (Boolean) Specifies whether the network is enabled. Taken from the controller when not set: a network stored without the key (such as the default LAN) reads as enabled, and a disabled network is not re-enabled on import (#544).
 - `firewall_zone_id` (String) The firewall zone ID assigned to this network. Note: This field is dual-managed and can compete with `unifi_firewall_zone.network_ids`. To prevent state drift loops, ensure you manage zone membership from exactly one side. On Zone-Based Firewall (ZBF) controllers, this field is tightly coupled to the network's `purpose` field.
-- `gateway_type` (String) The gateway type. Must be one of `default` or `switch`.
-- `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled.
-- `internet_access` (Boolean) Specifies whether internet access is enabled.
+- `gateway_type` (String) The gateway type. Must be one of `default` or `switch`. Defaults to `default` when a network is created; an existing network keeps the controller's value (#544).
+- `igmp_snooping` (Boolean) Specifies whether IGMP snooping is enabled. Taken from the controller when not set (#544).
+- `internet_access` (Boolean) Specifies whether internet access is enabled. Defaults to `true` when a network is created; an existing network keeps the controller's value (#544).
 - `ip_aliases` (List of String) List of IP aliases for the network, in CIDR notation (e.g. `192.168.2.1/24`). The controller rejects entries without a prefix length.
 - `ipv6` (Attributes) IPv6 settings for the network. When omitted, `interface_type` is taken from the controller and the remaining values are read from the controller. (see [below for nested schema](#nestedatt--ipv6))
 - `lte_lan` (Boolean) Whether this network/VLAN stays active when the gateway fails over to a UniFi LTE (cellular) backup WAN. Maps to the controller's `lte_lan_enabled` flag and only matters when a UniFi LTE failover device is in use; otherwise it is cosmetic. The controller stores no default: left unset, the attribute is not written and whatever the controller holds is preserved, which is why existing networks show differing values.
 - `multicast_dns` (Boolean) Specifies whether mDNS is enabled. This is read back from the controller rather than defaulted: some controllers (notably UniFi OS gateways) ignore `mdns_enabled` at create/update time and always store `false`, so forcing a `true` default produced a "provider produced inconsistent result after apply" error.
 - `nat_outbound_ip_addresses` (Attributes List) List of NAT outbound IP addresses. (see [below for nested schema](#nestedatt--nat_outbound_ip_addresses))
-- `network_isolation` (Boolean) Specifies whether network isolation is enabled.
+- `network_isolation` (Boolean) Specifies whether network isolation is enabled. Taken from the controller when not set (#544).
 - `purpose` (String) The network purpose: `corporate` (default), `guest`, or `vlan-only`. Leave unset to let the controller manage it (a `third_party_gateway` network is always `vlan-only`). **Note:** on Zone-Based-Firewall controllers the purpose is coupled to the firewall zone — a `guest` network only keeps `purpose = "guest"` while it belongs to the guest/Hotspot zone (assign it there via `unifi_firewall_zone`), otherwise the controller rewrites it back to `corporate` and the apply fails with an inconsistent-result error.
 - `setting_preference` (String) Setting preference. Must be one of `auto` or `manual`. Taken from the controller when not set; an adopted network keeps its own preference, so importing a `manual` network no longer proposes `auto` - which would also reset DHCP guarding (#544).
 - `site` (String) The name of the site to associate the network with.
 - `subnet` (String) The network's gateway IP and prefix in CIDR notation. The host portion is the gateway address the controller assigns — it need not be the first usable address: `10.0.10.1/24` uses gateway `10.0.10.1`, while `10.0.10.254/24` uses gateway `10.0.10.254` on the same subnet. Optional: it is not required for `vlan_only` networks (`third_party_gateway = true`), where the UniFi controller does not manage the subnet.
-- `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.
+- `third_party_gateway` (Boolean) Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured. Read from the network's purpose when not set, so an imported `vlan-only` network is not planned back to `false` (#544).
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `vlan` (Number) The VLAN ID for the network.
 
@@ -157,11 +157,11 @@ Optional:
 Optional:
 
 - `boot` (Attributes) DHCP boot settings. (see [below for nested schema](#nestedatt--dhcp_server--boot))
-- `conflict_checking` (Boolean) Specifies whether DHCP conflict checking is enabled.
+- `conflict_checking` (Boolean) Specifies whether DHCP conflict checking is enabled. Defaults to `true` when the block is first configured; an existing network keeps the controller's value (#544).
 - `dns` (Attributes) DNS servers handed out to DHCP clients. (see [below for nested schema](#nestedatt--dhcp_server--dns))
-- `enabled` (Boolean) Specifies whether DHCP server is enabled.
+- `enabled` (Boolean) Specifies whether DHCP server is enabled. Defaults to `true` when the block is first configured; an existing network keeps the controller's value (#544).
 - `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
-- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string (e.g. `24h`, `86400s`). Defaults to `24h0m0s`.
+- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string (e.g. `24h`, `86400s`). Defaults to `24h0m0s` when the DHCP server is first configured; an existing network keeps the controller's lease time (#544).
 - `ntp` (Attributes) NTP servers handed out to DHCP clients. (see [below for nested schema](#nestedatt--dhcp_server--ntp))
 - `start` (String) The IPv4 address where the DHCP range starts.
 - `stop` (String) The IPv4 address where the DHCP range stops.

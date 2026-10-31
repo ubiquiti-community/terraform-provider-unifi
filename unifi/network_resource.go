@@ -25,12 +25,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -38,6 +35,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -127,16 +125,6 @@ func (m dhcpServerOptionModel) AttributeTypes() map[string]attr.Type {
 		"enabled": types.BoolType,
 		"servers": types.ListType{ElemType: types.StringType},
 	}
-}
-
-// dhcpServerOptionDefault reproduces what the flat dns_enabled/ntp_enabled
-// (default false) and dns_servers/ntp_servers (unset) attributes planned when
-// the practitioner left them out, so the request body is unchanged.
-func dhcpServerOptionDefault() types.Object {
-	return types.ObjectValueMust(dhcpServerOptionModel{}.AttributeTypes(), map[string]attr.Value{
-		"enabled": types.BoolValue(false),
-		"servers": types.ListNull(types.StringType),
-	})
 }
 
 // dhcpServerModel describes the DHCP server configuration.
@@ -237,15 +225,6 @@ func (m dhcpV6DNSModel) AttributeTypes() map[string]attr.Type {
 		"auto":    types.BoolType,
 		"servers": types.ListType{ElemType: types.StringType},
 	}
-}
-
-// dhcpV6DNSDefault reproduces the flat dns_auto (default false) and
-// dns_servers (unset) defaults.
-func dhcpV6DNSDefault() types.Object {
-	return types.ObjectValueMust(dhcpV6DNSModel{}.AttributeTypes(), map[string]attr.Value{
-		"auto":    types.BoolValue(false),
-		"servers": types.ListNull(types.StringType),
-	})
 }
 
 // dhcpV6ServerModel describes the DHCPv6 server configuration.
@@ -490,10 +469,15 @@ func (r *networkResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether the network is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Specifies whether the network is enabled. Taken from the " +
+					"controller when not set: a network stored without the key (such as the " +
+					"default LAN) reads as enabled, and a disabled network is not re-enabled " +
+					"on import (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "The name of the network.",
@@ -563,10 +547,13 @@ func (r *networkResource) Schema(
 				},
 			},
 			"network_isolation": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether network isolation is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Specifies whether network isolation is enabled. Taken from " +
+					"the controller when not set (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"setting_preference": schema.StringAttribute{
 				MarkdownDescription: "Setting preference. Must be one of `auto` or `manual`. Taken from the controller when not set; an adopted network keeps its own preference, so importing a `manual` network no longer proposes `auto` - which would also reset DHCP guarding (#544).",
@@ -580,16 +567,23 @@ func (r *networkResource) Schema(
 				},
 			},
 			"internet_access": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether internet access is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Specifies whether internet access is enabled. Defaults to " +
+					"`true` when a network is created; an existing network keeps the " +
+					"controller's value (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolDefaultOnCreate(true),
+				},
 			},
 			"igmp_snooping": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether IGMP snooping is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Specifies whether IGMP snooping is enabled. Taken from the " +
+					"controller when not set (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"multicast_dns": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether mDNS is enabled. This is " +
@@ -605,12 +599,16 @@ func (r *networkResource) Schema(
 				},
 			},
 			"gateway_type": schema.StringAttribute{
-				MarkdownDescription: "The gateway type. Must be one of `default` or `switch`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("default"),
+				MarkdownDescription: "The gateway type. Must be one of `default` or `switch`. " +
+					"Defaults to `default` when a network is created; an existing network " +
+					"keeps the controller's value (#544).",
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("default", "switch"),
+				},
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("default"),
 				},
 			},
 			"ipv6": schema.SingleNestedAttribute{
@@ -785,10 +783,12 @@ func (r *networkResource) Schema(
 				ElementType: types.StringType,
 			},
 			"third_party_gateway": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured.",
+				MarkdownDescription: "Specifies whether this network uses a third-party gateway. When enabled, the network purpose is set to `vlan-only` and only VLAN ID, DHCP guarding, and basic network settings are configured. Read from the network's purpose when not set, so an imported `vlan-only` network is not planned back to `false` (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"purpose": schema.StringAttribute{
 				MarkdownDescription: "The network purpose: `corporate` (default), `guest`, or `vlan-only`. Leave unset to let the controller manage it (a `third_party_gateway` network is always `vlan-only`). **Note:** on Zone-Based-Firewall controllers the purpose is coupled to the firewall zone — a `guest` network only keeps `purpose = \"guest\"` while it belongs to the guest/Hotspot zone (assign it there via `unifi_firewall_zone`), otherwise the controller rewrites it back to `corporate` and the apply fails with an inconsistent-result error.",
@@ -813,7 +813,9 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "Specifies whether DHCP guarding is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"servers": schema.ListAttribute{
 						MarkdownDescription: "List of allowed DHCP server IP addresses (maximum 3). " +
@@ -842,7 +844,9 @@ func (r *networkResource) Schema(
 								MarkdownDescription: "Toggles DHCP boot options.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseNonNullStateForUnknown(),
+								},
 							},
 							"server": schema.StringAttribute{
 								MarkdownDescription: "TFTP server for boot options.",
@@ -866,10 +870,12 @@ func (r *networkResource) Schema(
 						},
 					},
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether DHCP server is enabled.",
+						MarkdownDescription: "Specifies whether DHCP server is enabled. Defaults to `true` when the block is first configured; an existing network keeps the controller's value (#544).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(true),
+						PlanModifiers: []planmodifier.Bool{
+							boolDefaultOnCreate(true),
+						},
 					},
 					"start": schema.StringAttribute{
 						MarkdownDescription: "The IPv4 address where the DHCP range starts.",
@@ -897,25 +903,33 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "Specifies whether DHCP gateway is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"conflict_checking": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether DHCP conflict checking is enabled.",
+						MarkdownDescription: "Specifies whether DHCP conflict checking is enabled. Defaults to `true` when the block is first configured; an existing network keeps the controller's value (#544).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(true),
+						PlanModifiers: []planmodifier.Bool{
+							boolDefaultOnCreate(true),
+						},
 					},
 					"ntp": schema.SingleNestedAttribute{
 						MarkdownDescription: "NTP servers handed out to DHCP clients.",
 						Optional:            true,
 						Computed:            true,
-						Default:             objectdefault.StaticValue(dhcpServerOptionDefault()),
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseNonNullStateForUnknown(),
+						},
 						Attributes: map[string]schema.Attribute{
 							"enabled": schema.BoolAttribute{
 								MarkdownDescription: "Specifies whether DHCP NTP is enabled.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseNonNullStateForUnknown(),
+								},
 							},
 							"servers": schema.ListAttribute{
 								MarkdownDescription: "List of NTP server addresses for DHCP clients.",
@@ -937,19 +951,25 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "Specifies whether DHCP time offset is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"dns": schema.SingleNestedAttribute{
 						MarkdownDescription: "DNS servers handed out to DHCP clients.",
 						Optional:            true,
 						Computed:            true,
-						Default:             objectdefault.StaticValue(dhcpServerOptionDefault()),
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseNonNullStateForUnknown(),
+						},
 						Attributes: map[string]schema.Attribute{
 							"enabled": schema.BoolAttribute{
 								MarkdownDescription: "Specifies whether DHCP DNS is enabled.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseNonNullStateForUnknown(),
+								},
 							},
 							"servers": schema.ListAttribute{
 								MarkdownDescription: "List of DNS server addresses for DHCP clients.",
@@ -963,31 +983,31 @@ func (r *networkResource) Schema(
 					},
 					"leasetime": schema.StringAttribute{
 						MarkdownDescription: "Specifies the DHCP lease time, as a Go duration " +
-							"string (e.g. `24h`, `86400s`). Defaults to `24h0m0s`.",
+							"string (e.g. `24h`, `86400s`). Defaults to `24h0m0s` when the DHCP " +
+							"server is first configured; an existing network keeps the " +
+							"controller's lease time (#544).",
 						CustomType: timetypes.GoDurationType{},
 						Optional:   true,
 						Computed:   true,
-						Default:    stringdefault.StaticString("24h0m0s"),
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreate("24h0m0s"),
+						},
 					},
 					"wins": schema.SingleNestedAttribute{
 						MarkdownDescription: "WINS server configuration.",
 						Optional:            true,
 						Computed:            true,
-						Default: objectdefault.StaticValue(
-							types.ObjectValueMust(map[string]attr.Type{
-								"enabled":   types.BoolType,
-								"addresses": types.ListType{ElemType: types.StringType},
-							}, map[string]attr.Value{
-								"enabled":   types.BoolValue(false),
-								"addresses": types.ListNull(types.StringType),
-							}),
-						),
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseNonNullStateForUnknown(),
+						},
 						Attributes: map[string]schema.Attribute{
 							"enabled": schema.BoolAttribute{
 								MarkdownDescription: "Specifies whether DHCP WINS is enabled.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseNonNullStateForUnknown(),
+								},
 							},
 							"addresses": schema.ListAttribute{
 								MarkdownDescription: "List of WINS server addresses (maximum 2).",
@@ -1024,19 +1044,25 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "Specifies whether the DHCPv6 server is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"dns": schema.SingleNestedAttribute{
 						MarkdownDescription: "DNS servers handed out to DHCPv6 clients.",
 						Optional:            true,
 						Computed:            true,
-						Default:             objectdefault.StaticValue(dhcpV6DNSDefault()),
+						PlanModifiers: []planmodifier.Object{
+							objectplanmodifier.UseNonNullStateForUnknown(),
+						},
 						Attributes: map[string]schema.Attribute{
 							"auto": schema.BoolAttribute{
 								MarkdownDescription: "Specifies whether DNS auto-discovery is enabled for DHCPv6.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
+								PlanModifiers: []planmodifier.Bool{
+									boolplanmodifier.UseNonNullStateForUnknown(),
+								},
 							},
 							"servers": schema.ListAttribute{
 								MarkdownDescription: "List of DNS server addresses for DHCPv6 clients (maximum 4).",
@@ -1070,7 +1096,9 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "Specifies whether DHCP relay is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"servers": schema.ListAttribute{
 						MarkdownDescription: "List of DHCP relay server addresses.",
@@ -2610,6 +2638,48 @@ func boolPointerIfKnown(v types.Bool) *bool {
 		return nil
 	}
 	return v.ValueBoolPointer()
+}
+
+// boolDefaultOnCreate is planmodifiers.StringDefaultOnCreate for booleans: it
+// supplies def for an unset attribute when the prior state holds no value (a
+// create, or a block newly added to an existing resource) and otherwise keeps
+// the prior state value, so an imported network is never planned back to the
+// constant (#544). A schema Default cannot do this, because the framework
+// applies defaults before plan modifiers run.
+//
+// It is reserved for attributes go-unifi always serializes (a plain bool
+// without omitempty): leaving them unknown on create would send false, which
+// for internet access, the DHCP server and its conflict checking is not what a
+// new network has ever been created with.
+func boolDefaultOnCreate(def bool) planmodifier.Bool {
+	return boolDefaultOnCreateModifier{def: def}
+}
+
+type boolDefaultOnCreateModifier struct {
+	def bool
+}
+
+func (m boolDefaultOnCreateModifier) Description(_ context.Context) string {
+	return fmt.Sprintf("defaults to %t on create; keeps the current value on update", m.def)
+}
+
+func (m boolDefaultOnCreateModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m boolDefaultOnCreateModifier) PlanModifyBool(
+	_ context.Context,
+	req planmodifier.BoolRequest,
+	resp *planmodifier.BoolResponse,
+) {
+	if !req.ConfigValue.IsNull() {
+		return
+	}
+	if !req.State.Raw.IsNull() && !req.StateValue.IsNull() && !req.StateValue.IsUnknown() {
+		resp.PlanValue = req.StateValue
+		return
+	}
+	resp.PlanValue = types.BoolValue(m.def)
 }
 
 // networkEnabled reads the enabled flag of a networkconf document. The default
