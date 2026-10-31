@@ -335,3 +335,23 @@ func Test_parseWireGuardBase64Config(t *testing.T) {
 		})
 	}
 }
+
+func TestIPv6FromAddress(t *testing.T) {
+	tests := []struct {
+		address string
+		want    string
+	}{
+		{"10.0.0.2/30, 2001:db8::2/64", "2001:db8::2/64"},
+		{"2001:db8::2/64,10.0.0.2/30", "2001:db8::2/64"},
+		{"10.0.0.2/24", ""},
+		{"", ""},
+		{"10.0.0.2/30, fd00::2/64, 2001:db8::2/64", "fd00::2/64"},
+		{"10.0.0.2/30, ::ffff:10.0.0.2/128", ""},
+		{"10.0.0.2/30, not-an-address", ""},
+	}
+	for _, tt := range tests {
+		if got := ipv6FromAddress(tt.address); got != tt.want {
+			t.Errorf("ipv6FromAddress(%q) = %q, want %q", tt.address, got, tt.want)
+		}
+	}
+}

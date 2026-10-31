@@ -138,6 +138,7 @@ type vpnClientResourceModel struct {
 	Name         types.String         `tfsdk:"name"`
 	Enabled      types.Bool           `tfsdk:"enabled"`
 	Subnet       cidrtypes.IPv4Prefix `tfsdk:"subnet"`
+	IPv6Subnet   cidrtypes.IPv6Prefix `tfsdk:"ipv6_subnet"`
 	DefaultRoute types.Bool           `tfsdk:"default_route"`
 	PullDNS      types.Bool           `tfsdk:"pull_dns"`
 	Wireguard    types.Object         `tfsdk:"wireguard"`
@@ -222,6 +223,18 @@ func (r *vpnClientResource) Schema(
 				MarkdownDescription: "The local IP address for the WireGuard tunnel in CIDR notation (e.g., `10.0.0.2/24`).",
 				Required:            true,
 				CustomType:          cidrtypes.IPv4PrefixType{},
+			},
+			"ipv6_subnet": schema.StringAttribute{
+				MarkdownDescription: "The local IPv6 address for the WireGuard tunnel in CIDR notation " +
+					"(e.g., `2001:db8::2/64`). In file mode it defaults to the IPv6 entry of the " +
+					"configuration's `Address` line. When not configured, the controller's value is kept, " +
+					"so an address set in the UI survives updates made through Terraform.",
+				Optional:   true,
+				Computed:   true,
+				CustomType: cidrtypes.IPv6PrefixType{},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"default_route": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether to use the VPN as the default route.",
@@ -747,6 +760,9 @@ func (r *vpnClientResource) modelToNetwork(
 		VPNClientDefaultRoute: model.DefaultRoute.ValueBool(),
 		VPNClientPullDNS:      model.PullDNS.ValueBool(),
 	}
+	if !model.IPv6Subnet.IsNull() && !model.IPv6Subnet.IsUnknown() {
+		network.IPV6Subnet = model.IPv6Subnet.ValueStringPointer()
+	}
 
 	// Handle WireGuard configuration
 	if !model.Wireguard.IsNull() && !model.Wireguard.IsUnknown() {
@@ -795,6 +811,13 @@ func (r *vpnClientResource) modelToNetwork(
 					network.WireguardClientPeerPublicKey = new(parsed.PublicKey)
 					network.WireguardClientPeerIP = new(parsed.EndpointIP)
 					network.WireguardClientPeerPort = new(parsed.EndpointPort)
+
+					// Use the IPv6 tunnel address from the config file if not set explicitly
+					if network.IPV6Subnet == nil {
+						if v6 := ipv6FromAddress(parsed.Address); v6 != "" {
+							network.IPV6Subnet = new(v6)
+						}
+					}
 
 					// Use private key from config file if not set explicitly
 					if parsed.PrivateKey != "" &&
@@ -859,6 +882,11 @@ func (r *vpnClientResource) networkToModel(
 		model.Subnet = cidrtypes.NewIPv4PrefixValue(*network.IPSubnet)
 	} else {
 		model.Subnet = cidrtypes.NewIPv4PrefixNull()
+	}
+	if network.IPV6Subnet != nil && *network.IPV6Subnet != "" {
+		model.IPv6Subnet = cidrtypes.NewIPv6PrefixValue(*network.IPV6Subnet)
+	} else {
+		model.IPv6Subnet = cidrtypes.NewIPv6PrefixNull()
 	}
 	model.DefaultRoute = types.BoolValue(network.VPNClientDefaultRoute)
 	model.PullDNS = types.BoolValue(network.VPNClientPullDNS)
