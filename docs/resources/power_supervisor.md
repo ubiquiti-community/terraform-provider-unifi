@@ -34,10 +34,10 @@ resource "unifi_power_supervisor" "ap_lobby" {
 
 ### Optional
 
-- `enabled` (Boolean) Whether supervision is enabled. Defaults to `true`.
-- `heartbeat_interval` (String) How often the controller probes the device, as a Go duration string (e.g. `60s`, `1m`). Defaults to `1m0s`.
-- `power_off_duration` (String) How long the upstream PoE source stays off during a power-cycle, as a Go duration string (e.g. `2m`). Defaults to `2m0s`.
-- `silence_threshold` (String) How long the device may be silent before the controller power-cycles its upstream PoE source, as a Go duration string (e.g. `15m`). Defaults to `15m0s`.
+- `enabled` (Boolean) Whether supervision is enabled. Defaults to `true` for a newly created supervisor; an existing supervisor keeps the controller's value.
+- `heartbeat_interval` (String) How often the controller probes the device, as a Go duration string (e.g. `60s`, `1m`). Defaults to `1m0s` for a newly created supervisor; an existing supervisor keeps the controller's value.
+- `power_off_duration` (String) How long the upstream PoE source stays off during a power-cycle, as a Go duration string (e.g. `2m`). Defaults to `2m0s` for a newly created supervisor; an existing supervisor keeps the controller's value.
+- `silence_threshold` (String) How long the device may be silent before the controller power-cycles its upstream PoE source, as a Go duration string (e.g. `15m`). Defaults to `15m0s` for a newly created supervisor; an existing supervisor keeps the controller's value.
 - `site` (String) The name of the site the supervisor belongs to.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
