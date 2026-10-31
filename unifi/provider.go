@@ -70,7 +70,7 @@ func (c *Client) IntegrationSiteID(
 		return id, nil
 	}
 
-	id, err := c.ApiClient.ResolveIntegrationSiteID(ctx, site)
+	id, err := c.ResolveIntegrationSiteID(ctx, site)
 	if err != nil {
 		return "", err
 	}
