@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -30,6 +30,7 @@ var (
 	_ resource.Resource                = &natResource{}
 	_ resource.ResourceWithImportState = &natResource{}
 	_ resource.ResourceWithIdentity    = &natResource{}
+	_ resource.ResourceWithModifyPlan  = &natResource{}
 )
 
 func NewNatResource() resource.Resource {
@@ -118,16 +119,20 @@ func natFilterSchema(description string) schema.SingleNestedAttribute {
 				Validators:          []validator.String{natPortValidator()},
 			},
 			"invert_address": schema.BoolAttribute{
-				MarkdownDescription: "Match every address except `address`.",
+				MarkdownDescription: "Match every address except `address`. Taken from the controller when not set (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"invert_port": schema.BoolAttribute{
-				MarkdownDescription: "Match every port except `port`.",
+				MarkdownDescription: "Match every port except `port`. Taken from the controller when not set (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"network_conf_id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the network to match. Used with the `NETWORK_CONF` filter type.",
@@ -201,10 +206,16 @@ func (r *natResource) Schema(
 				Required:            true,
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the NAT rule is enabled. Defaults to `true`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the NAT rule is enabled. Defaults to `true` for a newly " +
+					"created rule; an existing rule keeps whatever the controller holds, so adopting " +
+					"a rule disabled in the UI does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				// Not a schema Default, which the framework applies before plan
+				// modifiers: the create-time `true` is set in ModifyPlan.
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"type": schema.StringAttribute{
 				MarkdownDescription: "The type of NAT rule. Can be `DNAT`, `SNAT` or `MASQUERADE`.",
@@ -253,22 +264,28 @@ func (r *natResource) Schema(
 				Validators:          []validator.String{natSinglePortValidator()},
 			},
 			"exclude": schema.BoolAttribute{
-				MarkdownDescription: "Exclude matching traffic from translation. Defaults to `false`.",
+				MarkdownDescription: "Exclude matching traffic from translation. Taken from the controller when not set; a new rule is created with it off (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"logging": schema.BoolAttribute{
-				MarkdownDescription: "Whether to log matching traffic. Defaults to `false`.",
+				MarkdownDescription: "Whether to log matching traffic. Taken from the controller when not set; a new rule is created with it off (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"pppoe_use_base_interface": schema.BoolAttribute{
-				MarkdownDescription: "Use the base interface of a PPPoE WAN instead of the PPPoE interface. Defaults to `false`.",
+				MarkdownDescription: "Use the base interface of a PPPoE WAN instead of the PPPoE interface. Taken from the controller when not set; a new rule is created with it off (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"rule_index": schema.Int64Attribute{
 				MarkdownDescription: "The position of the rule in the rule set. Assigned by the controller when not set.",
@@ -328,6 +345,31 @@ func (r *natResource) siteOrDefault(site types.String) string {
 		return s
 	}
 	return r.client.Site
+}
+
+// ModifyPlan plans `enabled = true` for a rule being created without it. It
+// cannot be a schema Default: the framework applies Defaults before plan
+// modifiers, so a Default would also overwrite the controller's value on every
+// adopted rule, re-enabling a rule disabled in the UI (#544). On update the
+// attribute's UseStateForUnknown holds the controller's value instead.
+//
+// A value has to be chosen on create because go-unifi always sends `enabled`
+// (no omitempty), so an unknown would be written as `false`.
+func (r *natResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() || !req.State.Raw.IsNull() {
+		return
+	}
+	var enabled types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
+	if resp.Diagnostics.HasError() || !enabled.IsNull() {
+		return
+	}
+	resp.Diagnostics.Append(
+		resp.Plan.SetAttribute(ctx, path.Root("enabled"), types.BoolValue(true))...)
 }
 
 func (r *natResource) Create(

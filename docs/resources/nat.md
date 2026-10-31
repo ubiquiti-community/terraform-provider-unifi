@@ -51,15 +51,15 @@ resource "unifi_nat" "masquerade" {
 ### Optional
 
 - `destination_filter` (Attributes) Matches traffic by its destination. (see [below for nested schema](#nestedatt--destination_filter))
-- `enabled` (Boolean) Whether the NAT rule is enabled. Defaults to `true`.
-- `exclude` (Boolean) Exclude matching traffic from translation. Defaults to `false`.
+- `enabled` (Boolean) Whether the NAT rule is enabled. Defaults to `true` for a newly created rule; an existing rule keeps whatever the controller holds, so adopting a rule disabled in the UI does not re-enable it (#544).
+- `exclude` (Boolean) Exclude matching traffic from translation. Taken from the controller when not set; a new rule is created with it off (#544).
 - `in_interface` (String) The ID of the network that incoming traffic arrives on. Used by `DNAT` rules.
 - `ip_address` (String) The translated IP address.
 - `ip_version` (String) The IP version the rule applies to. Can be `IPV4` or `IPV6`.
-- `logging` (Boolean) Whether to log matching traffic. Defaults to `false`.
+- `logging` (Boolean) Whether to log matching traffic. Taken from the controller when not set; a new rule is created with it off (#544).
 - `out_interface` (String) The ID of the network that outgoing traffic leaves on. Used by `SNAT` and `MASQUERADE` rules.
 - `port` (String) The translated port, as a single port (`443`). Port ranges are only accepted in `source_filter.port` and `destination_filter.port`: the controller rejects a translated port range such as `8080-8090` with `NatRuleInvalidParameters`.
-- `pppoe_use_base_interface` (Boolean) Use the base interface of a PPPoE WAN instead of the PPPoE interface. Defaults to `false`.
+- `pppoe_use_base_interface` (Boolean) Use the base interface of a PPPoE WAN instead of the PPPoE interface. Taken from the controller when not set; a new rule is created with it off (#544).
 - `protocol` (String) The protocol to match. Can be `all`, `tcp`, `udp` or `tcp_udp`.
 - `rule_index` (Number) The position of the rule in the rule set. Assigned by the controller when not set.
 - `setting_preference` (String) Whether the rule is managed automatically or manually. Can be `auto` or `manual`.
@@ -82,8 +82,8 @@ Optional:
 
 - `address` (String) The address or CIDR to match. Used with the `ADDRESS_AND_PORT` filter type.
 - `firewall_group_ids` (Set of String) The IDs of the firewall groups to match. Used with the `FIREWALL_GROUPS` filter type.
-- `invert_address` (Boolean) Match every address except `address`.
-- `invert_port` (Boolean) Match every port except `port`.
+- `invert_address` (Boolean) Match every address except `address`. Taken from the controller when not set (#544).
+- `invert_port` (Boolean) Match every port except `port`. Taken from the controller when not set (#544).
 - `network_conf_id` (String) The ID of the network to match. Used with the `NETWORK_CONF` filter type.
 - `port` (String) The port to match. Used with the `ADDRESS_AND_PORT` filter type, as a single port (`443`) or a range (`8080-8090`).
 
@@ -99,8 +99,8 @@ Optional:
 
 - `address` (String) The address or CIDR to match. Used with the `ADDRESS_AND_PORT` filter type.
 - `firewall_group_ids` (Set of String) The IDs of the firewall groups to match. Used with the `FIREWALL_GROUPS` filter type.
-- `invert_address` (Boolean) Match every address except `address`.
-- `invert_port` (Boolean) Match every port except `port`.
+- `invert_address` (Boolean) Match every address except `address`. Taken from the controller when not set (#544).
+- `invert_port` (Boolean) Match every port except `port`. Taken from the controller when not set (#544).
 - `network_conf_id` (String) The ID of the network to match. Used with the `NETWORK_CONF` filter type.
 - `port` (String) The port to match. Used with the `ADDRESS_AND_PORT` filter type, as a single port (`443`) or a range (`8080-8090`).
 
