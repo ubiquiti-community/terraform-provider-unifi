@@ -1199,7 +1199,18 @@ func (r *wanResource) Create(
 		site = r.client.Site
 	}
 
-	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
+	// A brand-new WAN is created exactly as before #544: enabled and on DHCP
+	// unless the configuration says otherwise. The adoption path below keeps
+	// the unset values nil, so an existing PPPoE or static uplink keeps its type.
+	newWAN := *network
+	if newWAN.WANType == nil {
+		newWAN.WANType = new("dhcp")
+	}
+	if newWAN.Enabled == nil {
+		newWAN.Enabled = new(true)
+	}
+
+	createdNetwork, err := r.client.CreateNetwork(ctx, site, &newWAN)
 	if err != nil {
 		// If a WAN configuration already exists for this network group,
 		// adopt the existing one and update it with the planned configuration.

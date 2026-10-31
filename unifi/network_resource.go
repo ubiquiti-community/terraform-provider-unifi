@@ -1605,6 +1605,12 @@ func (r *networkResource) Create(
 	}
 
 	// Create the network
+	// A new network is created enabled unless the configuration says otherwise,
+	// as before #544; only an imported network takes enabled from the controller.
+	if network.Enabled == nil {
+		network.Enabled = new(true)
+	}
+
 	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
