@@ -949,9 +949,9 @@ func Test_wanResource_interfaceMTU(t *testing.T) {
 		// UseStateForUnknown plans both attributes as their prior state.
 		plan := *state
 		plan.Name = types.StringValue("renamed")
-		r.applyPlanToState(ctx, &plan, state)
 
-		got, diags := r.modelToNetwork(ctx, state)
+		// Update sends the plan, with unknowns taken from prior state.
+		got, diags := r.modelToNetwork(ctx, &plan)
 		if diags.HasError() {
 			t.Fatalf("modelToNetwork: %v", diags)
 		}
@@ -975,9 +975,9 @@ func Test_wanResource_interfaceMTU(t *testing.T) {
 		plan := *state
 		plan.InterfaceMTU = types.Int64Value(1508)
 		plan.InterfaceMTUEnabled = types.BoolValue(true)
-		r.applyPlanToState(ctx, &plan, state)
 
-		got, diags := r.modelToNetwork(ctx, state)
+		// Update sends the plan, with unknowns taken from prior state.
+		got, diags := r.modelToNetwork(ctx, &plan)
 		if diags.HasError() {
 			t.Fatalf("modelToNetwork: %v", diags)
 		}
