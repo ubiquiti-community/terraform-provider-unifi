@@ -464,7 +464,8 @@ func (r *siteToSiteVPNResource) Schema(
 				MarkdownDescription: "Whether the tunnel advertises dynamically learned " +
 					"subnets. It can be enabled manually, but it is forced on (and cannot " +
 					"be disabled) when `dynamic_routing` is enabled and `remote_subnets` " +
-					"is empty, since the tunnel then relies entirely on learned routes.",
+					"is empty, since the tunnel then relies entirely on learned routes. " +
+					"When omitted (and not forced on), the current value is kept.",
 				Optional:   true,
 				Computed:   true,
 				Validators: []validator.Bool{dynamicSubnetsValidator{}},
@@ -1337,7 +1338,9 @@ func (r *siteToSiteVPNResource) List(
 type dynamicSubnetsPlanModifier struct{}
 
 func (m dynamicSubnetsPlanModifier) Description(_ context.Context) string {
-	return "Forces the value on when dynamic_routing is enabled with an empty remote_subnets; otherwise uses the configured value."
+	return "Forces the value on when dynamic_routing is enabled with an empty " +
+		"remote_subnets; otherwise uses the configured value, or keeps the " +
+		"prior state when unset."
 }
 
 func (m dynamicSubnetsPlanModifier) MarkdownDescription(ctx context.Context) string {
@@ -1357,6 +1360,14 @@ func (m dynamicSubnetsPlanModifier) PlanModifyBool(
 		req.Plan.GetAttribute(ctx, path.Root("remote_subnets"), &remoteSubnets)...)
 	if resp.Diagnostics.HasError() || dynamicRouting.IsUnknown() || remoteSubnets.IsUnknown() {
 		return // leave as unknown; can't resolve yet
+	}
+	// Unset and not forced on: keep what the controller has rather than
+	// planning false, which (with RequiresReplace) would recreate an imported
+	// tunnel that has the flag on.
+	if req.ConfigValue.IsNull() && !req.StateValue.IsNull() && !req.StateValue.IsUnknown() &&
+		!remoteVPNDynamicSubnetsEnabled(types.BoolNull(), dynamicRouting, remoteSubnets) {
+		resp.PlanValue = req.StateValue
+		return
 	}
 	resp.PlanValue = types.BoolValue(
 		remoteVPNDynamicSubnetsEnabled(req.ConfigValue, dynamicRouting, remoteSubnets),

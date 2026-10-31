@@ -1424,6 +1424,30 @@ func TestSiteToSiteVPNDynamicSubnetsValid(t *testing.T) {
 // every attribute null except dynamic_routing and remote_subnets, for driving
 // the dynamicSubnetsValidator end-to-end.
 
+func TestDynamicSubnetsPlanModifier_KeepsStateWhenUnset(t *testing.T) {
+	ctx := context.Background()
+	nonEmpty := types.ListValueMust(
+		types.StringType,
+		[]attr.Value{types.StringValue("192.0.2.0/24")},
+	)
+
+	req := planmodifier.BoolRequest{
+		Path:        path.Root("remote_vpn_dynamic_subnets_enabled"),
+		Plan:        buildDynamicSubnetsPlan(t, ctx, types.BoolValue(false), nonEmpty),
+		ConfigValue: types.BoolNull(),
+		StateValue:  types.BoolValue(true),
+	}
+	resp := &planmodifier.BoolResponse{PlanValue: types.BoolUnknown()}
+	dynamicSubnetsPlanModifier{}.PlanModifyBool(ctx, req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("PlanModifyBool diagnostics: %v", resp.Diagnostics)
+	}
+	if !resp.PlanValue.Equal(types.BoolValue(true)) {
+		t.Errorf("PlanValue = %v, want true (kept from state)", resp.PlanValue)
+	}
+}
+
 func TestTunnelIPEnabledPlanModifier(t *testing.T) {
 	ctx := context.Background()
 
