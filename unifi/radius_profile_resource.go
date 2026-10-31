@@ -18,11 +18,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -37,6 +35,7 @@ var (
 	_ resource.ResourceWithImportState  = &radiusProfileResource{}
 	_ resource.ResourceWithIdentity     = &radiusProfileResource{}
 	_ resource.ResourceWithUpgradeState = &radiusProfileResource{}
+	_ resource.ResourceWithModifyPlan   = &radiusProfileResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -105,21 +104,27 @@ func radiusProfileVlanAttrTypes() map[string]attr.Type {
 	}
 }
 
-// Object-level defaults reproduce the values the flat attributes used to send
-// when the practitioner left a whole group out of configuration, so the
+// These create-time shapes reproduce the values the flat attributes used to
+// send when the practitioner left a whole group out of configuration, so the
 // request body on create is unchanged by the nesting.
 //
-// interim_update.interval is the exception: its `1h` is applied on create only,
-// by the leaf's plan modifier, so the object default leaves it null. The
-// controller stores no interval on a profile that never set one (the built-in
-// Default profile has none), and a static `1h` planned `null -> 1h0m0s` on
-// every adopted profile, which the configuration could not suppress, not even
-// with ignore_changes (#544).
+// They are applied on create only, by ModifyPlan, and are not schema Defaults:
+// the framework applies a Default before any plan modifier runs, so an object
+// Default replaced the controller's group on every adopted profile whose
+// configuration left it out - importing a profile with dynamic VLAN assignment
+// proposed turning it off (#544). On update the groups keep the controller's
+// object through UseStateForUnknown.
+//
+// interim_update.interval also keeps its own create-only modifier for a
+// declared group that leaves it out. The controller stores no interval on a
+// profile that never set one (the built-in Default profile has none), and a
+// static `1h` planned `null -> 1h0m0s` on every adopted profile, which the
+// configuration could not suppress, not even with ignore_changes.
 
 func radiusProfileInterimUpdateDefault() types.Object {
 	return types.ObjectValueMust(radiusProfileInterimUpdateAttrTypes(), map[string]attr.Value{
 		"enabled":  types.BoolValue(false),
-		"interval": timetypes.NewGoDurationNull(),
+		"interval": timetypes.NewGoDurationValue(time.Hour),
 	})
 }
 
@@ -216,22 +221,28 @@ func (r *radiusProfileResource) Schema(
 				Required:            true,
 			},
 			"accounting_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to use RADIUS accounting.",
+				MarkdownDescription: "Specifies whether to use RADIUS accounting. Taken from the controller when not set.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"interim_update": schema.SingleNestedAttribute{
-				MarkdownDescription: "RADIUS interim accounting update settings.",
+				MarkdownDescription: "RADIUS interim accounting update settings. Taken from the controller when not set.",
 				Optional:            true,
 				Computed:            true,
-				Default:             objectdefault.StaticValue(radiusProfileInterimUpdateDefault()),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Specifies whether to use interim_update.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"interval": schema.StringAttribute{
 						MarkdownDescription: "Specifies the RADIUS interim update interval, as a Go " +
@@ -251,34 +262,44 @@ func (r *radiusProfileResource) Schema(
 				},
 			},
 			"use_usg_acct_server": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to use usg as a RADIUS accounting server.",
+				MarkdownDescription: "Specifies whether to use usg as a RADIUS accounting server. Taken from the controller when not set.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"use_usg_auth_server": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to use usg as a RADIUS authentication server.",
+				MarkdownDescription: "Specifies whether to use usg as a RADIUS authentication server. Taken from the controller when not set.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"vlan": schema.SingleNestedAttribute{
-				MarkdownDescription: "Dynamic VLAN assignment settings.",
+				MarkdownDescription: "Dynamic VLAN assignment settings. Taken from the controller when not set.",
 				Optional:            true,
 				Computed:            true,
-				Default:             objectdefault.StaticValue(radiusProfileVlanDefault()),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Specifies whether to use vlan on wired connections.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"wlan_mode": schema.StringAttribute{
 						MarkdownDescription: "Specifies whether to use vlan on wireless connections. Must be one of `disabled`, `optional`, or `required`.",
 						Optional:            true,
 						Computed:            true,
-						Default:             stringdefault.StaticString(""),
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
 						Validators: []validator.String{
 							stringvalidator.OneOf("disabled", "optional", "required"),
 						},
@@ -307,10 +328,11 @@ func (r *radiusProfileResource) Schema(
 							},
 						},
 						"port": schema.Int64Attribute{
-							MarkdownDescription: "Port of authentication service.",
-							Optional:            true,
-							Computed:            true,
-							Default:             int64default.StaticInt64(1812),
+							MarkdownDescription: "Port of authentication service. Defaults to `1812` " +
+								"for a server added by the configuration; an existing server keeps the " +
+								"controller's port, which may be none.",
+							Optional: true,
+							Computed: true,
 							Validators: []validator.Int64{
 								int64validator.Between(1, 65535),
 							},
@@ -337,10 +359,11 @@ func (r *radiusProfileResource) Schema(
 							},
 						},
 						"port": schema.Int64Attribute{
-							MarkdownDescription: "Port of accounting service.",
-							Optional:            true,
-							Computed:            true,
-							Default:             int64default.StaticInt64(1813),
+							MarkdownDescription: "Port of accounting service. Defaults to `1813` " +
+								"for a server added by the configuration; an existing server keeps the " +
+								"controller's port, which may be none.",
+							Optional: true,
+							Computed: true,
 							Validators: []validator.Int64{
 								int64validator.Between(1, 65535),
 							},
@@ -354,6 +377,51 @@ func (r *radiusProfileResource) Schema(
 				},
 			},
 		},
+	}
+}
+
+// ModifyPlan applies the create-time defaults that used to be schema Defaults
+// (#544): the interim_update and vlan groups take their create-time shape when
+// a new profile leaves them out, and a server port left out of configuration
+// defaults to 1812/1813 only for a server with no prior element at its index.
+// An existing server keeps the controller's port, even none: go-unifi reads a
+// stored `""` as null, which a static Default turned into a `null -> 1812`
+// diff that rewrote the server on the first apply.
+func (r *radiusProfileResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return // resource is being destroyed
+	}
+	planObjectOnCreate(ctx, req, resp, path.Root("interim_update"),
+		radiusProfileInterimUpdateDefault())
+	planObjectOnCreate(ctx, req, resp, path.Root("vlan"), radiusProfileVlanDefault())
+
+	for _, server := range []struct {
+		block string
+		port  int64
+	}{{"auth_server", 1812}, {"acct_server", 1813}} {
+		var configured, prior types.List
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root(server.block), &configured)...)
+		if !req.State.Raw.IsNull() {
+			resp.Diagnostics.Append(
+				req.State.GetAttribute(ctx, path.Root(server.block), &prior)...)
+		}
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if configured.IsUnknown() {
+			continue
+		}
+		priorLen := len(prior.Elements())
+		for i := range configured.Elements() {
+			planDefaultOnCreate(ctx, req, resp,
+				path.Root(server.block).AtListIndex(i).AtName("port"),
+				types.Int64Value(server.port), i < priorLen)
+		}
 	}
 }
 
