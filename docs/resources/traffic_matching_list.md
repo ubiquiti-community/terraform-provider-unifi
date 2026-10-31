@@ -3,11 +3,14 @@ page_title: Traffic Matching List (Resource)
 subcategory: ""
 description: |-
   unifi_traffic_matching_list manages a reusable set of match criteria (IPv4 addresses or ports) exposed by the UniFi Network Integration API and referenced by firewall and traffic-management rules.
+  ~> Note: The UniFi Network Integration API only accepts API key authentication. Configure the provider with api_key; username/password authentication is not supported for this resource.
 ---
 
 # Traffic Matching List (Resource)
 
 `unifi_traffic_matching_list` manages a reusable set of match criteria (IPv4 addresses or ports) exposed by the UniFi Network Integration API and referenced by firewall and traffic-management rules.
+
+~> **Note:** The UniFi Network Integration API only accepts API key authentication. Configure the provider with `api_key`; username/password authentication is not supported for this resource.
 
 ## Example Usage
 
@@ -19,6 +22,9 @@ description: |-
 # NOTE: The UniFi Integration API addresses sites by UUID. The "site" attribute
 # (which defaults to the provider's configured site) accepts either a site name
 # such as "default" or a site UUID; a name is resolved to its UUID automatically.
+#
+# NOTE: The Integration API requires the provider to be configured with an
+# "api_key"; username/password authentication is not supported for this resource.
 
 # A list of IPv4 addresses, e.g. upstream DNS resolvers.
 resource "unifi_traffic_matching_list" "dns_resolvers" {
