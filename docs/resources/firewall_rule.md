@@ -138,12 +138,12 @@ resource "unifi_firewall_rule" "drop_wan_v6" {
 ### Optional
 
 - `destination` (Attributes) The destination match criteria of the firewall rule. (see [below for nested schema](#nestedatt--destination))
-- `enabled` (Boolean) Specifies whether the rule should be enabled.
+- `enabled` (Boolean) Specifies whether the rule should be enabled. Defaults to `true` for a newly created rule; an existing rule keeps whatever the controller holds, so adopting a rule disabled in the UI does not re-enable it (#544).
 - `icmp` (Attributes) ICMP type matching for the firewall rule. (see [below for nested schema](#nestedatt--icmp))
 - `ip_sec` (String) Specify whether the rule matches on IPsec packets. Can be one of `match-ipset` or `match-none`.
-- `logging` (Boolean) Enable logging for the firewall rule.
+- `logging` (Boolean) Enable logging for the firewall rule. Taken from the controller when not set; a new rule is created with logging off (#544).
 - `protocol` (String) The protocol of the rule.
-- `protocol_match_excepted` (Boolean) Match packets that do NOT match the specified protocol (protocol negation).
+- `protocol_match_excepted` (Boolean) Match packets that do NOT match the specified protocol (protocol negation). Taken from the controller when not set; a new rule is created with it off (#544).
 - `protocol_v6` (String) The IPv6 protocol of the rule.
 - `setting_preference` (String) Whether the rule is managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `site` (String) The name of the site to associate the firewall rule with.
@@ -164,7 +164,7 @@ Optional:
 - `address_ipv6` (String) The IPv6 destination address of the firewall rule.
 - `firewall_group_ids` (Set of String) The destination firewall group IDs of the firewall rule.
 - `network_id` (String) The destination network ID of the firewall rule.
-- `network_type` (String) The destination network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.
+- `network_type` (String) The destination network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`. Defaults to `NETv4` for a newly created rule; an existing rule keeps whatever the controller holds (#544).
 - `port` (String) The destination port of the firewall rule.
 
 
@@ -187,7 +187,7 @@ Optional:
 - `firewall_group_ids` (Set of String) The source firewall group IDs for the firewall rule.
 - `mac` (String) The source MAC address of the firewall rule.
 - `network_id` (String) The source network ID for the firewall rule.
-- `network_type` (String) The source network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.
+- `network_type` (String) The source network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`. Defaults to `NETv4` for a newly created rule; an existing rule keeps whatever the controller holds (#544).
 - `port` (String) The source port of the firewall rule.
 
 
