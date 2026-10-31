@@ -17,9 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -34,6 +33,7 @@ var (
 	_ resource.ResourceWithImportState  = &radiusUserResource{}
 	_ resource.ResourceWithIdentity     = &radiusUserResource{}
 	_ resource.ResourceWithUpgradeState = &radiusUserResource{}
+	_ resource.ResourceWithModifyPlan   = &radiusUserResource{}
 )
 
 // radiusUserSchemaVersion is the current schema version of unifi_radius_user
@@ -93,6 +93,12 @@ func radiusUserTunnelAttrTypes() map[string]attr.Type {
 // send when the practitioner left the whole group out of configuration
 // (tunnel_type 3, tunnel_medium_type 6, no tunnel_config_type), so the request
 // body on create is unchanged by the nesting.
+//
+// It is applied on create only, by ModifyPlan, not as a schema Default: a
+// Default replaced the controller's tunnel on every adopted account whose
+// configuration left the group out, and an account whose controller document
+// stores no tunnel type (`""`, read as null since go-unifi v1.42.0) planned
+// `null -> 3` / `null -> 6` and wrote them on the first apply (#544).
 func radiusUserTunnelDefault() types.Object {
 	return types.ObjectValueMust(radiusUserTunnelAttrTypes(), map[string]attr.Value{
 		"type":        types.Int64Value(3),
@@ -197,26 +203,32 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 				Sensitive:           true,
 			},
 			"tunnel": schema.SingleNestedAttribute{
-				MarkdownDescription: "RFC 2868 tunnel attributes used for dynamic VLAN assignment.",
-				Optional:            true,
-				Computed:            true,
-				Default:             objectdefault.StaticValue(radiusUserTunnelDefault()),
+				MarkdownDescription: "RFC 2868 tunnel attributes used for dynamic VLAN assignment. " +
+					"A new account defaults to `type = 3`, `medium_type = 6`; an existing account " +
+					"keeps the controller's values, which may be none.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"type": schema.Int64Attribute{
 						MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. " +
-							"Valid values are 1-13; `13` (VLAN) is the most common.",
+							"Valid values are 1-13; `13` (VLAN) is the most common. Defaults to `3` " +
+							"for a newly created account; an existing account keeps the controller's " +
+							"value, which may be none.",
 						Optional: true,
 						Computed: true,
-						Default:  int64default.StaticInt64(3),
 						Validators: []validator.Int64{
 							int64validator.Between(1, 13),
 						},
 					},
 					"medium_type": schema.Int64Attribute{
-						MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(6),
+						MarkdownDescription: "See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2. " +
+							"Defaults to `6` for a newly created account; an existing account keeps " +
+							"the controller's value, which may be none.",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.Int64{
 							int64validator.Between(1, 15),
 						},
@@ -251,6 +263,25 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 			),
 		},
 	}
+}
+
+// ModifyPlan applies the tunnel defaults to a new account only. An existing
+// account keeps the controller's tunnel type and medium type when the
+// configuration does not set them, including when the controller stores none
+// (see radiusUserTunnelDefault).
+func (r *radiusUserResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return // resource is being destroyed
+	}
+	hasPrior := !req.State.Raw.IsNull()
+	tunnel := path.Root("tunnel")
+	planObjectOnCreate(ctx, req, resp, tunnel, radiusUserTunnelDefault())
+	planDefaultOnCreate(ctx, req, resp, tunnel.AtName("type"), types.Int64Value(3), hasPrior)
+	planDefaultOnCreate(ctx, req, resp, tunnel.AtName("medium_type"), types.Int64Value(6), hasPrior)
 }
 
 // UpgradeState migrates v0 state (flat tunnel_type, tunnel_medium_type and

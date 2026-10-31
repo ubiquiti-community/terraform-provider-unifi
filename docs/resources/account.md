@@ -35,7 +35,7 @@ NOTE: MAC-based authentication accounts can only be used for wireless and wired 
 - `network_id` (String) ID of the network for this account. When set and `vlan` is omitted, the account inherits that network's VLAN (so RADIUS/MAB VLAN assignment is applied).
 - `site` (String) The name of the site to associate the account with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
-- `tunnel` (Attributes) RFC 2868 tunnel attributes used for dynamic VLAN assignment. (see [below for nested schema](#nestedatt--tunnel))
+- `tunnel` (Attributes) RFC 2868 tunnel attributes used for dynamic VLAN assignment. A new account defaults to `type = 3`, `medium_type = 6`; an existing account keeps the controller's values, which may be none. (see [below for nested schema](#nestedatt--tunnel))
 - `vlan` (Number) VLAN assigned to the account. If omitted but `network_id` is set, it is derived from that network's VLAN. If neither is set, the client falls back to the untagged VLAN.
 
 ### Read-Only
@@ -59,5 +59,5 @@ Optional:
 Optional:
 
 - `config_type` (String) The tunnel configuration type. Can be `vpn`, `802.1x`, or `custom`.
-- `medium_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2
-- `type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. Valid values are 1-13; `13` (VLAN) is the most common.
+- `medium_type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.2. Defaults to `6` for a newly created account; an existing account keeps the controller's value, which may be none.
+- `type` (Number) See [RFC 2868](https://www.rfc-editor.org/rfc/rfc2868) section 3.1. Valid values are 1-13; `13` (VLAN) is the most common. Defaults to `3` for a newly created account; an existing account keeps the controller's value, which may be none.
