@@ -101,26 +101,31 @@ func portStormctrlAttrTypes() map[string]attr.Type {
 // portStormctrlAPI is the flat storm-control field set shared by
 // unifi.DevicePortOverrides and unifi.PortProfile, gathered so one builder can
 // produce the nested object for both resources.
+//
+// The enabled flags are pointers because DevicePortOverrides models them as
+// *bool (an explicit false must reach the controller, #567): nil means "not
+// set" and maps to/from null. unifi.PortProfile still uses plain bools, so the
+// port profile resource passes &value on read and derefs on write.
 type portStormctrlAPI struct {
 	Type         string
-	BcastEnabled bool
+	BcastEnabled *bool
 	BcastLevel   *int64
 	BcastRate    *int64
-	McastEnabled bool
+	McastEnabled *bool
 	McastLevel   *int64
 	McastRate    *int64
-	UcastEnabled bool
+	UcastEnabled *bool
 	UcastLevel   *int64
 	UcastRate    *int64
 }
 
 func portStormctrlClassObject(
 	ctx context.Context,
-	enabled bool,
+	enabled *bool,
 	level, rate *int64,
 ) (types.Object, diag.Diagnostics) {
 	return types.ObjectValueFrom(ctx, portStormctrlClassAttrTypes(), portStormctrlClassModel{
-		Enabled: types.BoolValue(enabled),
+		Enabled: types.BoolPointerValue(enabled),
 		Level:   types.Int64PointerValue(level),
 		Rate:    types.Int64PointerValue(rate),
 	})
@@ -153,7 +158,9 @@ func portStormctrlObject(
 
 // portStormctrlFromObject decodes a `stormctrl` object back into flat API
 // values. Null/unknown objects (or classes) contribute nothing, leaving the
-// returned struct at its zero value, exactly as the flat attributes did.
+// returned struct at its zero value, exactly as the flat attributes did. A
+// null/unknown enabled flag decodes to nil; a known one (false included) to a
+// pointer, so an explicit false is sent rather than dropped by omitempty.
 func portStormctrlFromObject(
 	ctx context.Context,
 	obj types.Object,
@@ -166,13 +173,13 @@ func portStormctrlFromObject(
 	if !m.Type.IsNull() && !m.Type.IsUnknown() {
 		out.Type = m.Type.ValueString()
 	}
-	class := func(o types.Object, enabled *bool, level, rate **int64) {
+	class := func(o types.Object, enabled **bool, level, rate **int64) {
 		c, ok, d := util.ObjectAs[portStormctrlClassModel](ctx, o)
 		diags.Append(d...)
 		if !ok {
 			return
 		}
-		*enabled = c.Enabled.ValueBool()
+		*enabled = util.ConvertBoolToAPIValue(c.Enabled)
 		if !c.Level.IsNull() && !c.Level.IsUnknown() {
 			*level = c.Level.ValueInt64Pointer()
 		}
@@ -199,26 +206,28 @@ func portDot1xObject(
 	})
 }
 
-// portEgressRateLimitObject builds the `egress_rate_limit` object from API values.
+// portEgressRateLimitObject builds the `egress_rate_limit` object from API
+// values. A nil enabled flag maps to null.
 func portEgressRateLimitObject(
 	ctx context.Context,
-	enabled bool,
+	enabled *bool,
 	kbps *int64,
 ) (types.Object, diag.Diagnostics) {
 	return types.ObjectValueFrom(ctx, portEgressRateLimitAttrTypes(), portEgressRateLimitModel{
-		Enabled: types.BoolValue(enabled),
+		Enabled: types.BoolPointerValue(enabled),
 		Kbps:    types.Int64PointerValue(kbps),
 	})
 }
 
-// portLldpmedObject builds the `lldpmed` object from API values.
+// portLldpmedObject builds the `lldpmed` object from API values. A nil flag
+// maps to null.
 func portLldpmedObject(
 	ctx context.Context,
-	enabled, notifyEnabled bool,
+	enabled, notifyEnabled *bool,
 ) (types.Object, diag.Diagnostics) {
 	return types.ObjectValueFrom(ctx, portLldpmedAttrTypes(), portLldpmedModel{
-		Enabled:       types.BoolValue(enabled),
-		NotifyEnabled: types.BoolValue(notifyEnabled),
+		Enabled:       types.BoolPointerValue(enabled),
+		NotifyEnabled: types.BoolPointerValue(notifyEnabled),
 	})
 }
 

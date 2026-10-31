@@ -71,7 +71,7 @@ func TestPortProfileStormctrlRoundTrip(t *testing.T) {
 	if sc.Type != "rate" {
 		t.Errorf("stormctrl.type = %q, want %q", sc.Type, "rate")
 	}
-	if !sc.BcastEnabled || !sc.McastEnabled || !sc.UcastEnabled {
+	if !isTrue(sc.BcastEnabled) || !isTrue(sc.McastEnabled) || !isTrue(sc.UcastEnabled) {
 		t.Errorf("stormctrl classes should all be enabled, got %+v", sc)
 	}
 	for name, tc := range map[string]struct {
