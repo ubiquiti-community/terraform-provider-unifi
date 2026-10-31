@@ -5,11 +5,11 @@ resource "unifi_nat" "dnat" {
   protocol     = "tcp"
   in_interface = var.wan_network_id
   ip_address   = "192.168.1.20"
-  port         = 443
+  port         = "443"
 
   destination_filter = {
     filter_type = "ADDRESS_AND_PORT"
-    port        = 8443
+    port        = "8443"
   }
 }
 

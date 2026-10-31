@@ -10,8 +10,6 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-func ptrNatInt64(v int64) *int64 { return &v }
-
 func newNatTestModel() natResourceModel {
 	return natResourceModel{
 		SourceFilter:      types.ObjectNull(natFilterAttrTypes()),
@@ -93,7 +91,7 @@ func Test_natModelToAPI(t *testing.T) {
 		src, diags := types.ObjectValueFrom(ctx, natFilterAttrTypes(), natFilterModel{
 			FilterType:       types.StringValue("FIREWALL_GROUPS"),
 			Address:          types.StringNull(),
-			Port:             types.Int64Null(),
+			Port:             types.StringNull(),
 			InvertAddress:    types.BoolValue(true),
 			InvertPort:       types.BoolValue(false),
 			NetworkConfID:    types.StringNull(),
@@ -109,7 +107,7 @@ func Test_natModelToAPI(t *testing.T) {
 		m.Type = types.StringValue("DNAT")
 		m.Protocol = types.StringValue("tcp")
 		m.IPAddress = types.StringValue("10.0.0.5")
-		m.Port = types.Int64Value(8080)
+		m.Port = types.StringValue("8080-8090")
 		m.SourceFilter = src
 
 		got, diags := natModelToAPI(ctx, &m)
@@ -120,8 +118,8 @@ func Test_natModelToAPI(t *testing.T) {
 		if got.Description != "web" || got.Type != "DNAT" || got.Protocol != "tcp" {
 			t.Errorf("scalar fields not copied: %+v", got)
 		}
-		if got.Port == nil || *got.Port != 8080 {
-			t.Errorf("Port = %v, want 8080", got.Port)
+		if got.Port != "8080-8090" {
+			t.Errorf("Port = %q, want 8080-8090", got.Port)
 		}
 		if got.SourceFilter == nil || got.SourceFilter.FilterType != "FIREWALL_GROUPS" ||
 			!got.SourceFilter.InvertAddress ||
@@ -155,8 +153,8 @@ func Test_natModelToAPI(t *testing.T) {
 			t.Errorf("filters must default to NONE: src=%+v dst=%+v",
 				got.SourceFilter, got.DestinationFilter)
 		}
-		if got.RuleIndex != nil || got.Port != nil {
-			t.Errorf("unknown/null ints must be nil: rule_index=%v port=%v",
+		if got.RuleIndex != nil || got.Port != "" {
+			t.Errorf("unknown/null values must be unset: rule_index=%v port=%q",
 				got.RuleIndex, got.Port)
 		}
 	})
@@ -177,6 +175,19 @@ func Test_natModelToAPI(t *testing.T) {
 			t.Errorf("configured values overridden: %+v", got)
 		}
 	})
+}
+
+func Test_natPortValidator(t *testing.T) {
+	for _, v := range []string{"1", "443", "65535", "8080-8090"} {
+		if !natPortRegexp.MatchString(v) {
+			t.Errorf("%q must be accepted", v)
+		}
+	}
+	for _, v := range []string{"", "0", "65536", "80-", "-80", "80,443", "a"} {
+		if natPortRegexp.MatchString(v) {
+			t.Errorf("%q must be rejected", v)
+		}
+	}
 }
 
 func Test_natAPIToModel(t *testing.T) {
@@ -221,7 +232,7 @@ func Test_natAPIToModel(t *testing.T) {
 		configured, d := types.ObjectValueFrom(ctx, natFilterAttrTypes(), natFilterModel{
 			FilterType:       types.StringValue("NONE"),
 			Address:          types.StringNull(),
-			Port:             types.Int64Null(),
+			Port:             types.StringNull(),
 			InvertAddress:    types.BoolValue(false),
 			InvertPort:       types.BoolValue(false),
 			NetworkConfID:    types.StringNull(),
@@ -252,7 +263,7 @@ func Test_natAPIToModel(t *testing.T) {
 			DestinationFilter: &unifi.NatDestinationFilter{
 				FilterType:    "ADDRESS_AND_PORT",
 				Address:       "203.0.113.0/24",
-				Port:          ptrNatInt64(443),
+				Port:          "443",
 				InvertAddress: true,
 			},
 		}
@@ -268,7 +279,7 @@ func Test_natAPIToModel(t *testing.T) {
 
 		got := back.DestinationFilter
 		if got == nil || got.FilterType != "ADDRESS_AND_PORT" ||
-			got.Address != "203.0.113.0/24" || got.Port == nil || *got.Port != 443 ||
+			got.Address != "203.0.113.0/24" || got.Port != "443" ||
 			!got.InvertAddress {
 			t.Errorf("DestinationFilter = %+v", got)
 		}
