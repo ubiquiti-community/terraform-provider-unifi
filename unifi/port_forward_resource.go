@@ -16,10 +16,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -259,20 +257,27 @@ func (r *portForwardResource) Schema(
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"ip": schema.StringAttribute{
-						MarkdownDescription: "The source IPv4 address (or CIDR) of the port forwarding rule. For all traffic, specify `any`.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("any"),
+						MarkdownDescription: "The source IPv4 address (or CIDR) of the port forwarding rule. For all traffic, specify `any`. " +
+							"Taken from the controller when not set, and not sent on create: the controller stores no " +
+							"source address for a rule that does not limit by IP (#544).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"firewall_group_id": schema.StringAttribute{
 						MarkdownDescription: "The ID of the firewall group to use for source limiting.",
 						Optional:            true,
 					},
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether source limiting is enabled.",
-						Optional:            true,
-						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						MarkdownDescription: "Specifies whether source limiting is enabled. Taken from the controller " +
+							"when not set; a new rule is created with it off (#544).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"type": schema.StringAttribute{
 						MarkdownDescription: "The source limiting type. Can be `ip` or `firewall_group`. Inferred automatically when only one of `ip` or `firewall_group_id` is set.",
@@ -318,10 +323,13 @@ func (r *portForwardResource) Schema(
 				},
 			},
 			"logging": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to enable syslog logging for forwarded traffic.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Specifies whether to enable syslog logging for forwarded traffic. Taken from " +
+					"the controller when not set; a new rule is created with it off (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"enabled": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether the port forwarding rule is enabled or not. Taken from the controller when not set: a rule disabled on the controller stays disabled, rather than being re-enabled by a plan that does not mention it (#544).",

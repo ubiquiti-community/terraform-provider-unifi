@@ -114,7 +114,7 @@ resource "unifi_port_forward" "game_server" {
 - `destination_ips` (Attributes List) Additional destination IP/interface pairs for the port forwarding rule, used for multi-WAN setups. (see [below for nested schema](#nestedatt--destination_ips))
 - `enabled` (Boolean, Deprecated) Specifies whether the port forwarding rule is enabled or not. Taken from the controller when not set: a rule disabled on the controller stays disabled, rather than being re-enabled by a plan that does not mention it (#544).
 - `forward` (Attributes) Forward destination configuration. (see [below for nested schema](#nestedatt--forward))
-- `logging` (Boolean) Specifies whether to enable syslog logging for forwarded traffic.
+- `logging` (Boolean) Specifies whether to enable syslog logging for forwarded traffic. Taken from the controller when not set; a new rule is created with it off (#544).
 - `name` (String) The name of the port forwarding rule.
 - `protocol` (String) The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`. Taken from the controller when not set, so adopting a `tcp`-only rule does not widen it to UDP (#544).
 - `site` (String) The name of the site to associate the port forwarding rule with.
@@ -149,9 +149,9 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean) Specifies whether source limiting is enabled.
+- `enabled` (Boolean) Specifies whether source limiting is enabled. Taken from the controller when not set; a new rule is created with it off (#544).
 - `firewall_group_id` (String) The ID of the firewall group to use for source limiting.
-- `ip` (String) The source IPv4 address (or CIDR) of the port forwarding rule. For all traffic, specify `any`.
+- `ip` (String) The source IPv4 address (or CIDR) of the port forwarding rule. For all traffic, specify `any`. Taken from the controller when not set, and not sent on create: the controller stores no source address for a rule that does not limit by IP (#544).
 - `type` (String) The source limiting type. Can be `ip` or `firewall_group`. Inferred automatically when only one of `ip` or `firewall_group_id` is set.
 
 
