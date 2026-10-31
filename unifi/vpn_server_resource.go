@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -1182,6 +1183,13 @@ func (r *vpnServerResource) networkToModel(
 			PublicKey:  strPtrToType(network.WireguardPublicKey),
 			Port:       types.Int64PointerValue(network.LocalPort),
 		}
+		// The controller does not return the public key: derive it.
+		if wireguardValue.PublicKey.IsNull() && !privateKeyVal.IsNull() &&
+			!privateKeyVal.IsUnknown() {
+			if pub, err := wireGuardPublicKey(privateKeyVal.ValueString()); err == nil {
+				wireguardValue.PublicKey = types.StringValue(pub)
+			}
+		}
 		var d diag.Diagnostics
 		model.Wireguard, d = types.ObjectValueFrom(
 			ctx,
@@ -1383,4 +1391,18 @@ func generateWireGuardPrivateKey() (string, error) {
 	key[31] &= 127
 	key[31] |= 64
 	return base64.StdEncoding.EncodeToString(key[:]), nil
+}
+
+// wireGuardPublicKey returns the base64-encoded public key of a WireGuard
+// private key.
+func wireGuardPublicKey(privateKey string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(privateKey)
+	if err != nil {
+		return "", err
+	}
+	key, err := ecdh.X25519().NewPrivateKey(raw)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(key.PublicKey().Bytes()), nil
 }
