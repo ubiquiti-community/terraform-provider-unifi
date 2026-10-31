@@ -2,7 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.61.0] - 2026-10-31
+
+Fixes for the regressions reported against v0.60.0 and for settings the
+provider overwrote without being asked. Upgrading from v0.59.0 no longer
+leaves every `port_override` and every access point with a perpetual diff;
+changing one `unifi_setting` section no longer rotates the controller API
+token; a `unifi_wlan` update sends only what the plan changes, so it no longer
+turns off WLAN settings the configuration does not declare or stores the
+passphrase echo; and a `guest` network now lands in its firewall zone. Each
+fix was checked against a live controller. go-unifi is now v1.38.0.
+
+**Upgrade note:** `unifi_wlan.passphrase_wo` is now sent on create and when
+`passphrase_wo_version` changes, no longer on every update. To rotate a
+write-only passphrase, change `passphrase_wo` and increment
+`passphrase_wo_version`.
+
+### ✨ Features
+
+- **`unifi_wlan`: `passphrase_wo_version`.** Write-only values have no prior state to compare, so changing `passphrase_wo` alone planned nothing. Increment `passphrase_wo_version` to send the current `passphrase_wo` on the next apply.
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting`: `ips.enabled_networks` keeps the configured networks when `ips.suppression` is set on controllers without the standalone `ips_suppression` document.** There suppression is written nested in the `ips` document in a second update. Measured on Network 10.0.162, that controller drops `enabled_networks` from the first update while the document holds no suppression, then fills it with every network on the site when the suppression arrives without it, so the apply failed with *inconsistent result after apply* (`[Default, configured]` read back). The nested write now carries the configured `enabled_networks`. This was the only failure in the nightly acceptance run since 2026-09-29.
+- **`unifi_setting`: changing one section no longer rewrites the others, so it no longer rotates the controller API token.** `Update` wrote every configured section on every apply. Writing `mgmt` is not a no-op: the controller regenerates `x_api_token` on every `mgmt` write, even one that sends the document back unchanged (measured on Network 10.0.162), so a change to `dpi`, `global_switch` or any other section broke every client of the old token. `Update` now writes only the sections whose planned value differs from state; leaves planned as unknown (unset `Optional + Computed` attributes) do not count as a change (#580)
+- **`unifi_device`: access points no longer plan `state -> (known after apply)` on every run after upgrading from an earlier release.** The deprecated `radio_table[].assisted_roaming_enabled` and `assisted_roaming_rssi` leaves keep the value an earlier release read from the controller, carried from prior state on every read. As plain `Optional` leaves, a configuration that omits them planned that value away, so every plan was an update that left the device's computed attributes unknown. Both leaves are now `Optional + Computed`, so an omitted leaf follows prior state (#615)
+- **Upgrading state from v0.59.0 no longer turns unset nested groups into objects of nulls.** v0.59.0 stored an unset flat leaf (`dot1x_ctrl`, `stormctrl_bcast_level`, …) as present but null, and the v0.60.0 state upgraders nested a present-but-null key exactly like a set one, so a `port_override` with no 802.1X, storm-control or similar settings upgraded to `dot1x = {}`, `stormctrl = { bcast = {}, … }` and so on. The configuration leaves those groups null, so inside the `port_override` set no element ever equalled its prior counterpart, and every plan removed and re-added every override on `unifi_device` (#616). A null flat leaf is now dropped like an absent one, so a group with no set leaves upgrades to null. The fix is in the shared nesting helper and applies to every v0.60.0 upgrader. State already written by v0.60.0 is not rewritten.
+- **`unifi_network`: `firewall_zone_id` reaches the controller, so a `guest` network can be created in its zone.** go-unifi's corporate and guest payloads never carried `firewall_zone_id`, so on zone-based-firewall controllers the zone was never set and a `purpose = "guest"` network was stored as `corporate` in the Internal zone, failing the apply with *inconsistent result* on `.purpose` and `.firewall_zone_id`. Fixed by go-unifi v1.37.0 (go-unifi#110) (#605)
+- **`unifi_wlan`: an update sends only what the plan changes (#583).** Update used to PUT a whole WLAN built from the plan, so every controller field the provider does not set went out as `false` or empty, and an unknown planned value such as `roaming_assistant_6e.enabled` went out as `false`. Update now encodes the prior state and the plan, takes every unknown planned value from the prior state, and sends only the keys that differ, together with the keys the controller validates with them: a minimum data rate and its flag, the `mac_filter` keys, the `schedule` keys and the keys of each nested object. A plan that changes nothing on the controller sends no request. Changes to `roaming_assistant_na` and `roaming_assistant_6e` now reach the controller, the passphrase the controller echoes no longer enters state, and removing `vlan` fails before any request because no empty value for it is known. `passphrase_wo` is sent on create and when `passphrase_wo_version` changes, no longer on every update.
+
+## [v0.60.0] - 2026-10-26
+
+One breaking change and the fixes that followed it. The headline is the
+attribute nesting shipped as v0.60.0-beta.0 on 2026-10-07: groups of flat,
+prefix-named attributes across sixteen resources and data sources become
+nested objects. Every resource involved bumps its schema version and ships a
+state upgrader, so state migrates on the next plan, but **configuration must
+change**; the full mapping is below.
+
+Also in this release: assisted roaming on `unifi_wlan` for Network 10.x; a
+refresh fix for resources deleted outside Terraform, which failed every plan
+with `Missing Resource Identity After Read` on CLIs without resource identity
+support (OpenTofu < 1.12, Terraform < 1.12); and three fixes measured on
+Network 10.0.x controllers for `unifi_network` and `unifi_setting`.
 
 ### ✨ Features
 
@@ -34,6 +76,7 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- **Refreshing a resource deleted outside Terraform no longer fails with `Missing Resource Identity After Read` on OpenTofu and Terraform < 1.12.** When the controller no longer had the object, `Read` removed the resource from state without returning a resource identity. terraform-plugin-framework rejects a read response whose identity is null, even one that drops the resource, and the response identity is only pre-filled from the stored one, which CLIs without resource identity support (OpenTofu before 1.12, Terraform before 1.12) never persist. Every out-of-band deletion of `unifi_client`, `unifi_device`, and 19 other identity-bearing resources therefore broke the whole plan instead of being planned as a re-creation (the symptom of #134 again, on the removal path). The removal path now returns the identity rebuilt from the state keys when none was stored, and leaves a stored identity untouched. Resources covered: `unifi_ap_group`, `unifi_bgp`, `unifi_client`, `unifi_client_qos_rate`, `unifi_device`, `unifi_dns_record`, `unifi_dynamic_dns`, `unifi_firewall_group`, `unifi_firewall_policy`, `unifi_firewall_rule`, `unifi_firewall_zone`, `unifi_port_forward`, `unifi_port_profile`, `unifi_power_supervisor`, `unifi_radius_profile`, `unifi_radius_user`, `unifi_site`, `unifi_site_to_site_vpn`, `unifi_static_route`, `unifi_traffic_route` and `unifi_wireguard_peer`.
 - **`unifi_network`: `ipv6.interface_type` no longer overwrites the controller's value on an adopted network.** The nested `ipv6` group carries no schema `Default`, but its `ModifyPlan` reproduced the old flat `ipv6_interface_type` default and re-asserted `none` on every plan whose configuration omitted the block, which brought back the overwrite v0.59.0 removed (#550): importing a network with static IPv6 again proposed `static` -> `none`. The default is now applied on create only; once a prior value exists it is kept, matching the leaf's `UseStateForUnknown` and its documentation (#544).
 - **`unifi_network`: creating a network without `setting_preference` no longer fails with `api.err.InvalidPayload`.** Since v0.59.0 dropped the attribute's static default (#550) it is unknown on create, and the write path turned that unknown into an empty string, which the controller rejects. The request now omits an unset `setting_preference` so the controller applies its own default; a configured value is sent as before.
 - **`unifi_setting`: Region Blocking and IPS suppression work again on controllers without the standalone `usg_geo` and `ips_suppression` documents (Network 10.0.x).** Both writes went only to the standalone keys, which those controllers reject with `api.err.Invalid`; the geo fallback also required the legacy fields to already exist on the `usg` document, which a fresh site never has. When the controller has no standalone document, `usg.geo_ip_filtering` is now merged into the `usg` setting as the flat `geo_ip_filtering_*` fields and `ips.suppression` is merged into the `ips` setting, and both are read back from there. Measured on Network 10.0.162: nested suppression is only accepted when at least one network is listed in `ips.enabled_networks`.
