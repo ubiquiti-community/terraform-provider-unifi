@@ -3,13 +3,14 @@ name: CI/CD
 
 # This GitHub action runs your tests for each pull request and push.
 # Optionally, you can turn it on using a schedule for regular testing.
+#
+# Build and test are required checks on main, so every PR must report them. A
+# `paths:` filter on pull_request would leave a PR that touches no Go code (a
+# workflow bump, docs) without them, blocked for good. Instead CI/CD runs on
+# every PR and the `changes` job skips the Go jobs when nothing Go changed; a
+# job skipped by `if:` still satisfies a required check.
 on:
   pull_request:
-    paths:
-    - "**.go"
-    - "go.mod"
-    - "go.sum"
-    - ".github/workflows/ci.yaml"
   push:
     branches:
     - "main"
@@ -21,13 +22,50 @@ on:
 
 # contents: read is needed to check out the repository.
 # id-token: write is needed for Codecov OIDC uploads.
+# pull-requests: read lets the changes job list the PR's files.
 permissions:
   contents: read
   id-token: write
+  pull-requests: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+    - id: filter
+      # A push to main only triggers on Go paths (see above), so it always
+      # counts as a Go change. Keep ci_paths in sync with those push paths.
+      run: |
+        set -euo pipefail
+        if [ "$EVENT" != "pull_request" ]; then
+          echo "go=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        ci_paths='(\.go$)|(^go\.mod$)|(^go\.sum$)|(^\.github/workflows/ci\.yaml$)'
+        # A rename counts under both names. A here-string, not `printf | grep -q`:
+        # under pipefail the writer's SIGPIPE would read as no match.
+        files="$(gh api --paginate "repos/$GH_REPO/pulls/$PR_NUMBER/files" \
+          --jq '.[] | .filename, (.previous_filename // empty)')"
+        # The files API stops at 3000 files: past that, run everything.
+        if [ "$CHANGED_FILES" -ge 3000 ] || grep -Eq "$ci_paths" <<<"$files"; then
+          echo "go=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "No Go change: the Go jobs are skipped."
+          echo "go=false" >> "$GITHUB_OUTPUT"
+        fi
+      env:
+        EVENT: ${{ github.event_name }}
+        GH_REPO: ${{ github.repository }}
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+
   lint:
     name: GolangCI Lint
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,6 +85,8 @@ jobs:
 
   build:
     name: Build
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -59,6 +99,8 @@ jobs:
     - run: go build -v .
 
   generate:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,6 +114,8 @@ jobs:
         git diff --compact-summary --exit-code || \
           (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
   test:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

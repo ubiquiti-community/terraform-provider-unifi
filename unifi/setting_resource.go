@@ -2117,7 +2117,7 @@ func (r *settingResource) Create(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
+		r.persistIpsSuppression(ctx, site, suppression, setting.EnabledNetworks, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2343,8 +2343,9 @@ func (r *settingResource) Update(
 		site = r.client.Site
 	}
 
-	// Update each configured setting type
-	if !plan.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsUnknown() {
+	// Update each configured setting type that changed (see settingSectionChanged).
+	if !plan.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsUnknown() &&
+		settingSectionChanged(plan.AutoSpeedtest, state.AutoSpeedtest) {
 		var as settingAutoSpeedtestModel
 		resp.Diagnostics.Append(plan.AutoSpeedtest.As(ctx, &as, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2357,7 +2358,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Country.IsNull() && !plan.Country.IsUnknown() {
+	if !plan.Country.IsNull() && !plan.Country.IsUnknown() &&
+		settingSectionChanged(plan.Country, state.Country) {
 		var m settingCountryModel
 		resp.Diagnostics.Append(plan.Country.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2370,7 +2372,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Dpi.IsNull() && !plan.Dpi.IsUnknown() {
+	if !plan.Dpi.IsNull() && !plan.Dpi.IsUnknown() &&
+		settingSectionChanged(plan.Dpi, state.Dpi) {
 		var m settingDpiModel
 		resp.Diagnostics.Append(plan.Dpi.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2383,7 +2386,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() {
+	if !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() &&
+		settingSectionChanged(plan.Lcm, state.Lcm) {
 		var m settingLcmModel
 		resp.Diagnostics.Append(plan.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2396,7 +2400,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.NetworkOpt.IsNull() && !plan.NetworkOpt.IsUnknown() {
+	if !plan.NetworkOpt.IsNull() && !plan.NetworkOpt.IsUnknown() &&
+		settingSectionChanged(plan.NetworkOpt, state.NetworkOpt) {
 		var m settingNetworkOptimizationModel
 		resp.Diagnostics.Append(plan.NetworkOpt.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2409,7 +2414,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() {
+	if !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() &&
+		settingSectionChanged(plan.Ntp, state.Ntp) {
 		var m settingNtpModel
 		resp.Diagnostics.Append(plan.Ntp.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2422,7 +2428,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Syslog.IsNull() && !plan.Syslog.IsUnknown() {
+	if !plan.Syslog.IsNull() && !plan.Syslog.IsUnknown() &&
+		settingSectionChanged(plan.Syslog, state.Syslog) {
 		var m settingSyslogModel
 		resp.Diagnostics.Append(plan.Syslog.As(ctx, &m, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2438,7 +2445,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Doh.IsNull() && !plan.Doh.IsUnknown() {
+	if !plan.Doh.IsNull() && !plan.Doh.IsUnknown() &&
+		settingSectionChanged(plan.Doh, state.Doh) {
 		var doh settingDohModel
 		resp.Diagnostics.Append(plan.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2455,7 +2463,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Ips.IsNull() && !plan.Ips.IsUnknown() {
+	if !plan.Ips.IsNull() && !plan.Ips.IsUnknown() &&
+		settingSectionChanged(plan.Ips, state.Ips) {
 		var ips settingIpsModel
 		resp.Diagnostics.Append(plan.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2479,13 +2488,14 @@ func (r *settingResource) Update(
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, &resp.Diagnostics)
+		r.persistIpsSuppression(ctx, site, suppression, setting.EnabledNetworks, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
 
-	if !plan.Mgmt.IsNull() && !plan.Mgmt.IsUnknown() {
+	if !plan.Mgmt.IsNull() && !plan.Mgmt.IsUnknown() &&
+		settingSectionChanged(plan.Mgmt, state.Mgmt) {
 		var mgmt settingMgmtModel
 		resp.Diagnostics.Append(plan.Mgmt.As(ctx, &mgmt, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2510,7 +2520,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.Radius.IsNull() && !plan.Radius.IsUnknown() {
+	if !plan.Radius.IsNull() && !plan.Radius.IsUnknown() &&
+		settingSectionChanged(plan.Radius, state.Radius) {
 		var radius settingRadiusModel
 		resp.Diagnostics.Append(plan.Radius.As(ctx, &radius, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2542,7 +2553,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.USG.IsNull() && !plan.USG.IsUnknown() {
+	if !plan.USG.IsNull() && !plan.USG.IsUnknown() &&
+		settingSectionChanged(plan.USG, state.USG) {
 		var usg settingUSGModel
 		resp.Diagnostics.Append(plan.USG.As(ctx, &usg, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2569,7 +2581,8 @@ func (r *settingResource) Update(
 		}
 	}
 
-	if !plan.IgmpSnooping.IsNull() && !plan.IgmpSnooping.IsUnknown() {
+	if !plan.IgmpSnooping.IsNull() && !plan.IgmpSnooping.IsUnknown() &&
+		settingSectionChanged(plan.IgmpSnooping, state.IgmpSnooping) {
 		var igmp settingIgmpSnoopingModel
 		resp.Diagnostics.Append(plan.IgmpSnooping.As(ctx, &igmp, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
@@ -2596,15 +2609,19 @@ func (r *settingResource) Update(
 		}
 	}
 
-	var globalSwitchConfig types.Object
-	resp.Diagnostics.Append(
-		req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
-	r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
+	if settingSectionChanged(plan.GlobalSwitch, state.GlobalSwitch) {
+		var globalSwitchConfig types.Object
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root("global_switch"), &globalSwitchConfig)...)
+		r.persistGlobalSwitch(ctx, site, globalSwitchConfig, &resp.Diagnostics)
+	}
 
-	var connectivityConfig types.Object
-	resp.Diagnostics.Append(
-		req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
-	r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+	if settingSectionChanged(plan.Connectivity, state.Connectivity) {
+		var connectivityConfig types.Object
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root("connectivity"), &connectivityConfig)...)
+		r.persistConnectivity(ctx, site, connectivityConfig, &resp.Diagnostics)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -4352,6 +4369,7 @@ func (r *settingResource) persistIpsSuppression(
 	ctx context.Context,
 	site string,
 	suppression *settings.IpsSuppression,
+	enabledNetworks []string,
 	diags *diag.Diagnostics,
 ) {
 	if suppression == nil {
@@ -4380,10 +4398,9 @@ func (r *settingResource) persistIpsSuppression(
 		); probeErr == nil && !hasStandalone {
 			ipsData, found, readErr := r.readRawSettingData(ctx, site, ipsSettingKey)
 			if readErr == nil && found {
-				ipsData["suppression"] = raw.Data
 				nested := &settings.RawSetting{
 					BaseSetting: settings.BaseSetting{Key: ipsSettingKey},
-					Data:        ipsData,
+					Data:        nestIpsSuppression(ipsData, raw.Data, enabledNetworks),
 				}
 				if writeErr := r.client.UpdateSetting(ctx, site, nested); writeErr != nil {
 					diags.AddError("Error Updating IPS Suppression Setting", writeErr.Error())
@@ -4398,6 +4415,25 @@ func (r *settingResource) persistIpsSuppression(
 		}
 	}
 	diags.AddError("Error Updating IPS Suppression Setting", err.Error())
+}
+
+// nestIpsSuppression merges suppression into the raw ips document for
+// controllers without the standalone ips_suppression document, carrying the
+// enabled_networks just written with the typed ips update. Measured on Network
+// 10.0.162: that controller drops enabled_networks from an ips update whose
+// document holds no suppression yet, and fills it with every network when the
+// suppression is then written without it. Writing both together keeps the
+// configured list.
+func nestIpsSuppression(
+	ipsData map[string]any,
+	suppression map[string]any,
+	enabledNetworks []string,
+) map[string]any {
+	ipsData["suppression"] = suppression
+	if enabledNetworks != nil {
+		ipsData["enabled_networks"] = enabledNetworks
+	}
+	return ipsData
 }
 
 // ipsModelToSetting returns the ips setting plus, separately, the suppression
@@ -4699,4 +4735,37 @@ func (r *settingResource) ipsSettingToModel(
 	model.Suppression = suppObj
 
 	return model
+}
+
+// settingSectionChanged reports whether a configured settings section has a
+// planned value that differs from state, so Update writes only the sections
+// that change. Unknown planned leaves do not count: an Optional+Computed leaf
+// the configuration leaves unset plans as unknown whenever anything else in
+// the resource changes, and that alone must not trigger a write. Writing an
+// unchanged section is not a no-op: the controller regenerates
+// mgmt.x_api_token on every mgmt write (#580).
+func settingSectionChanged(plan, state types.Object) bool {
+	if state.IsNull() || state.IsUnknown() {
+		return true
+	}
+	return attrValueChanged(plan, state)
+}
+
+func attrValueChanged(plan, state attr.Value) bool {
+	if plan.IsUnknown() {
+		return false
+	}
+	planObj, okPlan := plan.(types.Object)
+	stateObj, okState := state.(types.Object)
+	if !okPlan || !okState || planObj.IsNull() || stateObj.IsNull() {
+		return !plan.Equal(state)
+	}
+	stateAttrs := stateObj.Attributes()
+	for name, p := range planObj.Attributes() {
+		s, ok := stateAttrs[name]
+		if !ok || attrValueChanged(p, s) {
+			return true
+		}
+	}
+	return false
 }

@@ -160,6 +160,65 @@ func TestDeviceUpgradeState_v2NestsPrefixedGroups(t *testing.T) {
 	boolean(ucast["enabled"], "stormctrl.ucast.enabled", false)
 }
 
+// TestDeviceUpgradeState_v2NullGroupsStayNull guards #616: a port_override
+// that set none of the feature groups is stored by v0.59.0 with every flat
+// leaf present but null. Those must upgrade to null objects, not objects of
+// nulls, or the set element never equals the configured one and every plan
+// removes and re-adds the override.
+func TestDeviceUpgradeState_v2NullGroupsStayNull(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	schemaType := schemaResp.Schema.Type().TerraformType(ctx)
+
+	prior := []byte(`{
+		"id": "dev-1", "site": "default", "mac": "00:11:22:33:44:55", "name": "sw",
+		"port_override": [{
+			"index": 4, "name": "printer", "op_mode": "switch", "poe_mode": "off",
+			"dot1x_ctrl": null, "dot1x_idle_timeout": null,
+			"egress_rate_limit_kbps": null, "egress_rate_limit_kbps_enabled": null,
+			"lldpmed_enabled": null, "lldpmed_notify_enabled": null,
+			"port_security_enabled": null, "port_security_mac_address": null,
+			"stormctrl_type": null,
+			"stormctrl_bcast_enabled": null, "stormctrl_bcast_level": null, "stormctrl_bcast_rate": null,
+			"stormctrl_mcast_enabled": null, "stormctrl_mcast_level": null, "stormctrl_mcast_rate": null,
+			"stormctrl_ucast_enabled": null, "stormctrl_ucast_level": null, "stormctrl_ucast_rate": null
+		}]
+	}`)
+
+	resp := &fwresource.UpgradeStateResponse{}
+	r.UpgradeState(ctx)[2].StateUpgrader(ctx, fwresource.UpgradeStateRequest{
+		RawState: &tfprotov6.RawState{JSON: prior},
+	}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("upgrade failed: %v", resp.Diagnostics)
+	}
+	val, err := resp.DynamicValue.Unmarshal(schemaType)
+	if err != nil {
+		t.Fatalf("unmarshal upgraded value: %v", err)
+	}
+
+	var root map[string]tftypes.Value
+	if err := val.As(&root); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	var overrides []tftypes.Value
+	if err := root["port_override"].As(&overrides); err != nil || len(overrides) != 1 {
+		t.Fatalf("port_override = %v (%v), want one element", root["port_override"], err)
+	}
+	var po map[string]tftypes.Value
+	if err := overrides[0].As(&po); err != nil {
+		t.Fatalf("port_override[0]: %v", err)
+	}
+	for _, group := range []string{"dot1x", "egress_rate_limit", "lldpmed", "port_security", "stormctrl"} {
+		if !po[group].IsNull() {
+			t.Errorf("%s = %v, want null", group, po[group])
+		}
+	}
+}
+
 // TestDevicePortOverride_nestedGroupsRoundTrip checks that the nested port
 // feature groups convert API -> model -> API without loss, and that a group
 // left unknown in the plan is resolved from the API object.
