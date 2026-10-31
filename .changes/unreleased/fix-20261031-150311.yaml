@@ -1,3 +1,0 @@
-kind: fix
-body: '**`unifi_port_forward` drops its last static defaults.** `logging` and `source_limiting.enabled` keep the controller''s value, and `source_limiting.ip` no longer invents `"any"`: an unset source address is not sent. (#687, part of #544)'
-time: 2026-10-31T15:03:11.831985+01:00

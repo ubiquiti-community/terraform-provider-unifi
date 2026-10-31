@@ -1,3 +1,0 @@
-kind: fix
-body: '**`unifi_client`: adopting a blocked client no longer unblocks it.** `blocked` carried `Default(false)` next to `UseStateForUnknown`, and the Default always wins, so an imported blocked client with `blocked` left out planned `true -> false`. Taking over an existing client with `allow_existing` also sent `blocked = false`. The Default is dropped, an unset `blocked` is no longer sent, and the controller''s value is kept (#686, part of #544)'
-time: 2026-10-31T15:03:46.166589+01:00
