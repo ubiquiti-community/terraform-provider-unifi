@@ -17,6 +17,9 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
+// isTrue reports whether an optional API boolean is set and true.
+func isTrue(b *bool) bool { return b != nil && *b }
+
 // TestDeviceUpgradeState_v2NestsPrefixedGroups guards the v2 -> v3 schema
 // upgrade: flat led_*/stp_*/lcm_* attributes and the port_override feature
 // groups move into nested objects, and every other attribute passes through.
@@ -231,15 +234,15 @@ func TestDevicePortOverride_nestedGroupsRoundTrip(t *testing.T) {
 		Dot1XCtrl:                    "mac_based",
 		Dot1XIDleTimeout:             ptrInt64(300),
 		EgressRateLimitKbps:          ptrInt64(2048),
-		EgressRateLimitKbpsEnabled:   true,
-		LldpmedEnabled:               true,
-		LldpmedNotifyEnabled:         true,
-		PortSecurityEnabled:          true,
+		EgressRateLimitKbpsEnabled:   boolPtr(true),
+		LldpmedEnabled:               boolPtr(true),
+		LldpmedNotifyEnabled:         boolPtr(true),
+		PortSecurityEnabled:          boolPtr(true),
 		PortSecurityMACAddress:       []string{"aa:bb:cc:dd:ee:ff"},
 		StormctrlType:                "rate",
-		StormctrlBroadcastastEnabled: true,
+		StormctrlBroadcastastEnabled: boolPtr(true),
 		StormctrlBroadcastastRate:    ptrInt64(1000),
-		StormctrlUcastEnabled:        true,
+		StormctrlUcastEnabled:        boolPtr(true),
 		StormctrlUcastLevel:          ptrInt64(10),
 	}
 
@@ -280,7 +283,7 @@ func TestDevicePortOverride_nestedGroupsRoundTrip(t *testing.T) {
 	if got.Dot1XCtrl != "mac_based" || got.Dot1XIDleTimeout == nil || *got.Dot1XIDleTimeout != 300 {
 		t.Errorf("dot1x round trip: ctrl=%q idle=%v", got.Dot1XCtrl, got.Dot1XIDleTimeout)
 	}
-	if !got.EgressRateLimitKbpsEnabled || got.EgressRateLimitKbps == nil ||
+	if !isTrue(got.EgressRateLimitKbpsEnabled) || got.EgressRateLimitKbps == nil ||
 		*got.EgressRateLimitKbps != 2048 {
 		t.Errorf(
 			"egress_rate_limit round trip: %v %v",
@@ -288,21 +291,22 @@ func TestDevicePortOverride_nestedGroupsRoundTrip(t *testing.T) {
 			got.EgressRateLimitKbps,
 		)
 	}
-	if !got.LldpmedEnabled || !got.LldpmedNotifyEnabled {
+	if !isTrue(got.LldpmedEnabled) || !isTrue(got.LldpmedNotifyEnabled) {
 		t.Errorf("lldpmed round trip: %v %v", got.LldpmedEnabled, got.LldpmedNotifyEnabled)
 	}
-	if !got.PortSecurityEnabled || len(got.PortSecurityMACAddress) != 1 {
+	if !isTrue(got.PortSecurityEnabled) || len(got.PortSecurityMACAddress) != 1 {
 		t.Errorf(
 			"port_security round trip: %v %v",
 			got.PortSecurityEnabled,
 			got.PortSecurityMACAddress,
 		)
 	}
-	if got.StormctrlType != "rate" || !got.StormctrlBroadcastastEnabled ||
+	if got.StormctrlType != "rate" || !isTrue(got.StormctrlBroadcastastEnabled) ||
 		got.StormctrlBroadcastastRate == nil || *got.StormctrlBroadcastastRate != 1000 ||
 		got.StormctrlBroadcastastLevel != nil ||
-		!got.StormctrlUcastEnabled || got.StormctrlUcastLevel == nil || *got.StormctrlUcastLevel != 10 ||
-		got.StormctrlMcastEnabled {
+		!isTrue(got.StormctrlUcastEnabled) ||
+		got.StormctrlUcastLevel == nil || *got.StormctrlUcastLevel != 10 ||
+		got.StormctrlMcastEnabled != nil {
 		t.Errorf("stormctrl round trip: %+v", got)
 	}
 

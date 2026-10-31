@@ -1197,13 +1197,13 @@ func (r *portProfileResource) modelToAPIPortProfile(
 	sc, d := portStormctrlFromObject(ctx, model.Stormctrl)
 	diags.Append(d...)
 	portProfile.StormctrlType = sc.Type
-	portProfile.StormctrlBroadcastastEnabled = sc.BcastEnabled
+	portProfile.StormctrlBroadcastastEnabled = sc.BcastEnabled != nil && *sc.BcastEnabled
 	portProfile.StormctrlBroadcastastLevel = sc.BcastLevel
 	portProfile.StormctrlBroadcastastRate = sc.BcastRate
-	portProfile.StormctrlMcastEnabled = sc.McastEnabled
+	portProfile.StormctrlMcastEnabled = sc.McastEnabled != nil && *sc.McastEnabled
 	portProfile.StormctrlMcastLevel = sc.McastLevel
 	portProfile.StormctrlMcastRate = sc.McastRate
-	portProfile.StormctrlUcastEnabled = sc.UcastEnabled
+	portProfile.StormctrlUcastEnabled = sc.UcastEnabled != nil && *sc.UcastEnabled
 	portProfile.StormctrlUcastLevel = sc.UcastLevel
 	portProfile.StormctrlUcastRate = sc.UcastRate
 
@@ -1431,7 +1431,7 @@ func (r *portProfileResource) portProfileToModel(
 	// after apply", left the resource tainted, and the next apply looped on the
 	// same error (#496). Every one of them exists on go-unifi's PortProfile.
 	egress, d := portEgressRateLimitObject(
-		ctx, portProfile.EgressRateLimitKbpsEnabled, portProfile.EgressRateLimitKbps)
+		ctx, &portProfile.EgressRateLimitKbpsEnabled, portProfile.EgressRateLimitKbps)
 	diags.Append(d...)
 	model.EgressRateLimit = egress
 
@@ -1444,13 +1444,13 @@ func (r *portProfileResource) portProfileToModel(
 	// typo); they carry the stormctrl_bcast_* JSON keys.
 	stormctrl, d := portStormctrlObject(ctx, portStormctrlAPI{
 		Type:         portProfile.StormctrlType,
-		BcastEnabled: portProfile.StormctrlBroadcastastEnabled,
+		BcastEnabled: &portProfile.StormctrlBroadcastastEnabled,
 		BcastLevel:   portProfile.StormctrlBroadcastastLevel,
 		BcastRate:    portProfile.StormctrlBroadcastastRate,
-		McastEnabled: portProfile.StormctrlMcastEnabled,
+		McastEnabled: &portProfile.StormctrlMcastEnabled,
 		McastLevel:   portProfile.StormctrlMcastLevel,
 		McastRate:    portProfile.StormctrlMcastRate,
-		UcastEnabled: portProfile.StormctrlUcastEnabled,
+		UcastEnabled: &portProfile.StormctrlUcastEnabled,
 		UcastLevel:   portProfile.StormctrlUcastLevel,
 		UcastRate:    portProfile.StormctrlUcastRate,
 	})

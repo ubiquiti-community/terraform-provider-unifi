@@ -2514,8 +2514,9 @@ func (r *deviceResource) modelToAPIDevice(
 // getDeviceDiff(existing, target), which compares port_overrides as a single JSON
 // value, that one difference sends the ENTIRE array. The endpoint full-replaces it
 // with a copy that has been round-tripped through DevicePortOverrides, so every
-// port on the device loses every field at its zero value (omitempty drops false,
-// "" and []).
+// port on the device loses every field at its zero value (omitempty drops "",
+// [] and nil pointers; the booleans are *bool since #567, so an explicit false
+// survives but an unset one is still dropped).
 //
 // The fields DevicePortOverrides models but the port_override schema does not
 // expose are the same problem without the op_mode special case: a declared entry
@@ -2888,12 +2889,12 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 	}
 
 	// Boolean attributes
-	model.Autoneg = types.BoolValue(po.Autoneg)
-	model.FlowControlEnabled = types.BoolValue(po.FlowControlEnabled)
-	model.FullDuplex = types.BoolValue(po.FullDuplex)
-	model.Isolation = types.BoolValue(po.Isolation)
-	model.PortKeepaliveEnabled = types.BoolValue(po.PortKeepaliveEnabled)
-	model.StpPortMode = types.BoolValue(po.StpPortMode)
+	model.Autoneg = types.BoolPointerValue(po.Autoneg)
+	model.FlowControlEnabled = types.BoolPointerValue(po.FlowControlEnabled)
+	model.FullDuplex = types.BoolPointerValue(po.FullDuplex)
+	model.Isolation = types.BoolPointerValue(po.Isolation)
+	model.PortKeepaliveEnabled = types.BoolPointerValue(po.PortKeepaliveEnabled)
+	model.StpPortMode = types.BoolPointerValue(po.StpPortMode)
 
 	// Nested feature groups
 	var d diag.Diagnostics
@@ -3002,7 +3003,7 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 	}
 	model.PortSecurity, d = types.ObjectValueFrom(ctx, devicePortSecurityAttrTypes(),
 		devicePortSecurityModel{
-			Enabled:    types.BoolValue(po.PortSecurityEnabled),
+			Enabled:    types.BoolPointerValue(po.PortSecurityEnabled),
 			MACAddress: macList,
 		})
 	diags.Append(d...)
@@ -3073,12 +3074,12 @@ func (r *deviceResource) frameworkToPortOverrides(
 			}
 
 			// Boolean attributes
-			po.Autoneg = model.Autoneg.ValueBool()
-			po.FlowControlEnabled = model.FlowControlEnabled.ValueBool()
-			po.FullDuplex = model.FullDuplex.ValueBool()
-			po.Isolation = model.Isolation.ValueBool()
-			po.PortKeepaliveEnabled = model.PortKeepaliveEnabled.ValueBool()
-			po.StpPortMode = model.StpPortMode.ValueBool()
+			po.Autoneg = util.ConvertBoolToAPIValue(model.Autoneg)
+			po.FlowControlEnabled = util.ConvertBoolToAPIValue(model.FlowControlEnabled)
+			po.FullDuplex = util.ConvertBoolToAPIValue(model.FullDuplex)
+			po.Isolation = util.ConvertBoolToAPIValue(model.Isolation)
+			po.PortKeepaliveEnabled = util.ConvertBoolToAPIValue(model.PortKeepaliveEnabled)
+			po.StpPortMode = util.ConvertBoolToAPIValue(model.StpPortMode)
 
 			// Nested feature groups. A null/unknown group contributes nothing,
 			// exactly as its flat attributes did when unset.
@@ -3096,7 +3097,7 @@ func (r *deviceResource) frameworkToPortOverrides(
 				ctx,
 				model.EgressRateLimit,
 			); ok {
-				po.EgressRateLimitKbpsEnabled = erl.Enabled.ValueBool()
+				po.EgressRateLimitKbpsEnabled = util.ConvertBoolToAPIValue(erl.Enabled)
 				if !erl.Kbps.IsNull() {
 					po.EgressRateLimitKbps = erl.Kbps.ValueInt64Pointer()
 				}
@@ -3104,13 +3105,13 @@ func (r *deviceResource) frameworkToPortOverrides(
 				diags.Append(d...)
 			}
 			if lldp, ok, d := util.ObjectAs[portLldpmedModel](ctx, model.Lldpmed); ok {
-				po.LldpmedEnabled = lldp.Enabled.ValueBool()
-				po.LldpmedNotifyEnabled = lldp.NotifyEnabled.ValueBool()
+				po.LldpmedEnabled = util.ConvertBoolToAPIValue(lldp.Enabled)
+				po.LldpmedNotifyEnabled = util.ConvertBoolToAPIValue(lldp.NotifyEnabled)
 			} else {
 				diags.Append(d...)
 			}
 			if ps, ok, d := util.ObjectAs[devicePortSecurityModel](ctx, model.PortSecurity); ok {
-				po.PortSecurityEnabled = ps.Enabled.ValueBool()
+				po.PortSecurityEnabled = util.ConvertBoolToAPIValue(ps.Enabled)
 				if !ps.MACAddress.IsNull() && !ps.MACAddress.IsUnknown() {
 					var macAddresses []string
 					diags.Append(ps.MACAddress.ElementsAs(ctx, &macAddresses, true)...)
