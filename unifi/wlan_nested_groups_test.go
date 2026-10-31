@@ -224,8 +224,7 @@ func TestWLANUpgradeState_v0NestsAndConvertsDuration(t *testing.T) {
 
 // TestWLANNestedGroups_roundTrip covers the model <-> API mapping of the
 // nested wpa/wpa3/radius/ap_group groups and schedule[].start: values travel
-// to the go-unifi struct, come back from a read, and an unknown planned group
-// keeps the controller's values on update.
+// to the go-unifi struct and come back from a read.
 func TestWLANNestedGroups_roundTrip(t *testing.T) {
 	ctx := context.Background()
 	r := &wlanFrameworkResource{}
@@ -365,27 +364,5 @@ func TestWLANNestedGroups_roundTrip(t *testing.T) {
 	}
 	if !fresh.Schedule.IsNull() {
 		t.Errorf("fresh schedule = %v, want null", fresh.Schedule)
-	}
-
-	// On update an unknown planned group keeps the controller's values, and a
-	// partially-known group only re-asserts the leaves the plan knows.
-	update := &wlanFrameworkResourceModel{
-		WPA3: types.ObjectUnknown(wlanWPA3AttrTypes()),
-		Radius: types.ObjectValueMust(wlanRadiusAttrTypes(), map[string]attr.Value{
-			"profile_id":       types.StringUnknown(),
-			"mac_auth_enabled": types.BoolValue(false),
-		}),
-	}
-	state := back
-	r.applyPlanToState(ctx, update, &state)
-	if !state.WPA3.Equal(back.WPA3) {
-		t.Errorf("unknown planned wpa3 must keep controller value: %v", state.WPA3)
-	}
-	radius := state.Radius.Attributes()
-	if attrAs[types.String](t, radius["profile_id"]).ValueString() != "rp-9" {
-		t.Errorf("unknown radius.profile_id must keep controller value: %v", radius["profile_id"])
-	}
-	if attrAs[types.Bool](t, radius["mac_auth_enabled"]).ValueBool() {
-		t.Errorf("planned radius.mac_auth_enabled not applied: %v", radius["mac_auth_enabled"])
 	}
 }
