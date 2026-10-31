@@ -586,3 +586,86 @@ func TestAccPortProfileList_basic(t *testing.T) {
 		},
 	})
 }
+
+func Test_customizeIsRewritten(t *testing.T) {
+	vlan := func(v int64) *int64 { return &v }
+
+	tests := []struct {
+		name   string
+		tagged string
+		native *int64
+		want   bool
+	}{
+		{"custom keeps customize on an untagged native network", "custom", nil, false},
+		{"custom keeps customize on a zero VLAN id", "custom", vlan(0), false},
+		{"custom keeps customize on a tagged native network", "custom", vlan(10), false},
+		{"auto is still refused on an untagged native network", "auto", nil, true},
+		{"unset mode is still refused on a zero VLAN id", "", vlan(0), true},
+		{"block_all is still refused on an untagged native network", "block_all", nil, true},
+		{"auto is accepted on a tagged native network", "auto", vlan(10), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := customizeIsRewritten(tt.tagged, tt.native); got != tt.want {
+				t.Errorf(
+					"customizeIsRewritten(%q, %v) = %v, want %v",
+					tt.tagged,
+					tt.native,
+					got,
+					tt.want,
+				)
+			}
+		})
+	}
+}
+
+func Test_customizeTaggedVLANMgmt(t *testing.T) {
+	unknown := types.StringUnknown()
+	null := types.StringNull()
+	val := types.StringValue
+
+	tests := []struct {
+		name       string
+		planned    types.String
+		configured types.String
+		prior      types.String
+		wantMode   string
+		wantKnown  bool
+	}{
+		{
+			"a planned value is judged as is",
+			val("custom"),
+			val("custom"),
+			val("auto"),
+			"custom",
+			true,
+		},
+		{
+			"an omitted mode on update uses the stored custom",
+			unknown,
+			null,
+			val("custom"),
+			"custom",
+			true,
+		},
+		{
+			"an omitted mode on update uses the stored auto",
+			unknown,
+			null,
+			val("auto"),
+			"auto",
+			true,
+		},
+		{"an omitted mode on create keeps the refusal", unknown, null, null, "", true},
+		{"a mode unknown until apply is not judged", unknown, unknown, val("auto"), "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mode, known := customizeTaggedVLANMgmt(tt.planned, tt.configured, tt.prior)
+			if mode != tt.wantMode || known != tt.wantKnown {
+				t.Errorf("customizeTaggedVLANMgmt() = (%q, %v), want (%q, %v)",
+					mode, known, tt.wantMode, tt.wantKnown)
+			}
+		})
+	}
+}
