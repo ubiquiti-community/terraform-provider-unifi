@@ -324,6 +324,8 @@ func TestSettingImportReadsEverySection(t *testing.T) {
 	if err := priorAttrs["ntp"].As(&ntpAttrs); err != nil {
 		t.Fatalf("ntp as object: %v", err)
 	}
+	// As shares the map with the prior state; clone it before the edit.
+	ntpAttrs = maps.Clone(ntpAttrs)
 	ntpAttrs["ntp_server_2"] = tftypes.NewValue(tftypes.String, "time.google.com")
 	configAttrs["ntp"] = tftypes.NewValue(priorAttrs["ntp"].Type(), ntpAttrs)
 	planned = planResourceChange(
@@ -642,8 +644,8 @@ func TestReadImportedSettingsStopsBeforeTheController(t *testing.T) {
 }
 
 // After an import every section is in the plan. When the configuration sets
-// all of them, an update writes each one; and an update whose configuration
-// cannot be decoded writes nothing.
+// all of them, an update writes each one that differs from state; and an
+// update whose configuration cannot be decoded writes nothing.
 func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 	ctx := context.Background()
 	fc := &fakeSettingController{docs: allSettingDocuments}
@@ -673,6 +675,40 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 		t.Fatalf("building plan: %v", d)
 	}
 
+	// A prior state holding no sections makes every configured section count
+	// as changed (settingSectionChanged), so each write path runs.
+	stateType, ok := state.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatal("setting schema is not an object")
+	}
+	var imported map[string]tftypes.Value
+	if err := state.Raw.As(&imported); err != nil {
+		t.Fatalf("reading imported state: %v", err)
+	}
+	emptyAttrs := map[string]tftypes.Value{}
+	for name, typ := range stateType.AttributeTypes {
+		emptyAttrs[name] = tftypes.NewValue(typ, nil)
+	}
+	emptyAttrs["id"], emptyAttrs["site"] = imported["id"], imported["site"]
+	empty := tfsdk.State{Schema: state.Schema, Raw: tftypes.NewValue(stateType, emptyAttrs)}
+
+	t.Run("only changed sections written", func(t *testing.T) {
+		fc.puts = nil
+		resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
+		r.Update(ctx, fwresource.UpdateRequest{
+			State:    state,
+			Plan:     planned,
+			Config:   tfsdk.Config(planned),
+			Identity: importResp.Identity,
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("Update: %v", resp.Diagnostics)
+		}
+		if len(fc.puts) != 1 || fc.puts[0] != "ntp" {
+			t.Errorf("update wrote %v, want only ntp", fc.puts)
+		}
+	})
+
 	t.Run("undecodable configuration", func(t *testing.T) {
 		fc.puts = nil
 		resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
@@ -692,9 +728,9 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 
 	t.Run("every section configured", func(t *testing.T) {
 		fc.puts = nil
-		resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
+		resp := &fwresource.UpdateResponse{State: empty, Identity: importResp.Identity}
 		r.Update(ctx, fwresource.UpdateRequest{
-			State:    state,
+			State:    empty,
 			Plan:     planned,
 			Config:   tfsdk.Config(planned),
 			Identity: importResp.Identity,
@@ -752,9 +788,9 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 			t.Fatalf("building config: %v", d)
 		}
 
-		resp := &fwresource.UpdateResponse{State: state, Identity: importResp.Identity}
+		resp := &fwresource.UpdateResponse{State: empty, Identity: importResp.Identity}
 		r.Update(ctx, fwresource.UpdateRequest{
-			State:    state,
+			State:    empty,
 			Plan:     planned,
 			Config:   tfsdk.Config(configPlan),
 			Identity: importResp.Identity,
