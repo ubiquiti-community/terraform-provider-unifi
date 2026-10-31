@@ -2,12 +2,12 @@
 page_title: Qos Rule (Resource)
 subcategory: ""
 description: |-
-  unifi_qos_rule manages a QoS rule (Settings > Routing > QoS): prioritize and/or rate-limit traffic from clients or networks to apps, app categories, IPs, regions or domains.
+  unifi_qos_rule manages a QoS rule (Settings > Routing > QoS): prioritize and/or rate-limit traffic from clients or networks to apps, app categories, IPs, regions or domains. Removing every entry from a list attribute (or omitting one that was set) recreates the object, because the API cannot clear a list in place; an explicitly empty list ([]) is rejected.
 ---
 
 # Qos Rule (Resource)
 
-`unifi_qos_rule` manages a QoS rule (Settings > Routing > QoS): prioritize and/or rate-limit traffic from clients or networks to apps, app categories, IPs, regions or domains.
+`unifi_qos_rule` manages a QoS rule (Settings > Routing > QoS): prioritize and/or rate-limit traffic from clients or networks to apps, app categories, IPs, regions or domains. Removing every entry from a list attribute (or omitting one that was set) recreates the object, because the API cannot clear a list in place; an explicitly empty list (`[]`) is rejected.
 
 ## Example Usage
 
