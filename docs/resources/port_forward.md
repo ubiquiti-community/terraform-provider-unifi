@@ -116,7 +116,7 @@ resource "unifi_port_forward" "game_server" {
 - `forward` (Attributes) Forward destination configuration. (see [below for nested schema](#nestedatt--forward))
 - `logging` (Boolean) Specifies whether to enable syslog logging for forwarded traffic. Taken from the controller when not set; a new rule is created with it off (#544).
 - `name` (String) The name of the port forwarding rule.
-- `protocol` (String) The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`. Taken from the controller when not set, so adopting a `tcp`-only rule does not widen it to UDP (#544).
+- `protocol` (String) The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`. A new rule is created with `tcp_udp` when not set; an existing rule keeps the controller's value, so adopting a `tcp`-only rule does not widen it to UDP (#544).
 - `site` (String) The name of the site to associate the port forwarding rule with.
 - `source_limiting` (Attributes) Source limiting configuration for the port forwarding rule. (see [below for nested schema](#nestedatt--source_limiting))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))

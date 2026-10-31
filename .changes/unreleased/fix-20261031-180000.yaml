@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_port_forward`: a rule created without `protocol` is created as `tcp_udp` again.** v0.62.0 dropped the static `tcp_udp` default so that an adopted `tcp`-only rule is not widened to UDP, but left nothing for create: `proto` was omitted from the request and the controller stored the rule without a protocol, which read back as `""`. `protocol` now follows the create-only pattern of the other #544 fixes: `tcp_udp` on create when unset, the controller''s value on an existing rule.'
+time: 2026-10-31T18:00:00Z
