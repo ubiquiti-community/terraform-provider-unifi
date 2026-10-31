@@ -140,7 +140,9 @@ func (r *qosRuleResource) Schema(
 ) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "`unifi_qos_rule` manages a QoS rule (Settings > Routing > QoS): prioritize " +
-			"and/or rate-limit traffic from clients or networks to apps, app categories, IPs, regions or domains.",
+			"and/or rate-limit traffic from clients or networks to apps, app categories, IPs, regions or domains. " +
+			"Removing every entry from a list attribute (or omitting one that was set) recreates the " +
+			"object, because the API cannot clear a list in place; an explicitly empty list (`[]`) is rejected.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the QoS rule.",
@@ -228,11 +230,15 @@ func (r *qosRuleResource) Schema(
 						MarkdownDescription: "Client MAC addresses, for `CLIENT`.",
 						ElementType:         types.StringType,
 						Optional:            true,
+						Validators:          ruleListValidators(),
+						PlanModifiers:       ruleListPlanModifiers(),
 					},
 					"network_ids": schema.SetAttribute{
 						MarkdownDescription: "Network IDs, for `NETWORK`.",
 						ElementType:         types.StringType,
 						Optional:            true,
+						Validators:          ruleListValidators(),
+						PlanModifiers:       ruleListPlanModifiers(),
 					},
 				},
 			},
@@ -261,16 +267,22 @@ func (r *qosRuleResource) Schema(
 						MarkdownDescription: "DPI application IDs, for `APP`.",
 						ElementType:         types.Int64Type,
 						Optional:            true,
+						Validators:          ruleListValidators(),
+						PlanModifiers:       ruleListPlanModifiers(),
 					},
 					"app_category_ids": schema.SetAttribute{
 						MarkdownDescription: "DPI application category IDs, for `APP_CATEGORY`.",
 						ElementType:         types.Int64Type,
 						Optional:            true,
+						Validators:          ruleListValidators(),
+						PlanModifiers:       ruleListPlanModifiers(),
 					},
 					"ips": schema.SetAttribute{
 						MarkdownDescription: "IP addresses or subnets, for `IP` with `SPECIFIC`.",
 						ElementType:         types.StringType,
 						Optional:            true,
+						Validators:          ruleListValidators(),
+						PlanModifiers:       ruleListPlanModifiers(),
 					},
 					"ip_group_id": schema.StringAttribute{
 						MarkdownDescription: "IP group ID, for `IP` with `OBJECT`.",
@@ -284,11 +296,15 @@ func (r *qosRuleResource) Schema(
 						MarkdownDescription: "Country codes, for `REGION`.",
 						ElementType:         types.StringType,
 						Optional:            true,
+						Validators:          ruleListValidators(),
+						PlanModifiers:       ruleListPlanModifiers(),
 					},
 					"web_domains": schema.SetAttribute{
 						MarkdownDescription: "Domains, for `WEB` with `SPECIFIC`.",
 						ElementType:         types.StringType,
 						Optional:            true,
+						Validators:          ruleListValidators(),
+						PlanModifiers:       ruleListPlanModifiers(),
 					},
 					"web_group_id": schema.StringAttribute{
 						MarkdownDescription: "Domain group ID, for `WEB` with `OBJECT`.",

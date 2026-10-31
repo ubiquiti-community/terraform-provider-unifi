@@ -3,12 +3,14 @@ package unifi
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -69,6 +71,8 @@ func ruleScheduleSchemaAttribute() schema.SingleNestedAttribute {
 				MarkdownDescription: "Days for `EVERY_WEEK`/`CUSTOM`: `mon` … `sun`.",
 				ElementType:         types.StringType,
 				Optional:            true,
+				Validators:          ruleListValidators(),
+				PlanModifiers:       ruleListPlanModifiers(),
 			},
 			"time_all_day": schema.BoolAttribute{
 				MarkdownDescription: "Active the whole day.",
@@ -185,4 +189,37 @@ func boolOrNull(b bool) types.Bool {
 		return types.BoolNull()
 	}
 	return types.BoolValue(true)
+}
+
+// ruleListValidators rejects an explicitly empty set: an empty list is read
+// back as null, so `[]` would make the apply inconsistent. Omit the attribute
+// instead.
+func ruleListValidators(v ...validator.Set) []validator.Set {
+	return append([]validator.Set{setvalidator.SizeAtLeast(1)}, v...)
+}
+
+// ruleListPlanModifiers forces replacement when a list that holds entries is
+// removed from the config. go-unifi marshals the QoS rule and content filter
+// lists with `omitempty`, so an update cannot send an empty list to clear
+// one: the controller would keep the old entries and every plan would show
+// the removal again. Recreating the object without the list clears it.
+func ruleListPlanModifiers() []planmodifier.Set {
+	return []planmodifier.Set{
+		setplanmodifier.RequiresReplaceIf(
+			func(
+				_ context.Context,
+				req planmodifier.SetRequest,
+				resp *setplanmodifier.RequiresReplaceIfFuncResponse,
+			) {
+				if !isKnown(req.StateValue) || len(req.StateValue.Elements()) == 0 ||
+					req.PlanValue.IsUnknown() {
+					return
+				}
+				resp.RequiresReplace = req.PlanValue.IsNull() ||
+					len(req.PlanValue.Elements()) == 0
+			},
+			"Removing every entry from the list recreates the object, as the API cannot clear a list in place.",
+			"Removing every entry from the list recreates the object, as the API cannot clear a list in place.",
+		),
+	}
 }

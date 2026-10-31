@@ -89,13 +89,16 @@ func (r *contentFilterResource) Schema(
 			MarkdownDescription: desc,
 			ElementType:         types.StringType,
 			Optional:            true,
-			Validators:          v,
+			Validators:          ruleListValidators(v...),
+			PlanModifiers:       ruleListPlanModifiers(),
 		}
 	}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "`unifi_content_filter` manages a content filter (Settings > Security > Content " +
 			"Filtering): DNS-based blocking of site categories, plus allow and block lists and safe search, " +
-			"for networks or individual clients.",
+			"for networks or individual clients. " +
+			"Removing every entry from a list attribute (or omitting one that was set) recreates the " +
+			"object, because the API cannot clear a list in place; an explicitly empty list (`[]`) is rejected.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the content filter.",
