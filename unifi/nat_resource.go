@@ -248,9 +248,9 @@ func (r *natResource) Schema(
 				Optional:            true,
 			},
 			"port": schema.StringAttribute{
-				MarkdownDescription: "The translated port, as a single port (`443`) or a range (`8080-8090`).",
+				MarkdownDescription: "The translated port, as a single port (`443`). Port ranges are only accepted in `source_filter.port` and `destination_filter.port`: the controller rejects a translated port range such as `8080-8090` with `NatRuleInvalidParameters`.",
 				Optional:            true,
-				Validators:          []validator.String{natPortValidator()},
+				Validators:          []validator.String{natSinglePortValidator()},
 			},
 			"exclude": schema.BoolAttribute{
 				MarkdownDescription: "Exclude matching traffic from translation. Defaults to `false`.",
@@ -723,15 +723,26 @@ func natFilterFromAPI(
 	return obj, diags
 }
 
+// natPortPattern matches a single port number between 1 and 65535.
+const natPortPattern = `([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])`
+
 // natPortRegexp matches a single port or a range of ports such as `8080-8090`.
-var natPortRegexp = regexp.MustCompile(
-	`^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])` +
-		`(-([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$`,
-)
+var natPortRegexp = regexp.MustCompile(`^` + natPortPattern + `(-` + natPortPattern + `)?$`)
+
+// natSinglePortRegexp matches a single port only. The controller rejects a
+// translated port range, so the top-level `port` attribute uses it.
+var natSinglePortRegexp = regexp.MustCompile(`^` + natPortPattern + `$`)
 
 func natPortValidator() validator.String {
 	return stringvalidator.RegexMatches(
 		natPortRegexp,
 		"must be a port (1-65535) or a port range such as 8080-8090",
+	)
+}
+
+func natSinglePortValidator() validator.String {
+	return stringvalidator.RegexMatches(
+		natSinglePortRegexp,
+		"must be a single port (1-65535); the controller rejects a translated port range",
 	)
 }

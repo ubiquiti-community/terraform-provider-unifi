@@ -58,7 +58,7 @@ resource "unifi_nat" "masquerade" {
 - `ip_version` (String) The IP version the rule applies to. Can be `IPV4` or `IPV6`.
 - `logging` (Boolean) Whether to log matching traffic. Defaults to `false`.
 - `out_interface` (String) The ID of the network that outgoing traffic leaves on. Used by `SNAT` and `MASQUERADE` rules.
-- `port` (String) The translated port, as a single port (`443`) or a range (`8080-8090`).
+- `port` (String) The translated port, as a single port (`443`). Port ranges are only accepted in `source_filter.port` and `destination_filter.port`: the controller rejects a translated port range such as `8080-8090` with `NatRuleInvalidParameters`.
 - `pppoe_use_base_interface` (Boolean) Use the base interface of a PPPoE WAN instead of the PPPoE interface. Defaults to `false`.
 - `protocol` (String) The protocol to match. Can be `all`, `tcp`, `udp` or `tcp_udp`.
 - `rule_index` (Number) The position of the rule in the rule set. Assigned by the controller when not set.
