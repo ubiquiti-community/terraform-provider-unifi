@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -30,10 +32,28 @@ var unexposedPortOverrideFields = []string{
 }
 
 // schemaKeyToJSON maps port_override attribute names that differ from the
-// DevicePortOverrides JSON key.
+// DevicePortOverrides JSON key. Nested attributes are named by their flattened
+// path (see exposedPortOverrideKeys).
 var schemaKeyToJSON = map[string]string{
-	"index":           "port_idx",
-	"port_profile_id": "portconf_id",
+	"index":                     "port_idx",
+	"port_profile_id":           "portconf_id",
+	"egress_rate_limit_enabled": "egress_rate_limit_kbps_enabled",
+}
+
+// exposedPortOverrideKeys returns the port_override schema attributes as flat
+// keys. A nested feature-group object (dot1x, stormctrl, …) exposes its
+// attributes under the group prefix, e.g. stormctrl.bcast.level is
+// stormctrl_bcast_level, which is how DevicePortOverrides names the field.
+func exposedPortOverrideKeys(prefix string, attrs map[string]attr.Type) []string {
+	var keys []string
+	for k, typ := range attrs {
+		if obj, ok := typ.(types.ObjectType); ok {
+			keys = append(keys, exposedPortOverrideKeys(prefix+k+"_", obj.AttrTypes)...)
+			continue
+		}
+		keys = append(keys, prefix+k)
+	}
+	return keys
 }
 
 func portOverrideJSONFields() map[string]reflect.StructField {
@@ -55,9 +75,12 @@ func portOverrideJSONFields() map[string]reflect.StructField {
 // carryUnwritableFields), so a go-unifi upgrade that adds one must update both.
 func Test_carryUnwritableFields_coversEveryUnexposedField(t *testing.T) {
 	exposed := map[string]bool{}
-	for k := range portOverrideAttrTypes() {
+	for _, k := range exposedPortOverrideKeys("", portOverrideAttrTypes()) {
 		if j, ok := schemaKeyToJSON[k]; ok {
 			k = j
+		}
+		if _, ok := portOverrideJSONFields()[k]; !ok {
+			t.Errorf("port_override attribute %q does not map to a DevicePortOverrides field", k)
 		}
 		exposed[k] = true
 	}
