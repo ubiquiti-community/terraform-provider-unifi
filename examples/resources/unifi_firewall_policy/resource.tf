@@ -172,3 +172,27 @@ resource "unifi_firewall_policy" "block_regions" {
     matching_target = "ANY"
   }
 }
+
+# Allow inbound HTTPS to one host over IPv6 by its interface identifier. The
+# mask keeps only the lower 64 bits (the EUI-64 interface ID), so the rule
+# keeps matching when the delegated prefix changes, where a full address in
+# `ips` would not.
+resource "unifi_firewall_policy" "allow_https_ipv6_host" {
+  name       = "allow-https-ipv6-host"
+  action     = "ALLOW"
+  protocol   = "tcp"
+  ip_version = "IPV6"
+
+  source = {
+    zone_id         = data.unifi_firewall_zone.external.id
+    matching_target = "ANY"
+  }
+
+  destination = {
+    zone_id            = data.unifi_firewall_zone.internal.id
+    matching_target    = "IID"
+    iid                = "::eaff:1eff:fed7:bf17/::ffff:ffff:ffff:ffff"
+    port_matching_type = "SPECIFIC"
+    port               = "443"
+  }
+}
