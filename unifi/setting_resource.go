@@ -2719,7 +2719,7 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating SNMP Setting", err.Error())
 			return
 		}
@@ -3148,7 +3148,7 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating SNMP Setting", err.Error())
 			return
 		}

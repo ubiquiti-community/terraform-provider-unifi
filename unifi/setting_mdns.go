@@ -207,7 +207,7 @@ func (r *settingResource) persistMdns(
 		if diags.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, s); err != nil {
+		if err := r.writeSetting(ctx, site, s); err != nil {
 			diags.AddError("Error Updating mDNS Setting", err.Error())
 			return
 		}
