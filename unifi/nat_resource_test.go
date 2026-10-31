@@ -107,7 +107,7 @@ func Test_natModelToAPI(t *testing.T) {
 		m.Type = types.StringValue("DNAT")
 		m.Protocol = types.StringValue("tcp")
 		m.IPAddress = types.StringValue("10.0.0.5")
-		m.Port = types.StringValue("8080-8090")
+		m.Port = types.StringValue("8443")
 		m.SourceFilter = src
 
 		got, diags := natModelToAPI(ctx, &m)
@@ -118,8 +118,8 @@ func Test_natModelToAPI(t *testing.T) {
 		if got.Description != "web" || got.Type != "DNAT" || got.Protocol != "tcp" {
 			t.Errorf("scalar fields not copied: %+v", got)
 		}
-		if got.Port != "8080-8090" {
-			t.Errorf("Port = %q, want 8080-8090", got.Port)
+		if got.Port != "8443" {
+			t.Errorf("Port = %q, want 8443", got.Port)
 		}
 		if got.SourceFilter == nil || got.SourceFilter.FilterType != "FIREWALL_GROUPS" ||
 			!got.SourceFilter.InvertAddress ||
@@ -185,6 +185,21 @@ func Test_natPortValidator(t *testing.T) {
 	}
 	for _, v := range []string{"", "0", "65536", "80-", "-80", "80,443", "a"} {
 		if natPortRegexp.MatchString(v) {
+			t.Errorf("%q must be rejected", v)
+		}
+	}
+}
+
+func Test_natSinglePortValidator(t *testing.T) {
+	for _, v := range []string{"1", "443", "8080", "65535"} {
+		if !natSinglePortRegexp.MatchString(v) {
+			t.Errorf("%q must be accepted", v)
+		}
+	}
+	for _, v := range []string{
+		"", "0", "65536", "8080-8090", "443-443", "80-", "-80", "80,443", "a", "0443",
+	} {
+		if natSinglePortRegexp.MatchString(v) {
 			t.Errorf("%q must be rejected", v)
 		}
 	}
