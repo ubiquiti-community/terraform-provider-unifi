@@ -19,6 +19,7 @@ import (
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -1320,6 +1321,98 @@ func Test_wlanToModel_bandsteeringMode(t *testing.T) {
 			t.Errorf("BandsteeringMode = %v, want null", model.BandsteeringMode)
 		}
 	})
+}
+
+// Test_wlanPlan_bandsteeringModeStaysPinned covers the deprecated
+// bandsteering_mode, which is Optional+Computed and always reads back null.
+// Whenever the framework decides a WLAN's plan differs from its prior state it
+// re-plans every unpinned Computed attribute as unknown, so without a plan
+// modifier this attribute shows "+ bandsteering_mode = (known after apply)":
+//
+//   - on a real change (a renamed SSID);
+//   - on no change at all, when the controller holds mac_filter.policy =
+//     "allow": the nested Default ("deny") trips the gate and mac_filter's own
+//     UseStateForUnknown restores "allow", leaving a perpetual in-place update
+//     with nothing visible but this attribute.
+//
+// Either way the planned value must stay the prior null.
+func Test_wlanPlan_bandsteeringModeStaysPinned(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp fwresource.SchemaResponse
+	(&wlanFrameworkResource{}).Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("schema: %v", schemaResp.Diagnostics)
+	}
+
+	cases := []struct {
+		name   string
+		policy string
+		rename bool
+	}{
+		{"renamed WLAN", "deny", true},
+		{"unchanged WLAN with mac_filter policy allow", "allow", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := planFixture{ctx: ctx, t: t, overrides: map[string]attr.Value{
+				"bandsteering_mode":  types.StringNull(),
+				"mac_filter.enabled": types.BoolValue(false),
+				"mac_filter.policy":  types.StringValue(tc.policy),
+			}}
+			prior, config := f.object(schemaResp.Schema, "")
+			proposed := prior
+			if tc.rename {
+				proposed = withName(t, prior, "renamed")
+				config = withName(t, config, "renamed")
+			}
+			planned := planResourceChange(
+				t,
+				"unifi_wlan",
+				schemaResp.Schema,
+				prior,
+				proposed,
+				config,
+			)
+
+			var attrs map[string]tftypes.Value
+			if err := planned.As(&attrs); err != nil {
+				t.Fatalf("as object: %v", err)
+			}
+			if got := attrs["bandsteering_mode"]; !got.IsKnown() || !got.IsNull() {
+				t.Errorf("bandsteering_mode = %v, want the prior null", got)
+			}
+			if !tc.rename {
+				diffs, err := prior.Diff(planned)
+				if err != nil {
+					t.Fatalf("diff: %v", err)
+				}
+				for _, d := range diffs {
+					t.Errorf(
+						"unchanged configuration planned %s: %v -> %v",
+						d.Path,
+						d.Value1,
+						d.Value2,
+					)
+				}
+			}
+		})
+	}
+}
+
+// withName returns a copy of a WLAN object value with name replaced. As
+// shares the object's map, so it is copied before the change.
+func withName(t *testing.T, v tftypes.Value, name string) tftypes.Value {
+	t.Helper()
+	var attrs map[string]tftypes.Value
+	if err := v.As(&attrs); err != nil {
+		t.Fatalf("as object: %v", err)
+	}
+	renamed := make(map[string]tftypes.Value, len(attrs))
+	for k, a := range attrs {
+		renamed[k] = a
+	}
+	renamed["name"] = tftypes.NewValue(tftypes.String, name)
+	return tftypes.NewValue(v.Type(), renamed)
 }
 
 // TestAccWLANFramework_bandsteeringMode exercises #388 end to end against the

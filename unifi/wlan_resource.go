@@ -647,6 +647,12 @@ func (r *wlanFrameworkResource) Schema(
 				DeprecationMessage: "Deprecated: UniFi Network 10.x moved band steering off the WLAN to the access point, where the provider already exposes it as `unifi_device.bandsteering_mode`. This attribute no longer reaches the controller and will be removed in a future release.",
 				Optional:           true,
 				Computed:           true,
+				// The WLAN never reports band steering, so the prior state is
+				// the only value there is. Without this, any other change to
+				// the WLAN re-plans it as unknown.
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("off", "equal", "prefer_5g"),
 				},
