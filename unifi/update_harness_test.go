@@ -39,7 +39,7 @@ type fakeController struct {
 	onPost func(body map[string]any)
 }
 
-func newFakeController(t *testing.T, kind, id, document string) (*fakeController, *Client) {
+func newUpdateFakeController(t *testing.T, kind, id, document string) (*fakeController, *Client) {
 	t.Helper()
 	f := &fakeController{id: id, doc: decodeJSONObject(t, document)}
 
@@ -187,7 +187,7 @@ func newUpdateHarness(
 ) *updateHarness {
 	t.Helper()
 	ctx := context.Background()
-	fake, client := newFakeController(t, kind, id, document)
+	fake, client := newUpdateFakeController(t, kind, id, document)
 	h := &updateHarness{
 		t:        t,
 		ctx:      ctx,
