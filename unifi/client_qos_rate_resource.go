@@ -187,8 +187,9 @@ func (r *clientQosRateResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"max_down": schema.Int64Attribute{
-						MarkdownDescription: "The QOS maximum download rate. `-1` (unlimited) " +
-							"for a new group when not set; taken from the controller otherwise.",
+						MarkdownDescription: "The QOS maximum download rate in kbps, `2` to `100000`, or `-1` " +
+							"for unlimited. `-1` for a new group when not set; taken from the " +
+							"controller otherwise.",
 						Optional: true,
 						Computed: true,
 						PlanModifiers: []planmodifier.Int64{
@@ -202,15 +203,21 @@ func (r *clientQosRateResource) Schema(
 						},
 					},
 					"max_up": schema.Int64Attribute{
-						MarkdownDescription: "The QOS maximum upload rate. `-1` (unlimited) " +
-							"for a new group when not set; taken from the controller otherwise.",
+						MarkdownDescription: "The QOS maximum upload rate in kbps, `2` to `100000`, or `-1` " +
+							"for unlimited. `-1` for a new group when not set; taken from the " +
+							"controller otherwise.",
 						Optional: true,
 						Computed: true,
 						PlanModifiers: []planmodifier.Int64{
 							int64planmodifier.UseStateForUnknown(),
 						},
+						// Same range as max_down: -1 is unlimited, which every
+						// new group is created with.
 						Validators: []validator.Int64{
-							int64validator.Between(2, 100000),
+							int64validator.Any(
+								int64validator.OneOf(-1),
+								int64validator.Between(2, 100000),
+							),
 						},
 					},
 				},
