@@ -18,10 +18,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -34,6 +33,7 @@ var (
 	_ resource.ResourceWithImportState  = &firewallRuleResource{}
 	_ resource.ResourceWithIdentity     = &firewallRuleResource{}
 	_ resource.ResourceWithUpgradeState = &firewallRuleResource{}
+	_ resource.ResourceWithModifyPlan   = &firewallRuleResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -167,9 +167,10 @@ func firewallRuleStateAttrTypes() map[string]attr.Type {
 	}
 }
 
-// Object-level defaults reproduce the values the flat attributes used to send
-// when the practitioner left a whole group out of configuration, so the request
-// body on create is unchanged by the nesting.
+// The create-time shapes below reproduce the values the flat attributes used to
+// send when the practitioner left a whole group out of configuration, so the
+// request body on create is unchanged by the nesting. They are applied by
+// ModifyPlan on create only, not as schema Defaults (#544).
 
 func firewallRuleSourceDefault() types.Object {
 	return types.ObjectValueMust(firewallRuleSourceAttrTypes(), map[string]attr.Value{
@@ -331,28 +332,42 @@ func (r *firewallRuleResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether the rule should be enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Specifies whether the rule should be enabled. Defaults to `true` for a " +
+					"newly created rule; an existing rule keeps whatever the controller holds, so adopting " +
+					"a rule disabled in the UI does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				// Not a schema Default, which the framework applies before plan
+				// modifiers: the create-time `true` is set in ModifyPlan.
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"source": schema.SingleNestedAttribute{
 				MarkdownDescription: "The source match criteria of the firewall rule.",
 				Optional:            true,
 				Computed:            true,
-				Default:             objectdefault.StaticValue(firewallRuleSourceDefault()),
+				// No object Default (#544): an omitted block holds the
+				// controller's value; ModifyPlan supplies the create-time shape.
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"network_id": schema.StringAttribute{
 						MarkdownDescription: "The source network ID for the firewall rule.",
 						Optional:            true,
 					},
 					"network_type": schema.StringAttribute{
-						MarkdownDescription: "The source network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("NETv4"),
+						MarkdownDescription: "The source network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`. " +
+							"Defaults to `NETv4` for a newly created rule; an existing rule keeps whatever the " +
+							"controller holds (#544).",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("ADDRv4", "NETv4"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
 						},
 					},
 					"firewall_group_ids": schema.SetAttribute{
@@ -383,19 +398,27 @@ func (r *firewallRuleResource) Schema(
 				MarkdownDescription: "The destination match criteria of the firewall rule.",
 				Optional:            true,
 				Computed:            true,
-				Default:             objectdefault.StaticValue(firewallRuleDestinationDefault()),
+				// No object Default (#544): an omitted block holds the
+				// controller's value; ModifyPlan supplies the create-time shape.
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"network_id": schema.StringAttribute{
 						MarkdownDescription: "The destination network ID of the firewall rule.",
 						Optional:            true,
 					},
 					"network_type": schema.StringAttribute{
-						MarkdownDescription: "The destination network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("NETv4"),
+						MarkdownDescription: "The destination network type of the firewall rule. Can be one of `ADDRv4` or `NETv4`. " +
+							"Defaults to `NETv4` for a newly created rule; an existing rule keeps whatever the " +
+							"controller holds (#544).",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("ADDRv4", "NETv4"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
 						},
 					},
 					"firewall_group_ids": schema.SetAttribute{
@@ -418,40 +441,55 @@ func (r *firewallRuleResource) Schema(
 				},
 			},
 			"logging": schema.BoolAttribute{
-				MarkdownDescription: "Enable logging for the firewall rule.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Enable logging for the firewall rule. Taken from the controller when not " +
+					"set; a new rule is created with logging off (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"state": schema.SingleNestedAttribute{
 				MarkdownDescription: "Connection state matching for the firewall rule.",
 				Optional:            true,
 				Computed:            true,
-				Default:             objectdefault.StaticValue(firewallRuleStateDefault()),
+				// No object Default (#544): an omitted block holds the
+				// controller's value; ModifyPlan supplies the create-time shape.
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"established": schema.BoolAttribute{
 						MarkdownDescription: "Match where the state is established.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"invalid": schema.BoolAttribute{
 						MarkdownDescription: "Match where the state is invalid.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"new": schema.BoolAttribute{
 						MarkdownDescription: "Match where the state is new.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"related": schema.BoolAttribute{
 						MarkdownDescription: "Match where the state is related.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 				},
 			},
@@ -471,10 +509,13 @@ func (r *firewallRuleResource) Schema(
 				},
 			},
 			"protocol_match_excepted": schema.BoolAttribute{
-				MarkdownDescription: "Match packets that do NOT match the specified protocol (protocol negation).",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Match packets that do NOT match the specified protocol (protocol negation). " +
+					"Taken from the controller when not set; a new rule is created with it off (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
@@ -506,6 +547,75 @@ func (r *firewallRuleResource) Configure(
 	}
 
 	r.client = client
+}
+
+// ModifyPlan supplies the create-time values the schema used to carry as static
+// Defaults: `enabled = true`, `network_type = "NETv4"` on both ends, and the
+// all-false `state` block when it is omitted. A schema Default cannot do this:
+// the framework applies Defaults before plan modifiers, so it would also
+// overwrite the controller's value on every adopted rule (#544) - re-enabling
+// a disabled rule, turning an ADDRv4 match into NETv4, or, for an omitted
+// block, planning nulls over the controller's addresses and ports. On update
+// UseStateForUnknown holds the controller's values instead.
+//
+// The create body is kept exactly as before: `enabled` is always sent (no
+// omitempty), so an unknown would go out as false, and no controller that
+// still serves legacy firewall rules was available to check whether one
+// accepts a rule without `src_networkconf_type` / `dst_networkconf_type`.
+func (r *firewallRuleResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() || !req.State.Raw.IsNull() {
+		return
+	}
+
+	var enabled types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if enabled.IsNull() {
+		resp.Diagnostics.Append(
+			resp.Plan.SetAttribute(ctx, path.Root("enabled"), types.BoolValue(true))...)
+	}
+
+	for _, g := range []struct {
+		name string
+		def  types.Object
+	}{
+		{"source", firewallRuleSourceDefault()},
+		{"destination", firewallRuleDestinationDefault()},
+	} {
+		name, def := g.name, g.def
+		var group types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(name), &group)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if group.IsNull() {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(name), def)...)
+			continue
+		}
+		if group.IsUnknown() {
+			continue
+		}
+		if nt, ok := group.Attributes()["network_type"]; ok && nt.IsNull() {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(
+				ctx, path.Root(name).AtName("network_type"), types.StringValue("NETv4"))...)
+		}
+	}
+
+	var state types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("state"), &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if state.IsNull() {
+		resp.Diagnostics.Append(
+			resp.Plan.SetAttribute(ctx, path.Root("state"), firewallRuleStateDefault())...)
+	}
 }
 
 func (r *firewallRuleResource) Create(
