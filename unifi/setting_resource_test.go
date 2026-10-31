@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -1994,6 +1995,61 @@ func TestRadioAiRawSetting(t *testing.T) {
 		}
 	})
 
+	t.Run("blacklist, radio configuration and HT modes", func(t *testing.T) {
+		blacklist, d := types.ListValueFrom(ctx,
+			types.ObjectType{AttrTypes: radioAiBlacklistAttrTypes},
+			[]settingRadioAiBlacklistModel{{
+				Radio:        types.StringValue("ng"),
+				Channel:      types.Int64Value(2),
+				ChannelWidth: types.Int64Value(20),
+			}})
+		if d.HasError() {
+			t.Fatalf("building blacklist: %v", d)
+		}
+		radioConfigs, d := types.ListValueFrom(ctx,
+			types.ObjectType{AttrTypes: radioAiRadioConfigAttrTypes},
+			[]settingRadioAiRadioConfigModel{{
+				Radio:        types.StringValue("na"),
+				ChannelWidth: types.Int64Value(80),
+				Dfs:          types.BoolValue(true),
+			}})
+		if d.HasError() {
+			t.Fatalf("building radios_configuration: %v", d)
+		}
+		raw, d := radioAiRawSetting(ctx, &settingRadioAiModel{
+			SettingPreference:           types.StringValue("manual"),
+			AutoAdjustChannelsToCountry: types.BoolValue(false),
+			HtModesNa:                   intList(20, 40),
+			ChannelsBlacklist:           blacklist,
+			RadiosConfiguration:         radioConfigs,
+		})
+		if d.HasError() {
+			t.Fatalf("unexpected diagnostics: %v", d)
+		}
+		if len(raw.Data) != 5 {
+			t.Fatalf("want exactly the five configured fields, got %v", raw.Data)
+		}
+		if raw.Data["setting_preference"] != "manual" ||
+			raw.Data["auto_adjust_channels_to_country"] != false {
+			t.Errorf("setting_preference/auto_adjust = %v", raw.Data)
+		}
+		if got, ok := raw.Data["ht_modes_na"].([]string); !ok || fmt.Sprint(got) != "[20 40]" {
+			t.Errorf("ht_modes_na = %#v, want []string{20 40}", raw.Data["ht_modes_na"])
+		}
+		body, err := json.Marshal(raw.Data)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		for _, want := range []string{
+			`"channels_blacklist":[{"channel":2,"channel_width":20,"radio":"ng"}]`,
+			`"radios_configuration":[{"channel_width":80,"dfs":true,"radio":"na"}]`,
+		} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("payload %s lacks %s", body, want)
+			}
+		}
+	})
+
 	t.Run("nothing configured sends nothing", func(t *testing.T) {
 		raw, _ := radioAiRawSetting(ctx, &settingRadioAiModel{
 			Enabled:        types.BoolUnknown(),
@@ -2023,7 +2079,9 @@ func Test_settingResource_radioAiSettingToModel(t *testing.T) {
 		"cron_expr": "0 3 * * *",
 		"channels_ng": ["1", "6", "11"],
 		"ht_modes_ng": ["20"],
-		"optimize": ["channel"]
+		"optimize": ["channel"],
+		"channels_blacklist": [{"channel": 2, "channel_width": 20, "radio": "ng"}],
+		"radios_configuration": [{"channel_width": "160", "dfs": true, "radio": "na"}]
 	}`), &setting); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -2044,6 +2102,23 @@ func Test_settingResource_radioAiSettingToModel(t *testing.T) {
 	// explicit [] in config does not plan a change forever.
 	if got.Radios.IsNull() || len(got.Radios.Elements()) != 0 {
 		t.Errorf("radios = %v, want an empty list", got.Radios)
+	}
+	var htModes []int64
+	got.HtModesNg.ElementsAs(ctx, &htModes, false)
+	if fmt.Sprint(htModes) != "[20]" {
+		t.Errorf("ht_modes_ng = %v, want [20]", htModes)
+	}
+	var blacklist []settingRadioAiBlacklistModel
+	got.ChannelsBlacklist.ElementsAs(ctx, &blacklist, false)
+	if len(blacklist) != 1 || blacklist[0].Channel.ValueInt64() != 2 ||
+		blacklist[0].ChannelWidth.ValueInt64() != 20 || blacklist[0].Radio.ValueString() != "ng" {
+		t.Errorf("channels_blacklist = %v", got.ChannelsBlacklist)
+	}
+	var radioConfigs []settingRadioAiRadioConfigModel
+	got.RadiosConfiguration.ElementsAs(ctx, &radioConfigs, false)
+	if len(radioConfigs) != 1 || radioConfigs[0].ChannelWidth.ValueInt64() != 160 ||
+		!radioConfigs[0].Dfs.ValueBool() {
+		t.Errorf("radios_configuration = %v", got.RadiosConfiguration)
 	}
 	if _, d := types.ObjectValueFrom(ctx, radioAiAttrTypes, got); d.HasError() {
 		t.Fatalf("model does not match radioAiAttrTypes: %v", d)
