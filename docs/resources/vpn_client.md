@@ -111,10 +111,10 @@ resource "unifi_vpn_client" "wireguard_with_psk" {
 
 ### Optional
 
-- `default_route` (Boolean) Specifies whether to use the VPN as the default route.
-- `enabled` (Boolean) Specifies whether the VPN client is enabled.
+- `default_route` (Boolean) Specifies whether to use the VPN as the default route. Taken from the controller when not set (a new client gets `false`), so adopting a client that carries the default route does not drop it (#544).
+- `enabled` (Boolean) Specifies whether the VPN client is enabled. A new client is created enabled; an existing one keeps the controller's value when this is not set, so adopting a disabled tunnel does not re-enable it (#544).
 - `ipv6_subnet` (String) The local IPv6 address for the WireGuard tunnel in CIDR notation (e.g., `2001:db8::2/64`). In file mode it defaults to the IPv6 entry of the configuration's `Address` line. When not configured, the controller's value is kept, so an address set in the UI survives updates made through Terraform.
-- `pull_dns` (Boolean) Specifies whether to pull DNS servers from the VPN.
+- `pull_dns` (Boolean) Specifies whether to pull DNS servers from the VPN. Taken from the controller when not set (a new client gets `false`) (#544).
 - `site` (String) The name of the site to associate the VPN client with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
@@ -129,10 +129,10 @@ Optional:
 
 - `configuration` (Attributes) File-based WireGuard configuration. Provide a complete WireGuard .conf file. (see [below for nested schema](#nestedatt--wireguard--configuration))
 - `dns_servers` (List of String) DNS servers for the WireGuard interface. Required for manual mode. Must specify 1-2 DNS server addresses.
-- `interface` (String) WAN interface to use for the VPN connection (e.g., `wan`, `wan2`).
+- `interface` (String) WAN interface to use for the VPN connection (e.g., `wan`, `wan2`). Defaults to `wan` for a new client; an existing client keeps the controller's value when this is not set, so adopting a tunnel on `wan2` does not move it (#544).
 - `peer` (Attributes) Manual WireGuard peer configuration. Specify peer endpoint and public key. (see [below for nested schema](#nestedatt--wireguard--peer))
 - `preshared_key` (String, Sensitive) WireGuard preshared key. Required when preshared_key_enabled is true.
-- `preshared_key_enabled` (Boolean) Specifies whether to use a preshared key for additional security.
+- `preshared_key_enabled` (Boolean) Specifies whether to use a preshared key for additional security. Taken from the controller when not set (a new client gets `false`, or `true` when the configuration file carries a preshared key) (#544).
 - `private_key` (String, Sensitive) WireGuard private key for this client. Stored in state; use `private_key_wo` to avoid persisting the secret.
 - `private_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `private_key` (Terraform 1.11+). Used at apply time but never written to state. Mutually exclusive with `private_key`.
 - `private_key_wo_version` (Number) Version counter for `private_key_wo`. Increment this value to trigger a private key update.

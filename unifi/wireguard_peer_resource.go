@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -17,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -224,13 +223,16 @@ func (r *wireguardPeerResource) Schema(
 				},
 			},
 			"allowed_ips": schema.ListAttribute{
-				MarkdownDescription: "Additional CIDRs routed to this peer beyond its tunnel IP.",
-				ElementType:         types.StringType,
-				Optional:            true,
-				Computed:            true,
-				Default: listdefault.StaticValue(
-					types.ListValueMust(types.StringType, []attr.Value{}),
-				),
+				MarkdownDescription: "Additional CIDRs routed to this peer beyond its tunnel " +
+					"IP. A new peer gets none; an existing peer keeps the controller's list " +
+					"when this is not set, so adopting a peer does not drop the routes " +
+					"behind it (#544). Set it to `[]` to clear them.",
+				ElementType: types.StringType,
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.List{
 					listvalidator.ValueStringsAre(validators.CIDRValidator()),
 				},

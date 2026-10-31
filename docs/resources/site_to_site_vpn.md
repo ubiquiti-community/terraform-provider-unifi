@@ -85,11 +85,11 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
 - `dynamic_routing` (Boolean) Whether IPsec dynamic routing is enabled.
-- `enabled` (Boolean) Whether the tunnel is enabled.
+- `enabled` (Boolean) Whether the tunnel is enabled. A new tunnel is created enabled; an existing one keeps the controller's value when this is not set, so adopting a disabled tunnel does not re-enable it (#544).
 - `esp` (Attributes) ESP (phase 2) proposal. Only used when `profile = customized`. (see [below for nested schema](#nestedatt--esp))
 - `ike` (Attributes) IKE (phase 1) proposal. Only used when `profile = customized`. (see [below for nested schema](#nestedatt--ike))
-- `interface` (String) The local WAN interface the tunnel binds to (e.g. `wan`, `wan2`).
-- `key_exchange` (String) IKE key-exchange version. One of `ikev1` or `ikev2`.
+- `interface` (String) The local WAN interface the tunnel binds to (e.g. `wan`, `wan2`). Defaults to `wan` for a new tunnel; an existing tunnel keeps the controller's value when this is not set, so adopting a tunnel on `wan2` does not move it (#544).
+- `key_exchange` (String) IKE key-exchange version. One of `ikev1` or `ikev2`. Defaults to `ikev2` for a new tunnel; an existing tunnel keeps the controller's value when this is not set, so adopting an IKEv1 tunnel does not switch it to IKEv2 and break it (#544).
 - `local_identifier` (String) IKE local identifier used for peer authentication (the UI's "Local Identifier"). Setting it also enables identifier authentication; left unset, the attribute is not written and whatever the controller holds is preserved.
 - `local_identifier_enabled` (Boolean) Whether the local identifier is used for authentication. Set automatically when `local_identifier` is configured; declare it explicitly to enable identifier authentication without pinning a value.
 - `local_ip` (String) The local IP used for the tunnel. Defaults to the WAN address when omitted.
