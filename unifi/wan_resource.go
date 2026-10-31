@@ -21,14 +21,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -461,10 +458,14 @@ func (r *wanResource) Schema(
 				},
 			},
 			"type": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("dhcp"),
-				MarkdownDescription: "The WAN type (dhcp, static, pppoe)",
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "The WAN type (`dhcp`, `static`, `pppoe` or `disabled`). " +
+					"Taken from the controller when not set: an imported or adopted static or " +
+					"PPPoE uplink keeps its type instead of being planned back to `dhcp` (#544).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("dhcp", "static", "pppoe", "disabled"),
 				},
@@ -530,14 +531,18 @@ func (r *wanResource) Schema(
 					"enabled": schema.BoolAttribute{
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-						MarkdownDescription: "Whether VLAN is enabled",
+						MarkdownDescription: "Whether VLAN is enabled. Taken from the controller when not set (#544).",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"id": schema.Int64Attribute{
 						Optional:            true,
 						Computed:            true,
-						Default:             int64default.StaticInt64(0),
-						MarkdownDescription: "The VLAN ID",
+						MarkdownDescription: "The VLAN ID. Taken from the controller when not set (#544).",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseNonNullStateForUnknown(),
+						},
 						Validators: []validator.Int64{
 							int64validator.Between(0, 4094),
 						},
@@ -553,10 +558,13 @@ func (r *wanResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						Optional:            true,
-						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-						MarkdownDescription: "Whether egress QoS is enabled",
+						Optional: true,
+						Computed: true,
+						MarkdownDescription: "Whether egress QoS is enabled. Null when the controller " +
+							"holds no value, and not sent unless set (#544).",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"priority": schema.Int64Attribute{
 						Optional: true,
@@ -764,8 +772,10 @@ func (r *wanResource) Schema(
 					"enabled": schema.BoolAttribute{
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
-						MarkdownDescription: "Whether Smart Queue is enabled",
+						MarkdownDescription: "Whether Smart Queue is enabled. Taken from the controller when not set (#544).",
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseNonNullStateForUnknown(),
+						},
 					},
 					"up_rate": schema.Int64Attribute{
 						Optional:            true,
@@ -902,10 +912,13 @@ func (r *wanResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
-				MarkdownDescription: "Whether the WAN network is enabled",
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "Whether the WAN network is enabled. Taken from the " +
+					"controller when not set; a WAN stored without the key reads as enabled (#544).",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ip_aliases": schema.ListAttribute{
 				ElementType:         types.StringType,
@@ -1186,7 +1199,18 @@ func (r *wanResource) Create(
 		site = r.client.Site
 	}
 
-	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
+	// A brand-new WAN is created exactly as before #544: enabled and on DHCP
+	// unless the configuration says otherwise. The adoption path below keeps
+	// the unset values nil, so an existing PPPoE or static uplink keeps its type.
+	newWAN := *network
+	if newWAN.WANType == nil {
+		newWAN.WANType = new("dhcp")
+	}
+	if newWAN.Enabled == nil {
+		newWAN.Enabled = new(true)
+	}
+
+	createdNetwork, err := r.client.CreateNetwork(ctx, site, &newWAN)
 	if err != nil {
 		// If a WAN configuration already exists for this network group,
 		// adopt the existing one and update it with the planned configuration.
@@ -1709,8 +1733,9 @@ func (r *wanResource) modelToNetwork(
 		Enabled:         boolPointerIfKnown(model.Enabled),
 	}
 
-	// WAN Type — type has a Default so it's always known;
-	// type_v6 may be unknown on Create.
+	// WAN type and type_v6 have no schema Default (#544): left unset they are
+	// unknown on Create and stay off the wire, so an adopted uplink keeps the
+	// type the controller holds.
 	if !model.Type.IsNull() && !model.Type.IsUnknown() {
 		network.WANType = model.Type.ValueStringPointer()
 	}
@@ -1783,7 +1808,9 @@ func (r *wanResource) modelToNetwork(
 		d := model.EgressQoS.As(ctx, &egressQos, basetypes.ObjectAsOptions{})
 		diags.Append(d...)
 		if !diags.HasError() {
-			network.WANEgressQOSEnabled = egressQos.Enabled.ValueBoolPointer()
+			// Unset (unknown on create, or null when the controller holds no
+			// value) stays off the wire rather than being sent as false (#544).
+			network.WANEgressQOSEnabled = boolPointerIfKnown(egressQos.Enabled)
 			network.WANEgressQOS = wanEgressQOSPriority(egressQos.Priority)
 		}
 	}

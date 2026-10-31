@@ -63,8 +63,8 @@ func newWANHarnessFrom(t *testing.T, document string) *updateHarness {
 	return h
 }
 
-// wanBaseConfig matches wanTestDocument. username is Optional-only, and type
-// defaults to dhcp.
+// wanBaseConfig matches wanTestDocument. username is Optional-only; type is
+// read from the controller when unset, but stated here as a typical config.
 func wanBaseConfig() map[string]attr.Value {
 	return map[string]attr.Value{
 		"name":     types.StringValue("Internet 1"),
