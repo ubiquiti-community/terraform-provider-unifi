@@ -37,11 +37,12 @@ import (
 )
 
 var (
-	_ resource.Resource                 = &firewallPolicyResource{}
-	_ resource.ResourceWithImportState  = &firewallPolicyResource{}
-	_ resource.ResourceWithIdentity     = &firewallPolicyResource{}
-	_ resource.ResourceWithModifyPlan   = &firewallPolicyResource{}
-	_ resource.ResourceWithUpgradeState = &firewallPolicyResource{}
+	_ resource.Resource                   = &firewallPolicyResource{}
+	_ resource.ResourceWithImportState    = &firewallPolicyResource{}
+	_ resource.ResourceWithIdentity       = &firewallPolicyResource{}
+	_ resource.ResourceWithModifyPlan     = &firewallPolicyResource{}
+	_ resource.ResourceWithUpgradeState   = &firewallPolicyResource{}
+	_ resource.ResourceWithValidateConfig = &firewallPolicyResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -330,9 +331,10 @@ type firewallPolicyEndpointModel struct {
 	MatchOppositeIPs      types.Bool `tfsdk:"match_opposite_ips"`
 	MatchOppositeNetworks types.Bool `tfsdk:"match_opposite_networks"`
 	MatchOppositePorts    types.Bool `tfsdk:"match_opposite_ports"`
-	// Match the listed clients by MAC address rather than by their current IP.
-	// The controller stores it without `omitempty`, so it must round-trip or an
-	// update resets it to false.
+	// The controller's IP/MAC binding flag on an `IP` source. It is only stored
+	// on a source `IP` target (it is dropped on every other target and on the
+	// destination), and go-unifi serializes it without `omitempty`, so it must
+	// round-trip or an update resets it to false. See ValidateConfig.
 	MatchMAC types.Bool `tfsdk:"match_mac"`
 }
 
@@ -530,8 +532,12 @@ func (r *firewallPolicyResource) Schema(
 			Default:  booldefault.StaticBool(false),
 		},
 		"match_mac": schema.BoolAttribute{
-			MarkdownDescription: "Match the clients in `client_macs` by MAC address rather than by their current IP address. " +
-				"Corresponds to the controller's `match_mac` flag on a `CLIENT` matching target. Defaults to `false`.",
+			MarkdownDescription: "The controller's `match_mac` flag (IP/MAC binding). Only valid on the `source` endpoint " +
+				"with `matching_target = \"IP\"`: the controller drops the flag on every other target (a `CLIENT` target " +
+				"already matches the clients in `client_macs` by MAC) and on the destination, so setting it to `true` " +
+				"anywhere else is rejected at plan time. On an `IP` source the controller also requires the bound MAC " +
+				"address (its `mac` field), which the provider cannot send yet, so the controller currently rejects a " +
+				"write with `match_mac = true` (`MissingFirewallPolicySourceIpMac`). Defaults to `false`.",
 			Optional: true,
 			Computed: true,
 			Default:  booldefault.StaticBool(false),
