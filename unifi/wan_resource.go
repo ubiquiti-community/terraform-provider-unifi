@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"regexp"
@@ -179,6 +180,18 @@ func (m egressQosModel) AttributeTypes() map[string]attr.Type {
 		"enabled":  types.BoolType,
 		"priority": types.Int64Type,
 	}
+}
+
+// wanEgressQOSPriority returns the wan_egress_qos value to send for priority:
+// nil when it is null, unknown or 0. The controller validates the field as
+// [1-7] or "", so a 0 fails the whole update with api.err.InvalidPayload
+// (go-unifi#105); 0 can only come from a state written while the attribute
+// defaulted to 0.
+func wanEgressQOSPriority(priority types.Int64) *int64 {
+	if priority.IsNull() || priority.IsUnknown() || priority.ValueInt64() == 0 {
+		return nil
+	}
+	return priority.ValueInt64Pointer()
 }
 
 // smartqModel describes the Smart Queue configuration.
@@ -403,7 +416,9 @@ func (r *wanResource) Schema(
 		//   0: initial schema (flat wan_dslite_*, dns.ipv6_*, dhcpv6.pd_size*).
 		//   1: those prefixed attributes are nested objects (dslite, dns.ipv6,
 		//      dhcpv6.pd). See UpgradeState.
-		Version: 1,
+		//   2: egress_qos.priority has no default and 0 is not a valid value;
+		//      a stored 0 becomes null. See UpgradeState.
+		Version: 2,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -544,12 +559,15 @@ func (r *wanResource) Schema(
 						MarkdownDescription: "Whether egress QoS is enabled",
 					},
 					"priority": schema.Int64Attribute{
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(0),
-						MarkdownDescription: "Egress QoS priority",
+						Optional: true,
+						Computed: true,
+						MarkdownDescription: "Egress QoS priority (802.1p CoS), `1`-`7`. Null when the controller " +
+							"holds no priority; it is never sent as `0`, which the controller rejects.",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 						Validators: []validator.Int64{
-							int64validator.Between(0, 7),
+							int64validator.Between(1, 7),
 						},
 					},
 				},
@@ -1025,6 +1043,8 @@ func (r *wanResource) Schema(
 //	v0 -> v1: the flat wan_dslite_remote_host{,_auto}, dns.ipv6_* and
 //	    dhcpv6.pd_size{,_auto} attributes move into the nested dslite,
 //	    dns.ipv6 and dhcpv6.pd objects. See nestWANState.
+//	v1 -> v2: egress_qos.priority 0, written while the attribute defaulted to
+//	    0, becomes null. See nullZeroEgressQOSPriority.
 func (r *wanResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
@@ -1045,10 +1065,7 @@ func (r *wanResource) UpgradeState(
 				dv, err := util.UpgradeRawState(
 					schemaType,
 					req.RawState.JSON,
-					func(state map[string]any) {
-						rewrite(state)
-						nestWANState(state)
-					},
+					rewrite,
 				)
 				if err != nil {
 					resp.Diagnostics.AddError("Failed to upgrade WAN state", err.Error())
@@ -1060,8 +1077,25 @@ func (r *wanResource) UpgradeState(
 	}
 
 	return map[int64]resource.StateUpgrader{
-		0: upgrader(func(map[string]any) {}),
+		0: upgrader(func(state map[string]any) {
+			nestWANState(state)
+			nullZeroEgressQOSPriority(state)
+		}),
+		1: upgrader(nullZeroEgressQOSPriority),
 	}
+}
+
+// nullZeroEgressQOSPriority replaces an egress_qos.priority of 0 with null.
+// The attribute defaulted to 0 until v2, but the controller accepts only 1-7
+// or "" (unset), so 0 in state always meant "no priority" (go-unifi#105).
+// Without this, a plan run with -refresh=false would carry the 0 into an
+// update whose result reads back null.
+func nullZeroEgressQOSPriority(state map[string]any) {
+	util.WithObject(state, "egress_qos", func(qos map[string]any) {
+		if n, ok := qos["priority"].(json.Number); ok && n.String() == "0" {
+			qos["priority"] = nil
+		}
+	})
 }
 
 // nestWANState rewrites flat v0 WAN state into the nested-object shape of the
@@ -1750,7 +1784,7 @@ func (r *wanResource) modelToNetwork(
 		diags.Append(d...)
 		if !diags.HasError() {
 			network.WANEgressQOSEnabled = egressQos.Enabled.ValueBoolPointer()
-			network.WANEgressQOS = egressQos.Priority.ValueInt64Pointer()
+			network.WANEgressQOS = wanEgressQOSPriority(egressQos.Priority)
 		}
 	}
 
@@ -2035,8 +2069,13 @@ func (r *wanResource) networkToModel(
 		if network.WANEgressQOSEnabled != nil {
 			currentEgressQos.Enabled = types.BoolValue(*network.WANEgressQOSEnabled)
 		}
-		if network.WANEgressQOS != nil {
+		// The controller stores an unset priority as "" and accepts only 1-7.
+		// Older go-unifi releases decode "" as 0, and states written while
+		// priority defaulted to 0 hold 0, so both read back as null.
+		if network.WANEgressQOS != nil && *network.WANEgressQOS != 0 {
 			currentEgressQos.Priority = types.Int64Value(*network.WANEgressQOS)
+		} else {
+			currentEgressQos.Priority = types.Int64Null()
 		}
 		egressQosObj, d := types.ObjectValueFrom(
 			ctx,

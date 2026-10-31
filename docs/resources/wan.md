@@ -52,7 +52,7 @@ resource "unifi_wan" "secondary" {
     down_rate = 500000
   }
 
-  # Egress QoS / 802.1p priority (0-7).
+  # Egress QoS / 802.1p priority (1-7); leave priority out to keep it unset.
   egress_qos = {
     enabled  = true
     priority = 1
@@ -224,7 +224,7 @@ Optional:
 Optional:
 
 - `enabled` (Boolean) Whether egress QoS is enabled
-- `priority` (Number) Egress QoS priority
+- `priority` (Number) Egress QoS priority (802.1p CoS), `1`-`7`. Null when the controller holds no priority; it is never sent as `0`, which the controller rejects.
 
 
 <a id="nestedatt--igmp_proxy"></a>
