@@ -156,7 +156,7 @@ resource "unifi_setting" "device_isolation" {
 Optional:
 
 - `cron_expr` (String) Cron expression controlling when the speed test runs (e.g. `0 * * * *`).
-- `enabled` (Boolean) Whether periodic automated speed tests are enabled.
+- `enabled` (Boolean) Whether periodic automated speed tests are enabled. Taken from the controller when not set (#544).
 
 
 <a id="nestedatt--connectivity"></a>
@@ -206,7 +206,7 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean) Whether DPI is enabled.
+- `enabled` (Boolean) Whether DPI is enabled. Taken from the controller when not set, so declaring the `dpi` block for one attribute no longer turns deep packet inspection off (#544).
 - `fingerprinting_enabled` (Boolean) Whether device fingerprinting is enabled.
 
 
@@ -308,7 +308,7 @@ Optional:
 - `brightness` (Number) Display brightness (1-100).
 - `enabled` (Boolean) Whether the device display is enabled.
 - `idle_timeout` (Number) Seconds of inactivity before the display turns off (10-3600).
-- `sync` (Boolean) Sync display settings across devices.
+- `sync` (Boolean) Sync display settings across devices. Taken from the controller when not set (#544).
 - `touch_event` (Boolean) Whether touch events on the display are enabled.
 
 
@@ -400,9 +400,9 @@ Optional:
 
 - `contents` (List of String) Logged facilities (e.g. `device`, `client`, `firewall_default_policy`, `triggers`, `updates`, `admin_activity`, `critical`, `security_detections`, `vpn`).
 - `debug` (Boolean) Enable debug logging.
-- `enabled` (Boolean) Whether remote syslog is enabled.
+- `enabled` (Boolean) Whether remote syslog is enabled. Taken from the controller when not set, so declaring the `syslog` block to manage its server address no longer disables logging (#544).
 - `ip` (String) Remote syslog server IP address.
-- `log_all_contents` (Boolean) Log all available facilities.
+- `log_all_contents` (Boolean) Log all available facilities. Taken from the controller when not set (#544).
 - `netconsole` (Attributes) Netconsole logging settings. (see [below for nested schema](#nestedatt--syslog--netconsole))
 - `port` (Number) Remote syslog server port (1-65535).
 - `this_controller` (Attributes) Forwarding of this controller's own events to the remote syslog server. (see [below for nested schema](#nestedatt--syslog--this_controller))
