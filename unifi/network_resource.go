@@ -573,7 +573,7 @@ func (r *networkResource) Schema(
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
-					boolDefaultOnCreate(true),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"igmp_snooping": schema.BoolAttribute{
@@ -874,7 +874,7 @@ func (r *networkResource) Schema(
 						Optional:            true,
 						Computed:            true,
 						PlanModifiers: []planmodifier.Bool{
-							boolDefaultOnCreate(true),
+							planmodifiers.BoolDefaultOnCreate(true),
 						},
 					},
 					"start": schema.StringAttribute{
@@ -912,7 +912,7 @@ func (r *networkResource) Schema(
 						Optional:            true,
 						Computed:            true,
 						PlanModifiers: []planmodifier.Bool{
-							boolDefaultOnCreate(true),
+							planmodifiers.BoolDefaultOnCreate(true),
 						},
 					},
 					"ntp": schema.SingleNestedAttribute{
@@ -2644,48 +2644,6 @@ func boolPointerIfKnown(v types.Bool) *bool {
 		return nil
 	}
 	return v.ValueBoolPointer()
-}
-
-// boolDefaultOnCreate is planmodifiers.StringDefaultOnCreate for booleans: it
-// supplies def for an unset attribute when the prior state holds no value (a
-// create, or a block newly added to an existing resource) and otherwise keeps
-// the prior state value, so an imported network is never planned back to the
-// constant (#544). A schema Default cannot do this, because the framework
-// applies defaults before plan modifiers run.
-//
-// It is reserved for attributes go-unifi always serializes (a plain bool
-// without omitempty): leaving them unknown on create would send false, which
-// for internet access, the DHCP server and its conflict checking is not what a
-// new network has ever been created with.
-func boolDefaultOnCreate(def bool) planmodifier.Bool {
-	return boolDefaultOnCreateModifier{def: def}
-}
-
-type boolDefaultOnCreateModifier struct {
-	def bool
-}
-
-func (m boolDefaultOnCreateModifier) Description(_ context.Context) string {
-	return fmt.Sprintf("defaults to %t on create; keeps the current value on update", m.def)
-}
-
-func (m boolDefaultOnCreateModifier) MarkdownDescription(ctx context.Context) string {
-	return m.Description(ctx)
-}
-
-func (m boolDefaultOnCreateModifier) PlanModifyBool(
-	_ context.Context,
-	req planmodifier.BoolRequest,
-	resp *planmodifier.BoolResponse,
-) {
-	if !req.ConfigValue.IsNull() {
-		return
-	}
-	if !req.State.Raw.IsNull() && !req.StateValue.IsNull() && !req.StateValue.IsUnknown() {
-		resp.PlanValue = req.StateValue
-		return
-	}
-	resp.PlanValue = types.BoolValue(m.def)
 }
 
 // networkEnabled reads the enabled flag of a networkconf document. The default

@@ -154,9 +154,9 @@ func TestVPNServerCreateKeepsDefaults(t *testing.T) {
 			[]string{"wireguard", "wan"})
 		wg := plannedObject(t, attrs["wireguard"], "wireguard")
 		assertPlanned(t, wg["ip_version"], "wireguard.ip_version", "v4")
-		// Filled in by vpnServerCreateDefaults.
+		// Filled in by vpnServerCreateDefaults (the port depends on the server type).
 		assertPlannedUnknown(t, wg["port"], "wireguard.port")
-		assertPlannedUnknown(t, attrs["enabled"], "enabled")
+		assertPlanned(t, attrs["enabled"], "enabled", true)
 		wan := plannedObject(t, attrs["wan"], "wan")
 		assertPlanned(t, wan["ip"], "wan.ip", "any")
 		assertPlanned(t, wan["interface"], "wan.interface", "wan")
@@ -200,17 +200,17 @@ func TestVPNServerCreateKeepsDefaults(t *testing.T) {
 
 // TestVPNTunnelCreatePlans pins the create side of the client and
 // site-to-site resources: the WAN interface and key exchange are still planned
-// for a new tunnel, and enabled is filled in by networkCreateEnabled.
+// for a new tunnel, and so is enabled (BoolDefaultOnCreate).
 func TestVPNTunnelCreatePlans(t *testing.T) {
 	attrs := createPlan(t, "unifi_vpn_client", &vpnClientResource{}, nil)
 	wg := plannedObject(t, attrs["wireguard"], "wireguard")
 	assertPlanned(t, wg["interface"], "wireguard.interface", "wan")
-	assertPlannedUnknown(t, attrs["enabled"], "enabled")
+	assertPlanned(t, attrs["enabled"], "enabled", true)
 
 	attrs = createPlan(t, "unifi_site_to_site_vpn", &siteToSiteVPNResource{}, nil)
 	assertPlanned(t, attrs["interface"], "interface", "wan")
 	assertPlanned(t, attrs["key_exchange"], "key_exchange", "ikev2")
-	assertPlannedUnknown(t, attrs["enabled"], "enabled")
+	assertPlanned(t, attrs["enabled"], "enabled", true)
 
 	n := &unifi.Network{}
 	networkCreateEnabled(n)

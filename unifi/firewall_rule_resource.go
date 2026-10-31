@@ -25,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
@@ -338,9 +339,10 @@ func (r *firewallRuleResource) Schema(
 				Optional: true,
 				Computed: true,
 				// Not a schema Default, which the framework applies before plan
-				// modifiers: the create-time `true` is set in ModifyPlan.
+				// modifiers. go-unifi always sends `enabled` (no omitempty), so a
+				// create has to plan a value or the rule would be written disabled.
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"source": schema.SingleNestedAttribute{
@@ -550,16 +552,16 @@ func (r *firewallRuleResource) Configure(
 }
 
 // ModifyPlan supplies the create-time values the schema used to carry as static
-// Defaults: `enabled = true`, `network_type = "NETv4"` on both ends, and the
-// all-false `state` block when it is omitted. A schema Default cannot do this:
+// Defaults: `network_type = "NETv4"` on both ends, and the all-false `state`
+// block when it is omitted (`enabled = true` is planmodifiers.BoolDefaultOnCreate
+// on the attribute). A schema Default cannot do this:
 // the framework applies Defaults before plan modifiers, so it would also
 // overwrite the controller's value on every adopted rule (#544) - re-enabling
 // a disabled rule, turning an ADDRv4 match into NETv4, or, for an omitted
 // block, planning nulls over the controller's addresses and ports. On update
 // UseStateForUnknown holds the controller's values instead.
 //
-// The create body is kept exactly as before: `enabled` is always sent (no
-// omitempty), so an unknown would go out as false, and no controller that
+// The create body is kept exactly as before: no controller that
 // still serves legacy firewall rules was available to check whether one
 // accepts a rule without `src_networkconf_type` / `dst_networkconf_type`.
 func (r *firewallRuleResource) ModifyPlan(
@@ -569,16 +571,6 @@ func (r *firewallRuleResource) ModifyPlan(
 ) {
 	if req.Plan.Raw.IsNull() || !req.State.Raw.IsNull() {
 		return
-	}
-
-	var enabled types.Bool
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	if enabled.IsNull() {
-		resp.Diagnostics.Append(
-			resp.Plan.SetAttribute(ctx, path.Root("enabled"), types.BoolValue(true))...)
 	}
 
 	for _, g := range []struct {

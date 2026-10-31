@@ -26,7 +26,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -263,7 +262,10 @@ func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
 			MarkdownDescription: "Clear inherited fields that are unused by the selected mode.",
 			Optional:            true,
 			Computed:            true,
-			Default:             booldefault.StaticBool(false),
+			// Kept (#544): a provider-side flag that is never sent to the
+			// controller (Read carries the prior value), so the Default cannot
+			// overwrite anything the controller holds.
+			Default: booldefault.StaticBool(false),
 		},
 		"repeat_on_days": schema.SetAttribute{
 			MarkdownDescription: "Weekdays on which the policy is active.",
@@ -484,10 +486,15 @@ func (r *firewallPolicyResource) Schema(
 				"bits, i.e. an EUI-64 interface ID under any prefix). Required when " +
 				"`matching_target` is `IID`, and only valid with it. Matching the " +
 				"interface ID instead of the full address keeps a rule working when " +
-				"the delegated IPv6 prefix changes.",
+				"the delegated IPv6 prefix changes. An existing policy keeps the " +
+				"controller's value while `matching_target` is unchanged (#544).",
 			Optional: true,
 			Computed: true,
-			Default:  stringdefault.StaticString(""),
+			// Empty on create; then held while matching_target is unchanged
+			// (see firewallPolicyEndpointTargetDefaults).
+			PlanModifiers: []planmodifier.String{
+				planmodifiers.StringDefaultOnCreate(""),
+			},
 			Validators: []validator.String{
 				firewallPolicyIIDValidator{},
 			},
@@ -575,27 +582,37 @@ func (r *firewallPolicyResource) Schema(
 		},
 		"match_opposite_iid": schema.BoolAttribute{
 			MarkdownDescription: "Invert the interface ID match: when `true`, the endpoint matches every address **except** those whose interface ID matches `iid`. " +
-				"Only valid with `matching_target = \"IID\"`. Defaults to `false`.",
+				"Only valid with `matching_target = \"IID\"`. Defaults to `false` for a new policy; an existing policy keeps the " +
+				"controller's value while `matching_target` is unchanged (#544).",
 			Optional: true,
 			Computed: true,
-			Default:  booldefault.StaticBool(false),
+			PlanModifiers: []planmodifier.Bool{
+				planmodifiers.BoolDefaultOnCreate(false),
+			},
 		},
 		"match_mac": schema.BoolAttribute{
 			MarkdownDescription: "The controller's `match_mac` flag (IP/MAC binding). Only valid on the `source` endpoint " +
 				"with `matching_target = \"IP\"`: the controller drops the flag on every other target (a `CLIENT` target " +
 				"already matches the clients in `client_macs` by MAC) and on the destination, so setting it to `true` " +
 				"anywhere else is rejected at plan time. On an `IP` source the controller also requires the bound MAC " +
-				"address, so `match_mac = true` also requires `mac`. Defaults to `false`.",
+				"address, so `match_mac = true` also requires `mac`. Defaults to `false` for a new policy; an existing " +
+				"policy keeps the controller's value while `matching_target` is unchanged, so adopting an IP/MAC " +
+				"binding does not drop it (#544).",
 			Optional: true,
 			Computed: true,
-			Default:  booldefault.StaticBool(false),
+			PlanModifiers: []planmodifier.Bool{
+				planmodifiers.BoolDefaultOnCreate(false),
+			},
 		},
 		"mac": schema.StringAttribute{
 			MarkdownDescription: "The MAC address bound to the source IP (IP/MAC binding). Only valid on the `source` " +
-				"endpoint with `matching_target = \"IP\"` and `match_mac = true`, which in turn requires it.",
+				"endpoint with `matching_target = \"IP\"` and `match_mac = true`, which in turn requires it. " +
+				"An existing policy keeps the controller's value while `matching_target` is unchanged (#544).",
 			Optional: true,
 			Computed: true,
-			Default:  stringdefault.StaticString(""),
+			PlanModifiers: []planmodifier.String{
+				planmodifiers.StringDefaultOnCreate(""),
+			},
 		},
 	}
 
@@ -640,9 +657,12 @@ func (r *firewallPolicyResource) Schema(
 				Computed: true,
 				// Not a schema Default: the framework applies Defaults before plan
 				// modifiers, so a Default would overwrite the controller's value on
-				// every adopted policy. The create-time `true` is set in ModifyPlan.
+				// every adopted policy. A value has to be chosen on create because
+				// go-unifi always sends `enabled` (no omitempty), so an unknown
+				// would be written as `false`: a new BLOCK policy would silently
+				// not block.
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"protocol": schema.StringAttribute{
@@ -839,7 +859,7 @@ func (r *firewallPolicyResource) ModifyPlan(
 	if req.Plan.Raw.IsNull() {
 		return
 	}
-	firewallPolicyCreateDefaults(ctx, req, resp)
+	firewallPolicyEndpointTargetDefaults(ctx, req, resp)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -858,31 +878,57 @@ func (r *firewallPolicyResource) ModifyPlan(
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("schedule"), normalized)...)
 }
 
-// firewallPolicyCreateDefaults plans `enabled = true` for a policy being
-// created without it. It cannot be a schema Default: the framework applies
-// Defaults before plan modifiers, so a Default would also overwrite the
-// controller's value on every adopted policy, re-enabling a policy disabled in
-// the UI (#544). On update the attribute's UseStateForUnknown holds the
-// controller's value instead.
+// firewallPolicyTargetBoundDefaults are the endpoint attributes that only mean
+// something for one matching_target (match_mac/mac on an IP source, iid and
+// match_opposite_iid on IID), with the value a new policy is created with.
+var firewallPolicyTargetBoundDefaults = map[string]attr.Value{
+	"match_mac":          types.BoolValue(false),
+	"mac":                types.StringValue(""),
+	"iid":                types.StringValue(""),
+	"match_opposite_iid": types.BoolValue(false),
+}
+
+// firewallPolicyEndpointTargetDefaults resets the target-bound endpoint
+// attributes the configuration leaves unset to their create-time value when
+// the endpoint's matching_target changes.
 //
-// A value has to be chosen on create because go-unifi always sends `enabled`
-// (no omitempty), so an unknown would be written as `false`: a new BLOCK
-// policy would silently not block.
-func firewallPolicyCreateDefaults(
+// Their attribute modifiers hold the controller's value on update (#544), so
+// an adopted IP/MAC binding or interface ID match is not dropped. That value
+// only belongs to the old target, though: carried over to a new one, the
+// controller would either drop it (match_mac reads back false: "inconsistent
+// result after apply") or apply a stale match. Switching the target therefore
+// plans what a schema Default used to plan.
+func firewallPolicyEndpointTargetDefaults(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
 	resp *resource.ModifyPlanResponse,
 ) {
-	if !req.State.Raw.IsNull() {
+	if req.State.Raw.IsNull() {
 		return
 	}
-	var enabled types.Bool
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
-	if resp.Diagnostics.HasError() || !enabled.IsNull() {
-		return
+	for _, endpoint := range []string{"source", "destination"} {
+		target := path.Root(endpoint).AtName("matching_target")
+		var planned, prior types.String
+		resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, target, &planned)...)
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, target, &prior)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if planned.Equal(prior) {
+			continue
+		}
+		for name, def := range firewallPolicyTargetBoundDefaults {
+			p := path.Root(endpoint).AtName(name)
+			var configured attr.Value
+			resp.Diagnostics.Append(req.Config.GetAttribute(ctx, p, &configured)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			if configured.IsNull() {
+				resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, p, def)...)
+			}
+		}
 	}
-	resp.Diagnostics.Append(
-		resp.Plan.SetAttribute(ctx, path.Root("enabled"), types.BoolValue(true))...)
 }
 
 func (r *firewallPolicyResource) Create(

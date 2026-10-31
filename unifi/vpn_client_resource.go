@@ -220,7 +220,7 @@ func (r *vpnClientResource) Schema(
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"subnet": schema.StringAttribute{
@@ -458,7 +458,6 @@ func (r *vpnClientResource) Create(
 	}
 
 	// Create the network
-	networkCreateEnabled(network)
 	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -887,10 +886,9 @@ func (r *vpnClientResource) modelToNetwork(
 }
 
 // networkCreateEnabled creates a VPN network enabled unless the configuration
-// says otherwise. `enabled` used to carry a schema Default of true, but the
-// framework applies a Default before plan modifiers run, so it also re-enabled
-// every adopted tunnel that was disabled on the controller (#544). Applying it
-// here, on create only, keeps the create request unchanged.
+// says otherwise. The plan already carries `enabled = true` for a new network
+// (planmodifiers.BoolDefaultOnCreate on the attribute), so this is only the
+// request-side fallback of vpnServerCreateDefaults.
 func networkCreateEnabled(network *unifi.Network) {
 	if network.Enabled == nil {
 		network.Enabled = new(true)

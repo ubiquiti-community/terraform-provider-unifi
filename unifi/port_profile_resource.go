@@ -296,6 +296,11 @@ func (r *portProfileResource) Schema(
 					"Defaults to `true` for a newly created profile; an existing profile keeps the controller's value.",
 				Optional: true,
 				Computed: true,
+				// Always on the wire (go-unifi sends false for an unset bool), so a
+				// new profile still needs the old `true` (#544).
+				PlanModifiers: []planmodifier.Bool{
+					planmodifiers.BoolDefaultOnCreateKeepNull(true),
+				},
 			},
 			"dot1x": schema.SingleNestedAttribute{
 				Description: "802.1X port authentication settings for the port profile. Taken from the controller when not set.",
@@ -431,7 +436,10 @@ func (r *portProfileResource) Schema(
 				Description: "The operation mode for the port profile. Can only be `switch`",
 				Optional:    true,
 				Computed:    true,
-				Default:     stringdefault.StaticString("switch"),
+				// Kept (#544): `switch` is the only value a port profile takes
+				// (Read maps an absent op_mode to it), so the Default cannot
+				// overwrite a different controller value.
+				Default: stringdefault.StaticString("switch"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("switch"),
 				},
@@ -995,14 +1003,15 @@ func (r *portProfileResource) ModifyPlan(
 	}
 
 	// Create-only defaults (#544): these were schema Defaults, which replaced
-	// the controller's value on every adopted profile. autoneg and
-	// lldpmed.enabled are always on the wire (go-unifi sends false for an
-	// unset bool), so a new profile still needs the old `true` - otherwise it
-	// would be created with auto-negotiation and LLDP-MED off.
+	// the controller's value on every adopted profile. lldpmed.enabled is
+	// always on the wire (go-unifi sends false for an unset bool), so a new
+	// profile still needs the old `true` - otherwise it would be created with
+	// LLDP-MED off. It is planned here rather than by an attribute modifier
+	// because the lldpmed object itself only gets its create-time shape here
+	// (autoneg is planmodifiers.BoolDefaultOnCreateKeepNull on the attribute).
 	hasPrior := !req.State.Raw.IsNull()
 	planObjectOnCreate(ctx, req, resp, path.Root("dot1x"), portProfileDot1xDefault())
 	planObjectOnCreate(ctx, req, resp, path.Root("lldpmed"), portProfileLldpmedDefault())
-	planDefaultOnCreate(ctx, req, resp, path.Root("autoneg"), types.BoolValue(true), hasPrior)
 	planDefaultOnCreate(ctx, req, resp, path.Root("lldpmed").AtName("enabled"),
 		types.BoolValue(true), hasPrior)
 	if resp.Diagnostics.HasError() {

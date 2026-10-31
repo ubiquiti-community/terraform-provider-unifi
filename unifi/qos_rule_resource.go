@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -170,7 +169,7 @@ func (r *qosRuleResource) Schema(
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"objective": schema.StringAttribute{
@@ -401,12 +400,6 @@ func (r *qosRuleResource) Create(
 	rule := r.modelToAPI(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-	// A new rule is created enabled unless the configuration says otherwise.
-	// This used to be a schema Default, which the framework applies before
-	// plan modifiers and so also re-enabled adopted rules (#544).
-	if !isKnown(plan.Enabled) {
-		rule.Enabled = true
 	}
 	created, err := r.client.CreateQOSRule(ctx, site, rule)
 	if err != nil {

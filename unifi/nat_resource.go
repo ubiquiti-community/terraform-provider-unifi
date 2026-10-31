@@ -24,13 +24,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 )
 
 var (
 	_ resource.Resource                = &natResource{}
 	_ resource.ResourceWithImportState = &natResource{}
 	_ resource.ResourceWithIdentity    = &natResource{}
-	_ resource.ResourceWithModifyPlan  = &natResource{}
 )
 
 func NewNatResource() resource.Resource {
@@ -212,9 +212,10 @@ func (r *natResource) Schema(
 				Optional: true,
 				Computed: true,
 				// Not a schema Default, which the framework applies before plan
-				// modifiers: the create-time `true` is set in ModifyPlan.
+				// modifiers. go-unifi always sends `enabled` (no omitempty), so a
+				// create has to plan a value or the rule would be written disabled.
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"type": schema.StringAttribute{
@@ -345,31 +346,6 @@ func (r *natResource) siteOrDefault(site types.String) string {
 		return s
 	}
 	return r.client.Site
-}
-
-// ModifyPlan plans `enabled = true` for a rule being created without it. It
-// cannot be a schema Default: the framework applies Defaults before plan
-// modifiers, so a Default would also overwrite the controller's value on every
-// adopted rule, re-enabling a rule disabled in the UI (#544). On update the
-// attribute's UseStateForUnknown holds the controller's value instead.
-//
-// A value has to be chosen on create because go-unifi always sends `enabled`
-// (no omitempty), so an unknown would be written as `false`.
-func (r *natResource) ModifyPlan(
-	ctx context.Context,
-	req resource.ModifyPlanRequest,
-	resp *resource.ModifyPlanResponse,
-) {
-	if req.Plan.Raw.IsNull() || !req.State.Raw.IsNull() {
-		return
-	}
-	var enabled types.Bool
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
-	if resp.Diagnostics.HasError() || !enabled.IsNull() {
-		return
-	}
-	resp.Diagnostics.Append(
-		resp.Plan.SetAttribute(ctx, path.Root("enabled"), types.BoolValue(true))...)
 }
 
 func (r *natResource) Create(

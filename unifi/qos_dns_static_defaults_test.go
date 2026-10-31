@@ -96,7 +96,7 @@ func TestQoSAndDNSCreateKeepsDefaults(t *testing.T) {
 	attrs := createPlan(t, "unifi_qos_rule", &qosRuleResource{}, nil)
 	assertPlanned(t, attrs["download_burst"], "download_burst", "OFF")
 	assertPlanned(t, attrs["upload_burst"], "upload_burst", "OFF")
-	assertPlannedUnknown(t, attrs["enabled"], "enabled")
+	assertPlanned(t, attrs["enabled"], "enabled", true)
 
 	attrs = createPlan(t, "unifi_dynamic_dns", &dynamicDNSResource{}, nil)
 	assertPlanned(t, attrs["interface"], "interface", "wan")
@@ -115,7 +115,7 @@ func TestQoSAndDNSCreateKeepsDefaults(t *testing.T) {
 			r = &dnsRecordFrameworkResource{}
 		}
 		attrs = createPlan(t, typeName, r, nil)
-		assertPlannedUnknown(t, attrs["enabled"], typeName+".enabled")
+		assertPlanned(t, attrs["enabled"], typeName+".enabled", true)
 	}
 
 	g := &unifi.ClientGroup{}

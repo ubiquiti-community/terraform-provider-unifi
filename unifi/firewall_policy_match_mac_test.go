@@ -13,8 +13,8 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-// TestFirewallPolicyMatchMACSchema checks match_mac is user-settable, defaulted
-// to false and present on both endpoints.
+// TestFirewallPolicyMatchMACSchema checks match_mac is user-settable, present
+// on both endpoints, and defaulted on create only (no static Default, #544).
 func TestFirewallPolicyMatchMACSchema(t *testing.T) {
 	r := &firewallPolicyResource{}
 	var resp resource.SchemaResponse
@@ -32,8 +32,9 @@ func TestFirewallPolicyMatchMACSchema(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s.match_mac missing or not a BoolAttribute", ep)
 		}
-		if !a.Optional || !a.Computed || a.Default == nil {
-			t.Errorf("%s.match_mac must be Optional+Computed with a default, got %#v", ep, a)
+		if !a.Optional || !a.Computed || a.Default != nil || len(a.PlanModifiers) == 0 {
+			t.Errorf("%s.match_mac must be Optional+Computed with a create-only default, got %#v",
+				ep, a)
 		}
 	}
 }

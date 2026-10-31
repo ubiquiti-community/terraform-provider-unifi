@@ -100,7 +100,7 @@ func TestRoutingCreateKeepsDefaults(t *testing.T) {
 	assertPlanned(t, attrs["description"], "description", "BGP Configuration")
 
 	attrs = createPlan(t, "unifi_static_route", &staticRouteFrameworkResource{}, nil)
-	assertPlannedUnknown(t, attrs["enabled"], "enabled")
+	assertPlanned(t, attrs["enabled"], "enabled", true)
 	assertPlannedUnknown(t, attrs["gateway"], "gateway")
 
 	r := &unifi.Routing{}

@@ -36,7 +36,6 @@ var (
 	_ resource.ResourceWithImportState  = &powerSupervisorResource{}
 	_ resource.ResourceWithIdentity     = &powerSupervisorResource{}
 	_ resource.ResourceWithUpgradeState = &powerSupervisorResource{}
-	_ resource.ResourceWithModifyPlan   = &powerSupervisorResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -183,6 +182,13 @@ func (r *powerSupervisorResource) Schema(
 					"newly created supervisor; an existing supervisor keeps the controller's value.",
 				Optional: true,
 				Computed: true,
+				// The supervisor settings are always on the wire (go-unifi sends an
+				// unset bool as false), so a new supervisor still needs `true`; as a
+				// schema Default it also re-enabled every adopted supervisor paused
+				// in the UI (#544).
+				PlanModifiers: []planmodifier.Bool{
+					planmodifiers.BoolDefaultOnCreateKeepNull(true),
+				},
 			},
 			"heartbeat_interval": schema.StringAttribute{
 				MarkdownDescription: "How often the controller probes the device, as a Go " +
@@ -273,24 +279,6 @@ func (r *powerSupervisorResource) Schema(
 
 // UpgradeState migrates v0 state (heartbeat_interval/silence_threshold/
 // power_off_duration stored as integer seconds) to v1 (GoDuration strings).
-// ModifyPlan applies the `enabled = true` default to a new supervisor only.
-// The supervisor settings are always on the wire (go-unifi sends an unset bool
-// as false and an unset duration as 0), so a new supervisor still needs the
-// old defaults; but as schema Defaults they also replaced the controller's
-// values on every adopted supervisor, re-enabling one paused in the UI (#544).
-// The durations get the same treatment from planmodifiers.StringDefaultOnCreate.
-func (r *powerSupervisorResource) ModifyPlan(
-	ctx context.Context,
-	req resource.ModifyPlanRequest,
-	resp *resource.ModifyPlanResponse,
-) {
-	if req.Plan.Raw.IsNull() {
-		return // resource is being destroyed
-	}
-	planDefaultOnCreate(ctx, req, resp, path.Root("enabled"), types.BoolValue(true),
-		!req.State.Raw.IsNull())
-}
-
 func (r *powerSupervisorResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {

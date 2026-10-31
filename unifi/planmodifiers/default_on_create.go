@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -61,26 +62,45 @@ func (m stringDefaultOnCreate) PlanModifyString(
 	req planmodifier.StringRequest,
 	resp *planmodifier.StringResponse,
 ) {
-	// The configuration asked for something: never override it.
-	if !req.ConfigValue.IsNull() {
-		return
-	}
-
-	// No prior state means this is a create: supply the default.
-	if req.State.Raw.IsNull() {
+	switch planOnCreate(req.ConfigValue, req.State.Raw.IsNull(), req.StateValue, m.keepNull) {
+	case planDefault:
 		resp.PlanValue = types.StringValue(m.def)
-		return
-	}
-
-	// On update, hold whatever the controller last reported, so an attribute
-	// the configuration does not manage is not rewritten.
-	if !req.StateValue.IsNull() || m.keepNull {
+	case planPrior:
 		resp.PlanValue = req.StateValue
-		return
 	}
+}
 
-	// Prior state exists but holds no value (an attribute added to the schema
-	// after the resource was created): fall back to the default rather than
-	// leaving the plan unknown.
-	resp.PlanValue = types.StringValue(m.def)
+// onCreateChoice is what an Optional+Computed attribute with a create-only
+// default plans.
+type onCreateChoice int
+
+const (
+	// planUnchanged leaves the plan alone: the configuration set a value.
+	planUnchanged onCreateChoice = iota
+	// planDefault plans the default.
+	planDefault
+	// planPrior plans the prior state value.
+	planPrior
+)
+
+// planOnCreate is the decision shared by every *DefaultOnCreate modifier:
+//
+//   - a configured value (known or unknown) is never overridden;
+//   - with no prior state (create) the default applies;
+//   - on update the prior state value is held, so an attribute the
+//     configuration does not manage is not rewritten;
+//   - on update with a null prior value (an attribute added to the schema
+//     after the resource was created) the default applies, unless keepNull,
+//     where the null is held because the controller stores no value.
+func planOnCreate(config attr.Value, noState bool, prior attr.Value, keepNull bool) onCreateChoice {
+	switch {
+	case !config.IsNull():
+		return planUnchanged
+	case noState:
+		return planDefault
+	case !prior.IsNull() || keepNull:
+		return planPrior
+	default:
+		return planDefault
+	}
 }
