@@ -754,7 +754,7 @@ func (r *vpnClientResource) modelToNetwork(
 	network := &unifi.Network{
 		Name:                  model.Name.ValueStringPointer(),
 		Purpose:               unifi.PurposeVPNClient,
-		Enabled:               model.Enabled.ValueBoolPointer(),
+		Enabled:               boolPointerIfKnown(model.Enabled),
 		IPSubnet:              model.Subnet.ValueStringPointer(),
 		VPNType:               new("wireguard-client"),
 		VPNClientDefaultRoute: model.DefaultRoute.ValueBool(),

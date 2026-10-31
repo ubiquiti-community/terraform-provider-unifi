@@ -101,10 +101,10 @@ func newWANFakeControllerClient(t *testing.T, puts *[]map[string]any) *Client {
 }
 
 // TestWANUpdateKeepsOmittedEnabledOn covers #600. The controller returns no
-// `enabled` key for a WAN, go-unifi decodes that as false, and the provider
-// used to import `enabled = false` and then send it with every update, which
-// switches the uplink off. An imported WAN must read as enabled, and an
-// unrelated update must send `"enabled": true`.
+// `enabled` key for a WAN, and the provider used to import `enabled = false`
+// and then send it with every update, which switches the uplink off. An
+// imported WAN must read as enabled, and an unrelated update must not send
+// `"enabled": false`.
 func TestWANUpdateKeepsOmittedEnabledOn(t *testing.T) {
 	ctx := context.Background()
 	var puts []map[string]any
@@ -177,12 +177,17 @@ func TestWANUpdateKeepsOmittedEnabledOn(t *testing.T) {
 	if len(puts) != 1 {
 		t.Fatalf("PUT requests = %d, want 1", len(puts))
 	}
+	// The update is sparse: it sends the changed key and leaves enabled, which
+	// did not change, to the controller rather than switching the uplink off.
 	body := puts[0]
-	if body["enabled"] != true {
-		t.Errorf("PUT enabled = %v, want true so the uplink stays up", body["enabled"])
+	if body["report_wan_event"] != true {
+		t.Errorf("PUT report_wan_event = %v, want true", body["report_wan_event"])
 	}
-	if body["igmp_proxy_for"] != "some" {
-		t.Errorf("PUT igmp_proxy_for = %v, want some", body["igmp_proxy_for"])
+	if v, ok := body["enabled"]; ok && v != true {
+		t.Errorf("PUT enabled = %v, want it left out or true so the uplink stays up", v)
+	}
+	if v, ok := body["igmp_proxy_for"]; ok && v != "some" {
+		t.Errorf("PUT igmp_proxy_for = %v, want it left out or some", v)
 	}
 	if _, ok := body["igmp_proxy_downstream_networkconf_ids"]; ok {
 		t.Error("PUT carries igmp_proxy_downstream_networkconf_ids, want it left to the controller")
@@ -197,9 +202,9 @@ func TestWANUpdateKeepsOmittedEnabledOn(t *testing.T) {
 	}
 }
 
-// A WAN the configuration explicitly disables keeps `enabled = false`: the
-// controller reports the key the same way whether it is false or absent, so
-// a known prior value must not be flipped back to true.
+// A WAN the configuration explicitly disables keeps `enabled = false`: when
+// the controller omits the key, a known prior value must not be flipped back
+// to true.
 func TestWANNetworkToModelKeepsExplicitEnabled(t *testing.T) {
 	ctx := context.Background()
 	r := &wanResource{}
@@ -222,6 +227,38 @@ func TestWANNetworkToModelKeepsExplicitEnabled(t *testing.T) {
 			}
 			if !model.Enabled.Equal(types.BoolValue(tc.want)) {
 				t.Errorf("enabled = %v, want %v", model.Enabled, tc.want)
+			}
+		})
+	}
+}
+
+// An `enabled` key the controller does report wins over the prior value.
+func TestWANNetworkToModelReadsReportedEnabled(t *testing.T) {
+	ctx := context.Background()
+	r := &wanResource{}
+
+	for _, tc := range []struct {
+		name     string
+		reported bool
+		prior    types.Bool
+	}{
+		{"reported false on import", false, types.BoolNull()},
+		{"reported false over prior true", false, types.BoolValue(true)},
+		{"reported true over prior false", true, types.BoolValue(false)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			network := &unifi.Network{
+				ID:      fakeWANID,
+				Purpose: unifi.PurposeWAN,
+				Enabled: new(tc.reported),
+			}
+			model := &wanResourceModel{Enabled: tc.prior}
+			applyWANDefaults(model)
+			if d := r.networkToModel(ctx, network, model, "default"); d.HasError() {
+				t.Fatalf("networkToModel: %v", d)
+			}
+			if !model.Enabled.Equal(types.BoolValue(tc.reported)) {
+				t.Errorf("enabled = %v, want %v", model.Enabled, tc.reported)
 			}
 		})
 	}
