@@ -22,18 +22,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
@@ -312,10 +311,14 @@ func (r *vpnServerResource) Schema(
 				Required:            true,
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether the VPN server is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Specifies whether the VPN server is enabled. A new server " +
+					"is created enabled; an existing one keeps the controller's value when " +
+					"this is not set, so adopting a disabled server does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"subnet": schema.StringAttribute{
 				MarkdownDescription: "The VPN server subnet in CIDR notation (e.g., `10.100.0.1/24`). " +
@@ -369,18 +372,29 @@ func (r *vpnServerResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"ip": schema.StringAttribute{
-						MarkdownDescription: "Local WAN IP to bind the VPN server to. Use `any` to listen on all addresses.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("any"),
+						MarkdownDescription: "Local WAN IP to bind the VPN server to. Use `any` to " +
+							"listen on all addresses. Defaults to `any` when the `wan` block is " +
+							"declared on a new server; an existing server keeps the controller's " +
+							"value when this is not set, including no value at all, which is how " +
+							"a server created in the UI is stored (#544).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreateKeepNull("any"),
+						},
 					},
 					"interface": schema.StringAttribute{
-						MarkdownDescription: "WAN interface to use for the VPN server (e.g., `wan`, `wan2`).",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("wan"),
+						MarkdownDescription: "WAN interface to use for the VPN server (e.g., `wan`, " +
+							"`wan2`). Defaults to `wan` when the `wan` block is declared on a new " +
+							"server; an existing server keeps the controller's value when this is " +
+							"not set, so adopting a server bound to `wan2` does not move it (#544).",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.String{
 							wanInterfaceValidator,
+						},
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreateKeepNull("wan"),
 						},
 					},
 				},
@@ -449,24 +463,31 @@ func (r *vpnServerResource) Schema(
 						},
 					},
 					"port": schema.Int64Attribute{
-						MarkdownDescription: "UDP port for the WireGuard server to listen on.",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(51820),
+						MarkdownDescription: "UDP port for the WireGuard server to listen on. " +
+							"Defaults to `51820` for a new server; an existing server keeps the " +
+							"controller's port when this is not set (#544).",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.Int64{
 							int64validator.Between(1, 65535),
+						},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
 						},
 					},
 					"ip_version": schema.StringAttribute{
 						MarkdownDescription: "The address family the server listens on, `v4` or `v6`: " +
 							"one per server (the UI's IP Address choice between the WAN's IPv4 " +
-							"and IPv6 addresses). Defaults to `v4`, which is also what a server " +
-							"without the setting does.",
+							"and IPv6 addresses). Defaults to `v4` for a new server, which is also " +
+							"what a server without the setting does; an existing server keeps the " +
+							"controller's value when this is not set (#544).",
 						Optional: true,
 						Computed: true,
-						Default:  stringdefault.StaticString("v4"),
 						Validators: []validator.String{
 							stringvalidator.OneOf("v4", "v6"),
+						},
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreate("v4"),
 						},
 					},
 				},
@@ -476,10 +497,13 @@ func (r *vpnServerResource) Schema(
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"allow_weak_ciphers": schema.BoolAttribute{
-						MarkdownDescription: "Allow weak ciphers for L2TP connections.",
-						Optional:            true,
-						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						MarkdownDescription: "Allow weak ciphers for L2TP connections. Taken " +
+							"from the controller when not set (a new server gets `false`) (#544).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"pre_shared_key": schema.StringAttribute{
 						MarkdownDescription: "IPsec pre-shared key for L2TP. Required by the UniFi controller.",
@@ -493,30 +517,42 @@ func (r *vpnServerResource) Schema(
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"port": schema.Int64Attribute{
-						MarkdownDescription: "Port for the OpenVPN server to listen on.",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(1194),
+						MarkdownDescription: "Port for the OpenVPN server to listen on. " +
+							"Defaults to `1194` for a new server; an existing server keeps the " +
+							"controller's port when this is not set (#544).",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.Int64{
 							int64validator.Between(1, 65535),
 						},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 					},
 					"mode": schema.StringAttribute{
-						MarkdownDescription: "OpenVPN mode.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("server"),
+						MarkdownDescription: "OpenVPN mode. Defaults to `server` for a new " +
+							"server; an existing server keeps the controller's value when this " +
+							"is not set (#544).",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("server", "site-to-site"),
 						},
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreateKeepNull("server"),
+						},
 					},
 					"encryption_cipher": schema.StringAttribute{
-						MarkdownDescription: "Encryption cipher for OpenVPN.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("AES_256_GCM"),
+						MarkdownDescription: "Encryption cipher for OpenVPN. Defaults to " +
+							"`AES_256_GCM` for a new server; an existing server keeps the " +
+							"controller's value when this is not set (#544).",
+						Optional: true,
+						Computed: true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("AES_256_GCM", "AES_256_CBC", "BF_CBC"),
+						},
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreateKeepNull("AES_256_GCM"),
 						},
 					},
 					"server": vpnServerCertPairSchema("Server"),
@@ -695,6 +731,7 @@ func (r *vpnServerResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	vpnServerCreateDefaults(network)
 
 	site := data.Site.ValueString()
 	if site == "" {
@@ -1098,14 +1135,14 @@ func (r *vpnServerResource) modelToNetwork(
 		if !diags.HasError() {
 			switch {
 			case hasWireguard:
-				network.WireguardLocalWANIP = wan.IP.ValueStringPointer()
-				network.WireguardInterface = wan.Interface.ValueStringPointer()
+				network.WireguardLocalWANIP = stringPointerIfKnown(wan.IP)
+				network.WireguardInterface = stringPointerIfKnown(wan.Interface)
 			case hasL2TP:
-				network.L2TpLocalWANIP = wan.IP.ValueStringPointer()
-				network.L2TpInterface = wan.Interface.ValueStringPointer()
+				network.L2TpLocalWANIP = stringPointerIfKnown(wan.IP)
+				network.L2TpInterface = stringPointerIfKnown(wan.Interface)
 			case hasOpenVPN:
-				network.OpenVPNLocalWANIP = wan.IP.ValueStringPointer()
-				network.OpenVPNInterface = wan.Interface.ValueStringPointer()
+				network.OpenVPNLocalWANIP = stringPointerIfKnown(wan.IP)
+				network.OpenVPNInterface = stringPointerIfKnown(wan.Interface)
 			}
 		}
 	}
@@ -1127,8 +1164,10 @@ func (r *vpnServerResource) modelToNetwork(
 			if !wireguard.PrivateKey.IsNull() && !wireguard.PrivateKey.IsUnknown() {
 				network.WireguardPrivateKey = wireguard.PrivateKey.ValueStringPointer()
 			}
-			network.LocalPort = wireguard.Port.ValueInt64Pointer()
-			network.WireguardInterfaceBindingModeIPVersion = wireguard.IPVersion.ValueStringPointer()
+			network.LocalPort = int64PointerIfKnown(wireguard.Port)
+			network.WireguardInterfaceBindingModeIPVersion = stringPointerIfKnown(
+				wireguard.IPVersion,
+			)
 		}
 	}
 
@@ -1149,9 +1188,9 @@ func (r *vpnServerResource) modelToNetwork(
 		d := model.OpenVPN.As(ctx, &openvpn, basetypes.ObjectAsOptions{})
 		diags.Append(d...)
 		if !diags.HasError() {
-			network.LocalPort = openvpn.Port.ValueInt64Pointer()
-			network.OpenVPNMode = openvpn.Mode.ValueStringPointer()
-			network.OpenVPNEncryptionCipher = openvpn.EncryptionCipher.ValueStringPointer()
+			network.LocalPort = int64PointerIfKnown(openvpn.Port)
+			network.OpenVPNMode = stringPointerIfKnown(openvpn.Mode)
+			network.OpenVPNEncryptionCipher = stringPointerIfKnown(openvpn.EncryptionCipher)
 
 			// Send computed certificate/key fields back on updates; on create
 			// the not-yet-generated pairs go out as "" like the flat leaves did.
@@ -1174,6 +1213,24 @@ func (r *vpnServerResource) modelToNetwork(
 	}
 
 	return network, diags
+}
+
+// vpnServerCreateDefaults fills the values a new server has always been
+// created with when the configuration leaves them out. They used to be schema
+// Defaults, but the framework applies a Default before plan modifiers run, so
+// it also overwrote the controller's value on every adopted server (#544).
+// Applying them here, on create only, keeps the create request unchanged while
+// an existing server keeps what the controller holds.
+func vpnServerCreateDefaults(network *unifi.Network) {
+	networkCreateEnabled(network)
+	if network.LocalPort == nil && network.VPNType != nil {
+		switch *network.VPNType {
+		case "wireguard-server":
+			network.LocalPort = new(int64(51820))
+		case "openvpn-server":
+			network.LocalPort = new(int64(1194))
+		}
+	}
 }
 
 // networkToModel converts from unifi.Network to Terraform model.

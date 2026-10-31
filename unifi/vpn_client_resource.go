@@ -20,15 +20,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -214,10 +214,14 @@ func (r *vpnClientResource) Schema(
 				Required:            true,
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether the VPN client is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Specifies whether the VPN client is enabled. A new client " +
+					"is created enabled; an existing one keeps the controller's value when " +
+					"this is not set, so adopting a disabled tunnel does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"subnet": schema.StringAttribute{
 				MarkdownDescription: "The local IP address for the WireGuard tunnel in CIDR notation (e.g., `10.0.0.2/24`).",
@@ -237,16 +241,23 @@ func (r *vpnClientResource) Schema(
 				},
 			},
 			"default_route": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to use the VPN as the default route.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Specifies whether to use the VPN as the default route. " +
+					"Taken from the controller when not set (a new client gets `false`), so " +
+					"adopting a client that carries the default route does not drop it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"pull_dns": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether to pull DNS servers from the VPN.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Specifies whether to pull DNS servers from the VPN. " +
+					"Taken from the controller when not set (a new client gets `false`) (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"wireguard": schema.SingleNestedAttribute{
 				MarkdownDescription: "WireGuard VPN configuration. Specify either `configuration` for file upload mode or `peer` for manual configuration.",
@@ -329,10 +340,15 @@ func (r *vpnClientResource) Schema(
 						},
 					},
 					"preshared_key_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Specifies whether to use a preshared key for additional security.",
-						Optional:            true,
-						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						MarkdownDescription: "Specifies whether to use a preshared key for " +
+							"additional security. Taken from the controller when not set (a new " +
+							"client gets `false`, or `true` when the configuration file carries " +
+							"a preshared key) (#544).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"preshared_key": schema.StringAttribute{
 						MarkdownDescription: "WireGuard preshared key. Required when preshared_key_enabled is true.",
@@ -340,10 +356,15 @@ func (r *vpnClientResource) Schema(
 						Sensitive:           true,
 					},
 					"interface": schema.StringAttribute{
-						MarkdownDescription: "WAN interface to use for the VPN connection (e.g., `wan`, `wan2`).",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("wan"),
+						MarkdownDescription: "WAN interface to use for the VPN connection (e.g., " +
+							"`wan`, `wan2`). Defaults to `wan` for a new client; an existing " +
+							"client keeps the controller's value when this is not set, so " +
+							"adopting a tunnel on `wan2` does not move it (#544).",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreateKeepNull("wan"),
+						},
 						Validators: []validator.String{
 							stringvalidator.RegexMatches(
 								regexp.MustCompile(`^wan[2-9]?$`),
@@ -437,6 +458,7 @@ func (r *vpnClientResource) Create(
 	}
 
 	// Create the network
+	networkCreateEnabled(network)
 	createdNetwork, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -772,7 +794,7 @@ func (r *vpnClientResource) modelToNetwork(
 		if !diags.HasError() {
 			network.WireguardPrivateKey = wireguard.PrivateKey.ValueStringPointer()
 			network.WireguardClientPresharedKeyEnabled = wireguard.PresharedKeyEnabled.ValueBool()
-			network.WireguardInterface = wireguard.Interface.ValueStringPointer()
+			network.WireguardInterface = stringPointerIfKnown(wireguard.Interface)
 
 			// Handle DNS servers
 			if !wireguard.DnsServers.IsNull() && !wireguard.DnsServers.IsUnknown() {
@@ -862,6 +884,17 @@ func (r *vpnClientResource) modelToNetwork(
 	}
 
 	return network, diags
+}
+
+// networkCreateEnabled creates a VPN network enabled unless the configuration
+// says otherwise. `enabled` used to carry a schema Default of true, but the
+// framework applies a Default before plan modifiers run, so it also re-enabled
+// every adopted tunnel that was disabled on the controller (#544). Applying it
+// here, on create only, keeps the create request unchanged.
+func networkCreateEnabled(network *unifi.Network) {
+	if network.Enabled == nil {
+		network.Enabled = new(true)
+	}
 }
 
 // networkToModel converts from unifi.Network to Terraform model.
@@ -977,7 +1010,11 @@ func (r *vpnClientResource) networkToModel(
 		if !diags.HasError() {
 			privateKeyVal = priorWG.PrivateKey
 			presharedKeyVal = priorWG.PresharedKey
-			presharedKeyEnabled = priorWG.PresharedKeyEnabled
+			// On create the plan leaves an undeclared flag unknown: take the
+			// controller's value then (#544).
+			if !priorWG.PresharedKeyEnabled.IsUnknown() {
+				presharedKeyEnabled = priorWG.PresharedKeyEnabled
+			}
 		}
 	}
 

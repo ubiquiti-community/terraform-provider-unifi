@@ -56,7 +56,7 @@ resource "unifi_wireguard_peer" "with_psk" {
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
-- `allowed_ips` (List of String) Additional CIDRs routed to this peer beyond its tunnel IP.
+- `allowed_ips` (List of String) Additional CIDRs routed to this peer beyond its tunnel IP. A new peer gets none; an existing peer keeps the controller's list when this is not set, so adopting a peer does not drop the routes behind it (#544). Set it to `[]` to clear them.
 - `interface_ipv6` (String) The peer's IPv6 tunnel address, without prefix length (e.g. `fd00:db8::2`), for a server with `subnet_ipv6`: within that subnet. Left unset, the peer has no IPv6 address.
 - `preshared_key` (String, Sensitive) Optional WireGuard pre-shared key for this peer (the UI's Pre-Shared Key toggle), adding a layer of symmetric encryption on top of the key pair. The controller stores and returns it in clear text, so it is kept in state - use `preshared_key_wo` to avoid persisting the secret. Left unset, the attribute is not written and a key configured out of band is preserved.
 - `preshared_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `preshared_key` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource. Because nothing is stored, the provider cannot detect a key changed outside Terraform: such a change produces no diff. Mutually exclusive with `preshared_key`.

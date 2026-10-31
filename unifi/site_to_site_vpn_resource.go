@@ -20,18 +20,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -282,16 +281,25 @@ func (r *siteToSiteVPNResource) Schema(
 				Required:            true,
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the tunnel is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the tunnel is enabled. A new tunnel is created " +
+					"enabled; an existing one keeps the controller's value when this is not " +
+					"set, so adopting a disabled tunnel does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"interface": schema.StringAttribute{
-				MarkdownDescription: "The local WAN interface the tunnel binds to (e.g. `wan`, `wan2`).",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("wan"),
+				MarkdownDescription: "The local WAN interface the tunnel binds to (e.g. `wan`, " +
+					"`wan2`). Defaults to `wan` for a new tunnel; an existing tunnel keeps the " +
+					"controller's value when this is not set, so adopting a tunnel on `wan2` " +
+					"does not move it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreateKeepNull("wan"),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("wan", "wan2"),
 				},
@@ -386,10 +394,15 @@ func (r *siteToSiteVPNResource) Schema(
 				},
 			},
 			"key_exchange": schema.StringAttribute{
-				MarkdownDescription: "IKE key-exchange version. One of `ikev1` or `ikev2`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("ikev2"),
+				MarkdownDescription: "IKE key-exchange version. One of `ikev1` or `ikev2`. " +
+					"Defaults to `ikev2` for a new tunnel; an existing tunnel keeps the " +
+					"controller's value when this is not set, so adopting an IKEv1 tunnel " +
+					"does not switch it to IKEv2 and break it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreateKeepNull("ikev2"),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("ikev1", "ikev2"),
 				},
@@ -729,6 +742,7 @@ func (r *siteToSiteVPNResource) Create(
 
 	site := r.siteOrDefault(data.Site)
 
+	networkCreateEnabled(network)
 	created, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Site-to-Site VPN", err.Error())

@@ -101,7 +101,7 @@ resource "unifi_vpn_server" "openvpn" {
 ### Optional
 
 - `dns` (Attributes) DNS configuration pushed to VPN clients. (see [below for nested schema](#nestedatt--dns))
-- `enabled` (Boolean) Specifies whether the VPN server is enabled.
+- `enabled` (Boolean) Specifies whether the VPN server is enabled. A new server is created enabled; an existing one keeps the controller's value when this is not set, so adopting a disabled server does not re-enable it (#544).
 - `l2tp` (Attributes) L2TP VPN server configuration. Exactly one of `wireguard`, `l2tp`, or `openvpn` must be specified. (see [below for nested schema](#nestedatt--l2tp))
 - `openvpn` (Attributes) OpenVPN server configuration. Exactly one of `wireguard`, `l2tp`, or `openvpn` must be specified. (see [below for nested schema](#nestedatt--openvpn))
 - `radiusprofile_id` (String) The ID of the RADIUS profile to use for authentication. Applicable to L2TP and OpenVPN server types.
@@ -133,7 +133,7 @@ Required:
 
 Optional:
 
-- `allow_weak_ciphers` (Boolean) Allow weak ciphers for L2TP connections.
+- `allow_weak_ciphers` (Boolean) Allow weak ciphers for L2TP connections. Taken from the controller when not set (a new server gets `false`) (#544).
 
 
 <a id="nestedatt--openvpn"></a>
@@ -141,9 +141,9 @@ Optional:
 
 Optional:
 
-- `encryption_cipher` (String) Encryption cipher for OpenVPN.
-- `mode` (String) OpenVPN mode.
-- `port` (Number) Port for the OpenVPN server to listen on.
+- `encryption_cipher` (String) Encryption cipher for OpenVPN. Defaults to `AES_256_GCM` for a new server; an existing server keeps the controller's value when this is not set (#544).
+- `mode` (String) OpenVPN mode. Defaults to `server` for a new server; an existing server keeps the controller's value when this is not set (#544).
+- `port` (Number) Port for the OpenVPN server to listen on. Defaults to `1194` for a new server; an existing server keeps the controller's port when this is not set (#544).
 
 Read-Only:
 
@@ -197,8 +197,8 @@ Optional:
 
 Optional:
 
-- `interface` (String) WAN interface to use for the VPN server (e.g., `wan`, `wan2`).
-- `ip` (String) Local WAN IP to bind the VPN server to. Use `any` to listen on all addresses.
+- `interface` (String) WAN interface to use for the VPN server (e.g., `wan`, `wan2`). Defaults to `wan` when the `wan` block is declared on a new server; an existing server keeps the controller's value when this is not set, so adopting a server bound to `wan2` does not move it (#544).
+- `ip` (String) Local WAN IP to bind the VPN server to. Use `any` to listen on all addresses. Defaults to `any` when the `wan` block is declared on a new server; an existing server keeps the controller's value when this is not set, including no value at all, which is how a server created in the UI is stored (#544).
 
 
 <a id="nestedatt--wireguard"></a>
@@ -206,8 +206,8 @@ Optional:
 
 Optional:
 
-- `ip_version` (String) The address family the server listens on, `v4` or `v6`: one per server (the UI's IP Address choice between the WAN's IPv4 and IPv6 addresses). Defaults to `v4`, which is also what a server without the setting does.
-- `port` (Number) UDP port for the WireGuard server to listen on.
+- `ip_version` (String) The address family the server listens on, `v4` or `v6`: one per server (the UI's IP Address choice between the WAN's IPv4 and IPv6 addresses). Defaults to `v4` for a new server, which is also what a server without the setting does; an existing server keeps the controller's value when this is not set (#544).
+- `port` (Number) UDP port for the WireGuard server to listen on. Defaults to `51820` for a new server; an existing server keeps the controller's port when this is not set (#544).
 - `private_key` (String, Sensitive) WireGuard private key for this server (base64). If neither this nor `private_key_wo` is specified, the provider generates one at create time (the controller does not generate it and rejects a server without a key). Stored in state; use `private_key_wo` to avoid persisting the secret.
 - `private_key_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `private_key` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource; `private_key` then stays null in state too. The key is sent on create and whenever `private_key_wo_version` changes; other updates keep the key the controller holds. Mutually exclusive with `private_key`.
 - `private_key_wo_version` (Number) Version counter for `private_key_wo`. Increment this value to send a new `private_key_wo` to the controller (key rotation).
