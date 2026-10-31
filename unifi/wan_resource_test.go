@@ -1390,7 +1390,10 @@ func Test_wanResource_igmpDownstreamNetworkIDs(t *testing.T) {
 			t.Fatalf("modelToNetwork: %v", diags)
 		}
 		if len(got.IGMPProxyDownstreamNetworkIDs) != 0 {
-			t.Errorf("IGMPProxyDownstreamNetworkIDs = %v, want empty", got.IGMPProxyDownstreamNetworkIDs)
+			t.Errorf(
+				"IGMPProxyDownstreamNetworkIDs = %v, want empty",
+				got.IGMPProxyDownstreamNetworkIDs,
+			)
 		}
 		if got.IGMPProxyFor == nil || *got.IGMPProxyFor != "none" {
 			t.Errorf("IGMPProxyFor = %v, want none", got.IGMPProxyFor)
