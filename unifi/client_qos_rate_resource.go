@@ -16,8 +16,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -77,15 +77,19 @@ func clientQosRateRateAttrTypes() map[string]attr.Type {
 	}
 }
 
-// clientQosRateRateDefault reproduces the values the flat qos_rate_max_down
-// and qos_rate_max_up attributes defaulted to when the practitioner left them
-// out of configuration, so the request body on create is unchanged when the
-// whole `qos_rate` block is omitted.
-func clientQosRateRateDefault() types.Object {
-	return types.ObjectValueMust(clientQosRateRateAttrTypes(), map[string]attr.Value{
-		"max_down": types.Int64Value(-1),
-		"max_up":   types.Int64Value(-1),
-	})
+// clientQosRateCreateDefaults sends the unlimited (-1) rates a new group has
+// always been created with when the configuration leaves them out. They used
+// to be schema Defaults (on the object and on each leaf), but the framework
+// applies a Default before plan modifiers run, so they also lifted the limits
+// of every adopted group (#544). Applying them here, on create only, keeps
+// the create request unchanged.
+func clientQosRateCreateDefaults(g *unifi.ClientGroup) {
+	if g.QOSRateMaxDown == nil {
+		g.QOSRateMaxDown = new(int64(-1))
+	}
+	if g.QOSRateMaxUp == nil {
+		g.QOSRateMaxUp = new(int64(-1))
+	}
 }
 
 // clientQosRateIdentityModel describes the resource identity data model.
@@ -172,16 +176,24 @@ func (r *clientQosRateResource) Schema(
 				Required:            true,
 			},
 			"qos_rate": schema.SingleNestedAttribute{
-				MarkdownDescription: "QoS rate limits applied to clients in this group, in kbps.",
-				Optional:            true,
-				Computed:            true,
-				Default:             objectdefault.StaticValue(clientQosRateRateDefault()),
+				MarkdownDescription: "QoS rate limits applied to clients in this group, in " +
+					"kbps. A new group is unlimited (`-1`) unless set; an existing group " +
+					"keeps the controller's limits when this is not set, so adopting a " +
+					"rate-limited group does not lift its limits (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"max_down": schema.Int64Attribute{
-						MarkdownDescription: "The QOS maximum download rate.",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(-1),
+						MarkdownDescription: "The QOS maximum download rate. `-1` (unlimited) " +
+							"for a new group when not set; taken from the controller otherwise.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 						Validators: []validator.Int64{
 							int64validator.Any(
 								int64validator.OneOf(-1),
@@ -190,10 +202,13 @@ func (r *clientQosRateResource) Schema(
 						},
 					},
 					"max_up": schema.Int64Attribute{
-						MarkdownDescription: "The QOS maximum upload rate.",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(-1),
+						MarkdownDescription: "The QOS maximum upload rate. `-1` (unlimited) " +
+							"for a new group when not set; taken from the controller otherwise.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 						Validators: []validator.Int64{
 							int64validator.Between(2, 100000),
 						},
@@ -314,6 +329,7 @@ func (r *clientQosRateResource) Create(
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	clientQosRateCreateDefaults(clientGroup)
 
 	// Create the ClientGroup
 	createdClientGroup, err := r.client.CreateClientGroup(ctx, site, clientGroup)
@@ -609,12 +625,13 @@ func (r *clientQosRateResource) planToClientQosRate(
 	}
 
 	// A null/unknown qos_rate object contributes nothing, exactly as unset
-	// flat leaves did; an unknown leaf yields a nil pointer the same way.
+	// flat leaves did; an unknown leaf yields a nil pointer the same way
+	// (ValueInt64Pointer would turn it into a pointer to 0).
 	rate, ok, d := util.ObjectAs[clientQosRateRateModel](ctx, plan.QOSRate)
 	diags.Append(d...)
 	if ok {
-		clientGroup.QOSRateMaxDown = rate.MaxDown.ValueInt64Pointer()
-		clientGroup.QOSRateMaxUp = rate.MaxUp.ValueInt64Pointer()
+		clientGroup.QOSRateMaxDown = int64PointerIfKnown(rate.MaxDown)
+		clientGroup.QOSRateMaxUp = int64PointerIfKnown(rate.MaxUp)
 	}
 
 	return clientGroup, diags

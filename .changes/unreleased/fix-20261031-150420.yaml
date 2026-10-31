@@ -1,0 +1,3 @@
+kind: fix
+body: '**QoS and DNS resources no longer overwrite adopted objects with schema defaults.** A disabled `unifi_qos_rule`, `unifi_content_filter` or `unifi_dns_record` was re-enabled on import, a rule''s burst allowance reset to `OFF`, a rate-limited `unifi_client_qos_rate` group lifted to unlimited, and a `unifi_dynamic_dns` entry on `wan2` planned for replacement. These are now held from state when undeclared; new objects are still created enabled, unlimited, with bursts `OFF` and on `wan` (#692, part of #544)'
+time: 2026-10-31T15:04:20.44846+01:00

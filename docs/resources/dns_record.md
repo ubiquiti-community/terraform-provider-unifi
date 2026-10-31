@@ -86,7 +86,7 @@ resource "unifi_dns_record" "forward_ns" {
 
 ### Optional
 
-- `enabled` (Boolean) Whether the DNS record is enabled.
+- `enabled` (Boolean) Whether the DNS record is enabled. Defaults to `true` for a new record; an existing record keeps the controller's value when this is not set, so adopting a disabled record does not re-enable it (#544).
 - `port` (Number) The port of the DNS record.
 - `priority` (Number) The priority of the DNS record.
 - `site` (String) The name of the site to associate the DNS record with.

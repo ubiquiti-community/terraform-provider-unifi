@@ -712,8 +712,11 @@ func TestClientQosRate_qosRateRoundTrip(t *testing.T) {
 		t.Errorf("qos_rate round trip: %v %v", back.QOSRateMaxDown, back.QOSRateMaxUp)
 	}
 
-	// The object default reproduces the -1/-1 the flat attributes defaulted to.
-	model.QOSRate = clientQosRateRateDefault()
+	// Unlimited (-1/-1) goes out as such.
+	model.QOSRate = types.ObjectValueMust(clientQosRateRateAttrTypes(), map[string]attr.Value{
+		"max_down": types.Int64Value(-1),
+		"max_up":   types.Int64Value(-1),
+	})
 	back, d = r.planToClientQosRate(ctx, model)
 	if d.HasError() {
 		t.Fatalf("planToClientQosRate (default): %v", d)

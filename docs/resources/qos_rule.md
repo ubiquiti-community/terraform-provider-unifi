@@ -55,14 +55,14 @@ resource "unifi_qos_rule" "limit_downloads" {
 ### Optional
 
 - `destination` (Attributes) Where the traffic goes. Omit for any destination. (see [below for nested schema](#nestedatt--destination))
-- `download_burst` (String) Download burst allowance: `OFF`, `SHORT` or `LONG`. Defaults to `OFF`.
+- `download_burst` (String) Download burst allowance: `OFF`, `SHORT` or `LONG`. Defaults to `OFF` for a new rule; an existing rule keeps the controller's value when this is not set (#544).
 - `download_limit_kbps` (Number) Download limit in kbps. Ignored by the controller for `PRIORITIZE`.
-- `enabled` (Boolean) Whether the rule is active. Defaults to `true`.
+- `enabled` (Boolean) Whether the rule is active. Defaults to `true` for a new rule; an existing rule keeps the controller's value when this is not set, so adopting a disabled rule does not re-enable it (#544).
 - `schedule` (Attributes) When the rule is active. Omit for always. (see [below for nested schema](#nestedatt--schedule))
 - `site` (String) The name of the site to associate the rule with.
 - `source` (Attributes) Traffic the rule applies to. Omit for all clients. (see [below for nested schema](#nestedatt--source))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `upload_burst` (String) Upload burst allowance: `OFF`, `SHORT` or `LONG`. Defaults to `OFF`.
+- `upload_burst` (String) Upload burst allowance: `OFF`, `SHORT` or `LONG`. Defaults to `OFF` for a new rule; an existing rule keeps the controller's value when this is not set (#544).
 - `upload_limit_kbps` (Number) Upload limit in kbps. Ignored by the controller for `PRIORITIZE`.
 - `wan_or_vpn_network` (String) ID of the WAN or VPN network the rule applies to. Omit for all interfaces.
 
