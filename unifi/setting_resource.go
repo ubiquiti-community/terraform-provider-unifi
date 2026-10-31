@@ -5705,20 +5705,29 @@ func (r *settingResource) networkOptimizationSettingToModel(
 
 func (r *settingResource) ntpModelToSetting(m *settingNtpModel) *settings.Ntp {
 	return &settings.Ntp{
-		NtpServer1:        m.NtpServer1.ValueString(),
-		NtpServer2:        m.NtpServer2.ValueString(),
-		NtpServer3:        m.NtpServer3.ValueString(),
-		NtpServer4:        m.NtpServer4.ValueString(),
+		NtpServer1:        stringPointerIfKnown(m.NtpServer1),
+		NtpServer2:        stringPointerIfKnown(m.NtpServer2),
+		NtpServer3:        stringPointerIfKnown(m.NtpServer3),
+		NtpServer4:        stringPointerIfKnown(m.NtpServer4),
 		SettingPreference: m.SettingPreference.ValueString(),
 	}
 }
 
+// stringOrEmpty reads an unset NTP slot as a known "", which is how the
+// attribute has always been stored (#382).
+func stringOrEmpty(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 func (r *settingResource) ntpSettingToModel(s *settings.Ntp) settingNtpModel {
 	return settingNtpModel{
-		NtpServer1:        types.StringValue(s.NtpServer1),
-		NtpServer2:        types.StringValue(s.NtpServer2),
-		NtpServer3:        types.StringValue(s.NtpServer3),
-		NtpServer4:        types.StringValue(s.NtpServer4),
+		NtpServer1:        types.StringValue(stringOrEmpty(s.NtpServer1)),
+		NtpServer2:        types.StringValue(stringOrEmpty(s.NtpServer2)),
+		NtpServer3:        types.StringValue(stringOrEmpty(s.NtpServer3)),
+		NtpServer4:        types.StringValue(stringOrEmpty(s.NtpServer4)),
 		SettingPreference: util.StringValueOrNull(s.SettingPreference),
 	}
 }

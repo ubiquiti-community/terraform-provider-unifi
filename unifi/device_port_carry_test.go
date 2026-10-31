@@ -15,6 +15,7 @@ import (
 var unexposedPortOverrideFields = []string{
 	"eee_enabled",
 	"ld_mode",
+	"ld_status",
 	"link_debounce",
 	"link_debounce_auto",
 	"multicast_router_mode",
