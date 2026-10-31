@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -300,12 +301,14 @@ func (r *portForwardResource) Schema(
 				},
 			},
 			"protocol": schema.StringAttribute{
-				MarkdownDescription: "The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`.",
+				MarkdownDescription: "The protocol for the port forwarding rule. Can be `tcp`, `udp`, or `tcp_udp`. Taken from the controller when not set, so adopting a `tcp`-only rule does not widen it to UDP (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("tcp_udp"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("tcp_udp", "tcp", "udp"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"logging": schema.BoolAttribute{
@@ -315,11 +318,27 @@ func (r *portForwardResource) Schema(
 				Default:             booldefault.StaticBool(false),
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether the port forwarding rule is enabled or not.",
+				MarkdownDescription: "Specifies whether the port forwarding rule is enabled or not. Taken from the controller when not set: a rule disabled on the controller stays disabled, rather than being re-enabled by a plan that does not mention it (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(true),
-				DeprecationMessage:  "This attribute will be removed in a future release. Instead of disabling a port forwarding rule you can remove it from your configuration.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+				// The previous wording - "instead of disabling a port forwarding
+				// rule you can remove it from your configuration" - reads as
+				// advice to delete the `enabled = false` line, whose failure
+				// mode is a WAN port reopening. It also does not fit a site
+				// where disabled rules already exist, such as maintenance
+				// access that is reopened periodically rather than rewritten
+				// each time. Keeping the attribute declared is a legitimate
+				// choice, so say what is actually deprecated and what is safe.
+				DeprecationMessage: "Deprecated: this attribute may be removed in a future release, " +
+					"and a rule you no longer want is better deleted than left declared and disabled. " +
+					"Keeping it declared as `enabled = false` is still supported and still correct for " +
+					"a rule you reopen periodically (maintenance access, for instance). Removing just " +
+					"the attribute while keeping the resource is safe as of #544: an existing rule's " +
+					"value is held, and a newly created rule is written disabled, so no port is " +
+					"opened by omission either way.",
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
