@@ -71,9 +71,14 @@ jobs:
             exit 0
           fi
 
-          # --match-head-commit makes the API refuse the merge if the head
-          # moves between the check above and this call.
-          gh pr merge "$pr" --repo "$GH_REPO" --rebase --match-head-commit "$HEAD_SHA"
+          # --auto hands the merge to GitHub, which waits for every rule on
+          # main: CI/CD finishing is not enough, the code_scanning rule also
+          # waits for Code Scanning (CodeQL, gosec), which often finishes
+          # after it, and an immediate merge was refused ("the base branch
+          # policy prohibits the merge"). --match-head-commit makes the API
+          # refuse the merge if the head moves between the check above and
+          # this call.
+          gh pr merge "$pr" --repo "$GH_REPO" --auto --rebase --match-head-commit "$HEAD_SHA"
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
