@@ -930,7 +930,7 @@ func (r *vpnServerResource) modelToNetwork(
 	network := &unifi.Network{
 		Name:              model.Name.ValueStringPointer(),
 		Purpose:           unifi.PurposeUserVPN,
-		Enabled:           model.Enabled.ValueBoolPointer(),
+		Enabled:           boolPointerIfKnown(model.Enabled),
 		IPSubnet:          model.Subnet.ValueStringPointer(),
 		SettingPreference: new("manual"),
 	}

@@ -2146,7 +2146,7 @@ func (r *networkResource) modelToNetwork(
 		GatewayType:             model.GatewayType.ValueStringPointer(),
 		LteLanEnabled:           boolPointerIfKnown(model.LteLan),
 		VLANEnabled:             !model.Vlan.IsNull() && !model.Vlan.IsUnknown(),
-		Enabled:                 model.Enabled.ValueBoolPointer(),
+		Enabled:                 boolPointerIfKnown(model.Enabled),
 		IGMPSnooping:            model.IgmpSnooping.ValueBool(),
 		IPAliases:               []string{},
 	}

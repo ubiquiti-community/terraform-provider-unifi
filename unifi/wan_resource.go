@@ -1672,7 +1672,7 @@ func (r *wanResource) modelToNetwork(
 		Purpose:         unifi.PurposeWAN, // Statically set to "wan"
 		WANNetworkGroup: new(networkGroup),
 		HiddenID:        networkGroup,
-		Enabled:         model.Enabled.ValueBoolPointer(),
+		Enabled:         boolPointerIfKnown(model.Enabled),
 	}
 
 	// WAN Type — type has a Default so it's always known;
@@ -2265,13 +2265,15 @@ func (r *wanResource) networkToModel(
 	// Additional Settings
 	model.ReportWANEvent = types.BoolValue(network.ReportWANEvent)
 	// The controller omits `enabled` from WAN networks (Network 10.x has no
-	// enable toggle for a WAN), and go-unifi decodes the missing key as false.
-	// Reading that false would plan `enabled = false` on import and then send
-	// it with every update, switching the uplink off (#600). Since an omitted
-	// key and an explicit false decode the same, a false only replaces a value
-	// the model does not hold yet, and then as true; a known prior value (an
-	// explicit `enabled = false` included) is kept.
-	if network.Enabled || model.Enabled.IsNull() || model.Enabled.IsUnknown() {
+	// enable toggle for a WAN). Reading a missing key as false would plan
+	// `enabled = false` on import and then send it, switching the uplink off
+	// (#600). An explicit value from the controller wins; without one, a known
+	// prior value (an explicit `enabled = false` included) is kept, and a model
+	// that holds no value yet reads as true.
+	switch {
+	case network.Enabled != nil:
+		model.Enabled = types.BoolValue(*network.Enabled)
+	case model.Enabled.IsNull() || model.Enabled.IsUnknown():
 		model.Enabled = types.BoolValue(true)
 	}
 	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
