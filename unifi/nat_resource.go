@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
-	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -56,7 +56,7 @@ type natResourceModel struct {
 	InInterface           types.String   `tfsdk:"in_interface"`
 	OutInterface          types.String   `tfsdk:"out_interface"`
 	IPAddress             types.String   `tfsdk:"ip_address"`
-	Port                  types.Int64    `tfsdk:"port"`
+	Port                  types.String   `tfsdk:"port"`
 	Exclude               types.Bool     `tfsdk:"exclude"`
 	Logging               types.Bool     `tfsdk:"logging"`
 	PppoeUseBaseInterface types.Bool     `tfsdk:"pppoe_use_base_interface"`
@@ -72,7 +72,7 @@ type natResourceModel struct {
 type natFilterModel struct {
 	FilterType       types.String `tfsdk:"filter_type"`
 	Address          types.String `tfsdk:"address"`
-	Port             types.Int64  `tfsdk:"port"`
+	Port             types.String `tfsdk:"port"`
 	InvertAddress    types.Bool   `tfsdk:"invert_address"`
 	InvertPort       types.Bool   `tfsdk:"invert_port"`
 	NetworkConfID    types.String `tfsdk:"network_conf_id"`
@@ -83,7 +83,7 @@ func natFilterAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"filter_type":        types.StringType,
 		"address":            types.StringType,
-		"port":               types.Int64Type,
+		"port":               types.StringType,
 		"invert_address":     types.BoolType,
 		"invert_port":        types.BoolType,
 		"network_conf_id":    types.StringType,
@@ -112,10 +112,10 @@ func natFilterSchema(description string) schema.SingleNestedAttribute {
 				MarkdownDescription: "The address or CIDR to match. Used with the `ADDRESS_AND_PORT` filter type.",
 				Optional:            true,
 			},
-			"port": schema.Int64Attribute{
-				MarkdownDescription: "The port to match. Used with the `ADDRESS_AND_PORT` filter type.",
+			"port": schema.StringAttribute{
+				MarkdownDescription: "The port to match. Used with the `ADDRESS_AND_PORT` filter type, as a single port (`443`) or a range (`8080-8090`).",
 				Optional:            true,
-				Validators:          []validator.Int64{int64validator.Between(1, 65535)},
+				Validators:          []validator.String{natPortValidator()},
 			},
 			"invert_address": schema.BoolAttribute{
 				MarkdownDescription: "Match every address except `address`.",
@@ -247,10 +247,10 @@ func (r *natResource) Schema(
 				MarkdownDescription: "The translated IP address.",
 				Optional:            true,
 			},
-			"port": schema.Int64Attribute{
-				MarkdownDescription: "The translated port.",
+			"port": schema.StringAttribute{
+				MarkdownDescription: "The translated port, as a single port (`443`) or a range (`8080-8090`).",
 				Optional:            true,
-				Validators:          []validator.Int64{int64validator.Between(1, 65535)},
+				Validators:          []validator.String{natPortValidator()},
 			},
 			"exclude": schema.BoolAttribute{
 				MarkdownDescription: "Exclude matching traffic from translation. Defaults to `false`.",
@@ -582,15 +582,13 @@ func natModelToAPI(ctx context.Context, model *natResourceModel) (*unifi.Nat, di
 		InInterface:           model.InInterface.ValueString(),
 		OutInterface:          model.OutInterface.ValueString(),
 		IPAddress:             model.IPAddress.ValueString(),
+		Port:                  model.Port.ValueString(),
 		Exclude:               model.Exclude.ValueBool(),
 		Logging:               model.Logging.ValueBool(),
 		PppoeUseBaseInterface: model.PppoeUseBaseInterface.ValueBool(),
 		SettingPreference:     natStringOrDefault(model.SettingPreference, "manual"),
 	}
 
-	if !model.Port.IsNull() && !model.Port.IsUnknown() {
-		nat.Port = model.Port.ValueInt64Pointer()
-	}
 	if !model.RuleIndex.IsNull() && !model.RuleIndex.IsUnknown() {
 		nat.RuleIndex = model.RuleIndex.ValueInt64Pointer()
 	}
@@ -633,12 +631,10 @@ func natFilterToAPI(
 	f := &unifi.NatSourceFilter{
 		FilterType:    m.FilterType.ValueString(),
 		Address:       m.Address.ValueString(),
+		Port:          m.Port.ValueString(),
 		InvertAddress: m.InvertAddress.ValueBool(),
 		InvertPort:    m.InvertPort.ValueBool(),
 		NetworkConfID: m.NetworkConfID.ValueString(),
-	}
-	if !m.Port.IsNull() && !m.Port.IsUnknown() {
-		f.Port = m.Port.ValueInt64Pointer()
 	}
 	if !m.FirewallGroupIDs.IsNull() && !m.FirewallGroupIDs.IsUnknown() {
 		diags.Append(m.FirewallGroupIDs.ElementsAs(ctx, &f.FirewallGroupIDs, false)...)
@@ -667,7 +663,7 @@ func natAPIToModel(
 	model.InInterface = stringOrNull(nat.InInterface)
 	model.OutInterface = stringOrNull(nat.OutInterface)
 	model.IPAddress = stringOrNull(nat.IPAddress)
-	model.Port = types.Int64PointerValue(nat.Port)
+	model.Port = stringOrNull(nat.Port)
 	model.Exclude = types.BoolValue(nat.Exclude)
 	model.Logging = types.BoolValue(nat.Logging)
 	model.PppoeUseBaseInterface = types.BoolValue(nat.PppoeUseBaseInterface)
@@ -716,7 +712,7 @@ func natFilterFromAPI(
 	obj, d := types.ObjectValueFrom(ctx, natFilterAttrTypes(), natFilterModel{
 		FilterType:       types.StringValue(f.FilterType),
 		Address:          stringOrNull(f.Address),
-		Port:             types.Int64PointerValue(f.Port),
+		Port:             stringOrNull(f.Port),
 		InvertAddress:    types.BoolValue(f.InvertAddress),
 		InvertPort:       types.BoolValue(f.InvertPort),
 		NetworkConfID:    stringOrNull(f.NetworkConfID),
@@ -725,4 +721,17 @@ func natFilterFromAPI(
 	diags.Append(d...)
 
 	return obj, diags
+}
+
+// natPortRegexp matches a single port or a range of ports such as `8080-8090`.
+var natPortRegexp = regexp.MustCompile(
+	`^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])` +
+		`(-([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$`,
+)
+
+func natPortValidator() validator.String {
+	return stringvalidator.RegexMatches(
+		natPortRegexp,
+		"must be a port (1-65535) or a port range such as 8080-8090",
+	)
 }
