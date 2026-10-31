@@ -444,10 +444,7 @@ func (r *siteToSiteVPNResource) Schema(
 				MarkdownDescription: "Whether IPsec dynamic routing is enabled.",
 				Optional:            true,
 				Computed:            true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.RequiresReplace(),
-					boolplanmodifier.UseStateForUnknown(),
-				},
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"route_distance": schema.Int64Attribute{
 				MarkdownDescription: "The route distance (administrative metric) for tunnel routes (1-255).",
@@ -471,7 +468,6 @@ func (r *siteToSiteVPNResource) Schema(
 				Validators: []validator.Bool{dynamicSubnetsValidator{}},
 				PlanModifiers: []planmodifier.Bool{
 					dynamicSubnetsPlanModifier{},
-					boolplanmodifier.RequiresReplace(),
 				},
 			},
 		},
@@ -1362,8 +1358,8 @@ func (m dynamicSubnetsPlanModifier) PlanModifyBool(
 		return // leave as unknown; can't resolve yet
 	}
 	// Unset and not forced on: keep what the controller has rather than
-	// planning false, which (with RequiresReplace) would recreate an imported
-	// tunnel that has the flag on.
+	// planning false, which would switch the flag off on an imported tunnel
+	// that has it on.
 	if req.ConfigValue.IsNull() && !req.StateValue.IsNull() && !req.StateValue.IsUnknown() &&
 		!remoteVPNDynamicSubnetsEnabled(types.BoolNull(), dynamicRouting, remoteSubnets) {
 		resp.PlanValue = req.StateValue
