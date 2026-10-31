@@ -2,6 +2,7 @@ package unifi
 
 import (
 	"context"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -29,12 +30,19 @@ func TestSettingGlobalSwitchPlansUnsetFieldsUnknown(t *testing.T) {
 	f := planFixture{ctx: ctx, t: t}
 	prior, config := f.object(schemaResp.Schema, "")
 
+	// A nil gs makes global_switch null.
 	withGlobalSwitch := func(base tftypes.Value, gs map[string]tftypes.Value) tftypes.Value {
 		var attrs map[string]tftypes.Value
 		if err := base.As(&attrs); err != nil {
 			t.Fatalf("as object: %v", err)
 		}
-		attrs["global_switch"] = tftypes.NewValue(gsType, gs)
+		// As shares the map with base; clone it before the edit.
+		attrs = maps.Clone(attrs)
+		if gs == nil {
+			attrs["global_switch"] = tftypes.NewValue(gsType, nil)
+		} else {
+			attrs["global_switch"] = tftypes.NewValue(gsType, gs)
+		}
 		return tftypes.NewValue(schemaType, attrs)
 	}
 	configured := func() map[string]tftypes.Value {
@@ -69,7 +77,8 @@ func TestSettingGlobalSwitchPlansUnsetFieldsUnknown(t *testing.T) {
 	})
 
 	t.Run("update of a setting whose state has no global_switch", func(t *testing.T) {
-		got := planned(t, prior, cfg)
+		// global_switch is computed, so the fixture fills it in prior.
+		got := planned(t, withGlobalSwitch(prior, nil), cfg)
 		for _, name := range unset {
 			if got[name].IsKnown() {
 				t.Errorf("global_switch.%s plans %v, want unknown", name, got[name])
