@@ -1346,7 +1346,7 @@ func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.
 	r := &deviceResource{}
 
 	baseline, diags := r.portOverridesToFramework(ctx, []unifi.DevicePortOverrides{
-		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: false},
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: boolPtr(false)},
 	})
 	if diags.HasError() {
 		t.Fatalf("portOverridesToFramework errored: %v", diags.Errors())
@@ -1385,7 +1385,7 @@ func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.
 	}
 
 	got, gotDiags := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{
-		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: true},
+		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: boolPtr(true)},
 	})
 	if gotDiags.HasError() {
 		t.Fatalf("reconcilePortOverrides errored: %v", gotDiags.Errors())
@@ -1414,6 +1414,64 @@ func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.
 	}
 	if !boolVal.ValueBool() {
 		t.Errorf("flow_control_enabled = %v, want true (from API response)", boolVal)
+	}
+}
+
+// TestReconcilePortOverrides_OmittedBoolKeepsPlannedValue covers the read-back
+// side of #567. The port_override booleans are *bool in go-unifi, so a key the
+// controller leaves out of its response now decodes as nil (null) instead of
+// false. An explicitly configured false must still survive the post-apply read
+// rather than flip to null ("Provider produced inconsistent result after
+// apply"), both for top-level booleans and inside a declared nested group;
+// only attributes the plan left unknown are resolved from the API, where an
+// omitted key becomes a known null.
+func TestReconcilePortOverrides_OmittedBoolKeepsPlannedValue(t *testing.T) {
+	ctx := context.Background()
+	r := &deviceResource{}
+
+	lldpmed, d := types.ObjectValue(portLldpmedAttrTypes(), map[string]attr.Value{
+		"enabled":        types.BoolValue(false),
+		"notify_enabled": types.BoolUnknown(),
+	})
+	if d.HasError() {
+		t.Fatalf("building lldpmed: %v", d)
+	}
+	prior := portOverrideSetWith(t, map[string]attr.Value{
+		"index":                types.Int64Value(49),
+		"autoneg":              types.BoolValue(false),
+		"full_duplex":          types.BoolValue(true),
+		"flow_control_enabled": types.BoolUnknown(),
+		"lldpmed":              lldpmed,
+	})
+
+	// The controller response omits every boolean key for the port.
+	got, diags := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{
+		{PortIDX: ptrInt64(49)},
+	})
+	if diags.HasError() {
+		t.Fatalf("reconcilePortOverrides errored: %v", diags.Errors())
+	}
+	elems := got.Elements()
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 reconciled element, got %d", len(elems))
+	}
+	attrs := attrAs[types.Object](t, elems[0]).Attributes()
+
+	for name, want := range map[string]bool{"autoneg": false, "full_duplex": true} {
+		v := attrAs[types.Bool](t, attrs[name])
+		if v.IsNull() || v.IsUnknown() || v.ValueBool() != want {
+			t.Errorf("%s = %v, want planned %v kept", name, v, want)
+		}
+	}
+	if fc := attrs["flow_control_enabled"]; !fc.IsNull() {
+		t.Errorf("flow_control_enabled = %v, want null (unknown resolved from omitted key)", fc)
+	}
+	lldp := attrAs[types.Object](t, attrs["lldpmed"]).Attributes()
+	if en := attrAs[types.Bool](t, lldp["enabled"]); en.IsNull() || en.ValueBool() {
+		t.Errorf("lldpmed.enabled = %v, want planned false kept", en)
+	}
+	if n := lldp["notify_enabled"]; !n.IsNull() {
+		t.Errorf("lldpmed.notify_enabled = %v, want null", n)
 	}
 }
 

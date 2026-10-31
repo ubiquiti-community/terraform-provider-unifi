@@ -181,9 +181,9 @@ func Test_mergePortOverridesByIndex_unchangedPortIsIdentical(t *testing.T) {
 		PoeMode:             "off",
 		SettingPreference:   "auto",
 		TaggedVLANMgmt:      "auto",
-		Autoneg:             true,
-		StpPortMode:         true,
-		LinkDebounceAuto:    true,
+		Autoneg:             boolPtr(true),
+		StpPortMode:         boolPtr(true),
+		LinkDebounceAuto:    boolPtr(true),
 		MulticastRouterMode: "NONE",
 		StpEdgeState:        "auto",
 		QOSProfile:          &unifi.DeviceQOSProfile{QOSProfileMode: "custom"},
@@ -196,8 +196,8 @@ func Test_mergePortOverridesByIndex_unchangedPortIsIdentical(t *testing.T) {
 		PoeMode:           "off",
 		SettingPreference: "auto",
 		TaggedVLANMgmt:    "auto",
-		Autoneg:           true,
-		StpPortMode:       true,
+		Autoneg:           boolPtr(true),
+		StpPortMode:       boolPtr(true),
 	}
 
 	got := mergePortOverridesByIndex(
