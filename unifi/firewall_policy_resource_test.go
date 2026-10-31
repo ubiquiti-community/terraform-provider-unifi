@@ -578,6 +578,7 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 				"ips":                     types.ListType{ElemType: types.StringType},
 				"web_domains":             types.ListType{ElemType: types.StringType},
 				"regions":                 types.ListType{ElemType: types.StringType},
+				"iid":                     types.StringType,
 				"port":                    types.StringType,
 				"port_group_id":           types.StringType,
 				"ip_group_id":             types.StringType,
@@ -586,6 +587,7 @@ func Test_firewallPolicyEndpointModel_AttributeTypes(t *testing.T) {
 				"match_opposite_ips":      types.BoolType,
 				"match_opposite_networks": types.BoolType,
 				"match_opposite_ports":    types.BoolType,
+				"match_opposite_iid":      types.BoolType,
 				"match_mac":               types.BoolType,
 				"mac":                     types.StringType,
 			},
@@ -1431,6 +1433,8 @@ func Test_apiSourceToEndpointModel(t *testing.T) {
 					MatchOppositeIPs:      types.BoolValue(false),
 					MatchOppositeNetworks: types.BoolValue(false),
 					MatchOppositePorts:    types.BoolValue(false),
+					IID:                   types.StringValue(""),
+					MatchOppositeIID:      types.BoolValue(false),
 					MatchMAC:              types.BoolValue(false),
 					MAC:                   types.StringValue(""),
 				}
@@ -1499,6 +1503,8 @@ func Test_apiDestinationToEndpointModel(t *testing.T) {
 					MatchOppositeIPs:      types.BoolValue(false),
 					MatchOppositeNetworks: types.BoolValue(false),
 					MatchOppositePorts:    types.BoolValue(false),
+					IID:                   types.StringValue(""),
+					MatchOppositeIID:      types.BoolValue(false),
 					MatchMAC:              types.BoolValue(false),
 					MAC:                   types.StringValue(""),
 				}

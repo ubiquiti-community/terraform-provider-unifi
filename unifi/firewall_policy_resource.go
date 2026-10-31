@@ -318,7 +318,11 @@ type firewallPolicyEndpointModel struct {
 	// Two-letter country codes, used when matching_target is REGION. The
 	// controller only accepts REGION on an external zone, and rejects a write
 	// that leaves the list empty (api.err.EmptyFirewallSourceRegions).
-	Regions          types.List   `tfsdk:"regions"`
+	Regions types.List `tfsdk:"regions"`
+	// IPv6 interface identifier and mask ("<addr>/<mask>"), used when
+	// matching_target is IID. It matches the host part of an address, so the
+	// rule keeps working when a delegated prefix rotates.
+	IID              types.String `tfsdk:"iid"`
 	Port             types.String `tfsdk:"port"`
 	PortGroupID      types.String `tfsdk:"port_group_id"`
 	IPGroupID        types.String `tfsdk:"ip_group_id"`
@@ -331,6 +335,7 @@ type firewallPolicyEndpointModel struct {
 	MatchOppositeIPs      types.Bool `tfsdk:"match_opposite_ips"`
 	MatchOppositeNetworks types.Bool `tfsdk:"match_opposite_networks"`
 	MatchOppositePorts    types.Bool `tfsdk:"match_opposite_ports"`
+	MatchOppositeIID      types.Bool `tfsdk:"match_opposite_iid"`
 	// The controller's IP/MAC binding flag on an `IP` source. It is only stored
 	// on a source `IP` target (it is dropped on every other target and on the
 	// destination), and go-unifi serializes it without `omitempty`, so it must
@@ -350,6 +355,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"ips":                     types.ListType{ElemType: types.StringType},
 		"web_domains":             types.ListType{ElemType: types.StringType},
 		"regions":                 types.ListType{ElemType: types.StringType},
+		"iid":                     types.StringType,
 		"port":                    types.StringType,
 		"port_group_id":           types.StringType,
 		"ip_group_id":             types.StringType,
@@ -358,6 +364,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"match_opposite_ips":      types.BoolType,
 		"match_opposite_networks": types.BoolType,
 		"match_opposite_ports":    types.BoolType,
+		"match_opposite_iid":      types.BoolType,
 		"match_mac":               types.BoolType,
 		"mac":                     types.StringType,
 	}
@@ -410,13 +417,13 @@ func (r *firewallPolicyResource) Schema(
 		},
 		"matching_target": schema.StringAttribute{
 			MarkdownDescription: "What to match: `ANY`, `NETWORK`, `CLIENT`, `IP`, " +
-				"`DEVICE`, `MAC`, `WEB` (domains/FQDN), or `REGION` (country codes, " +
-				"set `regions`). The controller only accepts `REGION` on an external " +
-				"zone.",
+				"`DEVICE`, `MAC`, `WEB` (domains/FQDN), `REGION` (country codes, " +
+				"set `regions`), or `IID` (IPv6 interface identifier, set `iid`). The " +
+				"controller only accepts `REGION` on an external zone.",
 			Required: true,
 			Validators: []validator.String{
 				stringvalidator.OneOf(
-					"ANY", "NETWORK", "CLIENT", "IP", "DEVICE", "MAC", "WEB", "REGION",
+					"ANY", "NETWORK", "CLIENT", "IP", "DEVICE", "MAC", "WEB", "REGION", "IID",
 				),
 			},
 		},
@@ -467,6 +474,21 @@ func (r *firewallPolicyResource) Schema(
 			ElementType: types.StringType,
 			PlanModifiers: []planmodifier.List{
 				listplanmodifier.UseStateForUnknown(),
+			},
+		},
+		"iid": schema.StringAttribute{
+			MarkdownDescription: "IPv6 interface identifier to match, written as " +
+				"`<address>/<mask>` with both parts in IPv6 notation (for example " +
+				"`::eaff:1eff:fed7:bf17/::ffff:ffff:ffff:ffff` matches the lower 64 " +
+				"bits, i.e. an EUI-64 interface ID under any prefix). Required when " +
+				"`matching_target` is `IID`, and only valid with it. Matching the " +
+				"interface ID instead of the full address keeps a rule working when " +
+				"the delegated IPv6 prefix changes.",
+			Optional: true,
+			Computed: true,
+			Default:  stringdefault.StaticString(""),
+			Validators: []validator.String{
+				firewallPolicyIIDValidator{},
 			},
 		},
 		"port": schema.StringAttribute{
@@ -531,6 +553,13 @@ func (r *firewallPolicyResource) Schema(
 		"match_opposite_ports": schema.BoolAttribute{
 			MarkdownDescription: "Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. " +
 				"Corresponds to the \"Match Opposite\" toggle on the port selector in the UniFi UI. Defaults to `false`.",
+			Optional: true,
+			Computed: true,
+			Default:  booldefault.StaticBool(false),
+		},
+		"match_opposite_iid": schema.BoolAttribute{
+			MarkdownDescription: "Invert the interface ID match: when `true`, the endpoint matches every address **except** those whose interface ID matches `iid`. " +
+				"Only valid with `matching_target = \"IID\"`. Defaults to `false`.",
 			Optional: true,
 			Computed: true,
 			Default:  booldefault.StaticBool(false),
@@ -723,11 +752,13 @@ func (r *firewallPolicyResource) Schema(
 				MarkdownDescription: "The source endpoint of the policy.",
 				Required:            true,
 				Attributes:          endpointAttrs,
+				Validators:          []validator.Object{firewallPolicyEndpointValidator{}},
 			},
 			"destination": schema.SingleNestedAttribute{
 				MarkdownDescription: "The destination endpoint of the policy.",
 				Required:            true,
 				Attributes:          endpointAttrs,
+				Validators:          []validator.Object{firewallPolicyEndpointValidator{}},
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
@@ -1327,6 +1358,8 @@ func endpointModelToSource(
 		MatchOppositeIPs:      m.MatchOppositeIPs.ValueBool(),
 		MatchOppositeNetworks: m.MatchOppositeNetworks.ValueBool(),
 		MatchOppositePorts:    m.MatchOppositePorts.ValueBool(),
+		MatchOppositeIid:      m.MatchOppositeIID.ValueBool(),
+		Iid:                   m.IID.ValueString(),
 		MatchMAC:              m.MatchMAC.ValueBool(),
 		MAC:                   m.MAC.ValueString(),
 	}
@@ -1367,6 +1400,8 @@ func endpointModelToDestination(
 		MatchOppositeIPs:      m.MatchOppositeIPs.ValueBool(),
 		MatchOppositeNetworks: m.MatchOppositeNetworks.ValueBool(),
 		MatchOppositePorts:    m.MatchOppositePorts.ValueBool(),
+		MatchOppositeIid:      m.MatchOppositeIID.ValueBool(),
+		Iid:                   m.IID.ValueString(),
 		MatchMAC:              m.MatchMAC.ValueBool(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
@@ -1573,6 +1608,8 @@ func apiSourceToEndpointModel(
 		MatchOppositeIPs:      types.BoolValue(src.MatchOppositeIPs),
 		MatchOppositeNetworks: types.BoolValue(src.MatchOppositeNetworks),
 		MatchOppositePorts:    types.BoolValue(src.MatchOppositePorts),
+		MatchOppositeIID:      types.BoolValue(src.MatchOppositeIid),
+		IID:                   types.StringValue(src.Iid),
 		MatchMAC:              types.BoolValue(src.MatchMAC),
 		MAC:                   types.StringValue(src.MAC),
 	}
@@ -1615,6 +1652,8 @@ func apiDestinationToEndpointModel(
 		MatchOppositeIPs:      types.BoolValue(dst.MatchOppositeIPs),
 		MatchOppositeNetworks: types.BoolValue(dst.MatchOppositeNetworks),
 		MatchOppositePorts:    types.BoolValue(dst.MatchOppositePorts),
+		MatchOppositeIID:      types.BoolValue(dst.MatchOppositeIid),
+		IID:                   types.StringValue(dst.Iid),
 		MatchMAC:              types.BoolValue(dst.MatchMAC),
 		// The controller has no destination mac.
 		MAC: types.StringValue(""),
