@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.62.0] - 2026-10-31
 
 New resources for QoS rules, content filtering, NAT rules and traffic
 matching lists, a Teleport data source, and new `unifi_setting` sections for
