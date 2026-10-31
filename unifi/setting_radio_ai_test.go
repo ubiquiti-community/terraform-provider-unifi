@@ -401,3 +401,136 @@ func TestSettingModifyPlanRejectsDfsChannelsWithDfsOff(t *testing.T) {
 		t.Errorf("error is not on %s: %v", want, got)
 	}
 }
+
+// Live finding 4: the controller drops HT modes wider than the band's
+// radios_configuration channel_width, so such a configuration fails the plan.
+func TestRadioAiHtModeConflict(t *testing.T) {
+	ctx := context.Background()
+	obj := func(t *testing.T, v map[string]any) types.Object {
+		t.Helper()
+		typ := types.ObjectType{AttrTypes: radioAiAttrTypes}
+		o, err := typ.ValueFromTerraform(ctx, tfValue(t, typ.TerraformType(ctx), v))
+		if err != nil {
+			t.Fatalf("building radio_ai: %v", err)
+		}
+		ro, ok := o.(types.Object)
+		if !ok {
+			t.Fatalf("radio_ai is %T", o)
+		}
+		return ro
+	}
+	widths := func(ng, na any) map[string]any {
+		return map[string]any{"radios_configuration": []any{
+			map[string]any{"radio": "ng", "channel_width": ng, "dfs": false},
+			map[string]any{"radio": "na", "channel_width": na, "dfs": false},
+		}}
+	}
+	with := func(m map[string]any, extra map[string]any) map[string]any {
+		out := map[string]any{}
+		for k, v := range m {
+			out[k] = v
+		}
+		for k, v := range extra {
+			out[k] = v
+		}
+		return out
+	}
+	ngWide := map[string]any{"ht_modes_ng": []any{20, 40}}
+
+	for name, tc := range map[string]struct {
+		config, plan map[string]any
+		wantPaths    []string
+	}{
+		"ng 40 with ng width 20": {
+			config:    with(widths(20, 80), ngWide),
+			plan:      with(widths(20, 80), ngWide),
+			wantPaths: []string{"radio_ai.ht_modes_ng"},
+		},
+		"width kept from state": {
+			config:    ngWide,
+			plan:      with(widths(20, 80), ngWide),
+			wantPaths: []string{"radio_ai.ht_modes_ng"},
+		},
+		"both bands too wide": {
+			config: map[string]any{
+				"ht_modes_ng": []any{40}, "ht_modes_na": []any{20, 80, 160},
+			},
+			plan:      widths(20, 40),
+			wantPaths: []string{"radio_ai.ht_modes_ng", "radio_ai.ht_modes_na"},
+		},
+		"within width": {
+			config: map[string]any{"ht_modes_ng": []any{20, 40}, "ht_modes_na": []any{20, 40, 80}},
+			plan:   widths(40, 80),
+		},
+		"list not configured": {
+			config: widths(20, 80),
+			plan:   with(widths(20, 80), ngWide),
+		},
+		"radios_configuration unknown": {
+			config: ngWide,
+			plan:   with(ngWide, map[string]any{"radios_configuration": tfUnknown}),
+		},
+		"band absent": {
+			config: ngWide,
+			plan: with(ngWide, map[string]any{"radios_configuration": []any{
+				map[string]any{"radio": "na", "channel_width": 20, "dfs": false},
+			}}),
+		},
+		"channel_width unknown": {
+			config: ngWide,
+			plan:   with(widths(tfUnknown, 80), ngWide),
+		},
+		"ht_modes unknown": {
+			config: map[string]any{"ht_modes_ng": tfUnknown},
+			plan:   widths(20, 80),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := radioAiHtModeConflict(ctx, obj(t, tc.config), obj(t, tc.plan))
+			var got []string
+			for _, e := range d.Errors() {
+				p, ok := e.(interface{ Path() path.Path })
+				if !ok {
+					t.Fatalf("error without a path: %v", e)
+				}
+				got = append(got, p.Path().String())
+			}
+			if !reflect.DeepEqual(got, tc.wantPaths) {
+				t.Errorf("error paths = %v, want %v (%v)", got, tc.wantPaths, d)
+			}
+		})
+	}
+
+	if d := radioAiHtModeConflict(ctx, types.ObjectNull(radioAiAttrTypes),
+		obj(t, widths(20, 80))); d.HasError() {
+		t.Errorf("null config: %v", d)
+	}
+}
+
+// ModifyPlan runs the HT mode check with radios_configuration carried from
+// state, as in the live case: ng channel_width = 20 and ht_modes_ng = [20, 40].
+func TestSettingModifyPlanRejectsHtModesWiderThanChannelWidth(t *testing.T) {
+	r := &settingResource{}
+	s := resourceSchema(t, r)
+	prior := map[string]any{"radio_ai": radioAiCurrent([]any{}, false)}
+	config := map[string]any{"radio_ai": map[string]any{"ht_modes_ng": []any{20, 40}}}
+	planned := radioAiCurrent([]any{}, false)
+	for name := range planned {
+		planned[name] = tfUnknown
+	}
+	planned["ht_modes_ng"] = []any{20, 40}
+	plan := tfPlan(t, s, map[string]any{"radio_ai": planned})
+	resp := &fwresource.ModifyPlanResponse{Plan: plan}
+	r.ModifyPlan(context.Background(), fwresource.ModifyPlanRequest{
+		Plan: plan, Config: tfConfig(t, s, config), State: tfState(t, s, prior),
+	}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("want an HT mode conflict error")
+	}
+	want := path.Root("radio_ai").AtName("ht_modes_ng")
+	got := resp.Diagnostics.Errors()[0]
+	if p, ok := got.(interface{ Path() path.Path }); !ok || !p.Path().Equal(want) ||
+		!strings.Contains(got.Detail(), "channel_width = 20") {
+		t.Errorf("error = %v, want one on %s naming channel_width = 20", got, want)
+	}
+}

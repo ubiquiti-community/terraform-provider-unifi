@@ -1983,12 +1983,18 @@ func (r *settingResource) Schema(
 						},
 					},
 					"ht_modes_ng": radioAiChannelList(
-						"2.4 GHz channel widths (MHz) the optimizer may use: `20`, `40`.",
+						"2.4 GHz channel widths (MHz) the optimizer may use: `20`, "+
+							"`40`. Each must be at most the `channel_width` of the "+
+							"`ng` entry of `radios_configuration` (the controller "+
+							"drops wider ones), or the plan fails.",
 						int64validator.OneOf(20, 40),
 					),
 					"ht_modes_na": radioAiChannelList(
 						"5 GHz channel widths (MHz) the optimizer may use: `20`, "+
-							"`40`, `80`, `160`.",
+							"`40`, `80`, `160`. Each must be at most the "+
+							"`channel_width` of the `na` entry of "+
+							"`radios_configuration` (the controller drops wider "+
+							"ones), or the plan fails.",
 						int64validator.OneOf(20, 40, 80, 160),
 					),
 					"high_priority_devices": radioAiStringList(
@@ -2430,6 +2436,7 @@ func (r *settingResource) ModifyPlan(
 		return
 	}
 	resp.Diagnostics.Append(radioAiDfsConflict(ctx, radioAiConfig, radioAiPlan)...)
+	resp.Diagnostics.Append(radioAiHtModeConflict(ctx, radioAiConfig, radioAiPlan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -5209,6 +5216,67 @@ func rawSettingChanges(stored, data map[string]any) (map[string]any, error) {
 		}
 	}
 	return changes, nil
+}
+
+// radioAiHtModeConflict rejects a configured ht_modes_ng or ht_modes_na
+// holding a width above the channel_width of that band's planned
+// radios_configuration entry. The controller drops those widths from the
+// stored list (seen on Network 10.6.109: ht_modes_ng = [20, 40] with ng
+// channel_width = 20 stored [20]), so the apply would otherwise end in an
+// inconsistent result. As in radioAiDfsConflict, the list must come from
+// config and radios_configuration from the plan; an unknown or absent entry
+// is not checked. There is no ht_modes list for 6e.
+func radioAiHtModeConflict(ctx context.Context, config, plan types.Object) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if !isKnown(config) || !isKnown(plan) {
+		return diags
+	}
+	configs, ok := plan.Attributes()["radios_configuration"].(types.List)
+	if !ok || !isKnown(configs) {
+		return diags
+	}
+	var entries []settingRadioAiRadioConfigModel
+	diags.Append(configs.ElementsAs(ctx, &entries, false)...)
+	if diags.HasError() {
+		return diags
+	}
+	maxWidth := map[string]int64{}
+	for _, e := range entries {
+		if isKnown(e.Radio) && isKnown(e.ChannelWidth) {
+			maxWidth[e.Radio.ValueString()] = e.ChannelWidth.ValueInt64()
+		}
+	}
+	for _, band := range []string{"ng", "na"} {
+		name := "ht_modes_" + band
+		limit, ok := maxWidth[band]
+		if !ok {
+			continue
+		}
+		modes, ok := config.Attributes()[name].(types.List)
+		if !ok || !isKnown(modes) {
+			continue
+		}
+		var wide []string
+		for _, v := range modes.Elements() {
+			w, ok := v.(types.Int64)
+			if ok && isKnown(w) && w.ValueInt64() > limit {
+				wide = append(wide, fmt.Sprint(w.ValueInt64()))
+			}
+		}
+		if len(wide) == 0 {
+			continue
+		}
+		diags.AddAttributeError(
+			path.Root("radio_ai").AtName(name),
+			"HT mode wider than the band's channel width",
+			fmt.Sprintf("%s lists the widths %s MHz, but the %s entry of "+
+				"radios_configuration has channel_width = %d, and the controller "+
+				"drops wider HT modes from the list in that case. Remove them from "+
+				"%s, or raise channel_width for %s.",
+				name, strings.Join(wide, ", "), band, limit, name, band),
+		)
+	}
+	return diags
 }
 
 // radioAiDfsChannelMin and radioAiDfsChannelMax bound the 5 GHz DFS channels
