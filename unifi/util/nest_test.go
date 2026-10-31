@@ -54,6 +54,27 @@ func TestNestFields(t *testing.T) {
 		t.Error("target must not be created when no source key exists")
 	}
 
+	// All source keys present but null (unset Optional leaves in prior state):
+	// no object of nulls, and the flat keys are still removed (#616).
+	unset := map[string]any{"dot1x_ctrl": nil, "dot1x_idle_timeout": nil}
+	NestFields(unset, "dot1x", map[string]string{
+		"dot1x_ctrl":         "ctrl",
+		"dot1x_idle_timeout": "idle_timeout",
+	})
+	if len(unset) != 0 {
+		t.Errorf("all-null source keys = %#v, want empty map", unset)
+	}
+
+	// A mix of null and set leaves keeps only the set ones.
+	mixed := map[string]any{"dot1x_ctrl": "auto", "dot1x_idle_timeout": nil}
+	NestFields(mixed, "dot1x", map[string]string{
+		"dot1x_ctrl":         "ctrl",
+		"dot1x_idle_timeout": "idle_timeout",
+	})
+	if d, ok := mixed["dot1x"].(map[string]any); !ok || d["ctrl"] != "auto" || len(d) != 1 {
+		t.Errorf("mixed null/set nesting = %#v", mixed)
+	}
+
 	// A flat key named like the target (bool -> { enabled }) nests once, and a
 	// second run over the already-nested state is a no-op instead of nesting
 	// the map into itself.

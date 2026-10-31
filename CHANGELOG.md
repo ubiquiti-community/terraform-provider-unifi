@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`unifi_setting`: `ips.enabled_networks` keeps the configured networks when `ips.suppression` is set on controllers without the standalone `ips_suppression` document.** There suppression is written nested in the `ips` document in a second update. Measured on Network 10.0.162, that controller drops `enabled_networks` from the first update while the document holds no suppression, then fills it with every network on the site when the suppression arrives without it, so the apply failed with *inconsistent result after apply* (`[Default, configured]` read back). The nested write now carries the configured `enabled_networks`. This was the only failure in the nightly acceptance run since 2026-09-29.
+- **`unifi_setting`: changing one section no longer rewrites the others, so it no longer rotates the controller API token.** `Update` wrote every configured section on every apply. Writing `mgmt` is not a no-op: the controller regenerates `x_api_token` on every `mgmt` write, even one that sends the document back unchanged (measured on Network 10.0.162), so a change to `dpi`, `global_switch` or any other section broke every client of the old token. `Update` now writes only the sections whose planned value differs from state; leaves planned as unknown (unset `Optional + Computed` attributes) do not count as a change (#580)
+- **`unifi_device`: access points no longer plan `state -> (known after apply)` on every run after upgrading from an earlier release.** The deprecated `radio_table[].assisted_roaming_enabled` and `assisted_roaming_rssi` leaves keep the value an earlier release read from the controller, carried from prior state on every read. As plain `Optional` leaves, a configuration that omits them planned that value away, so every plan was an update that left the device's computed attributes unknown. Both leaves are now `Optional + Computed`, so an omitted leaf follows prior state (#615)
+- **Upgrading state from v0.59.0 no longer turns unset nested groups into objects of nulls.** v0.59.0 stored an unset flat leaf (`dot1x_ctrl`, `stormctrl_bcast_level`, …) as present but null, and the v0.60.0 state upgraders nested a present-but-null key exactly like a set one, so a `port_override` with no 802.1X, storm-control or similar settings upgraded to `dot1x = {}`, `stormctrl = { bcast = {}, … }` and so on. The configuration leaves those groups null, so inside the `port_override` set no element ever equalled its prior counterpart, and every plan removed and re-added every override on `unifi_device` (#616). A null flat leaf is now dropped like an absent one, so a group with no set leaves upgrades to null. The fix is in the shared nesting helper and applies to every v0.60.0 upgrader. State already written by v0.60.0 is not rewritten.
+
 ## [v0.60.0] - 2026-10-26
 
 One breaking change and the fixes that followed it. The headline is the
