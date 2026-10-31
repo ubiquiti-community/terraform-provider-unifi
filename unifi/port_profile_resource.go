@@ -17,9 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
@@ -28,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -144,6 +143,12 @@ func portProfilePortSecurityAttrTypes() map[string]attr.Type {
 // the default (e.g. bcast.enabled = true) and re-plans every computed
 // attribute of the resource on every run.
 
+// portProfileDot1xDefault and portProfileLldpmedDefault are create-time
+// shapes, applied by ModifyPlan to a new profile that leaves the group out.
+// They used to be schema Defaults, which the framework applies before any plan
+// modifier runs: every adopted profile whose configuration left the group out
+// planned these constants over the controller's 802.1X and LLDP-MED settings
+// (#544). On update the groups keep the controller's object.
 func portProfileDot1xDefault() types.Object {
 	return types.ObjectValueMust(portDot1xAttrTypes(), map[string]attr.Value{
 		"ctrl":         types.StringValue("force_authorized"),
@@ -287,22 +292,27 @@ func (r *portProfileResource) Schema(
 				},
 			},
 			"autoneg": schema.BoolAttribute{
-				Description: "Enable link auto negotiation for the port profile. When set to `true` this overrides `speed`.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(true),
+				Description: "Enable link auto negotiation for the port profile. When set to `true` this overrides `speed`. " +
+					"Defaults to `true` for a newly created profile; an existing profile keeps the controller's value.",
+				Optional: true,
+				Computed: true,
 			},
 			"dot1x": schema.SingleNestedAttribute{
-				Description: "802.1X port authentication settings for the port profile.",
+				Description: "802.1X port authentication settings for the port profile. Taken from the controller when not set.",
 				Optional:    true,
 				Computed:    true,
-				Default:     objectdefault.StaticValue(portProfileDot1xDefault()),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"ctrl": schema.StringAttribute{
-						Description: "The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`.",
-						Optional:    true,
-						Computed:    true,
-						Default:     stringdefault.StaticString("force_authorized"),
+						Description: "The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`. " +
+							"Defaults to `force_authorized` for a newly created profile; an existing profile keeps the controller's value.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreate("force_authorized"),
+						},
 						Validators: []validator.String{
 							stringvalidator.OneOf(
 								"auto",
@@ -315,11 +325,15 @@ func (r *portProfileResource) Schema(
 					},
 					"idle_timeout": schema.StringAttribute{
 						Description: "The idle timeout to use when using MAC Based 802.1X control, as a " +
-							"Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s`.",
+							"Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s` for a newly " +
+							"created profile; an existing profile keeps the controller's value, which " +
+							"may be none.",
 						CustomType: timetypes.GoDurationType{},
 						Optional:   true,
 						Computed:   true,
-						Default:    stringdefault.StaticString("5m0s"),
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreateKeepNull("5m0s"),
+						},
 						Validators: []validator.String{
 							validators.GoDurationBetween(0, 65535*time.Second),
 							validators.GoDurationMultipleOf(time.Second),
@@ -366,28 +380,34 @@ func (r *portProfileResource) Schema(
 				},
 			},
 			"full_duplex": schema.BoolAttribute{
-				Description: "Enable full duplex for the port profile.",
+				Description: "Enable full duplex for the port profile. Taken from the controller when not set.",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"isolation": schema.BoolAttribute{
-				Description: "Enable port isolation for the port profile.",
+				Description: "Enable port isolation for the port profile. Taken from the controller when not set.",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lldpmed": schema.SingleNestedAttribute{
-				Description: "LLDP-MED settings for the port profile.",
+				Description: "LLDP-MED settings for the port profile. Taken from the controller when not set.",
 				Optional:    true,
 				Computed:    true,
-				Default:     objectdefault.StaticValue(portProfileLldpmedDefault()),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						Description: "Enable LLDP-MED for the port profile.",
-						Optional:    true,
-						Computed:    true,
-						Default:     booldefault.StaticBool(true),
+						Description: "Enable LLDP-MED for the port profile. Defaults to `true` for a newly " +
+							"created profile; an existing profile keeps the controller's value.",
+						Optional: true,
+						Computed: true,
 					},
 					"notify_enabled": schema.BoolAttribute{
 						Description: "Enable LLDP-MED topology change notifications for the port profile.",
@@ -547,10 +567,12 @@ func (r *portProfileResource) Schema(
 				},
 			},
 			"port_keepalive_enabled": schema.BoolAttribute{
-				Description: "Enable port keepalive for the port profile.",
+				Description: "Enable port keepalive for the port profile. Taken from the controller when not set.",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"timeouts": timeouts.Attributes(
 				ctx,
@@ -971,6 +993,22 @@ func (r *portProfileResource) ModifyPlan(
 	if req.Plan.Raw.IsNull() {
 		return // resource is being destroyed
 	}
+
+	// Create-only defaults (#544): these were schema Defaults, which replaced
+	// the controller's value on every adopted profile. autoneg and
+	// lldpmed.enabled are always on the wire (go-unifi sends false for an
+	// unset bool), so a new profile still needs the old `true` - otherwise it
+	// would be created with auto-negotiation and LLDP-MED off.
+	hasPrior := !req.State.Raw.IsNull()
+	planObjectOnCreate(ctx, req, resp, path.Root("dot1x"), portProfileDot1xDefault())
+	planObjectOnCreate(ctx, req, resp, path.Root("lldpmed"), portProfileLldpmedDefault())
+	planDefaultOnCreate(ctx, req, resp, path.Root("autoneg"), types.BoolValue(true), hasPrior)
+	planDefaultOnCreate(ctx, req, resp, path.Root("lldpmed").AtName("enabled"),
+		types.BoolValue(true), hasPrior)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	if r.client == nil {
 		return // not configured yet (e.g. during validation)
 	}

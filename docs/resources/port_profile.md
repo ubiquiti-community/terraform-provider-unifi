@@ -41,21 +41,21 @@ resource "unifi_port_profile" "poe_disabled" {
 
 ### Optional
 
-- `autoneg` (Boolean) Enable link auto negotiation for the port profile. When set to `true` this overrides `speed`.
-- `dot1x` (Attributes) 802.1X port authentication settings for the port profile. (see [below for nested schema](#nestedatt--dot1x))
+- `autoneg` (Boolean) Enable link auto negotiation for the port profile. When set to `true` this overrides `speed`. Defaults to `true` for a newly created profile; an existing profile keeps the controller's value.
+- `dot1x` (Attributes) 802.1X port authentication settings for the port profile. Taken from the controller when not set. (see [below for nested schema](#nestedatt--dot1x))
 - `egress_rate_limit` (Attributes) Egress rate limiting for the port profile. Computed from the controller when not set; disable with `enabled = false` rather than by removing the block. (see [below for nested schema](#nestedatt--egress_rate_limit))
 - `excluded_networkconf_ids` (Set of String) The IDs of networks excluded from the port profile (used when `tagged_vlan_mgmt` is `custom`). Computed from the controller when not set.
 - `fec_mode` (String) Forward Error Correction mode. Can be `rs-fec`, `fc-fec`, `default`, or `disabled`.
 - `forward` (String) The type forwarding to use for the port profile. Can be `all`, `native`, `customize` or `disabled`. When unset it follows `tagged_vlan_mgmt`, which is what the controller stores for that mode: `all` for `auto`, `native` for `block_all`, `customize` for `custom`. `customize` requires a native network that carries a VLAN id, unless `tagged_vlan_mgmt` is `custom`: otherwise the controller silently stores `all` for a profile whose native network is untagged, which the provider rejects at plan time rather than letting the apply leave the resource tainted.
-- `full_duplex` (Boolean) Enable full duplex for the port profile.
-- `isolation` (Boolean) Enable port isolation for the port profile.
-- `lldpmed` (Attributes) LLDP-MED settings for the port profile. (see [below for nested schema](#nestedatt--lldpmed))
+- `full_duplex` (Boolean) Enable full duplex for the port profile. Taken from the controller when not set.
+- `isolation` (Boolean) Enable port isolation for the port profile. Taken from the controller when not set.
+- `lldpmed` (Attributes) LLDP-MED settings for the port profile. Taken from the controller when not set. (see [below for nested schema](#nestedatt--lldpmed))
 - `multicast_router_networkconf_ids` (Set of String) The IDs of networks designated as multicast routers for the port profile.
 - `name` (String) The name of the port profile.
 - `native_networkconf_id` (String) The ID of network to use as the main (native/untagged) network on the port profile. Assigned by the controller if not set.
 - `op_mode` (String) The operation mode for the port profile. Can only be `switch`
 - `poe_mode` (String) The POE mode for the port profile. Can be one of `auto`, `passv24`, `passthrough` or `off`.
-- `port_keepalive_enabled` (Boolean) Enable port keepalive for the port profile.
+- `port_keepalive_enabled` (Boolean) Enable port keepalive for the port profile. Taken from the controller when not set.
 - `port_security` (Attributes) Port security (MAC allow-list) settings for the port profile. Computed from the controller when not set; disable with `enabled = false` rather than by removing the block. (see [below for nested schema](#nestedatt--port_security))
 - `priority_queue1_level` (Number) The priority queue 1 level for the port profile. Can be between 0 and 100.
 - `priority_queue2_level` (Number) The priority queue 2 level for the port profile. Can be between 0 and 100.
@@ -80,8 +80,8 @@ resource "unifi_port_profile" "poe_disabled" {
 
 Optional:
 
-- `ctrl` (String) The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`.
-- `idle_timeout` (String) The idle timeout to use when using MAC Based 802.1X control, as a Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s`.
+- `ctrl` (String) The type of 802.1X control to use. Can be `auto`, `force_authorized`, `force_unauthorized`, `mac_based` or `multi_host`. Defaults to `force_authorized` for a newly created profile; an existing profile keeps the controller's value.
+- `idle_timeout` (String) The idle timeout to use when using MAC Based 802.1X control, as a Go duration string (e.g. `5m`, `300s`). Defaults to `5m0s` for a newly created profile; an existing profile keeps the controller's value, which may be none.
 
 
 <a id="nestedatt--egress_rate_limit"></a>
@@ -98,7 +98,7 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean) Enable LLDP-MED for the port profile.
+- `enabled` (Boolean) Enable LLDP-MED for the port profile. Defaults to `true` for a newly created profile; an existing profile keeps the controller's value.
 - `notify_enabled` (Boolean) Enable LLDP-MED topology change notifications for the port profile.
 
 
