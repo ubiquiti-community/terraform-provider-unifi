@@ -1236,7 +1236,7 @@ func (r *deviceResource) Schema(
 							Computed:    true,
 						},
 						"tagged_networkconf_ids": schema.SetAttribute{
-							Description: "List of network IDs to tag on this port.",
+							Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.",
 							Optional:    true,
 							ElementType: types.StringType,
 						},
@@ -2633,6 +2633,19 @@ func carryUnwritableFields(
 		declared.OpMode = current.OpMode
 	}
 
+	// tagged_networkconf_ids is configurable, but only managed when set. When
+	// config leaves it null the declared entry has a nil slice, and sending the
+	// port without it would silently delete the port's tagged networks on the
+	// controller, so keep the controller's value. When config sets the same
+	// networks in a different order, keep the controller's order so the entry
+	// marshals identically and no write is triggered.
+	switch {
+	case declared.TaggedNetworkIDs == nil:
+		declared.TaggedNetworkIDs = current.TaggedNetworkIDs
+	case sameStringSet(declared.TaggedNetworkIDs, current.TaggedNetworkIDs):
+		declared.TaggedNetworkIDs = current.TaggedNetworkIDs
+	}
+
 	declared.EeeEnabled = current.EeeEnabled
 	declared.LdMode = current.LdMode
 	declared.LinkDebounce = current.LinkDebounce
@@ -2650,6 +2663,55 @@ func carryUnwritableFields(
 	declared.TrustedPortMAC = current.TrustedPortMAC
 	declared.UnitID = current.UnitID
 	return declared
+}
+
+// sameStringSet reports whether a and b contain the same distinct strings,
+// ignoring order and duplicates.
+func sameStringSet(a, b []string) bool {
+	as := make(map[string]struct{}, len(a))
+	for _, v := range a {
+		as[v] = struct{}{}
+	}
+	bs := make(map[string]struct{}, len(b))
+	for _, v := range b {
+		bs[v] = struct{}{}
+	}
+	if len(as) != len(bs) {
+		return false
+	}
+	for v := range as {
+		if _, ok := bs[v]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// stringSetFromAPI converts an API string list into a sorted, de-duplicated
+// types.Set of strings. An empty list becomes a typed null when emptyAsNull is
+// set, and a known empty set otherwise.
+func stringSetFromAPI(ids []string, emptyAsNull bool) (types.Set, diag.Diagnostics) {
+	if len(ids) == 0 {
+		if emptyAsNull {
+			return types.SetNull(types.StringType), nil
+		}
+		return types.SetValueMust(types.StringType, []attr.Value{}), nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	sorted := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		sorted = append(sorted, id)
+	}
+	sort.Strings(sorted)
+	vals := make([]attr.Value, len(sorted))
+	for i, id := range sorted {
+		vals[i] = types.StringValue(id)
+	}
+	return types.SetValue(types.StringType, vals)
 }
 
 // resolvePortOverridesForUpdate selects the port_overrides array to send in the
@@ -2801,6 +2863,17 @@ func (r *deviceResource) reconcilePortOverrides(
 				diags.Append(setDiags...)
 				updated.ExcludedNetworkIDs = emptySet
 			}
+		}
+		if !pm.TaggedNetworkIDs.IsNull() && !pm.TaggedNetworkIDs.IsUnknown() {
+			// Configured: surface the controller's value as a set (order and
+			// duplicates are irrelevant, so the controller reordering the
+			// list cannot cause a perpetual diff). An empty controller value
+			// reads back as an empty set so `tagged_networkconf_ids = []`
+			// round-trips, and a non-empty config that the controller did not
+			// apply shows up as drift.
+			setVal, setDiags := stringSetFromAPI(apiPO.TaggedNetworkIDs, false)
+			diags.Append(setDiags...)
+			updated.TaggedNetworkIDs = setVal
 		}
 		if !pm.PortProfileID.IsNull() {
 			if apiPO.PortProfileID == "" {
@@ -3062,12 +3135,15 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 		model.ExcludedNetworkIDs = setVal
 	}
 
-	// FIX (#235): the pinned go-unifi SDK has no TaggedNetworkIDs field, so
-	// nothing populates it below. Without this assignment the model field
-	// stays an untyped zero-value types.Set, which makes ObjectValueFrom
-	// emit a "types.SetType[!!! MISSING TYPE !!!]" Value Conversion Error
-	// against the schema's SetAttribute{ElementType: types.StringType}.
-	model.TaggedNetworkIDs = types.SetNull(types.StringType)
+	// #235: this must always be a typed value. Leaving it as the zero-value
+	// types.Set makes ObjectValueFrom fail with a "!!! MISSING TYPE !!!" Value
+	// Conversion Error. An empty/absent API value maps to a typed null.
+	taggedSet, taggedDiags := stringSetFromAPI(po.TaggedNetworkIDs, true)
+	diags.Append(taggedDiags...)
+	if diags.HasError() {
+		return model, diags
+	}
+	model.TaggedNetworkIDs = taggedSet
 
 	if len(po.MulticastRouterNetworkIDs) == 0 {
 		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
@@ -3272,6 +3348,22 @@ func (r *deviceResource) frameworkToPortOverrides(
 					return nil, diags
 				}
 				po.ExcludedNetworkIDs = excludedIDs
+			}
+
+			if !model.TaggedNetworkIDs.IsNull() && !model.TaggedNetworkIDs.IsUnknown() {
+				// Always a non-nil slice when configured, even if empty: a nil
+				// slice means "not managed" to carryUnwritableFields, which
+				// would then keep the controller's tagged networks. An empty
+				// slice is dropped by omitempty, which clears them.
+				taggedIDs := []string{}
+				diags.Append(model.TaggedNetworkIDs.ElementsAs(ctx, &taggedIDs, false)...)
+				if diags.HasError() {
+					return nil, diags
+				}
+				if taggedIDs == nil {
+					taggedIDs = []string{}
+				}
+				po.TaggedNetworkIDs = taggedIDs
 			}
 
 			if !model.MulticastRouterNetworkIDs.IsNull() {
