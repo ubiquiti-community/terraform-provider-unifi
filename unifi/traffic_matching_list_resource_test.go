@@ -18,7 +18,7 @@ import (
 // newIntegrationSitesTestClient returns a Client backed by a stub new-style
 // controller that serves the Integration API site listing. The counter reports
 // how many times the listing was requested.
-func newIntegrationSitesTestClient(t *testing.T, sitesBody string) (*Client, *int32) {
+func newIntegrationSitesTestClient(t *testing.T) (*Client, *int32) {
 	t.Helper()
 	var hits int32
 
@@ -34,7 +34,7 @@ func newIntegrationSitesTestClient(t *testing.T, sitesBody string) (*Client, *in
 		case r.Method == http.MethodGet && r.URL.Path == "/proxy/network/integration/v1/sites":
 			atomic.AddInt32(&hits, 1)
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(sitesBody))
+			_, _ = w.Write([]byte(integrationSitesBody))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -65,7 +65,7 @@ func TestClient_IntegrationSiteID(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("resolves the legacy site name to a UUID", func(t *testing.T) {
-		c, _ := newIntegrationSitesTestClient(t, integrationSitesBody)
+		c, _ := newIntegrationSitesTestClient(t)
 
 		got, err := c.IntegrationSiteID(ctx, "default")
 		if err != nil {
@@ -77,7 +77,7 @@ func TestClient_IntegrationSiteID(t *testing.T) {
 	})
 
 	t.Run("caches the resolution", func(t *testing.T) {
-		c, hits := newIntegrationSitesTestClient(t, integrationSitesBody)
+		c, hits := newIntegrationSitesTestClient(t)
 
 		for range 3 {
 			if _, err := c.IntegrationSiteID(ctx, "default"); err != nil {
@@ -90,7 +90,7 @@ func TestClient_IntegrationSiteID(t *testing.T) {
 	})
 
 	t.Run("does not cache failures", func(t *testing.T) {
-		c, hits := newIntegrationSitesTestClient(t, integrationSitesBody)
+		c, hits := newIntegrationSitesTestClient(t)
 
 		if _, err := c.IntegrationSiteID(ctx, "missing"); err == nil {
 			t.Fatal("expected an error for an unknown site")
@@ -104,7 +104,7 @@ func TestClient_IntegrationSiteID(t *testing.T) {
 	})
 
 	t.Run("a UUID is used as-is without a request", func(t *testing.T) {
-		c, hits := newIntegrationSitesTestClient(t, integrationSitesBody)
+		c, hits := newIntegrationSitesTestClient(t)
 
 		const uuid = "99999999-9999-9999-9999-999999999999"
 		got, err := c.IntegrationSiteID(ctx, uuid)
