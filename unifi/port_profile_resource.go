@@ -436,7 +436,10 @@ func (r *portProfileResource) Schema(
 				Description: "The operation mode for the port profile. Can only be `switch`",
 				Optional:    true,
 				Computed:    true,
-				Default:     stringdefault.StaticString("switch"),
+				// Kept (#544): `switch` is the only value a port profile takes
+				// (Read maps an absent op_mode to it), so the Default cannot
+				// overwrite a different controller value.
+				Default: stringdefault.StaticString("switch"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("switch"),
 				},

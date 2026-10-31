@@ -262,7 +262,10 @@ func firewallPolicyScheduleAttributes() map[string]schema.Attribute {
 			MarkdownDescription: "Clear inherited fields that are unused by the selected mode.",
 			Optional:            true,
 			Computed:            true,
-			Default:             booldefault.StaticBool(false),
+			// Kept (#544): a provider-side flag that is never sent to the
+			// controller (Read carries the prior value), so the Default cannot
+			// overwrite anything the controller holds.
+			Default: booldefault.StaticBool(false),
 		},
 		"repeat_on_days": schema.SetAttribute{
 			MarkdownDescription: "Weekdays on which the policy is active.",

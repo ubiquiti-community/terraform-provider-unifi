@@ -1052,7 +1052,10 @@ func (r *settingResource) Schema(
 									MarkdownDescription: "Enable this custom server. Defaults to true.",
 									Optional:            true,
 									Computed:            true,
-									Default:             booldefault.StaticBool(true),
+									// Kept (#544): an element of a list the configuration
+									// writes out in full, so it only applies to a server
+									// the configuration itself declares.
+									Default: booldefault.StaticBool(true),
 								},
 								"sdns_stamp": schema.StringAttribute{
 									MarkdownDescription: "DNS stamp (sdns://) for the custom resolver.",
