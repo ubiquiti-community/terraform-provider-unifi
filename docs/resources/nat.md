@@ -19,11 +19,11 @@ resource "unifi_nat" "dnat" {
   protocol     = "tcp"
   in_interface = var.wan_network_id
   ip_address   = "192.168.1.20"
-  port         = 443
+  port         = "443"
 
   destination_filter = {
     filter_type = "ADDRESS_AND_PORT"
-    port        = 8443
+    port        = "8443"
   }
 }
 
@@ -58,7 +58,7 @@ resource "unifi_nat" "masquerade" {
 - `ip_version` (String) The IP version the rule applies to. Can be `IPV4` or `IPV6`.
 - `logging` (Boolean) Whether to log matching traffic. Defaults to `false`.
 - `out_interface` (String) The ID of the network that outgoing traffic leaves on. Used by `SNAT` and `MASQUERADE` rules.
-- `port` (Number) The translated port.
+- `port` (String) The translated port, as a single port (`443`) or a range (`8080-8090`).
 - `pppoe_use_base_interface` (Boolean) Use the base interface of a PPPoE WAN instead of the PPPoE interface. Defaults to `false`.
 - `protocol` (String) The protocol to match. Can be `all`, `tcp`, `udp` or `tcp_udp`.
 - `rule_index` (Number) The position of the rule in the rule set. Assigned by the controller when not set.
@@ -85,7 +85,7 @@ Optional:
 - `invert_address` (Boolean) Match every address except `address`.
 - `invert_port` (Boolean) Match every port except `port`.
 - `network_conf_id` (String) The ID of the network to match. Used with the `NETWORK_CONF` filter type.
-- `port` (Number) The port to match. Used with the `ADDRESS_AND_PORT` filter type.
+- `port` (String) The port to match. Used with the `ADDRESS_AND_PORT` filter type, as a single port (`443`) or a range (`8080-8090`).
 
 
 <a id="nestedatt--source_filter"></a>
@@ -102,7 +102,7 @@ Optional:
 - `invert_address` (Boolean) Match every address except `address`.
 - `invert_port` (Boolean) Match every port except `port`.
 - `network_conf_id` (String) The ID of the network to match. Used with the `NETWORK_CONF` filter type.
-- `port` (Number) The port to match. Used with the `ADDRESS_AND_PORT` filter type.
+- `port` (String) The port to match. Used with the `ADDRESS_AND_PORT` filter type, as a single port (`443`) or a range (`8080-8090`).
 
 
 <a id="nestedatt--timeouts"></a>
@@ -114,3 +114,17 @@ Optional:
 - `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
 - `read` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Read operations occur during any refresh or planning operation when refresh is enabled.
 - `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+# NAT rules can be imported using the rule ID.
+terraform import unifi_nat.dnat 6512a1f04ee8cb0f1f4a9876
+
+# For a non-default site, prefix the ID with the site name and a colon.
+terraform import unifi_nat.dnat default:6512a1f04ee8cb0f1f4a9876
+```
