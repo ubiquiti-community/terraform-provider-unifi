@@ -113,7 +113,7 @@ resource "unifi_wan" "pppoe" {
 - `dns` (Attributes) DNS configuration (see [below for nested schema](#nestedatt--dns))
 - `dslite` (Attributes) DS-Lite (AFTR) configuration. (see [below for nested schema](#nestedatt--dslite))
 - `egress_qos` (Attributes) Egress QoS configuration (see [below for nested schema](#nestedatt--egress_qos))
-- `enabled` (Boolean) Whether the WAN network is enabled
+- `enabled` (Boolean) Whether the WAN network is enabled. Taken from the controller when not set; a WAN stored without the key reads as enabled (#544).
 - `igmp_proxy` (Attributes) IGMP proxy configuration (see [below for nested schema](#nestedatt--igmp_proxy))
 - `interface_mtu` (Number) MTU of the WAN interface, in bytes. Only applied when `interface_mtu_enabled` is `true`. For PPPoE with RFC 4638 ("baby jumbo" frames), set `1508` so the PPPoE session itself can carry a 1500-byte MTU. Taken from the controller when not set.
 - `interface_mtu_enabled` (Boolean) Whether `interface_mtu` overrides the WAN interface's default MTU. Taken from the controller when not set, so an MTU configured in the UniFi UI is preserved by applies that do not manage it.
@@ -131,7 +131,7 @@ resource "unifi_wan" "pppoe" {
 - `site` (String) The name of the site to associate the WAN network with
 - `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
-- `type` (String) The WAN type (dhcp, static, pppoe)
+- `type` (String) The WAN type (`dhcp`, `static`, `pppoe` or `disabled`). Taken from the controller when not set: an imported or adopted static or PPPoE uplink keeps its type instead of being planned back to `dhcp` (#544).
 - `type_v6` (String) The IPv6 WAN type. One of `dhcpv6`, `slaac`, `static`, or `disabled`. Note: the controller requires `slaac` when the IPv6 delegation type is `single_network` (`api.err.SingleNetworkMustBeSLAAC` otherwise) — common with ISPs that deliver IPv6 by Router Advertisement, e.g. Free/Freebox in bridge mode.
 - `upnp` (Attributes) UPnP configuration (see [below for nested schema](#nestedatt--upnp))
 - `username` (String) PPPoE username supplied by the ISP. Only meaningful when `type` is `pppoe`. Left unset, the attribute is not written and whatever the controller holds is preserved, so an imported PPPoE uplink can be managed without touching its login.
@@ -223,7 +223,7 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean) Whether egress QoS is enabled
+- `enabled` (Boolean) Whether egress QoS is enabled. Null when the controller holds no value, and not sent unless set (#544).
 - `priority` (Number) Egress QoS priority (802.1p CoS), `1`-`7`. Null when the controller holds no priority; it is never sent as `0`, which the controller rejects.
 
 
@@ -262,7 +262,7 @@ Optional:
 Optional:
 
 - `down_rate` (Number) Smart Queue download rate in kbps
-- `enabled` (Boolean) Whether Smart Queue is enabled
+- `enabled` (Boolean) Whether Smart Queue is enabled. Taken from the controller when not set (#544).
 - `up_rate` (Number) Smart Queue upload rate in kbps
 
 
@@ -293,8 +293,8 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean) Whether VLAN is enabled
-- `id` (Number) The VLAN ID
+- `enabled` (Boolean) Whether VLAN is enabled. Taken from the controller when not set (#544).
+- `id` (Number) The VLAN ID. Taken from the controller when not set (#544).
 
 ## Import
 
