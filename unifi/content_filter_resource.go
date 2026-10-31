@@ -14,12 +14,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 )
 
 var (
@@ -126,7 +126,7 @@ func (r *contentFilterResource) Schema(
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"network_ids": strSet("IDs of the networks the filter applies to."),
@@ -203,12 +203,6 @@ func (r *contentFilterResource) Create(
 	f := r.modelToAPI(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-	// A new filter is created enabled unless the configuration says otherwise.
-	// This used to be a schema Default, which the framework applies before
-	// plan modifiers and so also re-enabled adopted filters (#544).
-	if !isKnown(plan.Enabled) {
-		f.Enabled = true
 	}
 	created, err := r.client.CreateContentFiltering(ctx, site, f)
 	if err != nil {

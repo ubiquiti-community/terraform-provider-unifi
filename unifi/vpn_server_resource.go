@@ -317,7 +317,7 @@ func (r *vpnServerResource) Schema(
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"subnet": schema.StringAttribute{
@@ -1221,6 +1221,12 @@ func (r *vpnServerResource) modelToNetwork(
 // it also overwrote the controller's value on every adopted server (#544).
 // Applying them here, on create only, keeps the create request unchanged while
 // an existing server keeps what the controller holds.
+//
+// `enabled` is already planned `true` by planmodifiers.BoolDefaultOnCreate.
+// The port stays a request-time fill-in: its default depends on the server
+// type, and an attribute modifier on wireguard.port / openvpn.port would also
+// plan it when an existing server switches type, where the controller keeps
+// its current port.
 func vpnServerCreateDefaults(network *unifi.Network) {
 	networkCreateEnabled(network)
 	if network.LocalPort == nil && network.VPNType != nil {

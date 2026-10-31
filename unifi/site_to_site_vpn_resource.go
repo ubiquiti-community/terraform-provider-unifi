@@ -287,7 +287,7 @@ func (r *siteToSiteVPNResource) Schema(
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"interface": schema.StringAttribute{
@@ -742,7 +742,6 @@ func (r *siteToSiteVPNResource) Create(
 
 	site := r.siteOrDefault(data.Site)
 
-	networkCreateEnabled(network)
 	created, err := r.client.CreateNetwork(ctx, site, network)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Site-to-Site VPN", err.Error())

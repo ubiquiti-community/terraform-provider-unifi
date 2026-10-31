@@ -19,13 +19,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -209,7 +209,7 @@ func (r *staticRouteFrameworkResource) Schema(
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
+					planmodifiers.BoolDefaultOnCreate(true),
 				},
 			},
 			"gateway": schema.SingleNestedAttribute{
@@ -766,6 +766,10 @@ func (r *staticRouteFrameworkResource) applyPlanToState(
 // plan modifiers run, so they also re-enabled every adopted route disabled on
 // the controller and moved switch routes to the gateway (#544). Applying them
 // here, on create only, keeps the create request unchanged.
+//
+// `enabled` is already planned `true` by planmodifiers.BoolDefaultOnCreate, so
+// its branch here is only a fallback; gateway_type lives in the gateway object,
+// which is left to the controller when undeclared.
 func staticRouteCreateDefaults(routing *unifi.Routing, enabled types.Bool) {
 	if enabled.IsUnknown() || enabled.IsNull() {
 		routing.Enabled = true
