@@ -2229,7 +2229,8 @@ func (r *wanResource) networkToModel(
 	}
 
 	// IGMP Settings — only populate if model already has it or API has data
-	hasIGMPData := network.IGMPProxyFor != nil || network.IGMPProxyUpstream || len(network.IGMPProxyDownstreamNetworkIDs) > 0
+	hasIGMPData := network.IGMPProxyFor != nil || network.IGMPProxyUpstream ||
+		len(network.IGMPProxyDownstreamNetworkIDs) > 0
 	if !model.IGMPProxy.IsNull() || hasIGMPData {
 		var currentIGMP igmpProxyModel
 		if !model.IGMPProxy.IsNull() && !model.IGMPProxy.IsUnknown() {
