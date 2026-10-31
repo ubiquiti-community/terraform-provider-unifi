@@ -463,19 +463,19 @@ func (r *deviceResource) Schema(
 				Description: "Specifies whether this resource should tell the controller to adopt the device on create.",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(true),
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
+				// A provider-side behaviour flag, not a controller field, so the
+				// Default cannot overwrite anything the controller holds; Read
+				// fills the same value in on import. The UseStateForUnknown it
+				// used to carry was dead code: the framework applies a Default
+				// before plan modifiers, so the plan is never unknown (#544).
+				Default: booldefault.StaticBool(true),
 			},
 			"forget_on_destroy": schema.BoolAttribute{
 				Description: "Specifies whether this resource should tell the controller to forget the device on destroy.",
 				Optional:    true,
 				Computed:    true,
-				Default:     booldefault.StaticBool(true),
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
+				// Provider-side behaviour flag; see allow_adoption.
+				Default: booldefault.StaticBool(true),
 			},
 
 			// Network configuration
@@ -1062,7 +1062,11 @@ func (r *deviceResource) Schema(
 								"Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.",
 							Optional: true,
 							Computed: true,
-							Default:  stringdefault.StaticString("switch"),
+							// Kept despite #544: "switch" is never written (see
+							// modelToAPIPortOverride) and carryUnwritableFields
+							// keeps the controller's op_mode, so this Default
+							// cannot change a port's mode on the controller.
+							Default: stringdefault.StaticString("switch"),
 							Validators: []validator.String{
 								stringvalidator.OneOf("switch", "mirror", "aggregate"),
 							},

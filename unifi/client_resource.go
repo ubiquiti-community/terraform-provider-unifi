@@ -290,10 +290,14 @@ Clients are created in the controller when observed on the network, so the resou
 				},
 			},
 			"blocked": schema.BoolAttribute{
-				MarkdownDescription: "Specifies whether this client should be blocked from the network.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Specifies whether this client should be blocked from the network. " +
+					"Taken from the controller when not set, so adopting a blocked client does not unblock it.",
+				Optional: true,
+				Computed: true,
+				// No static Default: the framework applies a Default before any
+				// plan modifier, so `false` replaced the controller's value on
+				// every adopted client and UseStateForUnknown never fired -
+				// importing a blocked client planned unblocking it (#544).
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
@@ -310,19 +314,18 @@ Clients are created in the controller when observed on the network, so the resou
 				MarkdownDescription: "Specifies whether this resource should just take over control of an existing client.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(defaultAllowExisting),
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
+				// A provider-side behaviour flag, not a controller field, so the
+				// Default cannot overwrite anything the controller holds; Read
+				// fills the same value in on import. (A UseStateForUnknown here
+				// was dead code: the Default always makes the plan known.)
+				Default: booldefault.StaticBool(defaultAllowExisting),
 			},
 			"skip_forget_on_destroy": schema.BoolAttribute{
 				MarkdownDescription: "Specifies whether this resource should tell the controller to \"forget\" the client on destroy.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(defaultSkipForgetOnDestroy),
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
+				// Provider-side behaviour flag; see allow_existing.
+				Default: booldefault.StaticBool(defaultSkipForgetOnDestroy),
 			},
 			// last_ip and hostname are purely observed values reported by the
 			// controller, not derived from any configured attribute. The
@@ -953,7 +956,10 @@ func (r *clientResource) planToClient(
 		Name:        plan.Name.ValueString(),
 		DisplayName: plan.DisplayName.ValueString(),
 		Note:        plan.Note.ValueString(),
-		Blocked:     plan.Blocked.ValueBoolPointer(),
+		// An unknown blocked (unset on create) is left out, so creating or
+		// taking over an existing client keeps its block state instead of
+		// sending false (ValueBoolPointer returns &false for unknown).
+		Blocked: clientKnownBoolPointer(plan.Blocked),
 
 		// FixedIP and its enable flag
 		FixedIP:    fixedIP,
@@ -1140,9 +1146,9 @@ func (r *clientResource) clientToModel(
 	}
 
 	// Some controllers (e.g. UniFi OS 5.x / Network App 10.x) omit "blocked" for
-	// fixed-IP-only clients, so client.Blocked is nil. Store the documented default
-	// (false) instead of null; otherwise the schema's Default(false) makes the next
-	// plan propose false → a spurious diff on every create/import.
+	// clients that were never blocked, so client.Blocked is nil. Store false (what
+	// the controller means by omitting it) instead of null, so the attribute is
+	// always known after a read and UseStateForUnknown can carry it.
 	model.Blocked = types.BoolValue(client.Blocked != nil && *client.Blocked)
 
 	// #387: when the local DNS record is disabled the controller keeps echoing the
@@ -1175,7 +1181,9 @@ func (r *clientResource) mergeClient(
 	merged.DisplayName = planned.DisplayName
 	merged.UserGroupID = planned.UserGroupID
 	merged.Note = planned.Note
-	merged.Blocked = planned.Blocked
+	if planned.Blocked != nil {
+		merged.Blocked = planned.Blocked
+	}
 	merged.NetworkMembersGroupIDs = planned.NetworkMembersGroupIDs
 
 	// FixedIP and its enable flag
@@ -1618,4 +1626,13 @@ func (r *clientResource) List(
 			}
 		}
 	}
+}
+
+// clientKnownBoolPointer returns nil for a null or unknown value, unlike
+// ValueBoolPointer, which returns a pointer to false for an unknown one.
+func clientKnownBoolPointer(v types.Bool) *bool {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	return v.ValueBoolPointer()
 }
