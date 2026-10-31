@@ -538,8 +538,8 @@ Optional:
 - `enabled` (Boolean) The controller's `enabled` flag for Channel AI: run the optimizer on its `cron_expr` schedule.
 - `exclude_devices` (List of String) MAC addresses of devices the optimizer leaves alone.
 - `high_priority_devices` (List of String) MAC addresses of devices the optimizer handles first.
-- `ht_modes_na` (List of Number) 5 GHz channel widths (MHz) the optimizer may use: `20`, `40`, `80`, `160`.
-- `ht_modes_ng` (List of Number) 2.4 GHz channel widths (MHz) the optimizer may use: `20`, `40`.
+- `ht_modes_na` (List of Number) 5 GHz channel widths (MHz) the optimizer may use: `20`, `40`, `80`, `160`. Each must be at most the `channel_width` of the `na` entry of `radios_configuration` (the controller drops wider ones), or the plan fails.
+- `ht_modes_ng` (List of Number) 2.4 GHz channel widths (MHz) the optimizer may use: `20`, `40`. Each must be at most the `channel_width` of the `ng` entry of `radios_configuration` (the controller drops wider ones), or the plan fails.
 - `optimize` (List of String) What the optimizer adjusts: `channel`, `power`.
 - `radios` (List of String) Bands the optimizer may change: `ng` (2.4 GHz), `na` (5 GHz), `6e` (6 GHz).
 - `radios_configuration` (Attributes List) Per-band channel width and DFS use. (see [below for nested schema](#nestedatt--radio_ai--radios_configuration))
