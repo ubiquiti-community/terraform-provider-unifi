@@ -3188,10 +3188,12 @@ func (r *settingResource) Update(
 		r.persistMdns(ctx, site, &plan, &resp.Diagnostics)
 	}
 
-	var etherLightingConfig types.Object
-	resp.Diagnostics.Append(
-		req.Config.GetAttribute(ctx, path.Root("etherlighting"), &etherLightingConfig)...)
-	r.persistEtherLighting(ctx, site, etherLightingConfig, &resp.Diagnostics)
+	if settingSectionChanged(plan.EtherLighting, state.EtherLighting) {
+		var etherLightingConfig types.Object
+		resp.Diagnostics.Append(
+			req.Config.GetAttribute(ctx, path.Root("etherlighting"), &etherLightingConfig)...)
+		r.persistEtherLighting(ctx, site, etherLightingConfig, &resp.Diagnostics)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
