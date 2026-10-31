@@ -46,7 +46,7 @@ func TestFirewallPolicyMatchMACSchema(t *testing.T) {
 func TestFirewallPolicyMatchMACRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	endpoint := func(matchMAC bool) types.Object {
+	endpoint := func(matchMAC bool, mac string) types.Object {
 		m := firewallPolicyEndpointModel{
 			ZoneID:             types.StringValue("zone"),
 			MatchingTarget:     types.StringValue("IP"),
@@ -67,6 +67,7 @@ func TestFirewallPolicyMatchMACRoundTrip(t *testing.T) {
 			MatchOppositeNetworks: types.BoolValue(false),
 			MatchOppositePorts:    types.BoolValue(false),
 			MatchMAC:              types.BoolValue(matchMAC),
+			MAC:                   types.StringValue(mac),
 		}
 		obj, d := types.ObjectValueFrom(ctx, firewallPolicyEndpointModel{}.AttributeTypes(), m)
 		if d.HasError() {
@@ -84,8 +85,8 @@ func TestFirewallPolicyMatchMACRoundTrip(t *testing.T) {
 		IPVersion:             types.StringValue("BOTH"),
 		ConnectionStates:      types.ListNull(types.StringType),
 		Schedule:              types.ObjectNull(firewallPolicyScheduleModel{}.AttributeTypes()),
-		Source:                endpoint(true),
-		Destination:           endpoint(false),
+		Source:                endpoint(true, "aa:bb:cc:dd:ee:ff"),
+		Destination:           endpoint(false, ""),
 	}
 
 	fp, d := modelToFirewallPolicy(ctx, model)
@@ -94,6 +95,9 @@ func TestFirewallPolicyMatchMACRoundTrip(t *testing.T) {
 	}
 	if !fp.Source.MatchMAC {
 		t.Errorf("source match_mac not sent")
+	}
+	if fp.Source.MAC != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("source mac = %q, want aa:bb:cc:dd:ee:ff", fp.Source.MAC)
 	}
 	if fp.Destination.MatchMAC {
 		t.Errorf("destination match_mac sent as true, want false")
@@ -114,6 +118,12 @@ func TestFirewallPolicyMatchMACRoundTrip(t *testing.T) {
 	if !src.MatchMAC.ValueBool() {
 		t.Errorf("source match_mac lost on read")
 	}
+	if src.MAC.ValueString() != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("source mac lost on read: %q", src.MAC.ValueString())
+	}
+	if dst.MAC.IsNull() || dst.MAC.ValueString() != "" {
+		t.Errorf("destination mac = %v, want \"\"", dst.MAC)
+	}
 	if dst.MatchMAC.ValueBool() {
 		t.Errorf("destination match_mac read as true, want false")
 	}
@@ -122,7 +132,7 @@ func TestFirewallPolicyMatchMACRoundTrip(t *testing.T) {
 	// prior model had none (fresh import).
 	imported := firewallPolicyModel{}
 	if d := firewallPolicyToModel(ctx, &unifi.FirewallPolicy{
-		Source:      &unifi.FirewallPolicySource{MatchMAC: true},
+		Source:      &unifi.FirewallPolicySource{MatchMAC: true, MAC: "aa:bb:cc:dd:ee:ff"},
 		Destination: &unifi.FirewallPolicyDestination{MatchMAC: true},
 	}, &imported); d.HasError() {
 		t.Fatalf("firewallPolicyToModel(import): %v", d)
@@ -136,6 +146,9 @@ func TestFirewallPolicyMatchMACRoundTrip(t *testing.T) {
 	}
 	if !isrc.MatchMAC.ValueBool() || !idst.MatchMAC.ValueBool() {
 		t.Errorf("imported match_mac not surfaced: src=%+v dst=%+v", isrc, idst)
+	}
+	if isrc.MAC.ValueString() != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("imported source mac not surfaced: %q", isrc.MAC.ValueString())
 	}
 }
 
@@ -154,6 +167,11 @@ func TestFirewallPolicyMatchMACValidateConfig(t *testing.T) {
 			"match_mac":       matchMAC,
 		}
 	}
+	withMAC := func(ep map[string]any, mac any) map[string]any {
+		ep["mac"] = mac
+		return ep
+	}
+	const mac = "aa:bb:cc:dd:ee:ff"
 
 	cases := []struct {
 		name      string
@@ -181,7 +199,60 @@ func TestFirewallPolicyMatchMACValidateConfig(t *testing.T) {
 			endpoint("ANY", nil),
 			[]string{"source.match_mac"},
 		},
-		{"ip source match_mac true", endpoint("IP", true), endpoint("ANY", nil), nil},
+		{
+			"ip source match_mac true without mac",
+			endpoint("IP", true),
+			endpoint("ANY", nil),
+			[]string{"source.mac"},
+		},
+		{
+			"ip source match_mac true empty mac",
+			withMAC(endpoint("IP", true), ""),
+			endpoint("ANY", nil),
+			[]string{"source.mac"},
+		},
+		{
+			"ip source match_mac true with mac",
+			withMAC(endpoint("IP", true), mac),
+			endpoint("ANY", nil),
+			nil,
+		},
+		{
+			"ip source unknown mac",
+			withMAC(endpoint("IP", true), tfUnknown),
+			endpoint("ANY", nil),
+			nil,
+		},
+		{
+			"ip source invalid mac",
+			withMAC(endpoint("IP", true), "not-a-mac"),
+			endpoint("ANY", nil),
+			[]string{"source.mac"},
+		},
+		{
+			"ip source eui64 mac",
+			withMAC(endpoint("IP", true), "aa:bb:cc:dd:ee:ff:00:11"),
+			endpoint("ANY", nil),
+			[]string{"source.mac"},
+		},
+		{
+			"mac without match_mac",
+			withMAC(endpoint("IP", nil), mac),
+			endpoint("ANY", nil),
+			[]string{"source.mac"},
+		},
+		{
+			"mac on client source",
+			withMAC(endpoint("CLIENT", true), mac),
+			endpoint("ANY", nil),
+			[]string{"source.match_mac", "source.mac"},
+		},
+		{
+			"mac on destination",
+			withMAC(endpoint("IP", true), mac),
+			withMAC(endpoint("IP", nil), mac),
+			[]string{"destination.mac"},
+		},
 		{"unknown target match_mac true", endpoint(tfUnknown, true), endpoint("ANY", nil), nil},
 		{
 			"destination match_mac true",

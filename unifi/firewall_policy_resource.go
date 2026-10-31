@@ -336,6 +336,9 @@ type firewallPolicyEndpointModel struct {
 	// destination), and go-unifi serializes it without `omitempty`, so it must
 	// round-trip or an update resets it to false. See ValidateConfig.
 	MatchMAC types.Bool `tfsdk:"match_mac"`
+	// The MAC address bound to the source IP when match_mac is true. The
+	// controller only stores it on the source (see ValidateConfig).
+	MAC types.String `tfsdk:"mac"`
 }
 
 func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
@@ -356,6 +359,7 @@ func (m firewallPolicyEndpointModel) AttributeTypes() map[string]attr.Type {
 		"match_opposite_networks": types.BoolType,
 		"match_opposite_ports":    types.BoolType,
 		"match_mac":               types.BoolType,
+		"mac":                     types.StringType,
 	}
 }
 
@@ -536,11 +540,17 @@ func (r *firewallPolicyResource) Schema(
 				"with `matching_target = \"IP\"`: the controller drops the flag on every other target (a `CLIENT` target " +
 				"already matches the clients in `client_macs` by MAC) and on the destination, so setting it to `true` " +
 				"anywhere else is rejected at plan time. On an `IP` source the controller also requires the bound MAC " +
-				"address (its `mac` field), which the provider cannot send yet, so the controller currently rejects a " +
-				"write with `match_mac = true` (`MissingFirewallPolicySourceIpMac`). Defaults to `false`.",
+				"address, so `match_mac = true` also requires `mac`. Defaults to `false`.",
 			Optional: true,
 			Computed: true,
 			Default:  booldefault.StaticBool(false),
+		},
+		"mac": schema.StringAttribute{
+			MarkdownDescription: "The MAC address bound to the source IP (IP/MAC binding). Only valid on the `source` " +
+				"endpoint with `matching_target = \"IP\"` and `match_mac = true`, which in turn requires it.",
+			Optional: true,
+			Computed: true,
+			Default:  stringdefault.StaticString(""),
 		},
 	}
 
@@ -1318,6 +1328,7 @@ func endpointModelToSource(
 		MatchOppositeNetworks: m.MatchOppositeNetworks.ValueBool(),
 		MatchOppositePorts:    m.MatchOppositePorts.ValueBool(),
 		MatchMAC:              m.MatchMAC.ValueBool(),
+		MAC:                   m.MAC.ValueString(),
 	}
 	if !m.IPs.IsNull() && !m.IPs.IsUnknown() {
 		diags.Append(m.IPs.ElementsAs(ctx, &ep.IPs, false)...)
@@ -1563,6 +1574,7 @@ func apiSourceToEndpointModel(
 		MatchOppositeNetworks: types.BoolValue(src.MatchOppositeNetworks),
 		MatchOppositePorts:    types.BoolValue(src.MatchOppositePorts),
 		MatchMAC:              types.BoolValue(src.MatchMAC),
+		MAC:                   types.StringValue(src.MAC),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, src.NetworkIDs)
 	diags.Append(nd...)
@@ -1604,6 +1616,8 @@ func apiDestinationToEndpointModel(
 		MatchOppositeNetworks: types.BoolValue(dst.MatchOppositeNetworks),
 		MatchOppositePorts:    types.BoolValue(dst.MatchOppositePorts),
 		MatchMAC:              types.BoolValue(dst.MatchMAC),
+		// The controller has no destination mac.
+		MAC: types.StringValue(""),
 	}
 	networkIDs, nd := types.ListValueFrom(ctx, types.StringType, dst.NetworkIDs)
 	diags.Append(nd...)
