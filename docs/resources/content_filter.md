@@ -2,12 +2,12 @@
 page_title: Content Filter (Resource)
 subcategory: ""
 description: |-
-  unifi_content_filter manages a content filter (Settings > Security > Content Filtering): DNS-based blocking of site categories, plus allow and block lists and safe search, for networks or individual clients.
+  unifi_content_filter manages a content filter (Settings > Security > Content Filtering): DNS-based blocking of site categories, plus allow and block lists and safe search, for networks or individual clients. Removing every entry from a list attribute (or omitting one that was set) recreates the object, because the API cannot clear a list in place; an explicitly empty list ([]) is rejected.
 ---
 
 # Content Filter (Resource)
 
-`unifi_content_filter` manages a content filter (Settings > Security > Content Filtering): DNS-based blocking of site categories, plus allow and block lists and safe search, for networks or individual clients.
+`unifi_content_filter` manages a content filter (Settings > Security > Content Filtering): DNS-based blocking of site categories, plus allow and block lists and safe search, for networks or individual clients. Removing every entry from a list attribute (or omitting one that was set) recreates the object, because the API cannot clear a list in place; an explicitly empty list (`[]`) is rejected.
 
 ## Example Usage
 
