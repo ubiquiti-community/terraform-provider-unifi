@@ -2520,8 +2520,11 @@ func (r *settingResource) Update(
 		}
 	}
 
+	// radius_secret_wo never reaches the radius object, so a version bump is
+	// the only sign that the secret needs writing.
 	if !plan.Radius.IsNull() && !plan.Radius.IsUnknown() &&
-		settingSectionChanged(plan.Radius, state.Radius) {
+		(settingSectionChanged(plan.Radius, state.Radius) ||
+			!plan.RadiusSecretWOVersion.Equal(state.RadiusSecretWOVersion)) {
 		var radius settingRadiusModel
 		resp.Diagnostics.Append(plan.Radius.As(ctx, &radius, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
