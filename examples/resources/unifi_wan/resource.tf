@@ -38,7 +38,7 @@ resource "unifi_wan" "secondary" {
     down_rate = 500000
   }
 
-  # Egress QoS / 802.1p priority (0-7).
+  # Egress QoS / 802.1p priority (1-7); leave priority out to keep it unset.
   egress_qos = {
     enabled  = true
     priority = 1
