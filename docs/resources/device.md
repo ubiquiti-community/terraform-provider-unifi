@@ -262,7 +262,7 @@ Optional:
 - `speed` (Number) Port speed in Mbps.
 - `stormctrl` (Attributes) Storm control settings. (see [below for nested schema](#nestedatt--port_override--stormctrl))
 - `stp_port_mode` (Boolean) STP port mode.
-- `tagged_networkconf_ids` (Set of String) List of network IDs to tag on this port.
+- `tagged_networkconf_ids` (Set of String) Set of network IDs to tag on this port (the UI's Tagged VLAN Management "Custom" selection; pair with `tagged_vlan_mgmt = "custom"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.
 - `tagged_vlan_mgmt` (String) Tagged VLAN management.
 - `voice_networkconf_id` (String) Voice network ID.
 
