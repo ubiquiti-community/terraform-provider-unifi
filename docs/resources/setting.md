@@ -529,12 +529,13 @@ Optional:
 
 - `auto_adjust_channels_to_country` (Boolean) Restrict the channel lists to the site's country.
 - `auto_channel_presets_type` (String) Channel preset: `maximum_speed`, `conservative` or `custom` (the `channels_*` lists).
+- `auto_enabled` (Boolean) The controller's `auto_enabled` flag: whether automatic channel optimization is enabled. It is a separate key from `enabled` and is written as given, without changing `enabled`. Left out of the configuration, the controller's value is kept (and not tracked when the controller does not report it).
 - `channels_6e` (List of Number) 6 GHz channels the optimizer may choose from.
 - `channels_blacklist` (Attributes List) Channels the optimizer must not use. (see [below for nested schema](#nestedatt--radio_ai--channels_blacklist))
-- `channels_na` (List of Number) 5 GHz channels the optimizer may choose from.
+- `channels_na` (List of Number) 5 GHz channels the optimizer may choose from. The controller drops the DFS channels (52-144) when the `na` entry of `radios_configuration` has `dfs = false`, so listing them then fails the plan. It may also narrow the list to the site's country (`auto_adjust_channels_to_country`) or the preset (`auto_channel_presets_type` other than `custom`); leave the list out to keep what the controller derives.
 - `channels_ng` (List of Number) 2.4 GHz channels the optimizer may choose from.
 - `cron_expr` (String) When the optimizer runs, as a cron expression in the controller's time zone (e.g. `0 3 * * *`).
-- `enabled` (Boolean) Run the optimizer on its schedule.
+- `enabled` (Boolean) The controller's `enabled` flag for Channel AI: run the optimizer on its `cron_expr` schedule.
 - `exclude_devices` (List of String) MAC addresses of devices the optimizer leaves alone.
 - `high_priority_devices` (List of String) MAC addresses of devices the optimizer handles first.
 - `ht_modes_na` (List of Number) 5 GHz channel widths (MHz) the optimizer may use: `20`, `40`, `80`, `160`.
