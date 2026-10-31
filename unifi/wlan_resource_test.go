@@ -502,23 +502,11 @@ func Test_wlanFrameworkResource_setDefaultWLANGroupID(t *testing.T) {
 	t.Skip("requires configured client")
 }
 
-func Test_wlanFrameworkResource_Create(t *testing.T) {
-	t.Skip("requires terraform state and configured client")
-}
-
 func Test_wlanFrameworkResource_Read(t *testing.T) {
 	t.Skip("requires terraform state and configured client")
 }
 
-func Test_wlanFrameworkResource_Update(t *testing.T) {
-	t.Skip("requires terraform state and configured client")
-}
-
 func Test_wlanFrameworkResource_readPassphraseWO(t *testing.T) {
-	t.Skip("requires terraform state")
-}
-
-func Test_wlanFrameworkResource_applyPlanToState(t *testing.T) {
 	t.Skip("requires terraform state")
 }
 
