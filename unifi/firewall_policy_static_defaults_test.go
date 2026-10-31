@@ -125,8 +125,8 @@ func TestFirewallPolicyAdoptedPlanKeepsControllerValues(t *testing.T) {
 		overrides[endpoint+".match_opposite_ips"] = types.BoolValue(true)
 		overrides[endpoint+".match_opposite_networks"] = types.BoolValue(true)
 		overrides[endpoint+".match_opposite_ports"] = types.BoolValue(true)
-		// Out of scope here (iid / match_opposite_iid / match_mac / mac keep
-		// their defaults), pinned to them so the fixture stays valid.
+		// iid / match_opposite_iid / match_mac / mac are bound to the
+		// matching target; see firewall_policy_target_bound_defaults_test.go.
 		overrides[endpoint+".iid"] = types.StringValue("")
 		overrides[endpoint+".mac"] = types.StringValue("")
 	}

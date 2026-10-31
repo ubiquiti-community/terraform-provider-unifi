@@ -57,13 +57,16 @@ func TestFirewallPolicyIIDSchema(t *testing.T) {
 			t.Errorf("%s has no endpoint validator", ep)
 		}
 		iid, ok := nested.Attributes["iid"].(schema.StringAttribute)
-		if !ok || !iid.Optional || !iid.Computed || iid.Default == nil {
-			t.Errorf("%s.iid must be Optional+Computed with a default, got %#v", ep, iid)
+		if !ok || !iid.Optional || !iid.Computed || iid.Default != nil ||
+			len(iid.PlanModifiers) == 0 {
+			t.Errorf("%s.iid must be Optional+Computed with a create-only default, got %#v",
+				ep, iid)
 		}
 		opp, ok := nested.Attributes["match_opposite_iid"].(schema.BoolAttribute)
-		if !ok || !opp.Optional || !opp.Computed || opp.Default == nil {
+		if !ok || !opp.Optional || !opp.Computed || opp.Default != nil ||
+			len(opp.PlanModifiers) == 0 {
 			t.Errorf(
-				"%s.match_opposite_iid must be Optional+Computed with a default, got %#v",
+				"%s.match_opposite_iid must be Optional+Computed with a create-only default, got %#v",
 				ep, opp,
 			)
 		}
