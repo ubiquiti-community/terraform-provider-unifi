@@ -339,6 +339,7 @@ type settingResourceModel struct {
 // written; the rest are preserved by the partial write.
 type settingRadioAiModel struct {
 	Enabled                     types.Bool   `tfsdk:"enabled"`
+	AutoEnabled                 types.Bool   `tfsdk:"auto_enabled"`
 	CronExpr                    types.String `tfsdk:"cron_expr"`
 	Radios                      types.List   `tfsdk:"radios"`
 	Optimize                    types.List   `tfsdk:"optimize"`
@@ -661,6 +662,7 @@ var (
 
 	radioAiAttrTypes = map[string]attr.Type{
 		"enabled":                         types.BoolType,
+		"auto_enabled":                    types.BoolType,
 		"cron_expr":                       types.StringType,
 		"radios":                          types.ListType{ElemType: types.StringType},
 		"optimize":                        types.ListType{ElemType: types.StringType},
@@ -1884,9 +1886,23 @@ func (r *settingResource) Schema(
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Run the optimizer on its schedule.",
-						Optional:            true,
-						Computed:            true,
+						MarkdownDescription: "The controller's `enabled` flag for " +
+							"Channel AI: run the optimizer on its `cron_expr` schedule.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"auto_enabled": schema.BoolAttribute{
+						MarkdownDescription: "The controller's `auto_enabled` flag: " +
+							"whether automatic channel optimization is enabled. It is " +
+							"a separate key from `enabled` and is written as given, " +
+							"without changing `enabled`. Left out of the " +
+							"configuration, the controller's value is kept (and not " +
+							"tracked when the controller does not report it).",
+						Optional: true,
+						Computed: true,
 						PlanModifiers: []planmodifier.Bool{
 							boolplanmodifier.UseStateForUnknown(),
 						},
@@ -1914,7 +1930,14 @@ func (r *settingResource) Schema(
 						int64validator.Between(1, 14),
 					),
 					"channels_na": radioAiChannelList(
-						"5 GHz channels the optimizer may choose from.",
+						"5 GHz channels the optimizer may choose from. The "+
+							"controller drops the DFS channels (52-144) when the `na` "+
+							"entry of `radios_configuration` has `dfs = false`, so "+
+							"listing them then fails the plan. It may also narrow the "+
+							"list to the site's country (`auto_adjust_channels_to_country`) "+
+							"or the preset (`auto_channel_presets_type` other than "+
+							"`custom`); leave the list out to keep what the controller "+
+							"derives.",
 						int64validator.Between(34, 177),
 					),
 					"channels_6e": radioAiChannelList(
@@ -1960,12 +1983,18 @@ func (r *settingResource) Schema(
 						},
 					},
 					"ht_modes_ng": radioAiChannelList(
-						"2.4 GHz channel widths (MHz) the optimizer may use: `20`, `40`.",
+						"2.4 GHz channel widths (MHz) the optimizer may use: `20`, "+
+							"`40`. Each must be at most the `channel_width` of the "+
+							"`ng` entry of `radios_configuration` (the controller "+
+							"drops wider ones), or the plan fails.",
 						int64validator.OneOf(20, 40),
 					),
 					"ht_modes_na": radioAiChannelList(
 						"5 GHz channel widths (MHz) the optimizer may use: `20`, "+
-							"`40`, `80`, `160`.",
+							"`40`, `80`, `160`. Each must be at most the "+
+							"`channel_width` of the `na` entry of "+
+							"`radios_configuration` (the controller drops wider "+
+							"ones), or the plan fails.",
 						int64validator.OneOf(20, 40, 80, 160),
 					),
 					"high_priority_devices": radioAiStringList(
@@ -2398,6 +2427,18 @@ func (r *settingResource) ModifyPlan(
 				return
 			}
 		}
+	}
+
+	var radioAiConfig, radioAiPlan types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("radio_ai"), &radioAiConfig)...)
+	resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, path.Root("radio_ai"), &radioAiPlan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(radioAiDfsConflict(ctx, radioAiConfig, radioAiPlan)...)
+	resp.Diagnostics.Append(radioAiHtModeConflict(ctx, radioAiConfig, radioAiPlan)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	for _, s := range settingSectionDefaults {
@@ -3993,7 +4034,11 @@ func (r *settingResource) readSettings(
 		if diags.HasError() {
 			return
 		}
-		data.RadioAi = objValue
+		// An attribute the plan carries as null from prior state (one added
+		// after the state was written, or one the controller did not report)
+		// stays null, as in mdns: filling it from the controller here would be
+		// an inconsistent result after apply.
+		data.RadioAi = keepNullAttributes(data.RadioAi, objValue, diags)
 	} else {
 		data.RadioAi = types.ObjectNull(radioAiAttrTypes)
 	}
@@ -5125,9 +5170,178 @@ func (r *settingResource) persistRadioAi(
 	if diags.HasError() || len(setting.Data) == 0 {
 		return
 	}
+	// As writeSetting does for the typed sections, send only the keys whose
+	// value differs from the stored setting.
+	stored, err := r.storedSetting(ctx, site, radioAiSettingKey)
+	if err != nil {
+		diags.AddError("Error Updating Channel AI Setting", err.Error())
+		return
+	}
+	changed, err := rawSettingChanges(stored, setting.Data)
+	if err != nil {
+		diags.AddError("Error Updating Channel AI Setting", err.Error())
+		return
+	}
+	if len(changed) == 0 {
+		return
+	}
+	setting.Data = changed
 	if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
 		diags.AddError("Error Updating Channel AI Setting", err.Error())
 	}
+}
+
+// rawSettingChanges returns the keys of data whose JSON value differs from
+// the stored one (see settingChanges). Unlike there, a key absent from the
+// stored setting is always sent: data holds only configured keys, so a
+// configured false or [] is meant.
+func rawSettingChanges(stored, data map[string]any) (map[string]any, error) {
+	changes := map[string]any{}
+	for k, v := range data {
+		cur, present := stored[k]
+		if !present {
+			changes[k] = v
+			continue
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		var want any
+		if err := json.Unmarshal(b, &want); err != nil {
+			return nil, err
+		}
+		if !jsonValuesEqual(cur, want) {
+			changes[k] = v
+		}
+	}
+	return changes, nil
+}
+
+// radioAiHtModeConflict rejects a configured ht_modes_ng or ht_modes_na
+// holding a width above the channel_width of that band's planned
+// radios_configuration entry. The controller drops those widths from the
+// stored list (seen on Network 10.6.109: ht_modes_ng = [20, 40] with ng
+// channel_width = 20 stored [20]), so the apply would otherwise end in an
+// inconsistent result. As in radioAiDfsConflict, the list must come from
+// config and radios_configuration from the plan; an unknown or absent entry
+// is not checked. There is no ht_modes list for 6e.
+func radioAiHtModeConflict(ctx context.Context, config, plan types.Object) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if !isKnown(config) || !isKnown(plan) {
+		return diags
+	}
+	configs, ok := plan.Attributes()["radios_configuration"].(types.List)
+	if !ok || !isKnown(configs) {
+		return diags
+	}
+	var entries []settingRadioAiRadioConfigModel
+	diags.Append(configs.ElementsAs(ctx, &entries, false)...)
+	if diags.HasError() {
+		return diags
+	}
+	maxWidth := map[string]int64{}
+	for _, e := range entries {
+		if isKnown(e.Radio) && isKnown(e.ChannelWidth) {
+			maxWidth[e.Radio.ValueString()] = e.ChannelWidth.ValueInt64()
+		}
+	}
+	for _, band := range []string{"ng", "na"} {
+		name := "ht_modes_" + band
+		limit, ok := maxWidth[band]
+		if !ok {
+			continue
+		}
+		modes, ok := config.Attributes()[name].(types.List)
+		if !ok || !isKnown(modes) {
+			continue
+		}
+		var wide []string
+		for _, v := range modes.Elements() {
+			w, ok := v.(types.Int64)
+			if ok && isKnown(w) && w.ValueInt64() > limit {
+				wide = append(wide, fmt.Sprint(w.ValueInt64()))
+			}
+		}
+		if len(wide) == 0 {
+			continue
+		}
+		diags.AddAttributeError(
+			path.Root("radio_ai").AtName(name),
+			"HT mode wider than the band's channel width",
+			fmt.Sprintf("%s lists the widths %s MHz, but the %s entry of "+
+				"radios_configuration has channel_width = %d, and the controller "+
+				"drops wider HT modes from the list in that case. Remove them from "+
+				"%s, or raise channel_width for %s.",
+				name, strings.Join(wide, ", "), band, limit, name, band),
+		)
+	}
+	return diags
+}
+
+// radioAiDfsChannelMin and radioAiDfsChannelMax bound the 5 GHz DFS channels
+// (UNII-2A 52-64 and UNII-2C 100-144).
+const (
+	radioAiDfsChannelMin = 52
+	radioAiDfsChannelMax = 144
+)
+
+// radioAiDfsConflict rejects a configured channels_na holding DFS channels
+// while the planned radios_configuration turns DFS off for na. The controller
+// drops those channels from the stored list (seen on Network 10.6.109), so the
+// apply would otherwise end in an inconsistent result. channels_na must come
+// from config: a list the plan carries from state is what the controller
+// stored. radios_configuration comes from the plan, so a dfs = false kept
+// from state counts too; an unknown one is not checked.
+func radioAiDfsConflict(ctx context.Context, config, plan types.Object) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if !isKnown(config) || !isKnown(plan) {
+		return diags
+	}
+	channels, ok := config.Attributes()["channels_na"].(types.List)
+	if !ok || !isKnown(channels) {
+		return diags
+	}
+	configs, ok := plan.Attributes()["radios_configuration"].(types.List)
+	if !ok || !isKnown(configs) {
+		return diags
+	}
+	var entries []settingRadioAiRadioConfigModel
+	diags.Append(configs.ElementsAs(ctx, &entries, false)...)
+	if diags.HasError() {
+		return diags
+	}
+	dfsOff := false
+	for _, e := range entries {
+		if e.Radio.ValueString() == "na" && isKnown(e.Dfs) && !e.Dfs.ValueBool() {
+			dfsOff = true
+		}
+	}
+	if !dfsOff {
+		return diags
+	}
+	var dfs []string
+	for _, v := range channels.Elements() {
+		c, ok := v.(types.Int64)
+		if !ok || !isKnown(c) {
+			continue
+		}
+		if n := c.ValueInt64(); n >= radioAiDfsChannelMin && n <= radioAiDfsChannelMax {
+			dfs = append(dfs, fmt.Sprint(n))
+		}
+	}
+	if len(dfs) == 0 {
+		return diags
+	}
+	diags.AddAttributeError(
+		path.Root("radio_ai").AtName("channels_na"),
+		"DFS channels with DFS disabled",
+		fmt.Sprintf("channels_na lists the DFS channels %s, but the na entry of "+
+			"radios_configuration has dfs = false, and the controller drops DFS "+
+			"channels from the list in that case. Remove them from channels_na, "+
+			"or set dfs = true for na.", strings.Join(dfs, ", ")),
+	)
+	return diags
 }
 
 const radioAiSettingKey = "radio_ai"
@@ -5143,6 +5357,9 @@ func radioAiRawSetting(
 	data := map[string]any{}
 	if !model.Enabled.IsNull() && !model.Enabled.IsUnknown() {
 		data["enabled"] = model.Enabled.ValueBool()
+	}
+	if !model.AutoEnabled.IsNull() && !model.AutoEnabled.IsUnknown() {
+		data["auto_enabled"] = model.AutoEnabled.ValueBool()
 	}
 	if !model.CronExpr.IsNull() && !model.CronExpr.IsUnknown() {
 		data["cron_expr"] = model.CronExpr.ValueString()
@@ -5267,6 +5484,7 @@ func (r *settingResource) radioAiSettingToModel(
 	diags.Append(d...)
 	return &settingRadioAiModel{
 		Enabled:                     types.BoolValue(setting.Enabled),
+		AutoEnabled:                 types.BoolPointerValue(setting.AutoEnabled),
 		CronExpr:                    stringOrNull(setting.CronExpr),
 		Radios:                      stringList(setting.Radios),
 		Optimize:                    stringList(setting.Optimize),
