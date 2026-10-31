@@ -1119,10 +1119,9 @@ func TestRadiusProfileNestedGroups_wireAndReadBack(t *testing.T) {
 		t.Errorf("vlan read back = %v, want %v", back.Vlan, model.Vlan)
 	}
 
-	// The object defaults reproduce what the flat defaults used to send, except
-	// the interval: its 1h is planned on create by the leaf's modifier (see
-	// TestRadiusProfileInterimIntervalDefaultsOnCreateOnly), so the object
-	// default alone sends none.
+	// The create-time shapes reproduce what the flat defaults used to send on
+	// create, including the 1h interval (applied by ModifyPlan on create only,
+	// see TestRadiusProfileInterimIntervalDefaultsOnCreateOnly).
 	defaults := &radiusProfileResourceModel{
 		Name:          types.StringValue("plain"),
 		InterimUpdate: radiusProfileInterimUpdateDefault(),
@@ -1132,7 +1131,8 @@ func TestRadiusProfileNestedGroups_wireAndReadBack(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("modelToRadiusProfile (defaults): %v", diags)
 	}
-	if api.InterimUpdateEnabled || api.InterimUpdateInterval != nil {
+	if api.InterimUpdateEnabled || api.InterimUpdateInterval == nil ||
+		*api.InterimUpdateInterval != 3600 {
 		t.Errorf(
 			"default interim_update: %v %v",
 			api.InterimUpdateEnabled,

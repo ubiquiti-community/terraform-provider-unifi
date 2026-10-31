@@ -77,15 +77,15 @@ resource "unifi_wlan" "corp" {
 
 ### Optional
 
-- `accounting_enabled` (Boolean) Specifies whether to use RADIUS accounting.
+- `accounting_enabled` (Boolean) Specifies whether to use RADIUS accounting. Taken from the controller when not set.
 - `acct_server` (Block List) RADIUS accounting servers. (see [below for nested schema](#nestedblock--acct_server))
 - `auth_server` (Block List) RADIUS authentication servers. (see [below for nested schema](#nestedblock--auth_server))
-- `interim_update` (Attributes) RADIUS interim accounting update settings. (see [below for nested schema](#nestedatt--interim_update))
+- `interim_update` (Attributes) RADIUS interim accounting update settings. Taken from the controller when not set. (see [below for nested schema](#nestedatt--interim_update))
 - `site` (String) The name of the site to associate the settings with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
-- `use_usg_acct_server` (Boolean) Specifies whether to use usg as a RADIUS accounting server.
-- `use_usg_auth_server` (Boolean) Specifies whether to use usg as a RADIUS authentication server.
-- `vlan` (Attributes) Dynamic VLAN assignment settings. (see [below for nested schema](#nestedatt--vlan))
+- `use_usg_acct_server` (Boolean) Specifies whether to use usg as a RADIUS accounting server. Taken from the controller when not set.
+- `use_usg_auth_server` (Boolean) Specifies whether to use usg as a RADIUS authentication server. Taken from the controller when not set.
+- `vlan` (Attributes) Dynamic VLAN assignment settings. Taken from the controller when not set. (see [below for nested schema](#nestedatt--vlan))
 
 ### Read-Only
 
@@ -101,7 +101,7 @@ Required:
 Optional:
 
 - `ip` (String) IP address of the accounting server. Optional: the controller-managed default profile returns a server entry without an IP, so importing it must not force one.
-- `port` (Number) Port of accounting service.
+- `port` (Number) Port of accounting service. Defaults to `1813` for a server added by the configuration; an existing server keeps the controller's port, which may be none.
 
 
 <a id="nestedblock--auth_server"></a>
@@ -114,7 +114,7 @@ Required:
 Optional:
 
 - `ip` (String) IP address of the authentication server. Optional: the controller-managed default profile (e.g. the one created when a gateway RADIUS/VPN service is enabled, with `use_usg_auth_server = true`) returns a server entry without an IP, so importing it must not force one.
-- `port` (Number) Port of authentication service.
+- `port` (Number) Port of authentication service. Defaults to `1812` for a server added by the configuration; an existing server keeps the controller's port, which may be none.
 
 
 <a id="nestedatt--interim_update"></a>

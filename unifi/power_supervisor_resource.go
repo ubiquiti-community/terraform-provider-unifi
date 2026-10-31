@@ -18,15 +18,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -37,6 +36,7 @@ var (
 	_ resource.ResourceWithImportState  = &powerSupervisorResource{}
 	_ resource.ResourceWithIdentity     = &powerSupervisorResource{}
 	_ resource.ResourceWithUpgradeState = &powerSupervisorResource{}
+	_ resource.ResourceWithModifyPlan   = &powerSupervisorResource{}
 )
 
 // Ensure provider defined types fully satisfy list interfaces.
@@ -179,18 +179,21 @@ func (r *powerSupervisorResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether supervision is enabled. Defaults to `true`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether supervision is enabled. Defaults to `true` for a " +
+					"newly created supervisor; an existing supervisor keeps the controller's value.",
+				Optional: true,
+				Computed: true,
 			},
 			"heartbeat_interval": schema.StringAttribute{
 				MarkdownDescription: "How often the controller probes the device, as a Go " +
-					"duration string (e.g. `60s`, `1m`). Defaults to `1m0s`.",
+					"duration string (e.g. `60s`, `1m`). Defaults to `1m0s` for a newly created " +
+					"supervisor; an existing supervisor keeps the controller's value.",
 				CustomType: timetypes.GoDurationType{},
 				Optional:   true,
 				Computed:   true,
-				Default:    stringdefault.StaticString("1m0s"),
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("1m0s"),
+				},
 				Validators: []validator.String{
 					validators.GoDurationMultipleOf(time.Second),
 				},
@@ -198,22 +201,28 @@ func (r *powerSupervisorResource) Schema(
 			"silence_threshold": schema.StringAttribute{
 				MarkdownDescription: "How long the device may be silent before the controller " +
 					"power-cycles its upstream PoE source, as a Go duration string (e.g. `15m`). " +
-					"Defaults to `15m0s`.",
+					"Defaults to `15m0s` for a newly created " +
+					"supervisor; an existing supervisor keeps the controller's value.",
 				CustomType: timetypes.GoDurationType{},
 				Optional:   true,
 				Computed:   true,
-				Default:    stringdefault.StaticString("15m0s"),
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("15m0s"),
+				},
 				Validators: []validator.String{
 					validators.GoDurationMultipleOf(time.Second),
 				},
 			},
 			"power_off_duration": schema.StringAttribute{
 				MarkdownDescription: "How long the upstream PoE source stays off during a " +
-					"power-cycle, as a Go duration string (e.g. `2m`). Defaults to `2m0s`.",
+					"power-cycle, as a Go duration string (e.g. `2m`). Defaults to `2m0s` for a newly created " +
+					"supervisor; an existing supervisor keeps the controller's value.",
 				CustomType: timetypes.GoDurationType{},
 				Optional:   true,
 				Computed:   true,
-				Default:    stringdefault.StaticString("2m0s"),
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("2m0s"),
+				},
 				Validators: []validator.String{
 					validators.GoDurationMultipleOf(time.Second),
 				},
@@ -264,6 +273,24 @@ func (r *powerSupervisorResource) Schema(
 
 // UpgradeState migrates v0 state (heartbeat_interval/silence_threshold/
 // power_off_duration stored as integer seconds) to v1 (GoDuration strings).
+// ModifyPlan applies the `enabled = true` default to a new supervisor only.
+// The supervisor settings are always on the wire (go-unifi sends an unset bool
+// as false and an unset duration as 0), so a new supervisor still needs the
+// old defaults; but as schema Defaults they also replaced the controller's
+// values on every adopted supervisor, re-enabling one paused in the UI (#544).
+// The durations get the same treatment from planmodifiers.StringDefaultOnCreate.
+func (r *powerSupervisorResource) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if req.Plan.Raw.IsNull() {
+		return // resource is being destroyed
+	}
+	planDefaultOnCreate(ctx, req, resp, path.Root("enabled"), types.BoolValue(true),
+		!req.State.Raw.IsNull())
+}
+
 func (r *powerSupervisorResource) UpgradeState(
 	ctx context.Context,
 ) map[int64]resource.StateUpgrader {
