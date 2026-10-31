@@ -22,11 +22,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
@@ -38,6 +36,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
@@ -453,13 +452,17 @@ func (r *wlanFrameworkResource) Schema(
 						MarkdownDescription: "Enable WPA3 fast roaming (802.11r).",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"enhanced_192": schema.BoolAttribute{
 						MarkdownDescription: "Enable WPA3 Enterprise 192-bit mode.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 				},
 			},
@@ -512,19 +515,28 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Indicates that this is a guest WLAN and should use guest behaviors.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable or disable the WLAN.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Enable or disable the WLAN. Defaults to `true` for a newly created WLAN; " +
+					"an existing WLAN keeps the controller's value when unset.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ap_group": schema.SingleNestedAttribute{
 				MarkdownDescription: "Access point group assignment.",
 				Optional:            true,
 				Computed:            true,
-				Default:             objectdefault.StaticValue(wlanApGroupDefault()),
+				// No schema Default on the group: an adopted SSID keeps its AP
+				// group assignment; the create-time shape comes from ModifyPlan.
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"ids": schema.SetAttribute{
 						MarkdownDescription: "List of AP group IDs to apply this WLAN to.",
@@ -532,10 +544,13 @@ func (r *wlanFrameworkResource) Schema(
 						ElementType:         types.StringType,
 					},
 					"mode": schema.StringAttribute{
-						MarkdownDescription: "Access point group mode.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("all"),
+						MarkdownDescription: "Access point group mode. Defaults to `all` for a newly created WLAN; " +
+							"an existing WLAN keeps the controller's value when unset.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreate("all"),
+						},
 						Validators: []validator.String{
 							stringvalidator.OneOf("all", "groups", "devices"),
 						},
@@ -546,7 +561,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Enable VLAN tagging.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"vlan": schema.Int64Attribute{
 				MarkdownDescription: "VLAN ID.",
@@ -661,7 +678,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Indicates whether or not Multicast Enhance is turned of for the network.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"mac_filter": schema.SingleNestedAttribute{
 				MarkdownDescription: "MAC address filtering configuration.",
@@ -675,7 +694,9 @@ func (r *wlanFrameworkResource) Schema(
 						MarkdownDescription: "Indicates whether or not the MAC filter is turned on for the network.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
 					},
 					"list": schema.SetAttribute{
 						MarkdownDescription: "List of MAC addresses to filter (only valid if `enabled` is `true`).",
@@ -683,10 +704,14 @@ func (r *wlanFrameworkResource) Schema(
 						ElementType:         types.StringType,
 					},
 					"policy": schema.StringAttribute{
-						MarkdownDescription: "MAC address filter policy (only valid if `enabled` is `true`).",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("deny"),
+						MarkdownDescription: "MAC address filter policy (only valid if `enabled` is `true`). " +
+							"Defaults to `deny` for a newly created WLAN; an existing WLAN keeps the " +
+							"controller's value when unset.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreate("deny"),
+						},
 						Validators: []validator.String{
 							stringvalidator.OneOf("allow", "deny"),
 						},
@@ -698,7 +723,9 @@ func (r *wlanFrameworkResource) Schema(
 					"Requires `security = wpapsk`.",
 				Optional: true,
 				Computed: true,
-				Default:  booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"private_preshared_keys": schema.ListNestedAttribute{
 				MarkdownDescription: "Private pre-shared keys (PPSK): a list of per-key passphrases, " +
@@ -712,7 +739,11 @@ func (r *wlanFrameworkResource) Schema(
 								"Leave unset to use the WLAN's default network.",
 							Optional: true,
 							Computed: true,
-							Default:  stringdefault.StaticString(""),
+							// Kept (#544): the key list is not Computed, so the
+							// configuration owns every entry and there is no
+							// adopted value to overwrite; "" is how the controller
+							// stores "the WLAN's own network".
+							Default: stringdefault.StaticString(""),
 						},
 						"password": schema.StringAttribute{
 							MarkdownDescription: "The passphrase for this key (8-255 characters).",
@@ -753,7 +784,9 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "NAS identifier type for RADIUS.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("bssid"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("ap_name", "ap_mac", "bssid", "site_name", "custom"),
 				},
@@ -770,13 +803,17 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Isolates stations on layer 2 (ethernet) level.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"proxy_arp": schema.BoolAttribute{
 				MarkdownDescription: "Reduces airtime usage by allowing APs to \"proxy\" common broadcast frames as unicast.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"bss_transition": schema.BoolAttribute{
 				MarkdownDescription: "Improves client roaming by providing connection details of nearby APs.",
@@ -790,13 +827,17 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Enable Unscheduled Automatic Power Save Delivery.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"fast_roaming_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Enable fast roaming, aka 802.11r.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"minimum_data_rate_2g_kbps": schema.Int64Attribute{
 				MarkdownDescription: "Minimum data rate for 2G clients in Kbps. " +
@@ -839,10 +880,13 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"minrate_setting_preference": schema.StringAttribute{
-				MarkdownDescription: "Minimum rate setting preference.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("auto"),
+				MarkdownDescription: "Minimum rate setting preference. Defaults to `auto` for a newly " +
+					"created WLAN; an existing WLAN keeps the controller's value when unset.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("auto"),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "manual"),
 				},
@@ -859,10 +903,14 @@ func (r *wlanFrameworkResource) Schema(
 				},
 				Attributes: map[string]schema.Attribute{
 					"mode": schema.StringAttribute{
-						MarkdownDescription: "WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`.",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("wpa2"),
+						MarkdownDescription: "WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`. Defaults to " +
+							"`wpa2` for a newly created WLAN; an existing WLAN keeps the controller's " +
+							"value when unset.",
+						Optional: true,
+						Computed: true,
+						PlanModifiers: []planmodifier.String{
+							planmodifiers.StringDefaultOnCreate("wpa2"),
+						},
 						Validators: []validator.String{
 							stringvalidator.OneOf("auto", "wpa1", "wpa2"),
 						},
@@ -881,10 +929,14 @@ func (r *wlanFrameworkResource) Schema(
 				},
 			},
 			"dtim_mode": schema.StringAttribute{
-				MarkdownDescription: "DTIM mode. Can be one of `default` or `custom`. Use `custom` together with `dtim_ng`/`dtim_na`/`dtim_6e`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("default"),
+				MarkdownDescription: "DTIM mode. Can be one of `default` or `custom`. Use `custom` together " +
+					"with `dtim_ng`/`dtim_na`/`dtim_6e`. Defaults to `default` for a newly created " +
+					"WLAN; an existing WLAN keeps the controller's value when unset.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("default"),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("default", "custom"),
 				},
@@ -955,13 +1007,17 @@ func (r *wlanFrameworkResource) Schema(
 				MarkdownDescription: "Enable Hotspot 2.0 configuration.",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"mlo_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Enable Multi-Link Operation (6 GHz).",
 				Optional:            true,
 				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"bc_filter_list": schema.SetAttribute{
 				MarkdownDescription: "List of MAC addresses for the broadcast filter. " +
@@ -1019,7 +1075,10 @@ func (r *wlanFrameworkResource) Schema(
 									MarkdownDescription: "Start minute for the block (0-59).",
 									Optional:            true,
 									Computed:            true,
-									Default:             int64default.StaticInt64(0),
+									// Kept (#544): schedule is a plain list block the
+									// configuration owns entry by entry, so this only
+									// completes a declared start time to the full hour.
+									Default: int64default.StaticInt64(0),
 									Validators: []validator.Int64{
 										int64validator.Between(0, 59),
 									},
@@ -1187,9 +1246,68 @@ func (r *wlanFrameworkResource) ModifyPlan(
 
 	groupsChanged := planGroupDefaults(&plan)
 
-	if changed || radiusChanged || groupsChanged {
+	apGroupChanged, d := planApGroupDefault(ctx, req, &plan)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	enabledChanged, d := planEnabledOnCreate(ctx, req, &plan)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if changed || radiusChanged || groupsChanged || apGroupChanged || enabledChanged {
 		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 	}
+}
+
+// planEnabledOnCreate plans `enabled = true` for a WLAN being created without
+// the attribute. go-unifi always sends `enabled` (the field has no omitempty),
+// so an unset value would create a disabled SSID; the attribute carries no
+// schema Default because that Default would also apply on update and switch
+// on an adopted SSID the controller holds disabled (#544). On update,
+// UseStateForUnknown holds the controller's value. Returns true when plan
+// changed.
+func planEnabledOnCreate(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	plan *wlanFrameworkResourceModel,
+) (bool, diag.Diagnostics) {
+	if !req.State.Raw.IsNull() || !plan.Enabled.IsUnknown() {
+		return false, nil
+	}
+	var configEnabled types.Bool
+	diags := req.Config.GetAttribute(ctx, path.Root("enabled"), &configEnabled)
+	if diags.HasError() || !configEnabled.IsNull() {
+		return false, diags
+	}
+	plan.Enabled = types.BoolValue(true)
+	return true, diags
+}
+
+// planApGroupDefault gives ap_group its create-time shape (mode `all`, no ids,
+// which Create resolves to the site's default AP group) when the configuration
+// omits it. The group has no schema Default: a Default would also apply on
+// update and reset an adopted SSID's AP group assignment to `all`, clearing
+// its ap_group_ids (#544). On update UseStateForUnknown carries the prior
+// object, so only a create reaches the fill-in. Returns true when plan changed.
+func planApGroupDefault(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	plan *wlanFrameworkResourceModel,
+) (bool, diag.Diagnostics) {
+	if !plan.ApGroup.IsNull() && !plan.ApGroup.IsUnknown() {
+		return false, nil
+	}
+	var configApGroup types.Object
+	diags := req.Config.GetAttribute(ctx, path.Root("ap_group"), &configApGroup)
+	if diags.HasError() || !configApGroup.IsNull() {
+		return false, diags
+	}
+	plan.ApGroup = wlanApGroupDefault()
+	return true, diags
 }
 
 // planGroupDefaults gives the wpa and wpa3 groups their create-time shape when

@@ -84,10 +84,10 @@ resource "unifi_wlan" "wifi" {
 - `bc_filter_list` (Set of String) List of MAC addresses for the broadcast filter. The controller may populate this on its own, so it is computed when unset.
 - `bss_transition` (Boolean) Improves client roaming by providing connection details of nearby APs.
 - `dtim_6e` (Number) DTIM period for the 6 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
-- `dtim_mode` (String) DTIM mode. Can be one of `default` or `custom`. Use `custom` together with `dtim_ng`/`dtim_na`/`dtim_6e`.
+- `dtim_mode` (String) DTIM mode. Can be one of `default` or `custom`. Use `custom` together with `dtim_ng`/`dtim_na`/`dtim_6e`. Defaults to `default` for a newly created WLAN; an existing WLAN keeps the controller's value when unset.
 - `dtim_na` (Number) DTIM period for the 5 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
 - `dtim_ng` (Number) DTIM period for the 2.4 GHz band (1-255). Only used when `dtim_mode` is `custom`. Computed from the controller when not set.
-- `enabled` (Boolean) Enable or disable the WLAN.
+- `enabled` (Boolean) Enable or disable the WLAN. Defaults to `true` for a newly created WLAN; an existing WLAN keeps the controller's value when unset.
 - `enhanced_iot` (Boolean) Enable enhanced IoT connectivity. When `true`, the controller forces `iapp_enabled = true`, `wpa3.support = false`, `wpa3.transition = false`, `pmf_mode = "disabled"` and `dtim_ng = 1`; the provider pins those fields to match, so any conflicting values you set for them are ignored (this disables WPA3 on the SSID).
 - `fast_roaming_enabled` (Boolean) Enable fast roaming, aka 802.11r.
 - `group_rekey` (Number) Group rekey interval in seconds (0 to disable). Computed from the controller when not set.
@@ -99,7 +99,7 @@ resource "unifi_wlan" "wifi" {
 - `mac_filter` (Attributes) MAC address filtering configuration. (see [below for nested schema](#nestedatt--mac_filter))
 - `minimum_data_rate_2g_kbps` (Number) Minimum data rate for 2G clients in Kbps. When unset, the controller assigns a value (e.g. `1000` in `auto` mode), so this is computed rather than defaulted to `0`.
 - `minimum_data_rate_5g_kbps` (Number) Minimum data rate for 5G clients in Kbps. When unset, the controller assigns a value (e.g. `6000` in `auto` mode), so this is computed rather than defaulted to `0`.
-- `minrate_setting_preference` (String) Minimum rate setting preference.
+- `minrate_setting_preference` (String) Minimum rate setting preference. Defaults to `auto` for a newly created WLAN; an existing WLAN keeps the controller's value when unset.
 - `mlo_enabled` (Boolean) Enable Multi-Link Operation (6 GHz).
 - `multicast_enhance` (Boolean) Indicates whether or not Multicast Enhance is turned of for the network.
 - `nas_identifier_type` (String) NAS identifier type for RADIUS.
@@ -136,7 +136,7 @@ resource "unifi_wlan" "wifi" {
 Optional:
 
 - `ids` (Set of String) List of AP group IDs to apply this WLAN to.
-- `mode` (String) Access point group mode.
+- `mode` (String) Access point group mode. Defaults to `all` for a newly created WLAN; an existing WLAN keeps the controller's value when unset.
 
 
 <a id="nestedatt--mac_filter"></a>
@@ -146,7 +146,7 @@ Optional:
 
 - `enabled` (Boolean) Indicates whether or not the MAC filter is turned on for the network.
 - `list` (Set of String) List of MAC addresses to filter (only valid if `enabled` is `true`).
-- `policy` (String) MAC address filter policy (only valid if `enabled` is `true`).
+- `policy` (String) MAC address filter policy (only valid if `enabled` is `true`). Defaults to `deny` for a newly created WLAN; an existing WLAN keeps the controller's value when unset.
 
 
 <a id="nestedatt--private_preshared_keys"></a>
@@ -231,7 +231,7 @@ Optional:
 Optional:
 
 - `enc` (String) WPA encryption. Can be one of `auto`, `ccmp`, `gcmp`, `ccmp-256`, or `gcmp-256`. Computed from the controller when not set.
-- `mode` (String) WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`.
+- `mode` (String) WPA mode. Can be one of `auto`, `wpa1`, or `wpa2`. Defaults to `wpa2` for a newly created WLAN; an existing WLAN keeps the controller's value when unset.
 
 
 <a id="nestedatt--wpa3"></a>
