@@ -12,11 +12,12 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # CLAUDE_CODE_OAUTH_TOKEN is a repository secret: a PR from a fork gets no
+    # secrets and a Dependabot PR only gets Dependabot secrets, so the review
+    # cannot run there and used to fail the check. Skip both.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     permissions:

@@ -42,8 +42,9 @@ func UpgradeRawState(
 // Keys absent from obj are skipped, so it is safe to call against state
 // written before a field existed. When obj[target] already holds a map (from
 // an earlier NestFields call building a deeper structure) the moved fields are
-// merged into it. If none of the listed keys are present, obj[target] is left
-// untouched so schema reconciliation fills it with null.
+// merged into it. If none of the listed keys are present, or all of them are
+// null, obj[target] is left untouched so schema reconciliation fills it with
+// null.
 //
 // A flat key may share the target's name (a bare `auto_upgrade` bool becoming
 // `auto_upgrade = { enabled }`). Once obj[target] already holds the nested
@@ -62,6 +63,13 @@ func NestFields(obj map[string]any, target string, fields map[string]string) {
 		}
 		raw, ok := obj[oldKey]
 		if !ok {
+			continue
+		}
+		if raw == nil {
+			// A null flat leaf is as good as absent: drop it instead of
+			// building an object of nulls, which never equals the null object
+			// an unset configuration plans (#616).
+			delete(obj, oldKey)
 			continue
 		}
 		if nested == nil {
