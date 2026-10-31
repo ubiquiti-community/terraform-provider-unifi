@@ -87,6 +87,32 @@ func testAccSettingIpsHoneypotPreCheck(t *testing.T) {
 	}
 }
 
+// settingImportIgnore lists the attribute prefixes an ImportStateVerify step
+// of unifi_setting must skip, plus extra. Since #668 an import reads every
+// section the controller holds a document for, while the prior state only
+// holds the sections the configuration sets, so every unmanaged section
+// differs. The prefixes end with a dot so that only nested attributes match.
+// radius is left out so that the radius test can verify its imported section;
+// the other tests pass it in extra.
+func settingImportIgnore(extra ...string) []string {
+	return append([]string{
+		"auto_speedtest.",
+		"connectivity.",
+		"country.",
+		"doh.",
+		"dpi.",
+		"global_switch.",
+		"igmp_snooping.",
+		"ips.",
+		"lcm.",
+		"mgmt.",
+		"network_optimization.",
+		"ntp.",
+		"syslog.",
+		"usg.",
+	}, extra...)
+}
+
 func TestAccSettingResource_mgmt(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { preCheck(t) },
@@ -150,23 +176,9 @@ func TestAccSettingResource_radius(t *testing.T) {
 				ResourceName:      "unifi_setting.test",
 				ImportState:       true,
 				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
+				ImportStateVerifyIgnore: settingImportIgnore(
 					"radius.secret", // Secret is sensitive and won't be in state after import
-					"auto_speedtest.",
-					"connectivity.",
-					"country.",
-					"doh.",
-					"dpi.",
-					"global_switch.",
-					"igmp_snooping.",
-					"ips.",
-					"lcm.",
-					"mgmt.",
-					"network_optimization.",
-					"ntp.",
-					"syslog.",
-					"usg.",
-				},
+				),
 			},
 		},
 	})
@@ -668,19 +680,13 @@ func TestAccSettingResource_snmp(t *testing.T) {
 				),
 			},
 			{
-				// Import reads only the site; configured blocks are not
-				// recoverable from an import ID, as for the sibling blocks.
-				ResourceName:      "unifi_setting.test",
-				ImportState:       true,
-				ImportStateVerify: true,
-				ImportStateVerifyIgnore: []string{
-					"snmp.%",
-					"snmp.enabled",
-					"snmp.community",
-					"snmp.enabled_v3",
-					"snmp.username",
-					"snmp.password",
-				},
+				// The snmp section is not read on import, and the import
+				// reads every other section the controller has, which this
+				// configuration does not manage.
+				ResourceName:            "unifi_setting.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: settingImportIgnore("snmp.", "radius."),
 			},
 		},
 	})
@@ -2844,7 +2850,7 @@ resource "unifi_setting" "test" {
 				ResourceName:            "unifi_setting.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"snmp"},
+				ImportStateVerifyIgnore: settingImportIgnore("snmp.", "radius."),
 			},
 		},
 	})
