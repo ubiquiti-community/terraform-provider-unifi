@@ -174,6 +174,7 @@ type portOverrideModel struct {
 	SettingPreference         types.String `tfsdk:"setting_preference"`
 	Speed                     types.Int64  `tfsdk:"speed"`
 	Stormctrl                 types.Object `tfsdk:"stormctrl"`
+	StpEdgeState              types.String `tfsdk:"stp_edge_state"`
 	StpPortMode               types.Bool   `tfsdk:"stp_port_mode"`
 	TaggedNetworkIDs          types.Set    `tfsdk:"tagged_networkconf_ids"`
 	TaggedVLANMgmt            types.String `tfsdk:"tagged_vlan_mgmt"`
@@ -1234,6 +1235,13 @@ func (r *deviceResource) Schema(
 							Optional:    true,
 						},
 						"stormctrl": devicePortStormctrlSchema(),
+						"stp_edge_state": schema.StringAttribute{
+							Description: "STP edge port mode; valid values are `enabled`, `disabled`, and `auto`. An edge port (the UI's Edge port mode, `enabled`) forwards as soon as its link comes up and sends no topology change when it goes up or down, for a port with an end device behind it. `auto` detects edge ports (RSTP auto-edge). Only managed when set: leaving it unset keeps the port's current value.",
+							Optional:    true,
+							Validators: []validator.String{
+								stringvalidator.OneOf("enabled", "disabled", "auto"),
+							},
+						},
 						"stp_port_mode": schema.BoolAttribute{
 							Description: "STP port mode.",
 							Optional:    true,
@@ -2620,8 +2628,8 @@ func (r *deviceResource) modelToAPIDevice(
 //
 // The fields DevicePortOverrides models but the port_override schema does not
 // expose are the same problem without the op_mode special case: a declared entry
-// never carries them, so any controller-side value (stp_edge_state "auto",
-// multicast_router_mode "NONE", link_debounce_auto, a qos_profile, …) makes the
+// never carries them, so any controller-side value (multicast_router_mode
+// "NONE", link_debounce_auto, a qos_profile, …) makes the
 // declared entry differ, sends the whole array, and deletes the field on every
 // port. They are copied over unconditionally, since config cannot set them.
 // Test_carryUnwritableFields_coversEveryUnexposedField fails when go-unifi grows a
@@ -2650,6 +2658,12 @@ func carryUnwritableFields(
 		declared.TaggedNetworkIDs = current.TaggedNetworkIDs
 	}
 
+	// stp_edge_state is configurable, but only managed when set, the same way:
+	// config leaving it null must not delete the port's edge mode.
+	if declared.StpEdgeState == "" {
+		declared.StpEdgeState = current.StpEdgeState
+	}
+
 	declared.EeeEnabled = current.EeeEnabled
 	declared.LdMode = current.LdMode
 	declared.LdStatus = current.LdStatus
@@ -2663,7 +2677,6 @@ func carryUnwritableFields(
 	declared.SdWANUnderlayPortNetworkID = current.SdWANUnderlayPortNetworkID
 	declared.StablePortEnabled = current.StablePortEnabled
 	declared.StpBpduGuardEnabled = current.StpBpduGuardEnabled
-	declared.StpEdgeState = current.StpEdgeState
 	declared.StpUplink = current.StpUplink
 	declared.TrustedPortMAC = current.TrustedPortMAC
 	declared.UnitID = current.UnitID
@@ -2887,6 +2900,13 @@ func (r *deviceResource) reconcilePortOverrides(
 				updated.PortProfileID = types.StringValue(apiPO.PortProfileID)
 			}
 		}
+		if !pm.StpEdgeState.IsNull() {
+			if apiPO.StpEdgeState == "" {
+				updated.StpEdgeState = types.StringNull()
+			} else {
+				updated.StpEdgeState = types.StringValue(apiPO.StpEdgeState)
+			}
+		}
 
 		// The guards above only resolve fields the user explicitly configured.
 		// Optional+Computed attributes left unset (e.g. flow_control_enabled,
@@ -3060,6 +3080,12 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 		model.VoiceNetworkID = types.StringNull()
 	} else {
 		model.VoiceNetworkID = types.StringValue(po.VoiceNetworkID)
+	}
+
+	if po.StpEdgeState == "" {
+		model.StpEdgeState = types.StringNull()
+	} else {
+		model.StpEdgeState = types.StringValue(po.StpEdgeState)
 	}
 
 	// Boolean attributes
@@ -3248,6 +3274,9 @@ func (r *deviceResource) frameworkToPortOverrides(
 			}
 			if !model.VoiceNetworkID.IsNull() {
 				po.VoiceNetworkID = model.VoiceNetworkID.ValueString()
+			}
+			if !model.StpEdgeState.IsNull() {
+				po.StpEdgeState = model.StpEdgeState.ValueString()
 			}
 
 			// Boolean attributes
@@ -3498,6 +3527,7 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"setting_preference":     types.StringType,
 		"speed":                  types.Int64Type,
 		"stormctrl":              types.ObjectType{AttrTypes: portStormctrlAttrTypes()},
+		"stp_edge_state":         types.StringType,
 		"stp_port_mode":          types.BoolType,
 		"tagged_networkconf_ids": types.SetType{ElemType: types.StringType},
 		"tagged_vlan_mgmt":       types.StringType,

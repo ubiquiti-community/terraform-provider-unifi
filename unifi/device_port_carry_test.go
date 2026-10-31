@@ -26,7 +26,6 @@ var unexposedPortOverrideFields = []string{
 	"sd_wan_underlay_port_networkconf_id",
 	"stable_port_enabled",
 	"stp_bpdu_guard_enabled",
-	"stp_edge_state",
 	"stp_uplink",
 	"trusted_port_mac",
 	"unit_id",

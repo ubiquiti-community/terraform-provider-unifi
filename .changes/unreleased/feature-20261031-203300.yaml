@@ -1,0 +1,3 @@
+kind: feature
+body: '**`unifi_device`: `port_override.stp_edge_state` sets the STP edge port mode.** `enabled` is the UI''s Edge port mode: the port forwards as soon as its link comes up and its link changes send no topology change, so a flapping end device no longer flushes MAC tables across the network. `disabled` and `auto` (RSTP auto-edge) are accepted too. go-unifi already modelled the field and the provider only carried the controller''s value, so it could be set in the UI but not declared. Like `tagged_networkconf_ids` it is only managed when set: leaving it unset keeps the port''s current value'
+time: 2026-10-31T20:33:00Z

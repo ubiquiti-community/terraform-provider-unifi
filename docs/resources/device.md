@@ -261,6 +261,7 @@ Optional:
 - `setting_preference` (String) Setting preference.
 - `speed` (Number) Port speed in Mbps.
 - `stormctrl` (Attributes) Storm control settings. (see [below for nested schema](#nestedatt--port_override--stormctrl))
+- `stp_edge_state` (String) STP edge port mode; valid values are `enabled`, `disabled`, and `auto`. An edge port (the UI's Edge port mode, `enabled`) forwards as soon as its link comes up and sends no topology change when it goes up or down, for a port with an end device behind it. `auto` detects edge ports (RSTP auto-edge). Only managed when set: leaving it unset keeps the port's current value.
 - `stp_port_mode` (Boolean) STP port mode.
 - `tagged_networkconf_ids` (Set of String) Set of network IDs to tag on this port (the UI's Tagged VLAN Management "Custom" selection; pair with `tagged_vlan_mgmt = "custom"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.
 - `tagged_vlan_mgmt` (String) Tagged VLAN management.
