@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -61,10 +62,19 @@ func Test_settingResource_radiusSecretWriteOnlySchema(t *testing.T) {
 }
 
 // radiusSecretWOController is a fake controller serving the radius setting
-// document. It records the body of every radius PUT and echoes it back.
+// document. It records the body of every radius PUT, merges it into the
+// stored document as the controller does, and echoes the document back.
 type radiusSecretWOController struct {
-	mu   sync.Mutex
-	puts []map[string]any
+	mu      sync.Mutex
+	puts    []map[string]any
+	current map[string]any
+}
+
+// storedSecret returns the secret the controller holds.
+func (c *radiusSecretWOController) storedSecret() any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.current["x_secret"]
 }
 
 func (c *radiusSecretWOController) lastPut(t *testing.T) map[string]any {
@@ -83,7 +93,7 @@ func newRadiusSecretWOFakeControllerClient(
 	t.Helper()
 
 	ctrl := &radiusSecretWOController{}
-	current := map[string]any{
+	ctrl.current = map[string]any{
 		"_id":                "radius-id",
 		"key":                "radius",
 		"accounting_enabled": false,
@@ -116,14 +126,13 @@ func newRadiusSecretWOFakeControllerClient(
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(payload)
 	}
-	mux.HandleFunc(
-		"/api/s/default/get/setting/radius",
-		func(w http.ResponseWriter, _ *http.Request) {
-			ctrl.mu.Lock()
-			defer ctrl.mu.Unlock()
-			writeDoc(w, current)
-		},
-	)
+	getDoc := func(w http.ResponseWriter, _ *http.Request) {
+		ctrl.mu.Lock()
+		defer ctrl.mu.Unlock()
+		writeDoc(w, ctrl.current)
+	}
+	mux.HandleFunc("/api/s/default/get/setting", getDoc)
+	mux.HandleFunc("/api/s/default/get/setting/radius", getDoc)
 	mux.HandleFunc(
 		"/api/s/default/set/setting/radius",
 		func(w http.ResponseWriter, r *http.Request) {
@@ -138,8 +147,8 @@ func newRadiusSecretWOFakeControllerClient(
 			ctrl.mu.Lock()
 			defer ctrl.mu.Unlock()
 			ctrl.puts = append(ctrl.puts, doc)
-			current = doc
-			writeDoc(w, doc)
+			maps.Copy(ctrl.current, doc)
+			writeDoc(w, ctrl.current)
 		},
 	)
 
@@ -298,8 +307,15 @@ func TestSettingRadiusSecretWO(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("Create diagnostics: %v", resp.Diagnostics)
 		}
-		if got := ctrl.lastPut(t)["x_secret"]; got != "controller-secret" {
-			t.Fatalf("x_secret in request body = %v, want controller-secret", got)
+		// The unchanged secret is not sent back (writeSetting writes only the
+		// keys that change the stored setting), so the controller keeps it.
+		for _, put := range ctrl.puts {
+			if got, ok := put["x_secret"]; ok {
+				t.Fatalf("x_secret in request body = %v, want it left out", got)
+			}
+		}
+		if got := ctrl.storedSecret(); got != "controller-secret" {
+			t.Fatalf("controller secret = %v, want controller-secret", got)
 		}
 	})
 }

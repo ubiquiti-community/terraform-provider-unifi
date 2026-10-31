@@ -23,7 +23,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -821,7 +820,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether device fingerprinting is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -837,7 +835,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether the device display is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(true),
 					},
 					"brightness": schema.Int64Attribute{
 						MarkdownDescription: "Display brightness (1-100).",
@@ -860,7 +857,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether touch events on the display are enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(true),
 					},
 				},
 			},
@@ -876,7 +872,6 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether automated network optimization is enabled.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -972,27 +967,21 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Enable debug logging.",
 						Optional:            true,
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
 					"this_controller": schema.SingleNestedAttribute{
 						MarkdownDescription: "Forwarding of this controller's own events to the remote syslog server.",
 						Optional:            true,
 						Computed:            true,
-						Default: objectdefault.StaticValue(
-							settingSyslogThisControllerDefault(),
-						),
 						Attributes: map[string]schema.Attribute{
 							"enabled": schema.BoolAttribute{
 								MarkdownDescription: "Also log this controller's events.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
 							},
 							"encrypted_only": schema.BoolAttribute{
 								MarkdownDescription: "Only send this controller's logs over an encrypted channel.",
 								Optional:            true,
 								Computed:            true,
-								Default:             booldefault.StaticBool(false),
 							},
 						},
 					},
@@ -1384,6 +1373,9 @@ func (r *settingResource) Schema(
 				MarkdownDescription: "RADIUS settings.",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"accounting_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable RADIUS accounting.",
@@ -1542,6 +1534,9 @@ func (r *settingResource) Schema(
 				MarkdownDescription: "USG settings.",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"broadcast_ping": schema.BoolAttribute{
 						MarkdownDescription: "Enable broadcast ping.",
@@ -1802,6 +1797,10 @@ func (r *settingResource) Schema(
 			"igmp_snooping": schema.SingleNestedAttribute{
 				MarkdownDescription: "Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Whether IGMP snooping is enabled for the site.",
@@ -1828,6 +1827,10 @@ func (r *settingResource) Schema(
 					"pre-shared key are not exposed and are preserved across updates, " +
 					"as are any options this block does not model.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable Wireless Meshing for the site.",
@@ -2033,6 +2036,10 @@ func (r *settingResource) Schema(
 					"On current controllers jumbo frames are only honored here, not via `unifi_device.jumboframe_enabled`. " +
 					"Options not exposed by this block are preserved across updates.",
 				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"acl_device_isolation": schema.ListAttribute{
 						MarkdownDescription: "Network IDs with Client Device Isolation " +
@@ -2306,14 +2313,51 @@ func nestSettingState(state map[string]any) {
 	})
 }
 
-// ModifyPlan reproduces the flat syslog.netconsole_enabled default for the
-// nested netconsole object without a schema Default: the framework applies a
-// leaf Default even when its parent object is null in configuration and then
-// re-plans the default-less Computed parent as unknown, so a Default there
-// would both trip the framework's plan-change gate whenever the controller
-// has netconsole enabled and be discarded by UseStateForUnknown anyway. As
-// with the flat attribute, the default only applies when the syslog block is
-// configured; an omitted syslog block keeps the controller's values.
+// settingSectionDefaults are the leaf defaults of the setting sections. They
+// are not schema Defaults for the reason given on ModifyPlan, which applies
+// them to a section the configuration sets.
+var settingSectionDefaults = []struct {
+	section  path.Path
+	defaults map[string]attr.Value
+}{
+	{path.Root("auto_speedtest"), map[string]attr.Value{
+		"enabled": types.BoolValue(false),
+	}},
+	{path.Root("dpi"), map[string]attr.Value{
+		"enabled":                types.BoolValue(false),
+		"fingerprinting_enabled": types.BoolValue(false),
+	}},
+	{path.Root("lcm"), map[string]attr.Value{
+		"enabled":     types.BoolValue(true),
+		"sync":        types.BoolValue(false),
+		"touch_event": types.BoolValue(true),
+	}},
+	{path.Root("network_optimization"), map[string]attr.Value{
+		"enabled": types.BoolValue(false),
+	}},
+	{path.Root("syslog"), map[string]attr.Value{
+		"enabled":          types.BoolValue(false),
+		"log_all_contents": types.BoolValue(false),
+		"debug":            types.BoolValue(false),
+		"this_controller":  settingSyslogThisControllerDefault(),
+	}},
+	{path.Root("syslog").AtName("this_controller"), map[string]attr.Value{
+		"enabled":        types.BoolValue(false),
+		"encrypted_only": types.BoolValue(false),
+	}},
+}
+
+// ModifyPlan applies the section leaf defaults (settingSectionDefaults and
+// the flat syslog.netconsole_enabled default for the nested netconsole
+// object) without schema Defaults: the framework applies a leaf Default even
+// when its parent object is null in configuration and then re-plans the
+// default-less Computed attributes as unknown. A section the configuration
+// leaves out is still in the plan when the prior state holds it (an import
+// reads every section), so a Default there would overwrite the controller's
+// value, trip the framework's plan-change gate and be discarded by
+// UseStateForUnknown anyway. As with the flat attributes, a default only
+// applies when its section is configured; an omitted section keeps the
+// controller's values.
 func (r *settingResource) ModifyPlan(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
@@ -2324,6 +2368,55 @@ func (r *settingResource) ModifyPlan(
 	}
 
 	r.planGlobalSwitchUnsetUnknown(ctx, req, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Terraform proposes a configured section with every leaf the
+	// configuration leaves out set to null, which differs from a prior state
+	// that holds those leaves (an import reads every section in full), so the
+	// framework re-plans them as unknown. Keep their prior values, as
+	// UseStateForUnknown does for a section the configuration omits entirely.
+	if !req.State.Raw.IsNull() {
+		for name, a := range req.Plan.Schema.GetAttributes() {
+			// The sections; timeouts carries its own object type.
+			if _, ok := a.GetType().(types.ObjectType); !ok {
+				continue
+			}
+			sectionPath := path.Root(name)
+			var plan, config, prior types.Object
+			resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, sectionPath, &plan)...)
+			resp.Diagnostics.Append(req.Config.GetAttribute(ctx, sectionPath, &config)...)
+			resp.Diagnostics.Append(req.State.GetAttribute(ctx, sectionPath, &prior)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			restored, d := keepPriorUnconfigured(ctx, plan, config, prior)
+			resp.Diagnostics.Append(d...)
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, sectionPath, restored)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
+	}
+
+	for _, s := range settingSectionDefaults {
+		var configSection types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, s.section, &configSection)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if configSection.IsNull() || configSection.IsUnknown() {
+			continue
+		}
+		configAttrs := configSection.Attributes()
+		for name, def := range s.defaults {
+			if v, ok := configAttrs[name]; ok && v.IsNull() {
+				resp.Diagnostics.Append(
+					resp.Plan.SetAttribute(ctx, s.section.AtName(name), def)...)
+			}
+		}
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2342,7 +2435,7 @@ func (r *settingResource) ModifyPlan(
 
 	ncPath := path.Root("syslog").AtName("netconsole")
 	var planNC types.Object
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, ncPath, &planNC)...)
+	resp.Diagnostics.Append(resp.Plan.GetAttribute(ctx, ncPath, &planNC)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2367,6 +2460,44 @@ func (r *settingResource) ModifyPlan(
 		return
 	}
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, ncPath, obj)...)
+}
+
+// keepPriorUnconfigured returns plan with every attribute that is unknown in
+// plan and null in config replaced by its prior value, null included,
+// descending into the nested objects the configuration sets.
+func keepPriorUnconfigured(
+	ctx context.Context,
+	plan, config, prior types.Object,
+) (types.Object, diag.Diagnostics) {
+	if plan.IsNull() || plan.IsUnknown() || config.IsNull() || config.IsUnknown() ||
+		prior.IsNull() || prior.IsUnknown() {
+		return plan, nil
+	}
+	var diags diag.Diagnostics
+	configAttrs := config.Attributes()
+	priorAttrs := prior.Attributes()
+	attrs := plan.Attributes()
+	for name, planned := range attrs {
+		configured, priorValue := configAttrs[name], priorAttrs[name]
+		if configured == nil || priorValue == nil {
+			continue
+		}
+		if planned.IsUnknown() && configured.IsNull() && !priorValue.IsUnknown() {
+			attrs[name] = priorValue
+			continue
+		}
+		plannedObj, ok1 := planned.(types.Object)
+		configuredObj, ok2 := configured.(types.Object)
+		priorObj, ok3 := priorValue.(types.Object)
+		if ok1 && ok2 && ok3 {
+			nested, d := keepPriorUnconfigured(ctx, plannedObj, configuredObj, priorObj)
+			diags.Append(d...)
+			attrs[name] = nested
+		}
+	}
+	obj, d := types.ObjectValue(plan.AttributeTypes(ctx), attrs)
+	diags.Append(d...)
+	return obj, diags
 }
 
 // planGlobalSwitchUnsetUnknown plans the global_switch fields left out of
@@ -2469,7 +2600,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.autoSpeedtestModelToSetting(&as)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Auto Speedtest Setting", err.Error())
 			return
 		}
@@ -2482,7 +2613,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.countryModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Country Setting", err.Error())
 			return
 		}
@@ -2495,7 +2626,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.dpiModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating DPI Setting", err.Error())
 			return
 		}
@@ -2508,7 +2639,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.lcmModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating LCM Setting", err.Error())
 			return
 		}
@@ -2521,7 +2652,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.networkOptimizationModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Network Optimization Setting", err.Error())
 			return
 		}
@@ -2534,7 +2665,7 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.ntpModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating NTP Setting", err.Error())
 			return
 		}
@@ -2550,7 +2681,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Syslog Setting", err.Error())
 			return
 		}
@@ -2567,7 +2698,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating DoH Setting", err.Error())
 			return
 		}
@@ -2591,13 +2722,17 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating IPS Setting", err.Error())
 			return
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, setting.EnabledNetworks, &resp.Diagnostics)
+		var suppressionConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("ips").AtName("suppression"), &suppressionConfig)...)
+		r.persistIpsSuppression(
+			ctx, site, suppressionConfig, suppression, setting.EnabledNetworks, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2622,7 +2757,7 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.mgmtModelToSetting(ctx, &mgmt, currentMgmt)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Mgmt Setting", err.Error())
 			return
 		}
@@ -2654,7 +2789,7 @@ func (r *settingResource) Create(
 		if !secretWO.IsNull() && !secretWO.IsUnknown() {
 			setting.Secret = secretWO.ValueString()
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating Radius Setting", err.Error())
 			return
 		}
@@ -2686,7 +2821,7 @@ func (r *settingResource) Create(
 		}
 
 		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating SNMP Setting", err.Error())
 			return
 		}
@@ -2707,13 +2842,16 @@ func (r *settingResource) Create(
 			return
 		}
 		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
-		if err := r.client.UpdateSetting(ctx, site, setting.Usg); err != nil {
+		if err := r.writeSetting(ctx, site, setting.Usg); err != nil {
 			resp.Diagnostics.AddError("Error Creating USG Setting", err.Error())
 			return
 		}
 		// Newer controllers store Region Blocking under the standalone
 		// usg_geo setting and ignore the usg geo fields (#374).
-		r.persistUsgGeoFiltering(ctx, site, &usg, &resp.Diagnostics)
+		var geoConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("usg").AtName("geo_ip_filtering"), &geoConfig)...)
+		r.persistUsgGeoFiltering(ctx, site, geoConfig, &usg, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
@@ -2742,7 +2880,7 @@ func (r *settingResource) Create(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Creating IGMP Snooping Setting", err.Error())
 			return
 		}
@@ -2867,8 +3005,20 @@ func (r *settingResource) Update(
 		site = r.client.Site
 	}
 
+	// Write only the sections the configuration sets. A section can be planned
+	// without being configured: an import reads every section and
+	// UseStateForUnknown carries it forward. Writing it back would rebuild the
+	// document from the model and reset the controller fields it does not
+	// cover.
+	var config settingResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// Update each configured setting type that changed (see settingSectionChanged).
-	if !plan.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsUnknown() &&
+	if !config.AutoSpeedtest.IsNull() && !plan.AutoSpeedtest.IsNull() &&
+		!plan.AutoSpeedtest.IsUnknown() &&
 		settingSectionChanged(plan.AutoSpeedtest, state.AutoSpeedtest) {
 		var as settingAutoSpeedtestModel
 		resp.Diagnostics.Append(plan.AutoSpeedtest.As(ctx, &as, basetypes.ObjectAsOptions{})...)
@@ -2876,13 +3026,13 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.autoSpeedtestModelToSetting(&as)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Auto Speedtest Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Country.IsNull() && !plan.Country.IsUnknown() &&
+	if !config.Country.IsNull() && !plan.Country.IsNull() && !plan.Country.IsUnknown() &&
 		settingSectionChanged(plan.Country, state.Country) {
 		var m settingCountryModel
 		resp.Diagnostics.Append(plan.Country.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -2890,13 +3040,13 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.countryModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Country Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Dpi.IsNull() && !plan.Dpi.IsUnknown() &&
+	if !config.Dpi.IsNull() && !plan.Dpi.IsNull() && !plan.Dpi.IsUnknown() &&
 		settingSectionChanged(plan.Dpi, state.Dpi) {
 		var m settingDpiModel
 		resp.Diagnostics.Append(plan.Dpi.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -2904,13 +3054,13 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.dpiModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating DPI Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() &&
+	if !config.Lcm.IsNull() && !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() &&
 		settingSectionChanged(plan.Lcm, state.Lcm) {
 		var m settingLcmModel
 		resp.Diagnostics.Append(plan.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -2918,13 +3068,13 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.lcmModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating LCM Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.NetworkOpt.IsNull() && !plan.NetworkOpt.IsUnknown() &&
+	if !config.NetworkOpt.IsNull() && !plan.NetworkOpt.IsNull() && !plan.NetworkOpt.IsUnknown() &&
 		settingSectionChanged(plan.NetworkOpt, state.NetworkOpt) {
 		var m settingNetworkOptimizationModel
 		resp.Diagnostics.Append(plan.NetworkOpt.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -2932,13 +3082,13 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.networkOptimizationModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Network Optimization Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() &&
+	if !config.Ntp.IsNull() && !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() &&
 		settingSectionChanged(plan.Ntp, state.Ntp) {
 		var m settingNtpModel
 		resp.Diagnostics.Append(plan.Ntp.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -2946,13 +3096,13 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.ntpModelToSetting(&m)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating NTP Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Syslog.IsNull() && !plan.Syslog.IsUnknown() &&
+	if !config.Syslog.IsNull() && !plan.Syslog.IsNull() && !plan.Syslog.IsUnknown() &&
 		settingSectionChanged(plan.Syslog, state.Syslog) {
 		var m settingSyslogModel
 		resp.Diagnostics.Append(plan.Syslog.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -2963,13 +3113,13 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Syslog Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Doh.IsNull() && !plan.Doh.IsUnknown() &&
+	if !config.Doh.IsNull() && !plan.Doh.IsNull() && !plan.Doh.IsUnknown() &&
 		settingSectionChanged(plan.Doh, state.Doh) {
 		var doh settingDohModel
 		resp.Diagnostics.Append(plan.Doh.As(ctx, &doh, basetypes.ObjectAsOptions{})...)
@@ -2981,13 +3131,13 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating DoH Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Ips.IsNull() && !plan.Ips.IsUnknown() &&
+	if !config.Ips.IsNull() && !plan.Ips.IsNull() && !plan.Ips.IsUnknown() &&
 		settingSectionChanged(plan.Ips, state.Ips) {
 		var ips settingIpsModel
 		resp.Diagnostics.Append(plan.Ips.As(ctx, &ips, basetypes.ObjectAsOptions{})...)
@@ -3006,19 +3156,23 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating IPS Setting", err.Error())
 			return
 		}
 		// Newer controllers store suppression under the standalone
 		// ips_suppression setting and drop the nested field (#381).
-		r.persistIpsSuppression(ctx, site, suppression, setting.EnabledNetworks, &resp.Diagnostics)
+		var suppressionConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("ips").AtName("suppression"), &suppressionConfig)...)
+		r.persistIpsSuppression(
+			ctx, site, suppressionConfig, suppression, setting.EnabledNetworks, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
 
-	if !plan.Mgmt.IsNull() && !plan.Mgmt.IsUnknown() &&
+	if !config.Mgmt.IsNull() && !plan.Mgmt.IsNull() && !plan.Mgmt.IsUnknown() &&
 		settingSectionChanged(plan.Mgmt, state.Mgmt) {
 		var mgmt settingMgmtModel
 		resp.Diagnostics.Append(plan.Mgmt.As(ctx, &mgmt, basetypes.ObjectAsOptions{})...)
@@ -3038,7 +3192,7 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.mgmtModelToSetting(ctx, &mgmt, currentMgmt)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Mgmt Setting", err.Error())
 			return
 		}
@@ -3046,7 +3200,7 @@ func (r *settingResource) Update(
 
 	// radius_secret_wo never reaches the radius object, so a version bump is
 	// the only sign that the secret needs writing.
-	if !plan.Radius.IsNull() && !plan.Radius.IsUnknown() &&
+	if !config.Radius.IsNull() && !plan.Radius.IsNull() && !plan.Radius.IsUnknown() &&
 		(settingSectionChanged(plan.Radius, state.Radius) ||
 			!plan.RadiusSecretWOVersion.Equal(state.RadiusSecretWOVersion)) {
 		var radius settingRadiusModel
@@ -3074,13 +3228,13 @@ func (r *settingResource) Update(
 		if !secretWO.IsNull() && !secretWO.IsUnknown() {
 			setting.Secret = secretWO.ValueString()
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating Radius Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.Snmp.IsNull() && !plan.Snmp.IsUnknown() &&
+	if !config.Snmp.IsNull() && !plan.Snmp.IsNull() && !plan.Snmp.IsUnknown() &&
 		settingSectionChanged(plan.Snmp, state.Snmp) {
 		var snmp settingSnmpModel
 		resp.Diagnostics.Append(plan.Snmp.As(ctx, &snmp, basetypes.ObjectAsOptions{})...)
@@ -3101,13 +3255,13 @@ func (r *settingResource) Update(
 		}
 
 		setting := r.snmpModelToSetting(ctx, &snmp, currentSnmp)
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating SNMP Setting", err.Error())
 			return
 		}
 	}
 
-	if !plan.USG.IsNull() && !plan.USG.IsUnknown() &&
+	if !config.USG.IsNull() && !plan.USG.IsNull() && !plan.USG.IsUnknown() &&
 		settingSectionChanged(plan.USG, state.USG) {
 		var usg settingUSGModel
 		resp.Diagnostics.Append(plan.USG.As(ctx, &usg, basetypes.ObjectAsOptions{})...)
@@ -3123,19 +3277,23 @@ func (r *settingResource) Update(
 			return
 		}
 		setting := r.usgModelToSetting(ctx, &usg, currentUsg)
-		if err := r.client.UpdateSetting(ctx, site, setting.Usg); err != nil {
+		if err := r.writeSetting(ctx, site, setting.Usg); err != nil {
 			resp.Diagnostics.AddError("Error Updating USG Setting", err.Error())
 			return
 		}
 		// Newer controllers store Region Blocking under the standalone
 		// usg_geo setting and ignore the usg geo fields (#374).
-		r.persistUsgGeoFiltering(ctx, site, &usg, &resp.Diagnostics)
+		var geoConfig types.Object
+		resp.Diagnostics.Append(req.Config.GetAttribute(
+			ctx, path.Root("usg").AtName("geo_ip_filtering"), &geoConfig)...)
+		r.persistUsgGeoFiltering(ctx, site, geoConfig, &usg, &resp.Diagnostics)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
 
-	if !plan.IgmpSnooping.IsNull() && !plan.IgmpSnooping.IsUnknown() &&
+	if !config.IgmpSnooping.IsNull() && !plan.IgmpSnooping.IsNull() &&
+		!plan.IgmpSnooping.IsUnknown() &&
 		settingSectionChanged(plan.IgmpSnooping, state.IgmpSnooping) {
 		var igmp settingIgmpSnoopingModel
 		resp.Diagnostics.Append(plan.IgmpSnooping.As(ctx, &igmp, basetypes.ObjectAsOptions{})...)
@@ -3157,7 +3315,7 @@ func (r *settingResource) Update(
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.client.UpdateSetting(ctx, site, setting); err != nil {
+		if err := r.writeSetting(ctx, site, setting); err != nil {
 			resp.Diagnostics.AddError("Error Updating IGMP Snooping Setting", err.Error())
 			return
 		}
@@ -3246,6 +3404,7 @@ func (r *settingResource) ImportState(
 			resp.State.SetAttribute(ctx, path.Root("id"), identity.Site)...)
 		resp.Diagnostics.Append(
 			resp.State.SetAttribute(ctx, path.Root("site"), identity.Site)...)
+		r.readImportedSettings(ctx, identity.Site.ValueString(), &resp.State, &resp.Diagnostics)
 		return
 	}
 
@@ -3254,6 +3413,164 @@ func (r *settingResource) ImportState(
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), req.ID)...)
 	resp.Diagnostics.Append(resp.Identity.SetAttribute(ctx, path.Root("site"), req.ID)...)
+	r.readImportedSettings(ctx, req.ID, &resp.State, &resp.Diagnostics)
+}
+
+// readImportedSettings reads every section the controller holds a document for
+// into a freshly imported state.
+//
+// readSettings refreshes only the sections already in state, and for most of
+// them only the leaves already in state, so an import used to read nothing:
+// every section the configuration sets then planned as an update that
+// rewrote the live values. Seeding each present section with a value whose
+// every leaf is known makes readSettings read the whole document; a section
+// whose document the controller lacks stays null. The sections the
+// configuration does not set are kept by UseStateForUnknown and are not
+// written back (see Update).
+func (r *settingResource) readImportedSettings(
+	ctx context.Context,
+	site string,
+	state *tfsdk.State,
+	diags *diag.Diagnostics,
+) {
+	if diags.HasError() {
+		return
+	}
+	var data settingResourceModel
+	diags.Append(state.Get(ctx, &data)...)
+	if diags.HasError() {
+		return
+	}
+
+	rawSettings, err := r.client.ListSettings(ctx, site)
+	if err != nil {
+		diags.AddError("Error Listing Settings", err.Error())
+		return
+	}
+	present := make(map[string]bool, len(rawSettings))
+	for _, raw := range rawSettings {
+		present[raw.Key] = true
+	}
+
+	for _, section := range []struct {
+		value     *types.Object
+		setting   settings.Setting
+		attrTypes map[string]attr.Type
+	}{
+		{&data.AutoSpeedtest, (*settings.AutoSpeedtest)(nil), autoSpeedtestAttrTypes},
+		{&data.Country, (*settings.Country)(nil), countryAttrTypes},
+		{&data.Dpi, (*settings.Dpi)(nil), dpiAttrTypes},
+		{&data.Lcm, (*settings.Lcm)(nil), lcmAttrTypes},
+		{&data.NetworkOpt, (*settings.NetworkOptimization)(nil), networkOptimizationAttrTypes},
+		{&data.Ntp, (*settings.Ntp)(nil), ntpAttrTypes},
+		{&data.Syslog, (*settings.Rsyslogd)(nil), syslogAttrTypes},
+		{&data.Doh, (*settings.Doh)(nil), dohAttrTypes},
+		{&data.Ips, (*settings.Ips)(nil), ipsAttrTypes},
+		{&data.Mgmt, (*settings.Mgmt)(nil), mgmtAttrTypes},
+		{&data.Radius, (*settings.Radius)(nil), radiusAttrTypes},
+		{&data.USG, (*settings.Usg)(nil), usgAttrTypes},
+		{&data.IgmpSnooping, (*settings.IgmpSnooping)(nil), igmpSnoopingAttrTypes},
+		{&data.Connectivity, (*settings.Connectivity)(nil), connectivityAttrTypes},
+		{&data.GlobalSwitch, (*settings.GlobalSwitch)(nil), globalSwitchAttrTypes},
+	} {
+		key, err := settings.GetSettingKey(section.setting)
+		if err != nil {
+			diags.AddError("Error Importing Settings", err.Error())
+			return
+		}
+		if !present[key] {
+			continue
+		}
+		value, d := knownObject(ctx, section.attrTypes)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		*section.value = value
+	}
+
+	// The controller stores only a hash of the SSH password, and
+	// mgmtSettingToModel keeps whatever the prior value was: leave it unset
+	// rather than importing the seed's empty string.
+	if !data.Mgmt.IsNull() {
+		mgmt := data.Mgmt.Attributes()
+		if sshObj, ok := mgmt["ssh"].(types.Object); ok {
+			ssh := sshObj.Attributes()
+			ssh["password"] = types.StringNull()
+			var d diag.Diagnostics
+			mgmt["ssh"], d = types.ObjectValue(mgmtSSHAttrTypes, ssh)
+			diags.Append(d...)
+			data.Mgmt, d = types.ObjectValue(mgmtAttrTypes, mgmt)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+		}
+	}
+	if !data.Radius.IsNull() {
+		radius := data.Radius.Attributes()
+		radius["secret"] = types.StringNull()
+		var d diag.Diagnostics
+		data.Radius, d = types.ObjectValue(radiusAttrTypes, radius)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+	}
+
+	r.readSettings(ctx, site, &data, diags)
+	if diags.HasError() {
+		return
+	}
+	diags.Append(state.Set(ctx, &data)...)
+}
+
+// knownObject returns an object of attrTypes whose every leaf is known: zero
+// scalars, empty lists, and nested objects built the same way. The section
+// readers populate only the leaves that are known in the model they are
+// given, so this asks them for every leaf.
+func knownObject(
+	ctx context.Context,
+	attrTypes map[string]attr.Type,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	values := make(map[string]attr.Value, len(attrTypes))
+	for name, t := range attrTypes {
+		if obj, ok := t.(types.ObjectType); ok {
+			nested, d := knownObject(ctx, obj.AttrTypes)
+			diags.Append(d...)
+			values[name] = nested
+			continue
+		}
+		tfType := t.TerraformType(ctx)
+		var zero tftypes.Value
+		switch {
+		case tfType.Is(tftypes.Bool):
+			zero = tftypes.NewValue(tfType, false)
+		case tfType.Is(tftypes.Number):
+			zero = tftypes.NewValue(tfType, 0)
+		case tfType.Is(tftypes.String):
+			zero = tftypes.NewValue(tfType, "")
+			if _, ok := t.(timetypes.GoDurationType); ok {
+				// The duration type rejects an empty string.
+				zero = tftypes.NewValue(tfType, "0s")
+			}
+		default:
+			zero = tftypes.NewValue(tfType, []tftypes.Value{})
+		}
+		value, err := t.ValueFromTerraform(ctx, zero)
+		if err != nil {
+			diags.AddError("Error Importing Settings", err.Error())
+			continue
+		}
+		values[name] = value
+	}
+	if diags.HasError() {
+		return types.ObjectNull(attrTypes), diags
+	}
+	obj, d := types.ObjectValue(attrTypes, values)
+	diags.Append(d...)
+	return obj, diags
 }
 
 func (r *settingResource) readSettings(
@@ -4144,9 +4461,13 @@ func applyUsgGeoIPFiltering(setting *usgWithGeo, data map[string]any) {
 func (r *settingResource) persistUsgGeoFiltering(
 	ctx context.Context,
 	site string,
+	config types.Object,
 	model *settingUSGModel,
 	diags *diag.Diagnostics,
 ) {
+	if config.IsNull() {
+		return
+	}
 	geo, ok, d := util.ObjectAs[settingUsgGeoIPFilteringModel](ctx, model.GeoIPFiltering)
 	diags.Append(d...)
 	if !ok || !usgGeoConfigured(&geo) {
@@ -4351,11 +4672,15 @@ func (r *settingResource) usgSettingToModel(
 	}
 
 	if !plan.DNSVerification.IsNull() && !plan.DNSVerification.IsUnknown() {
+		dns := setting.DNSVerification
+		if dns == nil {
+			dns = &settings.SettingUsgDNSVerification{}
+		}
 		dnsVerif := dnsVerificationModel{
-			Domain:             types.StringValue(setting.DNSVerification.Domain),
-			PrimaryDNSServer:   types.StringValue(setting.DNSVerification.PrimaryDNSServer),
-			SecondaryDNSServer: types.StringValue(setting.DNSVerification.SecondaryDNSServer),
-			SettingPreference:  types.StringValue(setting.DNSVerification.SettingPreference),
+			Domain:             types.StringValue(dns.Domain),
+			PrimaryDNSServer:   types.StringValue(dns.PrimaryDNSServer),
+			SecondaryDNSServer: types.StringValue(dns.SecondaryDNSServer),
+			SettingPreference:  types.StringValue(dns.SettingPreference),
 		}
 		objValue, _ := types.ObjectValueFrom(ctx, usgDNSVerificationAttrTypes, dnsVerif)
 		model.DNSVerification = objValue
@@ -5427,11 +5752,12 @@ func ipsSuppressionConfigured(plan *settingIpsSuppressionModel) bool {
 func (r *settingResource) persistIpsSuppression(
 	ctx context.Context,
 	site string,
+	config types.Object,
 	suppression *settings.IpsSuppression,
 	enabledNetworks []string,
 	diags *diag.Diagnostics,
 ) {
-	if suppression == nil {
+	if config.IsNull() || suppression == nil {
 		return
 	}
 
@@ -5555,6 +5881,7 @@ func (r *settingResource) ipsModelToSetting(
 		if diags.HasError() {
 			return setting, suppression
 		}
+		setting.Honeypot = nil
 		for _, h := range honeypots {
 			setting.Honeypot = append(setting.Honeypot, settings.SettingIpsHoneypot{
 				IPAddress: h.IPAddress.ValueString(),

@@ -98,8 +98,9 @@ func Test_settingResource_createMdns(t *testing.T) {
 	if !reflect.DeepEqual(mdns["custom_services"], wantCustom) {
 		t.Errorf("mdns custom_services = %v, want %v", mdns["custom_services"], wantCustom)
 	}
-	if got := written["mdns"]["mode"]; got != "all" {
-		t.Errorf("mdns mode written = %v", got)
+	// mode already holds "all" on the controller, so it is not re-sent.
+	if got, ok := written["mdns"]["mode"]; ok {
+		t.Errorf("unchanged mdns mode written = %v", got)
 	}
 
 	state := stateModel(t, resp)
