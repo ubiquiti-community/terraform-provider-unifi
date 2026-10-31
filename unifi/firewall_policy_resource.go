@@ -486,7 +486,8 @@ func (r *firewallPolicyResource) Schema(
 				"bits, i.e. an EUI-64 interface ID under any prefix). Required when " +
 				"`matching_target` is `IID`, and only valid with it. Matching the " +
 				"interface ID instead of the full address keeps a rule working when " +
-				"the delegated IPv6 prefix changes.",
+				"the delegated IPv6 prefix changes. An existing policy keeps the " +
+				"controller's value while `matching_target` is unchanged (#544).",
 			Optional: true,
 			Computed: true,
 			// Empty on create; then held while matching_target is unchanged

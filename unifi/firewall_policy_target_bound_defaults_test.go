@@ -15,13 +15,15 @@ import (
 // and an adopted interface ID match planned its iid away (#544).
 func firewallPolicyTargetBoundLive() map[string]attr.Value {
 	return map[string]attr.Value{
-		"source.matching_target":           types.StringValue("IP"),
-		"source.match_mac":                 types.BoolValue(true),
-		"source.mac":                       types.StringValue("aa:bb:cc:dd:ee:ff"),
-		"source.iid":                       types.StringValue(""),
-		"source.match_opposite_iid":        types.BoolValue(false),
-		"destination.matching_target":      types.StringValue("IID"),
-		"destination.iid":                  types.StringValue("::eaff:1eff:fed7:bf17/::ffff:ffff:ffff:ffff"),
+		"source.matching_target":      types.StringValue("IP"),
+		"source.match_mac":            types.BoolValue(true),
+		"source.mac":                  types.StringValue("aa:bb:cc:dd:ee:ff"),
+		"source.iid":                  types.StringValue(""),
+		"source.match_opposite_iid":   types.BoolValue(false),
+		"destination.matching_target": types.StringValue("IID"),
+		"destination.iid": types.StringValue(
+			"::eaff:1eff:fed7:bf17/::ffff:ffff:ffff:ffff",
+		),
 		"destination.match_opposite_iid":   types.BoolValue(true),
 		"destination.match_mac":            types.BoolValue(false),
 		"destination.mac":                  types.StringValue(""),
@@ -55,10 +57,16 @@ func TestFirewallPolicyCreateTargetBoundAttributes(t *testing.T) {
 // target it does not belong to. The other endpoint keeps its values.
 func TestFirewallPolicyTargetChangeResetsTargetBoundAttributes(t *testing.T) {
 	r := &firewallPolicyResource{}
-	s, prior, cfg := adoptedInputs(t, r, nil, firewallPolicyTargetBoundLive(), map[string]attr.Value{
-		"source.matching_target":      types.StringValue("CLIENT"),
-		"destination.matching_target": types.StringValue("IID"),
-	})
+	s, prior, cfg := adoptedInputs(
+		t,
+		r,
+		nil,
+		firewallPolicyTargetBoundLive(),
+		map[string]attr.Value{
+			"source.matching_target":      types.StringValue("CLIENT"),
+			"destination.matching_target": types.StringValue("IID"),
+		},
+	)
 	// Terraform core proposes the configuration over the prior state. setAtPath
 	// edits the nested value in place, so it works on a second copy of prior.
 	_, proposed, _ := adoptedInputs(t, r, nil, firewallPolicyTargetBoundLive(), nil)

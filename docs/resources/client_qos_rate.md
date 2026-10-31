@@ -56,8 +56,8 @@ resource "unifi_client" "test" {
 
 Optional:
 
-- `max_down` (Number) The QOS maximum download rate. `-1` (unlimited) for a new group when not set; taken from the controller otherwise.
-- `max_up` (Number) The QOS maximum upload rate. `-1` (unlimited) for a new group when not set; taken from the controller otherwise.
+- `max_down` (Number) The QOS maximum download rate in kbps, `2` to `100000`, or `-1` for unlimited. `-1` for a new group when not set; taken from the controller otherwise.
+- `max_up` (Number) The QOS maximum upload rate in kbps, `2` to `100000`, or `-1` for unlimited. `-1` for a new group when not set; taken from the controller otherwise.
 
 
 <a id="nestedatt--timeouts"></a>
