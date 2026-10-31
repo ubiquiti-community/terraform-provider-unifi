@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -509,24 +510,33 @@ func (r *firewallPolicyResource) Schema(
 			},
 		},
 		"port_group_id": schema.StringAttribute{
-			MarkdownDescription: "ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`.",
-			Optional:            true,
-			Computed:            true,
-			Default:             stringdefault.StaticString(""),
+			MarkdownDescription: "ID of a `unifi_firewall_group` (port-group type) to match. Used when `port_matching_type` is `OBJECT`. " +
+				"Taken from the controller when not set (#544).",
+			Optional: true,
+			Computed: true,
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"ip_group_id": schema.StringAttribute{
-			MarkdownDescription: "ID of a `unifi_firewall_group` (address-group type) to match. Used when `matching_target` is `IP` with `matching_target_type = OBJECT`.",
-			Optional:            true,
-			Computed:            true,
-			Default:             stringdefault.StaticString(""),
+			MarkdownDescription: "ID of a `unifi_firewall_group` (address-group type) to match. Used when `matching_target` is `IP` with `matching_target_type = OBJECT`. " +
+				"Taken from the controller when not set (#544).",
+			Optional: true,
+			Computed: true,
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"port_matching_type": schema.StringAttribute{
-			MarkdownDescription: "How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group).",
-			Optional:            true,
-			Computed:            true,
-			Default:             stringdefault.StaticString("ANY"),
+			MarkdownDescription: "How to match ports: `ANY`, `SPECIFIC`, or `OBJECT` (port group). " +
+				"Taken from the controller when not set; the controller assigns `ANY` to a new policy (#544).",
+			Optional: true,
+			Computed: true,
 			Validators: []validator.String{
 				stringvalidator.OneOf("ANY", "SPECIFIC", "OBJECT"),
+			},
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.UseStateForUnknown(),
 			},
 		},
 		"matching_target_type": schema.StringAttribute{
@@ -538,24 +548,30 @@ func (r *firewallPolicyResource) Schema(
 		},
 		"match_opposite_ips": schema.BoolAttribute{
 			MarkdownDescription: "Invert the IP match: when `true`, the endpoint matches every address **except** those in `ips` / `ip_group_id`. " +
-				"Corresponds to the \"Match Opposite\" toggle on an `IP` matching target in the UniFi UI. Defaults to `false`.",
+				"Corresponds to the \"Match Opposite\" toggle on an `IP` matching target in the UniFi UI. Taken from the controller when not set (#544).",
 			Optional: true,
 			Computed: true,
-			Default:  booldefault.StaticBool(false),
+			PlanModifiers: []planmodifier.Bool{
+				boolplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"match_opposite_networks": schema.BoolAttribute{
 			MarkdownDescription: "Invert the network match: when `true`, the endpoint matches every network **except** those in `network_ids`. " +
-				"Corresponds to the \"Match Opposite\" toggle on a `NETWORK` matching target in the UniFi UI. Defaults to `false`.",
+				"Corresponds to the \"Match Opposite\" toggle on a `NETWORK` matching target in the UniFi UI. Taken from the controller when not set (#544).",
 			Optional: true,
 			Computed: true,
-			Default:  booldefault.StaticBool(false),
+			PlanModifiers: []planmodifier.Bool{
+				boolplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"match_opposite_ports": schema.BoolAttribute{
 			MarkdownDescription: "Invert the port match: when `true`, the endpoint matches every port **except** those in `port` / `port_group_id`. " +
-				"Corresponds to the \"Match Opposite\" toggle on the port selector in the UniFi UI. Defaults to `false`.",
+				"Corresponds to the \"Match Opposite\" toggle on the port selector in the UniFi UI. Taken from the controller when not set (#544).",
 			Optional: true,
 			Computed: true,
-			Default:  booldefault.StaticBool(false),
+			PlanModifiers: []planmodifier.Bool{
+				boolplanmodifier.UseStateForUnknown(),
+			},
 		},
 		"match_opposite_iid": schema.BoolAttribute{
 			MarkdownDescription: "Invert the interface ID match: when `true`, the endpoint matches every address **except** those whose interface ID matches `iid`. " +
@@ -617,42 +633,61 @@ func (r *firewallPolicyResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the policy is enabled. Defaults to `true`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the policy is enabled. Defaults to `true` for a newly " +
+					"created policy; an existing policy keeps whatever the controller holds, so " +
+					"adopting a policy disabled in the UI does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				// Not a schema Default: the framework applies Defaults before plan
+				// modifiers, so a Default would overwrite the controller's value on
+				// every adopted policy. The create-time `true` is set in ModifyPlan.
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"protocol": schema.StringAttribute{
 				MarkdownDescription: "The protocol to match: `all`, `tcp`, `udp`, `tcp_udp`, " +
-					"`icmp`, or `icmpv6`. Defaults to `all`. Note: for `icmp`/`icmpv6` " +
+					"`icmp`, or `icmpv6`. Note: for `icmp`/`icmpv6` " +
 					"policies the controller rejects `create_allow_respond = true` " +
 					"(`FirewallPolicyCreateRespondTrafficPolicyNotAllowed`) — keep it " +
-					"`false` and add an explicit reverse policy if you need the reply.",
+					"`false` and add an explicit reverse policy if you need the reply. " +
+					"Taken from the controller when not set; the controller assigns `all` to a " +
+					"new policy (#544).",
 				Optional: true,
 				Computed: true,
-				Default:  stringdefault.StaticString("all"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("all", "tcp", "udp", "tcp_udp", "icmp", "icmpv6"),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "A description for the policy.",
+				MarkdownDescription: "A description for the policy. Taken from the controller when not set (#544).",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString(""),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"logging": schema.BoolAttribute{
-				MarkdownDescription: "Whether to log packets matching this policy. Defaults to `false`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "Whether to log packets matching this policy. Taken from the " +
+					"controller when not set; a new policy is created with logging off (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"match_opposite_protocol": schema.BoolAttribute{
 				MarkdownDescription: "Invert the protocol match: when `true`, the policy matches every protocol **except** `protocol`. " +
-					"Corresponds to the \"Match Opposite\" toggle next to the protocol selector in the UniFi UI. Defaults to `false`.",
+					"Corresponds to the \"Match Opposite\" toggle next to the protocol selector in the UniFi UI. " +
+					"Taken from the controller when not set; a new policy is created with it off (#544).",
 				Optional: true,
 				Computed: true,
-				Default:  booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"index": schema.Int64Attribute{
 				MarkdownDescription: "The ordering index of the policy within its zone-pair, " +
@@ -664,10 +699,14 @@ func (r *firewallPolicyResource) Schema(
 				Computed: true,
 			},
 			"create_allow_respond": schema.BoolAttribute{
-				MarkdownDescription: "When `true`, UniFi automatically creates a matching rule to allow established/related return traffic. Recommended for `ALLOW` policies. Defaults to `false`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
+				MarkdownDescription: "When `true`, UniFi automatically creates a matching rule to allow " +
+					"established/related return traffic. Recommended for `ALLOW` policies. Taken from " +
+					"the controller when not set; a new policy is created with it off (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ip_version": schema.StringAttribute{
 				MarkdownDescription: "The IP version to match: `BOTH`, `IPV4`, or " +
@@ -800,6 +839,10 @@ func (r *firewallPolicyResource) ModifyPlan(
 	if req.Plan.Raw.IsNull() {
 		return
 	}
+	firewallPolicyCreateDefaults(ctx, req, resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	var value types.Object
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("schedule"), &value)...)
 	if resp.Diagnostics.HasError() || value.IsNull() || value.IsUnknown() {
@@ -813,6 +856,33 @@ func (r *firewallPolicyResource) ModifyPlan(
 	normalized, diags := types.ObjectValueFrom(ctx, schedule.AttributeTypes(), schedule)
 	resp.Diagnostics.Append(diags...)
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("schedule"), normalized)...)
+}
+
+// firewallPolicyCreateDefaults plans `enabled = true` for a policy being
+// created without it. It cannot be a schema Default: the framework applies
+// Defaults before plan modifiers, so a Default would also overwrite the
+// controller's value on every adopted policy, re-enabling a policy disabled in
+// the UI (#544). On update the attribute's UseStateForUnknown holds the
+// controller's value instead.
+//
+// A value has to be chosen on create because go-unifi always sends `enabled`
+// (no omitempty), so an unknown would be written as `false`: a new BLOCK
+// policy would silently not block.
+func firewallPolicyCreateDefaults(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	if !req.State.Raw.IsNull() {
+		return
+	}
+	var enabled types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("enabled"), &enabled)...)
+	if resp.Diagnostics.HasError() || !enabled.IsNull() {
+		return
+	}
+	resp.Diagnostics.Append(
+		resp.Plan.SetAttribute(ctx, path.Root("enabled"), types.BoolValue(true))...)
 }
 
 func (r *firewallPolicyResource) Create(

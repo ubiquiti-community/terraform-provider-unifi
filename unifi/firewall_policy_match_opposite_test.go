@@ -14,7 +14,9 @@ import (
 )
 
 // TestFirewallPolicyMatchOppositeSchema checks the four "Match Opposite"
-// toggles are user-settable, defaulted to false and present on both endpoints.
+// toggles are user-settable and present on both endpoints. They carry no
+// static Default: the controller's value is held instead (#544, see
+// firewall_policy_static_defaults_test.go).
 func TestFirewallPolicyMatchOppositeSchema(t *testing.T) {
 	r := &firewallPolicyResource{}
 	var resp resource.SchemaResponse
@@ -24,8 +26,11 @@ func TestFirewallPolicyMatchOppositeSchema(t *testing.T) {
 	}
 
 	top, ok := resp.Schema.Attributes["match_opposite_protocol"].(schema.BoolAttribute)
-	if !ok || !top.Optional || !top.Computed || top.Default == nil {
-		t.Fatalf("match_opposite_protocol must be Optional+Computed with a default, got %#v", top)
+	if !ok || !top.Optional || !top.Computed || top.Default != nil {
+		t.Fatalf(
+			"match_opposite_protocol must be Optional+Computed without a default, got %#v",
+			top,
+		)
 	}
 
 	for _, ep := range []string{"source", "destination"} {
@@ -38,8 +43,8 @@ func TestFirewallPolicyMatchOppositeSchema(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s.%s missing or not a BoolAttribute", ep, name)
 			}
-			if !a.Optional || !a.Computed || a.Default == nil {
-				t.Errorf("%s.%s must be Optional+Computed with a default, got %#v", ep, name, a)
+			if !a.Optional || !a.Computed || a.Default != nil {
+				t.Errorf("%s.%s must be Optional+Computed without a default, got %#v", ep, name, a)
 			}
 		}
 	}
