@@ -1,0 +1,3 @@
+kind: dependency
+body: 'go-unifi v1.42.0 → v1.43.0: generated against UniFi Network 10.6.109 (go-unifi#120), nullable NTP server fields (go-unifi#104 by @danilobuerger), case-insensitive client MAC lookup (go-unifi#78 by @sargant), more secret fields masked in error payloads (go-unifi#107 by @sergeychernyshov-code). `unifi_device` now also carries the new port override `ld_status` across updates.'
+time: 2026-10-31T14:52:17.580183+01:00
