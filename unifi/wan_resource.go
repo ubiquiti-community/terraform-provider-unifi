@@ -2304,7 +2304,16 @@ func (r *wanResource) networkToModel(
 
 	// Additional Settings
 	model.ReportWANEvent = types.BoolValue(network.ReportWANEvent)
-	model.Enabled = types.BoolValue(network.Enabled)
+	// The controller omits `enabled` from WAN networks (Network 10.x has no
+	// enable toggle for a WAN), and go-unifi decodes the missing key as false.
+	// Reading that false would plan `enabled = false` on import and then send
+	// it with every update, switching the uplink off (#600). Since an omitted
+	// key and an explicit false decode the same, a false only replaces a value
+	// the model does not hold yet, and then as true; a known prior value (an
+	// explicit `enabled = false` included) is kept.
+	if network.Enabled || model.Enabled.IsNull() || model.Enabled.IsUnknown() {
+		model.Enabled = types.BoolValue(true)
+	}
 	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
 	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
 	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)
