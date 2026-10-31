@@ -595,7 +595,7 @@ func natModelToAPI(ctx context.Context, model *natResourceModel) (*unifi.Nat, di
 
 	src, d := natFilterToAPI(ctx, model.SourceFilter)
 	diags.Append(d...)
-	nat.SourceFilter = (*unifi.NatSourceFilter)(src)
+	nat.SourceFilter = src
 
 	dst, d := natFilterToAPI(ctx, model.DestinationFilter)
 	diags.Append(d...)
@@ -671,7 +671,7 @@ func natAPIToModel(
 	model.SettingPreference = stringOrNull(nat.SettingPreference)
 
 	var d diag.Diagnostics
-	model.SourceFilter, d = natFilterFromAPI(ctx, (*unifi.NatSourceFilter)(nat.SourceFilter),
+	model.SourceFilter, d = natFilterFromAPI(ctx, nat.SourceFilter,
 		model.SourceFilter)
 	diags.Append(d...)
 	model.DestinationFilter, d = natFilterFromAPI(
