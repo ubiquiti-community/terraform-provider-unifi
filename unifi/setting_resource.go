@@ -335,18 +335,37 @@ type settingResourceModel struct {
 // AI / nightly channel optimization). The optimizer rewrites the channel of
 // every radio in the bands listed in radios on its schedule, overriding a
 // channel set on the device, so leaving a band out of radios is how a channel
-// is pinned while the others stay optimized. Only these fields are exposed;
-// the rest (blacklists, per-radio configuration, HT modes, ...) are preserved
-// by the partial write.
+// is pinned while the others stay optimized. Only the fields set in config are
+// written; the rest are preserved by the partial write.
 type settingRadioAiModel struct {
-	Enabled        types.Bool   `tfsdk:"enabled"`
-	CronExpr       types.String `tfsdk:"cron_expr"`
-	Radios         types.List   `tfsdk:"radios"`
-	Optimize       types.List   `tfsdk:"optimize"`
-	ChannelsNg     types.List   `tfsdk:"channels_ng"`
-	ChannelsNa     types.List   `tfsdk:"channels_na"`
-	Channels6E     types.List   `tfsdk:"channels_6e"`
-	ExcludeDevices types.List   `tfsdk:"exclude_devices"`
+	Enabled                     types.Bool   `tfsdk:"enabled"`
+	CronExpr                    types.String `tfsdk:"cron_expr"`
+	Radios                      types.List   `tfsdk:"radios"`
+	Optimize                    types.List   `tfsdk:"optimize"`
+	ChannelsNg                  types.List   `tfsdk:"channels_ng"`
+	ChannelsNa                  types.List   `tfsdk:"channels_na"`
+	Channels6E                  types.List   `tfsdk:"channels_6e"`
+	ExcludeDevices              types.List   `tfsdk:"exclude_devices"`
+	SettingPreference           types.String `tfsdk:"setting_preference"`
+	AutoChannelPresetsType      types.String `tfsdk:"auto_channel_presets_type"`
+	AutoAdjustChannelsToCountry types.Bool   `tfsdk:"auto_adjust_channels_to_country"`
+	HtModesNg                   types.List   `tfsdk:"ht_modes_ng"`
+	HtModesNa                   types.List   `tfsdk:"ht_modes_na"`
+	HighPriorityDevices         types.List   `tfsdk:"high_priority_devices"`
+	ChannelsBlacklist           types.List   `tfsdk:"channels_blacklist"`
+	RadiosConfiguration         types.List   `tfsdk:"radios_configuration"`
+}
+
+type settingRadioAiBlacklistModel struct {
+	Radio        types.String `tfsdk:"radio"`
+	Channel      types.Int64  `tfsdk:"channel"`
+	ChannelWidth types.Int64  `tfsdk:"channel_width"`
+}
+
+type settingRadioAiRadioConfigModel struct {
+	Radio        types.String `tfsdk:"radio"`
+	ChannelWidth types.Int64  `tfsdk:"channel_width"`
+	Dfs          types.Bool   `tfsdk:"dfs"`
 }
 
 // settingGlobalSwitchModel is the nested global_switch block (Settings > Networks
@@ -613,15 +632,39 @@ var (
 		"uplink_host":      types.StringType,
 	}
 
+	radioAiBlacklistAttrTypes = map[string]attr.Type{
+		"radio":         types.StringType,
+		"channel":       types.Int64Type,
+		"channel_width": types.Int64Type,
+	}
+
+	radioAiRadioConfigAttrTypes = map[string]attr.Type{
+		"radio":         types.StringType,
+		"channel_width": types.Int64Type,
+		"dfs":           types.BoolType,
+	}
+
 	radioAiAttrTypes = map[string]attr.Type{
-		"enabled":         types.BoolType,
-		"cron_expr":       types.StringType,
-		"radios":          types.ListType{ElemType: types.StringType},
-		"optimize":        types.ListType{ElemType: types.StringType},
-		"channels_ng":     types.ListType{ElemType: types.Int64Type},
-		"channels_na":     types.ListType{ElemType: types.Int64Type},
-		"channels_6e":     types.ListType{ElemType: types.Int64Type},
-		"exclude_devices": types.ListType{ElemType: types.StringType},
+		"enabled":                         types.BoolType,
+		"cron_expr":                       types.StringType,
+		"radios":                          types.ListType{ElemType: types.StringType},
+		"optimize":                        types.ListType{ElemType: types.StringType},
+		"channels_ng":                     types.ListType{ElemType: types.Int64Type},
+		"channels_na":                     types.ListType{ElemType: types.Int64Type},
+		"channels_6e":                     types.ListType{ElemType: types.Int64Type},
+		"exclude_devices":                 types.ListType{ElemType: types.StringType},
+		"setting_preference":              types.StringType,
+		"auto_channel_presets_type":       types.StringType,
+		"auto_adjust_channels_to_country": types.BoolType,
+		"ht_modes_ng":                     types.ListType{ElemType: types.Int64Type},
+		"ht_modes_na":                     types.ListType{ElemType: types.Int64Type},
+		"high_priority_devices":           types.ListType{ElemType: types.StringType},
+		"channels_blacklist": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: radioAiBlacklistAttrTypes},
+		},
+		"radios_configuration": types.ListType{
+			ElemType: types.ObjectType{AttrTypes: radioAiRadioConfigAttrTypes},
+		},
 	}
 
 	snmpAttrTypes = map[string]attr.Type{
@@ -1795,9 +1838,8 @@ func (r *settingResource) Schema(
 					"rewrites the channel of every radio in the bands listed in " +
 					"`radios`, overriding a channel set on the device, so leaving a " +
 					"band out of `radios` is how its channel is pinned while the " +
-					"others stay optimized. Options this block does not model " +
-					"(channel blacklists, per-radio configuration, HT modes) are " +
-					"preserved across updates.",
+					"others stay optimized. Only the attributes set in config are " +
+					"written; the others keep their controller values.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
@@ -1845,6 +1887,107 @@ func (r *settingResource) Schema(
 							"must be a lowercase MAC address",
 						),
 					),
+					"setting_preference": schema.StringAttribute{
+						MarkdownDescription: "`auto` or `manual`.",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("auto", "manual"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"auto_channel_presets_type": schema.StringAttribute{
+						MarkdownDescription: "Channel preset: `maximum_speed`, " +
+							"`conservative` or `custom` (the `channels_*` lists).",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("maximum_speed", "conservative", "custom"),
+						},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"auto_adjust_channels_to_country": schema.BoolAttribute{
+						MarkdownDescription: "Restrict the channel lists to the site's country.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"ht_modes_ng": radioAiChannelList(
+						"2.4 GHz channel widths (MHz) the optimizer may use: `20`, `40`.",
+						int64validator.OneOf(20, 40),
+					),
+					"ht_modes_na": radioAiChannelList(
+						"5 GHz channel widths (MHz) the optimizer may use: `20`, "+
+							"`40`, `80`, `160`.",
+						int64validator.OneOf(20, 40, 80, 160),
+					),
+					"high_priority_devices": radioAiStringList(
+						"MAC addresses of devices the optimizer handles first.",
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^([0-9a-f]{2}:){5}[0-9a-f]{2}$`),
+							"must be a lowercase MAC address",
+						),
+					),
+					"channels_blacklist": schema.ListNestedAttribute{
+						MarkdownDescription: "Channels the optimizer must not use.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"radio": schema.StringAttribute{
+									MarkdownDescription: "Band: `ng`, `na` or `6e`.",
+									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.OneOf("ng", "na", "6e"),
+									},
+								},
+								"channel": schema.Int64Attribute{
+									MarkdownDescription: "Channel number.",
+									Required:            true,
+								},
+								"channel_width": schema.Int64Attribute{
+									MarkdownDescription: "Channel width in MHz.",
+									Required:            true,
+								},
+							},
+						},
+					},
+					"radios_configuration": schema.ListNestedAttribute{
+						MarkdownDescription: "Per-band channel width and DFS use.",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"radio": schema.StringAttribute{
+									MarkdownDescription: "Band: `ng`, `na` or `6e`.",
+									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.OneOf("ng", "na", "6e"),
+									},
+								},
+								"channel_width": schema.Int64Attribute{
+									MarkdownDescription: "Channel width in MHz.",
+									Required:            true,
+								},
+								"dfs": schema.BoolAttribute{
+									MarkdownDescription: "Whether DFS channels may be used.",
+									Required:            true,
+								},
+							},
+						},
+					},
 				},
 			},
 			"global_switch": schema.SingleNestedAttribute{
@@ -4531,8 +4674,8 @@ func (r *settingResource) persistRadioAi(
 const radioAiSettingKey = "radio_ai"
 
 // radioAiRawSetting builds a partial radio_ai payload containing only the
-// fields set in the model. Channels go out as numeric strings, the form the
-// controller's own UI stores them in.
+// fields set in the model. Channels and HT modes go out as numeric strings,
+// the form the controller's own UI stores them in.
 func radioAiRawSetting(
 	ctx context.Context,
 	model *settingRadioAiModel,
@@ -4545,10 +4688,21 @@ func radioAiRawSetting(
 	if !model.CronExpr.IsNull() && !model.CronExpr.IsUnknown() {
 		data["cron_expr"] = model.CronExpr.ValueString()
 	}
+	if !model.SettingPreference.IsNull() && !model.SettingPreference.IsUnknown() {
+		data["setting_preference"] = model.SettingPreference.ValueString()
+	}
+	if !model.AutoChannelPresetsType.IsNull() && !model.AutoChannelPresetsType.IsUnknown() {
+		data["auto_channel_presets_type"] = model.AutoChannelPresetsType.ValueString()
+	}
+	if !model.AutoAdjustChannelsToCountry.IsNull() &&
+		!model.AutoAdjustChannelsToCountry.IsUnknown() {
+		data["auto_adjust_channels_to_country"] = model.AutoAdjustChannelsToCountry.ValueBool()
+	}
 	stringLists := map[string]types.List{
-		"radios":          model.Radios,
-		"optimize":        model.Optimize,
-		"exclude_devices": model.ExcludeDevices,
+		"radios":                model.Radios,
+		"optimize":              model.Optimize,
+		"exclude_devices":       model.ExcludeDevices,
+		"high_priority_devices": model.HighPriorityDevices,
 	}
 	for key, list := range stringLists {
 		if list.IsNull() || list.IsUnknown() {
@@ -4562,6 +4716,8 @@ func radioAiRawSetting(
 		"channels_ng": model.ChannelsNg,
 		"channels_na": model.ChannelsNa,
 		"channels_6e": model.Channels6E,
+		"ht_modes_ng": model.HtModesNg,
+		"ht_modes_na": model.HtModesNa,
 	}
 	for key, list := range channels {
 		if list.IsNull() || list.IsUnknown() {
@@ -4574,6 +4730,32 @@ func radioAiRawSetting(
 			out[i] = fmt.Sprint(v)
 		}
 		data[key] = out
+	}
+	if !model.ChannelsBlacklist.IsNull() && !model.ChannelsBlacklist.IsUnknown() {
+		var entries []settingRadioAiBlacklistModel
+		diags.Append(model.ChannelsBlacklist.ElementsAs(ctx, &entries, false)...)
+		out := make([]settings.SettingRadioAiChannelsBlacklist, len(entries))
+		for i, e := range entries {
+			out[i] = settings.SettingRadioAiChannelsBlacklist{
+				Radio:        e.Radio.ValueString(),
+				Channel:      e.Channel.ValueInt64Pointer(),
+				ChannelWidth: e.ChannelWidth.ValueInt64Pointer(),
+			}
+		}
+		data["channels_blacklist"] = out
+	}
+	if !model.RadiosConfiguration.IsNull() && !model.RadiosConfiguration.IsUnknown() {
+		var entries []settingRadioAiRadioConfigModel
+		diags.Append(model.RadiosConfiguration.ElementsAs(ctx, &entries, false)...)
+		out := make([]settings.SettingRadioAiRadiosConfiguration, len(entries))
+		for i, e := range entries {
+			out[i] = settings.SettingRadioAiRadiosConfiguration{
+				Radio:        e.Radio.ValueString(),
+				ChannelWidth: e.ChannelWidth.ValueInt64Pointer(),
+				Dfs:          e.Dfs.ValueBool(),
+			}
+		}
+		data["radios_configuration"] = out
 	}
 	return &settings.RawSetting{
 		BaseSetting: settings.BaseSetting{Key: radioAiSettingKey},
@@ -4602,15 +4784,45 @@ func (r *settingResource) radioAiSettingToModel(
 		diags.Append(d...)
 		return l
 	}
+	blacklist := make([]settingRadioAiBlacklistModel, len(setting.ChannelsBlacklist))
+	for i, b := range setting.ChannelsBlacklist {
+		blacklist[i] = settingRadioAiBlacklistModel{
+			Radio:        types.StringValue(b.Radio),
+			Channel:      types.Int64PointerValue(b.Channel),
+			ChannelWidth: types.Int64PointerValue(b.ChannelWidth),
+		}
+	}
+	blacklistList, d := types.ListValueFrom(
+		ctx, types.ObjectType{AttrTypes: radioAiBlacklistAttrTypes}, blacklist)
+	diags.Append(d...)
+	radioConfigs := make([]settingRadioAiRadioConfigModel, len(setting.RadiosConfiguration))
+	for i, c := range setting.RadiosConfiguration {
+		radioConfigs[i] = settingRadioAiRadioConfigModel{
+			Radio:        types.StringValue(c.Radio),
+			ChannelWidth: types.Int64PointerValue(c.ChannelWidth),
+			Dfs:          types.BoolValue(c.Dfs),
+		}
+	}
+	radioConfigList, d := types.ListValueFrom(
+		ctx, types.ObjectType{AttrTypes: radioAiRadioConfigAttrTypes}, radioConfigs)
+	diags.Append(d...)
 	return &settingRadioAiModel{
-		Enabled:        types.BoolValue(setting.Enabled),
-		CronExpr:       stringOrNull(setting.CronExpr),
-		Radios:         stringList(setting.Radios),
-		Optimize:       stringList(setting.Optimize),
-		ChannelsNg:     int64List(setting.ChannelsNg),
-		ChannelsNa:     int64List(setting.ChannelsNa),
-		Channels6E:     int64List(setting.Channels6E),
-		ExcludeDevices: stringList(setting.ExcludeDevices),
+		Enabled:                     types.BoolValue(setting.Enabled),
+		CronExpr:                    stringOrNull(setting.CronExpr),
+		Radios:                      stringList(setting.Radios),
+		Optimize:                    stringList(setting.Optimize),
+		ChannelsNg:                  int64List(setting.ChannelsNg),
+		ChannelsNa:                  int64List(setting.ChannelsNa),
+		Channels6E:                  int64List(setting.Channels6E),
+		ExcludeDevices:              stringList(setting.ExcludeDevices),
+		SettingPreference:           stringOrNull(setting.SettingPreference),
+		AutoChannelPresetsType:      stringOrNull(setting.AutoChannelPresetsType),
+		AutoAdjustChannelsToCountry: types.BoolValue(setting.AutoAdjustChannelsToCountry),
+		HtModesNg:                   int64List(setting.HtModesNg),
+		HtModesNa:                   int64List(setting.HtModesNa),
+		HighPriorityDevices:         stringList(setting.HighPriorityDevices),
+		ChannelsBlacklist:           blacklistList,
+		RadiosConfiguration:         radioConfigList,
 	}, diags
 }
 
