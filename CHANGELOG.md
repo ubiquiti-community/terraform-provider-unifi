@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.63.0] - 2026-10-31
+
+IPv6 interface-identifier matching and the IP/MAC binding on
+`unifi_firewall_policy`, a write-only WireGuard private key on
+`unifi_vpn_server`, and a fix for WAN updates rejected because of
+`egress_qos.priority`. go-unifi is now v1.42.0.
+
+**Upgrade notes:**
+
+- `unifi_firewall_policy`: `match_mac = true` is now rejected at plan time
+  unless the source has `matching_target = "IP"` and a `mac`. The controller
+  silently dropped the flag everywhere else, so such configurations already
+  failed with "Provider produced inconsistent result after apply". On a
+  `CLIENT` source, remove `match_mac` (the target already matches
+  `client_macs` by MAC).
+- `unifi_wan`: the schema version moves to 2 so a stored
+  `egress_qos.priority = 0` is upgraded to null. A state written by this
+  version cannot be read by an older provider.
+- `data.unifi_network`: `vlan` and `wan.egress_qos` read null instead of `0`
+  when the controller stores an empty value.
+
+### ✨ Features
+
+- **`unifi_firewall_policy`: match an IPv6 interface identifier with the new `iid` and `match_opposite_iid` attributes on `source` and `destination`.** `matching_target` now accepts `IID`, so a rule can match a host by its interface ID (for example the EUI-64 lower 64 bits with `iid = "::eaff:1eff:fed7:bf17/::ffff:ffff:ffff:ffff"`) and keep working when the delegated IPv6 prefix rotates, which a full address in `ips` cannot. Such a rule could not be created from configuration before, and importing one planned a diff. `iid` must be written as `<address>/<mask>` in IPv6 notation, the only form the controller accepts. It is required with `IID`, only valid with it, and cannot be combined with the attributes of the other targets. `match_opposite_iid` inverts the match. Both are checked at plan time (#677, from #614 by @ldobbelsteen)
+- **`unifi_firewall_policy`: `source.mac` makes `match_mac = true` work on an `IP` source (the controller's IP/MAC binding).** The controller requires the bound MAC in a `mac` field and rejected every write with `match_mac = true` without it (`api.err.MissingFirewallPolicySourceIpMac`). `match_mac = true` on an `IP` source now requires `mac`, and `mac` is rejected without `match_mac = true` on an `IP` source, and on the destination (#676)
+- **`unifi_vpn_server`: write-only `wireguard.private_key_wo`.** The new `wireguard.private_key_wo` (Terraform 1.11+) and `wireguard.private_key_wo_version` attributes set the WireGuard server private key without writing it to the state, as `unifi_vpn_client` already allows. `private_key_wo` cannot be combined with `private_key`. When it is used, the state holds neither attribute and the key the controller echoes back is not stored; `public_key` is still computed. The key is sent on create and each time `private_key_wo_version` changes. Other updates keep the key the controller holds, so they never rotate or drop it (#675, from #574 by @rolandjohann)
+
+### 🐛 Bug Fixes
+
+- **`unifi_firewall_policy`: `match_mac = true` on a `CLIENT` source no longer fails with "Provider produced inconsistent result after apply".** The controller only stores `match_mac` on a source with `matching_target = "IP"`; on any other source target, and on the destination, it silently drops the flag, so it read back as `false`. The provider now rejects `match_mac = true` in those places at plan time (#676, from #575 by @deividfortuna)
+- **`unifi_wan`: `egress_qos.priority` is no longer sent as `0`, which made the controller reject the whole WAN update.** The controller stores an unset priority as `""` and accepts only `1`-`7`, but the attribute defaulted to `0`, so declaring `egress_qos` (even only to set `enabled`) sent `wan_egress_qos: 0` and failed with `api.err.InvalidPayload`. An unset priority is now null, read back as null and never sent; values are validated `1`-`7`. Existing states holding `0` are upgraded to null, so no diff appears (#678, from go-unifi#105 by @florinsule)
+- **`unifi_network` and `unifi_wlan`: no more spurious `vlan` diff when the controller stores an empty VLAN.** go-unifi v1.42.0 reads numeric fields stored as `""` as null instead of `0` when `0` is not a valid value (go-unifi#119)
+
+### 🔧 Dependency Updates
+
+- go-unifi v1.41.0 → v1.42.0: IID and source `mac` on firewall policies (go-unifi#118), empty numeric fields decoded as null (go-unifi#119)
+
 ## [v0.62.0] - 2026-10-31
 
 New resources for QoS rules, content filtering, NAT rules and traffic
