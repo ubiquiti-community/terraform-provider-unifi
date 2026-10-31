@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_nat` keeps a disabled rule disabled.** `enabled` defaults to `true` only on create. `exclude`, `logging`, `pppoe_use_base_interface` and the filters'' `invert_address`/`invert_port` keep the controller''s value instead of being reset to `false`. (#685, part of #544)'
+time: 2026-10-31T15:03:00.450268+01:00
