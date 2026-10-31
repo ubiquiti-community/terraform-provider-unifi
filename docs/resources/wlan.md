@@ -106,7 +106,8 @@ resource "unifi_wlan" "wifi" {
 - `network_id` (String) ID of the network for this WLAN.
 - `no2ghz_oui` (Boolean) Connect high performance clients to 5 GHz only.
 - `passphrase` (String, Sensitive) The passphrase for the network, only required if `security` is not `open`. Stored in state — use `passphrase_wo` to avoid persisting the secret.
-- `passphrase_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `passphrase` (Terraform 1.11+). Used at apply time but never written to state, so it can be sourced from an ephemeral resource (e.g. a Vault secret). Mutually exclusive with `passphrase`.
+- `passphrase_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only equivalent of `passphrase` (Terraform 1.11+). Sent on create and whenever `passphrase_wo_version` changes, and never written to state, so it can be sourced from an ephemeral resource (e.g. a Vault secret). Mutually exclusive with `passphrase`.
+- `passphrase_wo_version` (Number) Version counter for `passphrase_wo`. Increment this value to send the current `passphrase_wo` to the controller on the next apply.
 - `pmf_mode` (String) Enable Protected Management Frames. This cannot be disabled if using WPA 3.
 - `private_preshared_keys` (Attributes List) Private pre-shared keys (PPSK): a list of per-key passphrases, each optionally bound to its own network/VLAN. Only valid when `private_preshared_keys_enabled` is `true`. (see [below for nested schema](#nestedatt--private_preshared_keys))
 - `private_preshared_keys_enabled` (Boolean) Whether per-key (PPSK) passphrases are enabled for this WLAN. Requires `security = wpapsk`.
