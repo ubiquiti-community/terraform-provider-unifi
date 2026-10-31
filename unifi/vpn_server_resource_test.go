@@ -1522,7 +1522,7 @@ func Test_vpnServerResource_wireguardIPv6(t *testing.T) {
 		network := &unifi.Network{
 			ID:                                     "net-v6",
 			Name:                                   new("wg-v6"),
-			Enabled:                                true,
+			Enabled:                                new(true),
 			IPSubnet:                               new("192.0.2.1/24"),
 			IPV6Subnet:                             new("fd00:db8::1/64"),
 			VPNType:                                new("wireguard-server"),
@@ -1551,7 +1551,7 @@ func Test_vpnServerResource_wireguardIPv6(t *testing.T) {
 		network := &unifi.Network{
 			ID:        "net-v4",
 			Name:      new("wg-v4"),
-			Enabled:   true,
+			Enabled:   new(true),
 			IPSubnet:  new("198.51.100.1/24"),
 			VPNType:   new("wireguard-server"),
 			LocalPort: new(int64(51820)),
