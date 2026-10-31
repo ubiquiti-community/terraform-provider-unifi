@@ -238,6 +238,29 @@ func Test_settingResource_mdnsAlone(t *testing.T) {
 	}
 }
 
+// An Update that leaves mdns unchanged does not write it.
+func Test_settingResource_updateMdnsUnchangedSkipsWrite(t *testing.T) {
+	r, puts := newSettingsFakeController(t, storedMdns())
+	created := createSettings(t, r, mdnsConfig("some"))
+	if created.Diagnostics.HasError() {
+		t.Fatalf("Create: %v", created.Diagnostics)
+	}
+	puts()
+
+	s := resourceSchema(t, r)
+	attrs := mdnsConfig("some")
+	upd := &fwresource.UpdateResponse{State: created.State, Identity: created.Identity}
+	r.Update(context.Background(), fwresource.UpdateRequest{
+		Plan: tfPlan(t, s, attrs), Config: tfConfig(t, s, attrs), State: created.State,
+	}, upd)
+	if upd.Diagnostics.HasError() {
+		t.Fatalf("Update: %v", upd.Diagnostics)
+	}
+	if got := puts(); got["mdns"] != nil {
+		t.Errorf("unchanged mdns was written: %v", got["mdns"])
+	}
+}
+
 func Test_keepNullAttributes_passesThroughWithoutPrior(t *testing.T) {
 	fresh := types.ObjectValueMust(
 		map[string]attr.Type{"a": types.StringType},

@@ -2934,7 +2934,9 @@ func (r *settingResource) Update(
 		r.persistRadioAi(ctx, site, radioAiConfig, &resp.Diagnostics)
 	}
 
-	r.persistMdns(ctx, site, &plan, &resp.Diagnostics)
+	if settingSectionChanged(plan.Mdns, state.Mdns) {
+		r.persistMdns(ctx, site, &plan, &resp.Diagnostics)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
