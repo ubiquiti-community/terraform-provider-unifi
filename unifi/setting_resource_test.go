@@ -1898,7 +1898,8 @@ func TestRadioAiRawSetting(t *testing.T) {
 			ExcludeDevices: types.ListNull(types.StringType),
 		})
 		radios, present := raw.Data["radios"]
-		if !present || len(radios.([]string)) != 0 {
+		list, ok := radios.([]string)
+		if !present || !ok || len(list) != 0 {
 			t.Errorf("radios = %#v, want an empty list", radios)
 		}
 	})
