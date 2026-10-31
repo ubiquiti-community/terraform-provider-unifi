@@ -5,6 +5,9 @@
 # NOTE: The UniFi Integration API addresses sites by UUID. The "site" attribute
 # (which defaults to the provider's configured site) accepts either a site name
 # such as "default" or a site UUID; a name is resolved to its UUID automatically.
+#
+# NOTE: The Integration API requires the provider to be configured with an
+# "api_key"; username/password authentication is not supported for this resource.
 
 # A list of IPv4 addresses, e.g. upstream DNS resolvers.
 resource "unifi_traffic_matching_list" "dns_resolvers" {

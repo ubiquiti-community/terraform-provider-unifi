@@ -133,7 +133,9 @@ func (r *trafficMatchingListResource) Schema(
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "`unifi_traffic_matching_list` manages a reusable set of match criteria " +
 			"(IPv4 addresses or ports) exposed by the UniFi Network Integration API and referenced " +
-			"by firewall and traffic-management rules.",
+			"by firewall and traffic-management rules." +
+			"\n\n~> **Note:** The UniFi Network Integration API only accepts API key authentication. " +
+			"Configure the provider with `api_key`; username/password authentication is not supported for this resource.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -637,7 +639,8 @@ func (r *trafficMatchingListResource) ListResourceConfigSchema(
 	resp *list.ListResourceSchemaResponse,
 ) {
 	resp.Schema = listschema.Schema{
-		MarkdownDescription: "List traffic matching lists in a site.",
+		MarkdownDescription: "List traffic matching lists in a site. Requires provider `api_key` authentication " +
+			"(the UniFi Network Integration API does not support username/password).",
 		Attributes: map[string]listschema.Attribute{
 			"site": listschema.StringAttribute{
 				MarkdownDescription: "The site name or UUID to list traffic matching lists from.",
