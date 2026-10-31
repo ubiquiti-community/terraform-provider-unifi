@@ -41,7 +41,7 @@ resource "unifi_content_filter" "lan" {
 - `block_list` (Set of String) Domains that are always blocked.
 - `categories` (Set of String) Blocked categories, e.g. `ADVERTISEMENT`, `MALWARE`, `PHISHING`, `GAMBLING`, `ADULT`, or the presets `FAMILY` and `WORK`.
 - `client_macs` (Set of String) MAC addresses of the clients the filter applies to.
-- `enabled` (Boolean) Whether the filter is active. Defaults to `true`.
+- `enabled` (Boolean) Whether the filter is active. Defaults to `true` for a new filter; an existing filter keeps the controller's value when this is not set, so adopting a disabled filter does not re-enable it (#544).
 - `network_ids` (Set of String) IDs of the networks the filter applies to.
 - `safe_search` (Set of String) Search engines forced into safe search: `GOOGLE`, `YOUTUBE`, `BING`.
 - `schedule` (Attributes) When the rule is active. Omit for always. (see [below for nested schema](#nestedatt--schedule))

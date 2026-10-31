@@ -33,7 +33,7 @@ resource "unifi_dynamic_dns" "test" {
 
 ### Optional
 
-- `interface` (String) The interface for the dynamic DNS. Can be `wan` or `wan2`.
+- `interface` (String) The interface for the dynamic DNS. Can be `wan` or `wan2`. Defaults to `wan` for a new entry; an existing entry keeps the controller's value when this is not set, so adopting a `wan2` entry does not plan to replace it (#544).
 - `login` (String) The login for the dynamic DNS service.
 - `password` (String, Sensitive) The password for the dynamic DNS service.
 - `server` (String) The server for the dynamic DNS service.

@@ -43,7 +43,7 @@ resource "unifi_client" "test" {
 
 ### Optional
 
-- `qos_rate` (Attributes) QoS rate limits applied to clients in this group, in kbps. (see [below for nested schema](#nestedatt--qos_rate))
+- `qos_rate` (Attributes) QoS rate limits applied to clients in this group, in kbps. A new group is unlimited (`-1`) unless set; an existing group keeps the controller's limits when this is not set, so adopting a rate-limited group does not lift its limits (#544). (see [below for nested schema](#nestedatt--qos_rate))
 - `site` (String) The name of the site to associate the client QOS rate with.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
@@ -56,8 +56,8 @@ resource "unifi_client" "test" {
 
 Optional:
 
-- `max_down` (Number) The QOS maximum download rate.
-- `max_up` (Number) The QOS maximum upload rate.
+- `max_down` (Number) The QOS maximum download rate. `-1` (unlimited) for a new group when not set; taken from the controller otherwise.
+- `max_up` (Number) The QOS maximum upload rate. `-1` (unlimited) for a new group when not set; taken from the controller otherwise.
 
 
 <a id="nestedatt--timeouts"></a>

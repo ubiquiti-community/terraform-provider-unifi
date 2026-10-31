@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -161,10 +161,14 @@ func (r *dnsRecordFrameworkResource) Schema(
 				},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the DNS record is enabled.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the DNS record is enabled. Defaults to `true` for " +
+					"a new record; an existing record keeps the controller's value when this " +
+					"is not set, so adopting a disabled record does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"port": schema.Int64Attribute{
 				MarkdownDescription: "The port of the DNS record.",
@@ -307,6 +311,12 @@ func (r *dnsRecordFrameworkResource) Create(
 	}
 
 	// Create the DNS record
+	// A new record is created enabled unless the configuration says otherwise.
+	// This used to be a schema Default, which the framework applies before
+	// plan modifiers and so also re-enabled adopted records (#544).
+	if !isKnown(data.Enabled) {
+		dnsRecord.Enabled = true
+	}
 	createdDNSRecord, err := r.client.CreateDNSRecord(ctx, site, dnsRecord)
 	if err != nil {
 		resp.Diagnostics.AddError(

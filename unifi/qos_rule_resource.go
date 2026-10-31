@@ -15,16 +15,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 )
 
 var (
@@ -164,10 +164,14 @@ func (r *qosRuleResource) Schema(
 				Validators:          []validator.String{stringvalidator.LengthBetween(1, 128)},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the rule is active. Defaults to `true`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the rule is active. Defaults to `true` for a new " +
+					"rule; an existing rule keeps the controller's value when this is not set, " +
+					"so adopting a disabled rule does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"objective": schema.StringAttribute{
 				MarkdownDescription: "`PRIORITIZE`, `LIMIT` or `LIMIT_AND_PRIORITIZE`.",
@@ -187,19 +191,27 @@ func (r *qosRuleResource) Schema(
 				Validators:          []validator.Int64{int64validator.AtLeast(1)},
 			},
 			"download_burst": schema.StringAttribute{
-				MarkdownDescription: "Download burst allowance: `OFF`, `SHORT` or `LONG`. Defaults to `OFF`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("OFF"),
+				MarkdownDescription: "Download burst allowance: `OFF`, `SHORT` or `LONG`. " +
+					"Defaults to `OFF` for a new rule; an existing rule keeps the " +
+					"controller's value when this is not set (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("OFF"),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("OFF", "SHORT", "LONG"),
 				},
 			},
 			"upload_burst": schema.StringAttribute{
-				MarkdownDescription: "Upload burst allowance: `OFF`, `SHORT` or `LONG`. Defaults to `OFF`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("OFF"),
+				MarkdownDescription: "Upload burst allowance: `OFF`, `SHORT` or `LONG`. " +
+					"Defaults to `OFF` for a new rule; an existing rule keeps the " +
+					"controller's value when this is not set (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreate("OFF"),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("OFF", "SHORT", "LONG"),
 				},
@@ -389,6 +401,12 @@ func (r *qosRuleResource) Create(
 	rule := r.modelToAPI(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	// A new rule is created enabled unless the configuration says otherwise.
+	// This used to be a schema Default, which the framework applies before
+	// plan modifiers and so also re-enabled adopted rules (#544).
+	if !isKnown(plan.Enabled) {
+		rule.Enabled = true
 	}
 	created, err := r.client.CreateQOSRule(ctx, site, rule)
 	if err != nil {

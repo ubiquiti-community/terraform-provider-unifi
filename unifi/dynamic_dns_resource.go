@@ -16,11 +16,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -114,11 +114,16 @@ func (r *dynamicDNSResource) Schema(
 				},
 			},
 			"interface": schema.StringAttribute{
-				MarkdownDescription: "The interface for the dynamic DNS. Can be `wan` or `wan2`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("wan"),
+				MarkdownDescription: "The interface for the dynamic DNS. Can be `wan` or " +
+					"`wan2`. Defaults to `wan` for a new entry; an existing entry keeps the " +
+					"controller's value when this is not set, so adopting a `wan2` entry " +
+					"does not plan to replace it (#544).",
+				Optional: true,
+				Computed: true,
 				PlanModifiers: []planmodifier.String{
+					// Before RequiresReplace, so an adopted entry's interface is
+					// held rather than compared against a constant.
+					planmodifiers.StringDefaultOnCreate("wan"),
 					stringplanmodifier.RequiresReplace(),
 				},
 				Validators: []validator.String{

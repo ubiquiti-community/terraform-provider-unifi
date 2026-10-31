@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -120,10 +120,14 @@ func (r *contentFilterResource) Schema(
 				Validators:          []validator.String{stringvalidator.LengthBetween(1, 128)},
 			},
 			"enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether the filter is active. Defaults to `true`.",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
+				MarkdownDescription: "Whether the filter is active. Defaults to `true` for a " +
+					"new filter; an existing filter keeps the controller's value when this is " +
+					"not set, so adopting a disabled filter does not re-enable it (#544).",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"network_ids": strSet("IDs of the networks the filter applies to."),
 			"client_macs": strSet("MAC addresses of the clients the filter applies to."),
@@ -199,6 +203,12 @@ func (r *contentFilterResource) Create(
 	f := r.modelToAPI(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	// A new filter is created enabled unless the configuration says otherwise.
+	// This used to be a schema Default, which the framework applies before
+	// plan modifiers and so also re-enabled adopted filters (#544).
+	if !isKnown(plan.Enabled) {
+		f.Enabled = true
 	}
 	created, err := r.client.CreateContentFiltering(ctx, site, f)
 	if err != nil {
