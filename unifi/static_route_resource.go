@@ -441,7 +441,7 @@ func (r *staticRouteFrameworkResource) Read(
 	routing, err := r.client.GetRouting(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(ctx, resp, identity)
 			return
 		}
 		resp.Diagnostics.AddError(

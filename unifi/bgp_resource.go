@@ -427,7 +427,7 @@ func (r *bgpResource) Read(
 	bgpConfig, err := r.client.GetBGPConfig(ctx, site)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(ctx, resp, bgpIdentityModel{Site: types.StringValue(site)})
 			return
 		}
 		resp.Diagnostics.AddError(

@@ -382,7 +382,7 @@ func (r *wireguardPeerResource) Read(
 	peer, err := r.client.GetWireGuardPeer(ctx, site, networkID, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(ctx, resp, identity)
 			return
 		}
 		resp.Diagnostics.AddError(

@@ -452,7 +452,7 @@ func (r *portForwardResource) Read(
 	portForward, err := r.client.GetPortForward(ctx, site, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(ctx, resp, identity)
 			return
 		}
 		resp.Diagnostics.AddError(
