@@ -320,6 +320,7 @@ type settingResourceModel struct {
 	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
 	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
 	Connectivity  types.Object   `tfsdk:"connectivity"`
+	Mdns          types.Object   `tfsdk:"mdns"`
 	RadioAi       types.Object   `tfsdk:"radio_ai"`
 	Timeouts      timeouts.Value `tfsdk:"timeouts"`
 
@@ -1787,6 +1788,7 @@ func (r *settingResource) Schema(
 					},
 				},
 			},
+			"mdns": mdnsSchemaAttribute(),
 			"radio_ai": schema.SingleNestedAttribute{
 				MarkdownDescription: "Channel AI, the nightly channel optimization " +
 					"(Settings > WiFi > Channel AI). On its schedule the optimizer " +
@@ -2515,6 +2517,8 @@ func (r *settingResource) Create(
 	resp.Diagnostics.Append(
 		req.Config.GetAttribute(ctx, path.Root("radio_ai"), &radioAiConfig)...)
 	r.persistRadioAi(ctx, site, radioAiConfig, &resp.Diagnostics)
+
+	r.persistMdns(ctx, site, &data, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -2929,6 +2933,8 @@ func (r *settingResource) Update(
 			req.Config.GetAttribute(ctx, path.Root("radio_ai"), &radioAiConfig)...)
 		r.persistRadioAi(ctx, site, radioAiConfig, &resp.Diagnostics)
 	}
+
+	r.persistMdns(ctx, site, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -3387,6 +3393,11 @@ func (r *settingResource) readSettings(
 		data.Connectivity = objValue
 	} else {
 		data.Connectivity = types.ObjectNull(connectivityAttrTypes)
+	}
+
+	r.readMdns(ctx, site, data, diags)
+	if diags.HasError() {
+		return
 	}
 
 	// Channel AI
