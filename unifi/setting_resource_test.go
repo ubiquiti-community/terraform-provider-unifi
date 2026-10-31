@@ -2576,6 +2576,39 @@ func TestIpsSuppressionFromRaw(t *testing.T) {
 	}
 }
 
+// TestNestIpsSuppressionCarriesEnabledNetworks guards the nested suppression
+// write on controllers without the standalone ips_suppression document: it
+// must carry the configured enabled_networks, or the controller fills the
+// list with every network and the apply reads back an inconsistent result.
+func TestNestIpsSuppressionCarriesEnabledNetworks(t *testing.T) {
+	supp := map[string]any{"alerts": []any{}, "whitelist": []any{}}
+
+	got := nestIpsSuppression(
+		map[string]any{"key": "ips", "ips_mode": "disabled"},
+		supp,
+		[]string{"net-a"},
+	)
+	if nets, ok := got["enabled_networks"].([]string); !ok || len(nets) != 1 || nets[0] != "net-a" {
+		t.Errorf("enabled_networks = %v, want [net-a]", got["enabled_networks"])
+	}
+	if got["ips_mode"] != "disabled" {
+		t.Errorf("unrelated ips fields must be kept, got ips_mode = %v", got["ips_mode"])
+	}
+	if _, ok := got["suppression"].(map[string]any); !ok {
+		t.Errorf("suppression not merged: %v", got["suppression"])
+	}
+
+	// Nothing to carry: leave whatever the document holds.
+	got = nestIpsSuppression(
+		map[string]any{"key": "ips", "enabled_networks": []any{"net-live"}},
+		supp,
+		nil,
+	)
+	if nets, ok := got["enabled_networks"].([]any); !ok || len(nets) != 1 || nets[0] != "net-live" {
+		t.Errorf("enabled_networks = %v, want the live [net-live]", got["enabled_networks"])
+	}
+}
+
 // TestIpsSuppressionRawSetting guards the #381 write path: the standalone
 // setting must carry the ips_suppression key and serialize nil entry slices
 // as empty JSON arrays (clearing the last entry must clear the controller,
