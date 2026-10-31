@@ -1054,7 +1054,7 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 	network := &unifi.Network{
 		Purpose:               unifi.PurposeSiteVPN,
 		Name:                  new(model.Name.ValueString()),
-		Enabled:               model.Enabled.ValueBoolPointer(),
+		Enabled:               boolPointerIfKnown(model.Enabled),
 		VPNType:               new("ipsec-vpn"),
 		IPSecInterface:        optStr(model.Interface),
 		IPSecPeerIP:           optStr(model.PeerIP),

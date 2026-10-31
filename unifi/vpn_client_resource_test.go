@@ -1035,7 +1035,7 @@ func Test_vpnClientResource_ipv6Subnet(t *testing.T) {
 			network := &unifi.Network{
 				ID:         "net-v6",
 				Name:       &name,
-				Enabled:    true,
+				Enabled:    new(true),
 				IPSubnet:   &subnet,
 				IPV6Subnet: tc.api,
 			}
