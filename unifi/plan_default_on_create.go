@@ -20,10 +20,12 @@ import (
 // apply. These helpers reproduce the old create-time value from ModifyPlan
 // instead, and hold the prior state value on every later plan.
 //
-// planmodifiers.StringDefaultOnCreate covers string leaves the same way as an
-// attribute plan modifier; these cover the bool, int64 and whole-object cases,
-// and leaves of an object whose create-time shape is itself set here (an
-// attribute modifier does not run under an unknown parent).
+// Prefer the attribute plan modifiers in unifi/planmodifiers
+// (String/Bool/Int64DefaultOnCreate and their KeepNull variants) for a plain
+// attribute. These helpers are for what an attribute modifier cannot do: a
+// whole object's create-time shape, leaves of an object whose shape is itself
+// set here (an attribute modifier does not run under an unknown parent), and
+// elements of a list block, where "no prior value" depends on the index.
 
 // planDefaultOnCreate plans an Optional+Computed attribute the configuration
 // leaves unset: def when there is no prior value to keep (create, or a new
