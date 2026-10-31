@@ -852,6 +852,11 @@ func (r *deviceResource) Schema(
 								"and preserved in state for one release.",
 							DeprecationMessage: "Deprecated: moved to `unifi_wlan.roaming_assistant_na` (5 GHz) and `unifi_wlan.roaming_assistant_6e` (6 GHz). UniFi Network 10.x moved assisted roaming from the device's radio table onto the WLAN, so this attribute no longer reaches the controller and will be removed in a future release.",
 							Optional:           true,
+							// Computed so an omitted leaf follows prior state: a value an
+							// earlier release read from the controller is carried forward
+							// on every read, and as a plain Optional it planned as a change
+							// that left the device's computed attributes unknown (#615).
+							Computed: true,
 						},
 						"assisted_roaming_rssi": schema.Int64Attribute{
 							Description: "**Moved to `unifi_wlan.roaming_assistant_na.rssi`** " +
@@ -861,6 +866,11 @@ func (r *deviceResource) Schema(
 								"and preserved in state for one release.",
 							DeprecationMessage: "Deprecated: moved to `unifi_wlan.roaming_assistant_na` (5 GHz) and `unifi_wlan.roaming_assistant_6e` (6 GHz). UniFi Network 10.x moved assisted roaming from the device's radio table onto the WLAN, so this attribute no longer reaches the controller and will be removed in a future release.",
 							Optional:           true,
+							// Computed so an omitted leaf follows prior state: a value an
+							// earlier release read from the controller is carried forward
+							// on every read, and as a plain Optional it planned as a change
+							// that left the device's computed attributes unknown (#615).
+							Computed: true,
 						},
 						"dfs": schema.BoolAttribute{
 							Description: "Enable DFS (Dynamic Frequency Selection).",
