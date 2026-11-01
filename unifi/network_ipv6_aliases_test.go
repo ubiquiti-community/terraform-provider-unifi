@@ -7,7 +7,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -166,5 +170,86 @@ func TestUnknownUnsetLeaves(t *testing.T) {
 			got.Attributes()["start"],
 			diags,
 		)
+	}
+}
+
+// #699: switching ipv6.setting_preference re-plans the controller-computed
+// leaves the configuration leaves unset (pd.start here) as unknown, keeps the
+// configured ones, and leaves the plan alone when the preference is unchanged.
+func TestPlanIPv6SettingPreferenceChange(t *testing.T) {
+	ctx := context.Background()
+	r := &networkResource{}
+	var schemaResp fwresource.SchemaResponse
+	r.Schema(ctx, fwresource.SchemaRequest{}, &schemaResp)
+	objType, ok := schemaResp.Schema.Type().TerraformType(ctx).(tftypes.Object)
+	if !ok {
+		t.Fatalf("schema type is not an object")
+	}
+	root := func(ipv6 types.Object) tftypes.Value {
+		vals := make(map[string]tftypes.Value, len(objType.AttributeTypes))
+		for name, at := range objType.AttributeTypes {
+			vals[name] = tftypes.NewValue(at, nil)
+		}
+		v, err := ipv6.ToTerraformValue(ctx)
+		if err != nil {
+			t.Fatalf("ipv6 value: %v", err)
+		}
+		vals["ipv6"] = v
+		return tftypes.NewValue(objType, vals)
+	}
+	pd := types.ObjectValueMust(networkIPv6PDAttrTypes(), map[string]attr.Value{
+		"interface":             types.StringNull(),
+		"prefixid":              types.StringNull(),
+		"start":                 types.StringNull(),
+		"stop":                  types.StringNull(),
+		"auto_prefixid_enabled": types.BoolValue(false),
+	})
+	ipv6 := func(pref types.String, aliases types.List) types.Object {
+		attrs := ipv6WithAliases(pref, aliases).Attributes()
+		attrs["pd"] = pd
+		return types.ObjectValueMust(networkIPv6AttrTypes(), attrs)
+	}
+	ula := types.ListValueMust(types.StringType, []attr.Value{
+		types.StringValue("fd7a:6c9e:4b28:4::1/64"),
+	})
+	configIPv6 := func(pref types.String) types.Object {
+		attrs := ipv6(pref, ula).Attributes()
+		attrs["pd"] = types.ObjectNull(networkIPv6PDAttrTypes())
+		return types.ObjectValueMust(networkIPv6AttrTypes(), attrs)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		planPref    string
+		wantUnknown bool
+	}{
+		{"unchanged", "manual", false},
+		{"manual to auto", "auto", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pref := types.StringValue(tc.planPref)
+			req := fwresource.ModifyPlanRequest{
+				State: tfsdk.State{
+					Schema: schemaResp.Schema,
+					Raw:    root(ipv6(types.StringValue("manual"), ula)),
+				},
+				Plan:   tfsdk.Plan{Schema: schemaResp.Schema, Raw: root(ipv6(pref, ula))},
+				Config: tfsdk.Config{Schema: schemaResp.Schema, Raw: root(configIPv6(pref))},
+			}
+			resp := &fwresource.ModifyPlanResponse{Plan: req.Plan}
+			if d := planIPv6SettingPreferenceChange(ctx, req, resp); d.HasError() {
+				t.Fatalf("planIPv6SettingPreferenceChange: %v", d)
+			}
+			var start types.String
+			var aliases types.List
+			resp.Plan.GetAttribute(ctx, path.Root("ipv6").AtName("pd").AtName("start"), &start)
+			resp.Plan.GetAttribute(ctx, path.Root("ipv6").AtName("aliases"), &aliases)
+			if start.IsUnknown() != tc.wantUnknown {
+				t.Errorf("pd.start = %v, want unknown=%v", start, tc.wantUnknown)
+			}
+			if !aliases.Equal(ula) {
+				t.Errorf("configured aliases = %v, want them kept", aliases)
+			}
+		})
 	}
 }
