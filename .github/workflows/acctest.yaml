@@ -4,6 +4,9 @@ on:
     types: [published]
   schedule:
     - cron: "0 13 * * *"
+  # Manual run from the Actions tab, to verify a fix on main without waiting
+  # for the nightly run or a release.
+  workflow_dispatch:
 
 # OIDC token is needed to authenticate uploads to Codecov.
 permissions:
