@@ -172,10 +172,11 @@ Read-Only:
 
 Read-Only:
 
-- `aliases` (List of String) List of IPv6 aliases for the network.
+- `aliases` (List of String) List of additional IPv6 addresses for the network, in CIDR notation.
 - `interface_type` (String) Specifies which type of IPv6 connection to use.
 - `pd` (Attributes) IPv6 Prefix Delegation (PD) settings. (see [below for nested schema](#nestedatt--ipv6--pd))
 - `ra` (Attributes) IPv6 Router Advertisement (RA) settings. (see [below for nested schema](#nestedatt--ipv6--ra))
+- `setting_preference` (String) Whether the controller manages the IPv6 settings itself (`auto`) or uses the configured values (`manual`).
 - `static_subnet` (String) The static IPv6 subnet (when `interface_type` is `static`).
 
 <a id="nestedatt--ipv6--pd"></a>

@@ -2280,11 +2280,10 @@ func minimalNetworkPlan(ctx context.Context, t *testing.T) (tfsdk.Plan, tfsdk.Co
 	return plan, config
 }
 
-// Test_networkResource_ModifyPlan_ipv6Aliases guards that ModifyPlan rejects
-// any non-null ipv6.aliases value (known, unknown, or empty list) with a clear
-// error instead of letting Create/Update silently drop it and produce a
-// confusing "provider produced inconsistent result after apply" failure (#413).
-// A wholly unknown ipv6 object hides the aliases value and is rejected too.
+// Test_networkResource_ModifyPlan_ipv6Aliases guards that ModifyPlan no longer
+// rejects ipv6.aliases (#413): go-unifi sends it since #699, so any value,
+// known, unknown or empty, and an ipv6 object unknown until apply, plan
+// without an error.
 func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 	r := &networkResource{}
 	ctx := context.Background()
@@ -2301,32 +2300,32 @@ func Test_networkResource_ModifyPlan_ipv6Aliases(t *testing.T) {
 			wantError:   false,
 		},
 		{
-			name: "non-empty known list: error",
+			name: "non-empty known list: no error",
 			ipv6Aliases: types.ListValueMust(
 				types.StringType,
 				[]attr.Value{types.StringValue("2001:db8::1")},
 			),
-			wantError: true,
+			wantError: false,
 		},
 		{
-			name:        "unknown list: error",
+			name:        "unknown list: no error",
 			ipv6Aliases: types.ListUnknown(types.StringType),
-			wantError:   true,
+			wantError:   false,
 		},
 		{
-			name:        "empty known list: error",
+			name:        "empty known list: no error",
 			ipv6Aliases: types.ListValueMust(types.StringType, []attr.Value{}),
-			wantError:   true,
+			wantError:   false,
 		},
 		{
 			// ipv6 = var.x with x unknown until apply: the configuration itself
 			// is unknown, so ModifyPlan cannot shape the object and the guard
-			// must reject it. (An omitted block also plans unknown on create,
+			// must accept it. (An omitted block also plans unknown on create,
 			// but planIPv6Defaults replaces that with its create-time shape
 			// before the guard runs.)
-			name:        "unknown ipv6 object: error",
+			name:        "unknown ipv6 object: no error",
 			ipv6Unknown: true,
-			wantError:   true,
+			wantError:   false,
 		},
 	}
 
@@ -2420,17 +2419,6 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			plan, config := minimalNetworkPlan(ctx, t)
 
-			// Ensure ipv6.aliases is null so it doesn't trigger its own error
-			// before we reach the ip_address_pool check.
-			diags := plan.SetAttribute(
-				ctx,
-				path.Root("ipv6").AtName("aliases"),
-				types.ListNull(types.StringType),
-			)
-			if diags.HasError() {
-				t.Fatalf("SetAttribute(ipv6.aliases): %v", diags)
-			}
-
 			// Build a nat_outbound_ip_addresses list with one entry whose
 			// ip_address_pool is set to the test value.
 			entry, d := types.ObjectValue(
@@ -2452,7 +2440,7 @@ func Test_networkResource_ModifyPlan_ipAddressPool(t *testing.T) {
 			if d.HasError() {
 				t.Fatalf("types.ListValue: %v", d)
 			}
-			diags = plan.SetAttribute(ctx, path.Root("nat_outbound_ip_addresses"), natList)
+			diags := plan.SetAttribute(ctx, path.Root("nat_outbound_ip_addresses"), natList)
 			if diags.HasError() {
 				t.Fatalf("SetAttribute(nat_outbound_ip_addresses): %v", diags)
 			}
