@@ -1,3 +1,0 @@
-kind: feature
-body: '**`unifi_network`: `ipv6.setting_preference` and `ipv6.aliases` can be managed (#699).** `setting_preference` (`auto` or `manual`) is new, and `aliases` was rejected at plan time since go-unifi could not send it (#413); go-unifi v1.43.2 now does. This makes static IPv6 addressing such as a ULA prefix manageable end to end: the UI requires `manual` before aliases can be set. Both are taken from the controller when unset, so an adopted network plans no change; `aliases = []` clears the aliases. When `setting_preference` changes, the IPv6 values the controller computes and the configuration leaves unset plan as `(known after apply)`, since switching to `auto` lets the controller rewrite them. `data.unifi_network` reads both.'
-time: 2026-11-01T20:00:00Z

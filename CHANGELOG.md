@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.65.0] - 2026-11-01
+
+This release adds the `unifi_device_port` resource, which manages and imports a
+single switch port. `unifi_network` can now manage static IPv6 addressing end to
+end through `ipv6.setting_preference` and `ipv6.aliases`. go-unifi is now
+v1.43.2: v1.43.1 decodes the numeric `port_table` fields, which v1.43.0 always
+left at 0, and v1.43.2 sends `ipv6_aliases` for corporate and guest networks.
+
+### ✨ Features
+
+- **`unifi_device`: `port_override.stp_edge_state` sets the STP edge port mode.** `enabled` is the UI's Edge port mode: the port forwards as soon as its link comes up and its link changes send no topology change, so a flapping end device no longer flushes MAC tables across the network. `disabled` and `auto` (RSTP auto-edge) are accepted too. go-unifi already modelled the field and the provider only carried the controller's value, so it could be set in the UI but not declared. Like `tagged_networkconf_ids` it is only managed when set: leaving it unset keeps the port's current value
+- **New resource `unifi_device_port` manages one switch port on its own.** It takes the same settings as a `port_override` block of `unifi_device`, keyed by `device_mac` and `index`, and can be imported directly with `<device_mac>/<index>`, which a `port_override` block has no equivalent of. A write reads the device, replaces that port's entry in `port_overrides` and writes the device back, leaving the other ports as the controller has them; the writers of one device (`unifi_device`, `unifi_device_port`, the port action) are now serialised within a provider process so several ports of one switch can be applied in parallel. Do not declare the same port in both places. Based on #503 by Massimiliano Donini.
+- **`unifi_network`: `ipv6.setting_preference` and `ipv6.aliases` can be managed (#699).** `setting_preference` (`auto` or `manual`) is new, and `aliases` was rejected at plan time since go-unifi could not send it (#413); go-unifi v1.43.2 now does. This makes static IPv6 addressing such as a ULA prefix manageable end to end: the UI requires `manual` before aliases can be set. Both are taken from the controller when unset, so an adopted network plans no change; `aliases = []` clears the aliases. When `setting_preference` changes, the IPv6 values the controller computes and the configuration leaves unset plan as `(known after apply)`, since switching to `auto` lets the controller rewrite them. `data.unifi_network` reads both.
+
+### 🐛 Bug Fixes
+
+- **`unifi_port_forward`: a rule created without `protocol` is created as `tcp_udp` again.** v0.62.0 dropped the static `tcp_udp` default so that an adopted `tcp`-only rule is not widened to UDP, but left nothing for create: `proto` was omitted from the request and the controller stored the rule without a protocol, which read back as `""`. `protocol` now follows the create-only pattern of the other #544 fixes: `tcp_udp` on create when unset, the controller's value on an existing rule.
+
 ## [v0.64.0] - 2026-10-31
 
 Static defaults no longer overwrite the controller's values (#544). Every
