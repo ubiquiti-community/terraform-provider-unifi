@@ -77,20 +77,22 @@ type networkDataSourceModel struct {
 // (no client_address_assignment, no pd.auto_prefixid_enabled); `ra` shares
 // networkIPv6RAModel with the resource.
 type networkDataSourceIPv6Model struct {
-	InterfaceType types.String `tfsdk:"interface_type"`
-	StaticSubnet  types.String `tfsdk:"static_subnet"`
-	Aliases       types.List   `tfsdk:"aliases"`
-	RA            types.Object `tfsdk:"ra"`
-	PD            types.Object `tfsdk:"pd"`
+	InterfaceType     types.String `tfsdk:"interface_type"`
+	StaticSubnet      types.String `tfsdk:"static_subnet"`
+	SettingPreference types.String `tfsdk:"setting_preference"`
+	Aliases           types.List   `tfsdk:"aliases"`
+	RA                types.Object `tfsdk:"ra"`
+	PD                types.Object `tfsdk:"pd"`
 }
 
 func networkDataSourceIPv6AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"interface_type": types.StringType,
-		"static_subnet":  types.StringType,
-		"aliases":        types.ListType{ElemType: types.StringType},
-		"ra":             types.ObjectType{AttrTypes: networkIPv6RAAttrTypes()},
-		"pd":             types.ObjectType{AttrTypes: networkDataSourceIPv6PDAttrTypes()},
+		"interface_type":     types.StringType,
+		"static_subnet":      types.StringType,
+		"setting_preference": types.StringType,
+		"aliases":            types.ListType{ElemType: types.StringType},
+		"ra":                 types.ObjectType{AttrTypes: networkIPv6RAAttrTypes()},
+		"pd":                 types.ObjectType{AttrTypes: networkDataSourceIPv6PDAttrTypes()},
 	}
 }
 
@@ -239,8 +241,12 @@ func (d *networkDataSource) Schema(
 						MarkdownDescription: "The static IPv6 subnet (when `interface_type` is `static`).",
 						Computed:            true,
 					},
+					"setting_preference": schema.StringAttribute{
+						MarkdownDescription: "Whether the controller manages the IPv6 settings itself (`auto`) or uses the configured values (`manual`).",
+						Computed:            true,
+					},
 					"aliases": schema.ListAttribute{
-						MarkdownDescription: "List of IPv6 aliases for the network.",
+						MarkdownDescription: "List of additional IPv6 addresses for the network, in CIDR notation.",
 						Computed:            true,
 						ElementType:         types.StringType,
 					},
@@ -718,7 +724,7 @@ func (d *networkDataSource) setDataSourceData(
 		model.IPAliases = types.ListNull(types.StringType)
 	}
 
-	// ipv6 (aliases is not available in the current API and stays null)
+	// ipv6
 	{
 		raObj, d := types.ObjectValueFrom(ctx, networkIPv6RAAttrTypes(), networkIPv6RAModel{
 			Enabled:  types.BoolValue(network.IPV6RaEnabled),
@@ -741,15 +747,21 @@ func (d *networkDataSource) setDataSourceData(
 			},
 		)
 		diags.Append(d...)
+		aliases := types.ListNull(types.StringType)
+		if network.IPV6Aliases != nil {
+			aliases, d = types.ListValueFrom(ctx, types.StringType, network.IPV6Aliases)
+			diags.Append(d...)
+		}
 		ipv6Obj, d := types.ObjectValueFrom(
 			ctx,
 			networkDataSourceIPv6AttrTypes(),
 			networkDataSourceIPv6Model{
-				InterfaceType: types.StringPointerValue(network.IPV6InterfaceType),
-				StaticSubnet:  types.StringPointerValue(network.IPV6Subnet),
-				Aliases:       types.ListNull(types.StringType),
-				RA:            raObj,
-				PD:            pdObj,
+				InterfaceType:     types.StringPointerValue(network.IPV6InterfaceType),
+				StaticSubnet:      types.StringPointerValue(network.IPV6Subnet),
+				SettingPreference: types.StringPointerValue(network.IPV6SettingPreference),
+				Aliases:           aliases,
+				RA:                raObj,
+				PD:                pdObj,
 			},
 		)
 		diags.Append(d...)

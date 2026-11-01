@@ -25,6 +25,7 @@ func testNetworkIPv6Object(interfaceType types.String) types.Object {
 		"interface_type":            interfaceType,
 		"client_address_assignment": types.StringNull(),
 		"static_subnet":             types.StringNull(),
+		"setting_preference":        types.StringNull(),
 		"aliases":                   types.ListNull(types.StringType),
 		"ra": types.ObjectValueMust(networkIPv6RAAttrTypes(), map[string]attr.Value{
 			"enabled":            types.BoolValue(false),
@@ -324,6 +325,7 @@ func TestNetworkNestedGroups_roundTrip(t *testing.T) {
 		"interface_type":            types.StringValue("pd"),
 		"client_address_assignment": types.StringValue("slaac"),
 		"static_subnet":             types.StringNull(),
+		"setting_preference":        types.StringNull(),
 		"aliases":                   types.ListNull(types.StringType),
 		"ra": types.ObjectValueMust(networkIPv6RAAttrTypes(), map[string]attr.Value{
 			"enabled":            types.BoolValue(true),
@@ -552,6 +554,7 @@ func TestNetworkIPv6_vlanOnlyPreservesPrevious(t *testing.T) {
 			"interface_type":            types.StringValue("static"),
 			"client_address_assignment": types.StringValue("dhcpv6"),
 			"static_subnet":             types.StringValue("fd00::1/64"),
+			"setting_preference":        types.StringNull(),
 			"aliases":                   types.ListNull(types.StringType),
 			"ra": types.ObjectValueMust(networkIPv6RAAttrTypes(), map[string]attr.Value{
 				"enabled":            types.BoolValue(true),
