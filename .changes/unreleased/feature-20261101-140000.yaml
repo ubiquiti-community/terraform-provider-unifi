@@ -1,0 +1,3 @@
+kind: feature
+body: '**New resource `unifi_device_port` manages one switch port on its own.** It takes the same settings as a `port_override` block of `unifi_device`, keyed by `device_mac` and `index`, and can be imported directly with `<device_mac>/<index>`, which a `port_override` block has no equivalent of. A write reads the device, replaces that port''s entry in `port_overrides` and writes the device back, leaving the other ports as the controller has them; the writers of one device (`unifi_device`, `unifi_device_port`, the port action) are now serialised within a provider process so several ports of one switch can be applied in parallel. Do not declare the same port in both places. Based on #503 by Massimiliano Donini.'
+time: 2026-11-01T14:00:00Z

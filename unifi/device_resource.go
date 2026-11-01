@@ -1042,225 +1042,11 @@ func (r *deviceResource) Schema(
 					"ports (by `index`) into the device's current overrides rather than " +
 					"replacing the whole set. Removing a block stops managing that port " +
 					"but does not reset it; clear a port by overriding it back to the " +
-					"defaults instead.",
+					"defaults instead. A port can instead be managed on its own, and " +
+					"imported directly, with `unifi_device_port`; do not declare the same " +
+					"port in both places, the last write wins and the other one drifts.",
 				NestedObject: schema.NestedBlockObject{
-					Attributes: map[string]schema.Attribute{
-						"index": schema.Int64Attribute{
-							Description: "Switch port index.",
-							Required:    true,
-						},
-						"name": schema.StringAttribute{
-							Description: "Human-readable name of the port.",
-							Optional:    true,
-						},
-						"port_profile_id": schema.StringAttribute{
-							Description: "ID of the Port Profile used on this port.",
-							Optional:    true,
-						},
-						"op_mode": schema.StringAttribute{
-							Description: "Operating mode of the port: `switch` (default), `mirror`, or `aggregate`. " +
-								"Set `aggregate` on the lead port of an SFP+/link-aggregation (LAG) group and list the member ports in `aggregate_members`. " +
-								"Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.",
-							Optional: true,
-							Computed: true,
-							// Kept despite #544: "switch" is never written (see
-							// modelToAPIPortOverride) and carryUnwritableFields
-							// keeps the controller's op_mode, so this Default
-							// cannot change a port's mode on the controller.
-							Default: stringdefault.StaticString("switch"),
-							Validators: []validator.String{
-								stringvalidator.OneOf("switch", "mirror", "aggregate"),
-							},
-						},
-						"poe_mode": schema.StringAttribute{
-							Description: "PoE mode of the port; valid values are `auto`, `pasv24`, `passthrough`, and `off`.",
-							Optional:    true,
-							Validators: []validator.String{
-								stringvalidator.OneOf("auto", "pasv24", "passthrough", "off"),
-							},
-						},
-						"aggregate_members": schema.ListAttribute{
-							Description: "Port indices that make up this link-aggregation (LAG) group. " +
-								"Only takes effect when `op_mode` is `aggregate` on this port.",
-							Optional:    true,
-							ElementType: types.Int64Type,
-						},
-						"autoneg": schema.BoolAttribute{
-							Description: "Enable auto-negotiation for port speed.",
-							Optional:    true,
-							Computed:    true,
-						},
-						"dot1x": schema.SingleNestedAttribute{
-							Description: "802.1X port authentication settings.",
-							Optional:    true,
-							Computed:    true,
-							Attributes: map[string]schema.Attribute{
-								"ctrl": schema.StringAttribute{
-									Description: "802.1X control mode.",
-									Optional:    true,
-									Computed:    true,
-								},
-								"idle_timeout": schema.StringAttribute{
-									Description: "802.1X idle timeout, as a Go duration string (e.g. `5m`, `300s`).",
-									CustomType:  timetypes.GoDurationType{},
-									Optional:    true,
-									Computed:    true,
-									Validators: []validator.String{
-										validators.GoDurationBetween(0, 65535*time.Second),
-										validators.GoDurationMultipleOf(time.Second),
-									},
-								},
-							},
-						},
-						"egress_rate_limit": schema.SingleNestedAttribute{
-							Description: "Egress rate limiting.",
-							Optional:    true,
-							Computed:    true,
-							Attributes: map[string]schema.Attribute{
-								"enabled": schema.BoolAttribute{
-									Description: "Enable egress rate limiting.",
-									Optional:    true,
-									Computed:    true,
-								},
-								"kbps": schema.Int64Attribute{
-									Description: "Egress rate limit in kbps.",
-									Optional:    true,
-									Computed:    true,
-								},
-							},
-						},
-						"excluded_networkconf_ids": schema.SetAttribute{
-							Description: "List of network IDs to exclude from this port.",
-							Optional:    true,
-							ElementType: types.StringType,
-						},
-						"fec_mode": schema.StringAttribute{
-							Description: "Forward Error Correction mode.",
-							Optional:    true,
-						},
-						"flow_control_enabled": schema.BoolAttribute{
-							Description: "Enable flow control.",
-							Optional:    true,
-							Computed:    true,
-						},
-						"forward": schema.StringAttribute{
-							Description: "Forwarding mode.",
-							Optional:    true,
-						},
-						"full_duplex": schema.BoolAttribute{
-							Description: "Enable full duplex mode.",
-							Optional:    true,
-							Computed:    true,
-						},
-						"isolation": schema.BoolAttribute{
-							Description: "Enable port isolation.",
-							Optional:    true,
-							Computed:    true,
-						},
-						"lldpmed": schema.SingleNestedAttribute{
-							Description: "LLDP-MED settings.",
-							Optional:    true,
-							Computed:    true,
-							Attributes: map[string]schema.Attribute{
-								"enabled": schema.BoolAttribute{
-									Description: "Enable LLDP-MED.",
-									Optional:    true,
-									Computed:    true,
-								},
-								"notify_enabled": schema.BoolAttribute{
-									Description: "Enable LLDP-MED topology change notifications.",
-									Optional:    true,
-									Computed:    true,
-								},
-							},
-						},
-						"mirror_port_idx": schema.Int64Attribute{
-							Description: "Mirror port index.",
-							Optional:    true,
-						},
-						"multicast_router_networkconf_ids": schema.SetAttribute{
-							Description: "List of network IDs for multicast router.",
-							Optional:    true,
-							ElementType: types.StringType,
-						},
-						"native_networkconf_id": schema.StringAttribute{
-							Description: "Native network ID (VLAN).",
-							Optional:    true,
-						},
-						"port_keepalive_enabled": schema.BoolAttribute{
-							Description: "Enable port keepalive.",
-							Optional:    true,
-							Computed:    true,
-						},
-						"port_security": schema.SingleNestedAttribute{
-							Description: "Port security (MAC allow-list) settings.",
-							Optional:    true,
-							Computed:    true,
-							Attributes: map[string]schema.Attribute{
-								"enabled": schema.BoolAttribute{
-									Description: "Enable port security.",
-									Optional:    true,
-									Computed:    true,
-								},
-								"mac_address": schema.ListAttribute{
-									Description: "List of MAC addresses allowed when port security is enabled.",
-									Optional:    true,
-									Computed:    true,
-									ElementType: types.StringType,
-								},
-							},
-						},
-						"priority_queue1_level": schema.Int64Attribute{
-							Description: "Priority queue 1 level.",
-							Optional:    true,
-						},
-						"priority_queue2_level": schema.Int64Attribute{
-							Description: "Priority queue 2 level.",
-							Optional:    true,
-						},
-						"priority_queue3_level": schema.Int64Attribute{
-							Description: "Priority queue 3 level.",
-							Optional:    true,
-						},
-						"priority_queue4_level": schema.Int64Attribute{
-							Description: "Priority queue 4 level.",
-							Optional:    true,
-						},
-						"setting_preference": schema.StringAttribute{
-							Description: "Setting preference.",
-							Optional:    true,
-						},
-						"speed": schema.Int64Attribute{
-							Description: "Port speed in Mbps.",
-							Optional:    true,
-						},
-						"stormctrl": devicePortStormctrlSchema(),
-						"stp_edge_state": schema.StringAttribute{
-							Description: "STP edge port mode; valid values are `enabled`, `disabled`, and `auto`. An edge port (the UI's Edge port mode, `enabled`) forwards as soon as its link comes up and sends no topology change when it goes up or down, for a port with an end device behind it. `auto` detects edge ports (RSTP auto-edge). Only managed when set: leaving it unset keeps the port's current value.",
-							Optional:    true,
-							Validators: []validator.String{
-								stringvalidator.OneOf("enabled", "disabled", "auto"),
-							},
-						},
-						"stp_port_mode": schema.BoolAttribute{
-							Description: "STP port mode.",
-							Optional:    true,
-							Computed:    true,
-						},
-						"tagged_networkconf_ids": schema.SetAttribute{
-							Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.",
-							Optional:    true,
-							ElementType: types.StringType,
-						},
-						"tagged_vlan_mgmt": schema.StringAttribute{
-							Description: "Tagged VLAN management.",
-							Optional:    true,
-						},
-						"voice_networkconf_id": schema.StringAttribute{
-							Description: "Voice network ID.",
-							Optional:    true,
-						},
-					},
+					Attributes: devicePortOverrideAttributes(),
 				},
 			},
 		},
@@ -1356,6 +1142,229 @@ func nestDeviceState(state map[string]any) {
 		})
 	})
 	util.EachObject(state, "port_override", nestPortGroupState)
+}
+
+// devicePortOverrideAttributes is the attribute set of one port override. It
+// is shared by the port_override block of unifi_device and by the top level of
+// unifi_device_port, so the two resources accept and store the same settings.
+func devicePortOverrideAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"index": schema.Int64Attribute{
+			Description: "Switch port index.",
+			Required:    true,
+		},
+		"name": schema.StringAttribute{
+			Description: "Human-readable name of the port.",
+			Optional:    true,
+		},
+		"port_profile_id": schema.StringAttribute{
+			Description: "ID of the Port Profile used on this port.",
+			Optional:    true,
+		},
+		"op_mode": schema.StringAttribute{
+			Description: "Operating mode of the port: `switch` (default), `mirror`, or `aggregate`. " +
+				"Set `aggregate` on the lead port of an SFP+/link-aggregation (LAG) group and list the member ports in `aggregate_members`. " +
+				"Only written when not `switch`, as gateway devices (UDM) reject op_mode on update.",
+			Optional: true,
+			Computed: true,
+			// Kept despite #544: "switch" is never written (see
+			// modelToAPIPortOverride) and carryUnwritableFields
+			// keeps the controller's op_mode, so this Default
+			// cannot change a port's mode on the controller.
+			Default: stringdefault.StaticString("switch"),
+			Validators: []validator.String{
+				stringvalidator.OneOf("switch", "mirror", "aggregate"),
+			},
+		},
+		"poe_mode": schema.StringAttribute{
+			Description: "PoE mode of the port; valid values are `auto`, `pasv24`, `passthrough`, and `off`.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("auto", "pasv24", "passthrough", "off"),
+			},
+		},
+		"aggregate_members": schema.ListAttribute{
+			Description: "Port indices that make up this link-aggregation (LAG) group. " +
+				"Only takes effect when `op_mode` is `aggregate` on this port.",
+			Optional:    true,
+			ElementType: types.Int64Type,
+		},
+		"autoneg": schema.BoolAttribute{
+			Description: "Enable auto-negotiation for port speed.",
+			Optional:    true,
+			Computed:    true,
+		},
+		"dot1x": schema.SingleNestedAttribute{
+			Description: "802.1X port authentication settings.",
+			Optional:    true,
+			Computed:    true,
+			Attributes: map[string]schema.Attribute{
+				"ctrl": schema.StringAttribute{
+					Description: "802.1X control mode.",
+					Optional:    true,
+					Computed:    true,
+				},
+				"idle_timeout": schema.StringAttribute{
+					Description: "802.1X idle timeout, as a Go duration string (e.g. `5m`, `300s`).",
+					CustomType:  timetypes.GoDurationType{},
+					Optional:    true,
+					Computed:    true,
+					Validators: []validator.String{
+						validators.GoDurationBetween(0, 65535*time.Second),
+						validators.GoDurationMultipleOf(time.Second),
+					},
+				},
+			},
+		},
+		"egress_rate_limit": schema.SingleNestedAttribute{
+			Description: "Egress rate limiting.",
+			Optional:    true,
+			Computed:    true,
+			Attributes: map[string]schema.Attribute{
+				"enabled": schema.BoolAttribute{
+					Description: "Enable egress rate limiting.",
+					Optional:    true,
+					Computed:    true,
+				},
+				"kbps": schema.Int64Attribute{
+					Description: "Egress rate limit in kbps.",
+					Optional:    true,
+					Computed:    true,
+				},
+			},
+		},
+		"excluded_networkconf_ids": schema.SetAttribute{
+			Description: "List of network IDs to exclude from this port.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"fec_mode": schema.StringAttribute{
+			Description: "Forward Error Correction mode.",
+			Optional:    true,
+		},
+		"flow_control_enabled": schema.BoolAttribute{
+			Description: "Enable flow control.",
+			Optional:    true,
+			Computed:    true,
+		},
+		"forward": schema.StringAttribute{
+			Description: "Forwarding mode.",
+			Optional:    true,
+		},
+		"full_duplex": schema.BoolAttribute{
+			Description: "Enable full duplex mode.",
+			Optional:    true,
+			Computed:    true,
+		},
+		"isolation": schema.BoolAttribute{
+			Description: "Enable port isolation.",
+			Optional:    true,
+			Computed:    true,
+		},
+		"lldpmed": schema.SingleNestedAttribute{
+			Description: "LLDP-MED settings.",
+			Optional:    true,
+			Computed:    true,
+			Attributes: map[string]schema.Attribute{
+				"enabled": schema.BoolAttribute{
+					Description: "Enable LLDP-MED.",
+					Optional:    true,
+					Computed:    true,
+				},
+				"notify_enabled": schema.BoolAttribute{
+					Description: "Enable LLDP-MED topology change notifications.",
+					Optional:    true,
+					Computed:    true,
+				},
+			},
+		},
+		"mirror_port_idx": schema.Int64Attribute{
+			Description: "Mirror port index.",
+			Optional:    true,
+		},
+		"multicast_router_networkconf_ids": schema.SetAttribute{
+			Description: "List of network IDs for multicast router.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"native_networkconf_id": schema.StringAttribute{
+			Description: "Native network ID (VLAN).",
+			Optional:    true,
+		},
+		"port_keepalive_enabled": schema.BoolAttribute{
+			Description: "Enable port keepalive.",
+			Optional:    true,
+			Computed:    true,
+		},
+		"port_security": schema.SingleNestedAttribute{
+			Description: "Port security (MAC allow-list) settings.",
+			Optional:    true,
+			Computed:    true,
+			Attributes: map[string]schema.Attribute{
+				"enabled": schema.BoolAttribute{
+					Description: "Enable port security.",
+					Optional:    true,
+					Computed:    true,
+				},
+				"mac_address": schema.ListAttribute{
+					Description: "List of MAC addresses allowed when port security is enabled.",
+					Optional:    true,
+					Computed:    true,
+					ElementType: types.StringType,
+				},
+			},
+		},
+		"priority_queue1_level": schema.Int64Attribute{
+			Description: "Priority queue 1 level.",
+			Optional:    true,
+		},
+		"priority_queue2_level": schema.Int64Attribute{
+			Description: "Priority queue 2 level.",
+			Optional:    true,
+		},
+		"priority_queue3_level": schema.Int64Attribute{
+			Description: "Priority queue 3 level.",
+			Optional:    true,
+		},
+		"priority_queue4_level": schema.Int64Attribute{
+			Description: "Priority queue 4 level.",
+			Optional:    true,
+		},
+		"setting_preference": schema.StringAttribute{
+			Description: "Setting preference.",
+			Optional:    true,
+		},
+		"speed": schema.Int64Attribute{
+			Description: "Port speed in Mbps.",
+			Optional:    true,
+		},
+		"stormctrl": devicePortStormctrlSchema(),
+		"stp_edge_state": schema.StringAttribute{
+			Description: "STP edge port mode; valid values are `enabled`, `disabled`, and `auto`. An edge port (the UI's Edge port mode, `enabled`) forwards as soon as its link comes up and sends no topology change when it goes up or down, for a port with an end device behind it. `auto` detects edge ports (RSTP auto-edge). Only managed when set: leaving it unset keeps the port's current value.",
+			Optional:    true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("enabled", "disabled", "auto"),
+			},
+		},
+		"stp_port_mode": schema.BoolAttribute{
+			Description: "STP port mode.",
+			Optional:    true,
+			Computed:    true,
+		},
+		"tagged_networkconf_ids": schema.SetAttribute{
+			Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.",
+			Optional:    true,
+			ElementType: types.StringType,
+		},
+		"tagged_vlan_mgmt": schema.StringAttribute{
+			Description: "Tagged VLAN management.",
+			Optional:    true,
+		},
+		"voice_networkconf_id": schema.StringAttribute{
+			Description: "Voice network ID.",
+			Optional:    true,
+		},
+	}
 }
 
 // devicePortStormctrlSchema is the port_override `stormctrl` nested attribute.
@@ -1505,8 +1514,9 @@ func (r *deviceResource) Create(
 			return
 		}
 
-		d, err := r.waitForDeviceState(
+		d, err := waitForDeviceState(
 			ctx,
+			r.client,
 			site, mac,
 			unifi.DeviceStateConnected,
 			[]unifi.DeviceState{
@@ -1904,8 +1914,9 @@ func (r *deviceResource) Delete(
 		return
 	}
 
-	_, err = r.waitForDeviceState(
+	_, err = waitForDeviceState(
 		ctx,
+		r.client,
 		site, mac,
 		unifi.DeviceStatePending,
 		[]unifi.DeviceState{unifi.DeviceStateConnected, unifi.DeviceStateDeleting},
@@ -2165,6 +2176,11 @@ func (r *deviceResource) updateDevice(
 
 	deviceReq.ID = model.ID.ValueString()
 
+	// Serialise against the other writers of this device's port_overrides
+	// (unifi_device_port, the port action): see Client.lockDevice.
+	unlock := r.client.lockDevice(deviceLockKey(deviceReq.MAC, deviceReq.ID))
+	defer unlock()
+
 	// Fetch the current device once. We need it for two reasons:
 	//   1. 'type' is a computed field the API requires in the PUT body.
 	//   2. UpdateDevice sends a diff against the existing device. The Device
@@ -2256,8 +2272,9 @@ func (r *deviceResource) updateDevice(
 	}
 
 	// Wait for device to be in connected state
-	if d, err := r.waitForDeviceState(
+	if d, err := waitForDeviceState(
 		ctx,
+		r.client,
 		site, device.MAC,
 		unifi.DeviceStateConnected,
 		[]unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning},
@@ -2794,6 +2811,111 @@ func mergePortOverridesByIndex(
 // but only for ports and fields that the user explicitly configured. This lets
 // Terraform detect drift (e.g. tagged VLANs not applied) without the phantom
 // drift caused by computed fields the API adds for every port.
+// reconcilePortOverride rebuilds one declared port override from the
+// controller's entry for the same index: attributes the configuration sets
+// take the controller's value so drift is visible, attributes left unknown
+// are resolved from the controller, and everything else keeps the prior
+// value. Shared by the port_override block and unifi_device_port.
+func reconcilePortOverride(
+	pm portOverrideModel,
+	apiPO unifi.DevicePortOverrides,
+) (portOverrideModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	// Build a new model seeded from the prior (user config), then update
+	// only the fields that were explicitly set (non-null in prior) with
+	// the actual API value so drift is visible.
+	updated := pm
+
+	if !pm.Name.IsNull() {
+		if apiPO.Name == "" {
+			updated.Name = types.StringNull()
+		} else {
+			updated.Name = types.StringValue(apiPO.Name)
+		}
+	}
+	if !pm.NativeNetworkID.IsNull() {
+		// #410: an explicit native_networkconf_id = "" clears the port's
+		// native network on the controller and round-trips back as "" in
+		// the API response. Surface that as a known empty string (not
+		// null) so the explicit override round-trips instead of drifting
+		// back to "unset" on every plan; mirrors the #383 fix applied to
+		// unifi_port_profile.
+		updated.NativeNetworkID = types.StringValue(apiPO.NATiveNetworkID)
+	}
+	if !pm.Forward.IsNull() {
+		if apiPO.Forward == "" {
+			updated.Forward = types.StringNull()
+		} else {
+			updated.Forward = types.StringValue(apiPO.Forward)
+		}
+	}
+	if !pm.TaggedVLANMgmt.IsNull() {
+		if apiPO.TaggedVLANMgmt == "" {
+			updated.TaggedVLANMgmt = types.StringNull()
+		} else {
+			updated.TaggedVLANMgmt = types.StringValue(apiPO.TaggedVLANMgmt)
+		}
+	}
+	if !pm.ExcludedNetworkIDs.IsNull() {
+		if len(apiPO.ExcludedNetworkIDs) > 0 {
+			sorted := make([]string, len(apiPO.ExcludedNetworkIDs))
+			copy(sorted, apiPO.ExcludedNetworkIDs)
+			sort.Strings(sorted)
+			vals := make([]attr.Value, len(sorted))
+			for i, id := range sorted {
+				vals[i] = types.StringValue(id)
+			}
+			setVal, setDiags := types.SetValue(types.StringType, vals)
+			diags.Append(setDiags...)
+			updated.ExcludedNetworkIDs = setVal
+		} else {
+			emptySet, setDiags := types.SetValue(types.StringType, []attr.Value{})
+			diags.Append(setDiags...)
+			updated.ExcludedNetworkIDs = emptySet
+		}
+	}
+	if !pm.TaggedNetworkIDs.IsNull() && !pm.TaggedNetworkIDs.IsUnknown() {
+		// Configured: surface the controller's value as a set (order and
+		// duplicates are irrelevant, so the controller reordering the
+		// list cannot cause a perpetual diff). An empty controller value
+		// reads back as an empty set so `tagged_networkconf_ids = []`
+		// round-trips, and a non-empty config that the controller did not
+		// apply shows up as drift.
+		setVal, setDiags := stringSetFromAPI(apiPO.TaggedNetworkIDs, false)
+		diags.Append(setDiags...)
+		updated.TaggedNetworkIDs = setVal
+	}
+	if !pm.PortProfileID.IsNull() {
+		if apiPO.PortProfileID == "" {
+			updated.PortProfileID = types.StringNull()
+		} else {
+			updated.PortProfileID = types.StringValue(apiPO.PortProfileID)
+		}
+	}
+	if !pm.StpEdgeState.IsNull() {
+		if apiPO.StpEdgeState == "" {
+			updated.StpEdgeState = types.StringNull()
+		} else {
+			updated.StpEdgeState = types.StringValue(apiPO.StpEdgeState)
+		}
+	}
+
+	// The guards above only resolve fields the user explicitly configured.
+	// Optional+Computed attributes left unset (e.g. flow_control_enabled,
+	// full_duplex, lldpmed_notify_enabled) plan as unknown and fall through
+	// every guard untouched, which the framework rejects as "unknown after
+	// apply". Resolve anything still unknown from the API response.
+	apiModel, modelDiags := apiPortOverrideToModel(apiPO)
+	diags.Append(modelDiags...)
+	if diags.HasError() {
+		return pm, diags
+	}
+	resolveUnknownPortOverrideAttrs(&updated, apiModel)
+
+	return updated, diags
+}
+
 func (r *deviceResource) reconcilePortOverrides(
 	ctx context.Context,
 	prior types.Set,
@@ -2829,96 +2951,11 @@ func (r *deviceResource) reconcilePortOverrides(
 			continue
 		}
 
-		// Build a new model seeded from the prior (user config), then update
-		// only the fields that were explicitly set (non-null in prior) with
-		// the actual API value so drift is visible.
-		updated := pm
-
-		if !pm.Name.IsNull() {
-			if apiPO.Name == "" {
-				updated.Name = types.StringNull()
-			} else {
-				updated.Name = types.StringValue(apiPO.Name)
-			}
-		}
-		if !pm.NativeNetworkID.IsNull() {
-			// #410: an explicit native_networkconf_id = "" clears the port's
-			// native network on the controller and round-trips back as "" in
-			// the API response. Surface that as a known empty string (not
-			// null) so the explicit override round-trips instead of drifting
-			// back to "unset" on every plan; mirrors the #383 fix applied to
-			// unifi_port_profile.
-			updated.NativeNetworkID = types.StringValue(apiPO.NATiveNetworkID)
-		}
-		if !pm.Forward.IsNull() {
-			if apiPO.Forward == "" {
-				updated.Forward = types.StringNull()
-			} else {
-				updated.Forward = types.StringValue(apiPO.Forward)
-			}
-		}
-		if !pm.TaggedVLANMgmt.IsNull() {
-			if apiPO.TaggedVLANMgmt == "" {
-				updated.TaggedVLANMgmt = types.StringNull()
-			} else {
-				updated.TaggedVLANMgmt = types.StringValue(apiPO.TaggedVLANMgmt)
-			}
-		}
-		if !pm.ExcludedNetworkIDs.IsNull() {
-			if len(apiPO.ExcludedNetworkIDs) > 0 {
-				sorted := make([]string, len(apiPO.ExcludedNetworkIDs))
-				copy(sorted, apiPO.ExcludedNetworkIDs)
-				sort.Strings(sorted)
-				vals := make([]attr.Value, len(sorted))
-				for i, id := range sorted {
-					vals[i] = types.StringValue(id)
-				}
-				setVal, setDiags := types.SetValue(types.StringType, vals)
-				diags.Append(setDiags...)
-				updated.ExcludedNetworkIDs = setVal
-			} else {
-				emptySet, setDiags := types.SetValue(types.StringType, []attr.Value{})
-				diags.Append(setDiags...)
-				updated.ExcludedNetworkIDs = emptySet
-			}
-		}
-		if !pm.TaggedNetworkIDs.IsNull() && !pm.TaggedNetworkIDs.IsUnknown() {
-			// Configured: surface the controller's value as a set (order and
-			// duplicates are irrelevant, so the controller reordering the
-			// list cannot cause a perpetual diff). An empty controller value
-			// reads back as an empty set so `tagged_networkconf_ids = []`
-			// round-trips, and a non-empty config that the controller did not
-			// apply shows up as drift.
-			setVal, setDiags := stringSetFromAPI(apiPO.TaggedNetworkIDs, false)
-			diags.Append(setDiags...)
-			updated.TaggedNetworkIDs = setVal
-		}
-		if !pm.PortProfileID.IsNull() {
-			if apiPO.PortProfileID == "" {
-				updated.PortProfileID = types.StringNull()
-			} else {
-				updated.PortProfileID = types.StringValue(apiPO.PortProfileID)
-			}
-		}
-		if !pm.StpEdgeState.IsNull() {
-			if apiPO.StpEdgeState == "" {
-				updated.StpEdgeState = types.StringNull()
-			} else {
-				updated.StpEdgeState = types.StringValue(apiPO.StpEdgeState)
-			}
-		}
-
-		// The guards above only resolve fields the user explicitly configured.
-		// Optional+Computed attributes left unset (e.g. flow_control_enabled,
-		// full_duplex, lldpmed_notify_enabled) plan as unknown and fall through
-		// every guard untouched, which the framework rejects as "unknown after
-		// apply". Resolve anything still unknown from the API response.
-		apiModel, modelDiags := apiPortOverrideToModel(apiPO)
-		diags.Append(modelDiags...)
+		updated, elemDiags := reconcilePortOverride(pm, apiPO)
+		diags.Append(elemDiags...)
 		if diags.HasError() {
 			return prior, diags
 		}
-		resolveUnknownPortOverrideAttrs(&updated, apiModel)
 
 		objVal, objDiags := types.ObjectValueFrom(ctx, updated.AttributeTypes(), updated)
 		diags.Append(objDiags...)
@@ -3214,6 +3251,198 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 	return model, diags
 }
 
+// portOverrideModelToAPI converts one declared port override into its API
+// form. Unset optional attributes stay at their zero value so omitempty drops
+// them from the request; carryUnwritableFields then keeps the controller's
+// value for the fields that must survive a write.
+func portOverrideModelToAPI(
+	ctx context.Context,
+	model portOverrideModel,
+) (unifi.DevicePortOverrides, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	po := unifi.DevicePortOverrides{
+		PortIDX: model.Index.ValueInt64Pointer(),
+	}
+
+	// String attributes
+	if !model.Name.IsNull() {
+		po.Name = model.Name.ValueString()
+	}
+	if !model.PortProfileID.IsNull() {
+		po.PortProfileID = model.PortProfileID.ValueString()
+	}
+	// op_mode is only written when the port runs in a non-default mode
+	// (aggregate/mirror). Sending op_mode on a PUT for gateway devices
+	// (UDM) is rejected — see #213 — but those ports never use
+	// aggregate/mirror, so they stay at the "switch" default and we skip
+	// it. Writing it for the non-default cases is required to form an
+	// SFP+ link aggregation (#177), which otherwise never engages because
+	// aggregate_members is sent without ever switching op_mode.
+	if !model.OpMode.IsNull() && !model.OpMode.IsUnknown() &&
+		model.OpMode.ValueString() != "" && model.OpMode.ValueString() != "switch" {
+		po.OpMode = model.OpMode.ValueString()
+	}
+	if !model.PoeMode.IsNull() {
+		po.PoeMode = model.PoeMode.ValueString()
+	}
+	if !model.FecMode.IsNull() {
+		po.FecMode = model.FecMode.ValueString()
+	}
+	if !model.Forward.IsNull() {
+		po.Forward = model.Forward.ValueString()
+	}
+	if !model.NativeNetworkID.IsNull() {
+		po.NATiveNetworkID = model.NativeNetworkID.ValueString()
+	}
+	if !model.SettingPreference.IsNull() {
+		po.SettingPreference = model.SettingPreference.ValueString()
+	}
+	if !model.TaggedVLANMgmt.IsNull() {
+		po.TaggedVLANMgmt = model.TaggedVLANMgmt.ValueString()
+	}
+	if !model.VoiceNetworkID.IsNull() {
+		po.VoiceNetworkID = model.VoiceNetworkID.ValueString()
+	}
+	if !model.StpEdgeState.IsNull() {
+		po.StpEdgeState = model.StpEdgeState.ValueString()
+	}
+
+	// Boolean attributes
+	po.Autoneg = util.ConvertBoolToAPIValue(model.Autoneg)
+	po.FlowControlEnabled = util.ConvertBoolToAPIValue(model.FlowControlEnabled)
+	po.FullDuplex = util.ConvertBoolToAPIValue(model.FullDuplex)
+	po.Isolation = util.ConvertBoolToAPIValue(model.Isolation)
+	po.PortKeepaliveEnabled = util.ConvertBoolToAPIValue(model.PortKeepaliveEnabled)
+	po.StpPortMode = util.ConvertBoolToAPIValue(model.StpPortMode)
+
+	// Nested feature groups. A null/unknown group contributes nothing,
+	// exactly as its flat attributes did when unset.
+	if dot1x, ok, d := util.ObjectAs[portDot1xModel](ctx, model.Dot1X); ok {
+		if !dot1x.Ctrl.IsNull() {
+			po.Dot1XCtrl = dot1x.Ctrl.ValueString()
+		}
+		if !dot1x.IdleTimeout.IsNull() {
+			po.Dot1XIDleTimeout = util.DurationUnitsPtr(dot1x.IdleTimeout, time.Second)
+		}
+	} else {
+		diags.Append(d...)
+	}
+	if erl, ok, d := util.ObjectAs[portEgressRateLimitModel](
+		ctx,
+		model.EgressRateLimit,
+	); ok {
+		po.EgressRateLimitKbpsEnabled = util.ConvertBoolToAPIValue(erl.Enabled)
+		if !erl.Kbps.IsNull() {
+			po.EgressRateLimitKbps = erl.Kbps.ValueInt64Pointer()
+		}
+	} else {
+		diags.Append(d...)
+	}
+	if lldp, ok, d := util.ObjectAs[portLldpmedModel](ctx, model.Lldpmed); ok {
+		po.LldpmedEnabled = util.ConvertBoolToAPIValue(lldp.Enabled)
+		po.LldpmedNotifyEnabled = util.ConvertBoolToAPIValue(lldp.NotifyEnabled)
+	} else {
+		diags.Append(d...)
+	}
+	if ps, ok, d := util.ObjectAs[devicePortSecurityModel](ctx, model.PortSecurity); ok {
+		po.PortSecurityEnabled = util.ConvertBoolToAPIValue(ps.Enabled)
+		if !ps.MACAddress.IsNull() && !ps.MACAddress.IsUnknown() {
+			var macAddresses []string
+			diags.Append(ps.MACAddress.ElementsAs(ctx, &macAddresses, true)...)
+			if diags.HasError() {
+				return po, diags
+			}
+			po.PortSecurityMACAddress = macAddresses
+		}
+	} else {
+		diags.Append(d...)
+	}
+	sc, d := portStormctrlFromObject(ctx, model.Stormctrl)
+	diags.Append(d...)
+	po.StormctrlType = sc.Type
+	po.StormctrlBroadcastastEnabled = sc.BcastEnabled
+	po.StormctrlBroadcastastLevel = sc.BcastLevel
+	po.StormctrlBroadcastastRate = sc.BcastRate
+	po.StormctrlMcastEnabled = sc.McastEnabled
+	po.StormctrlMcastLevel = sc.McastLevel
+	po.StormctrlMcastRate = sc.McastRate
+	po.StormctrlUcastEnabled = sc.UcastEnabled
+	po.StormctrlUcastLevel = sc.UcastLevel
+	po.StormctrlUcastRate = sc.UcastRate
+	if diags.HasError() {
+		return po, diags
+	}
+
+	// Int64 attributes
+	if !model.MirrorPortIDX.IsNull() {
+		po.MirrorPortIDX = model.MirrorPortIDX.ValueInt64Pointer()
+	}
+	if !model.PriorityQueue1Level.IsNull() {
+		po.PriorityQueue1Level = model.PriorityQueue1Level.ValueInt64Pointer()
+	}
+	if !model.PriorityQueue2Level.IsNull() {
+		po.PriorityQueue2Level = model.PriorityQueue2Level.ValueInt64Pointer()
+	}
+	if !model.PriorityQueue3Level.IsNull() {
+		po.PriorityQueue3Level = model.PriorityQueue3Level.ValueInt64Pointer()
+	}
+	if !model.PriorityQueue4Level.IsNull() {
+		po.PriorityQueue4Level = model.PriorityQueue4Level.ValueInt64Pointer()
+	}
+	if !model.Speed.IsNull() {
+		po.Speed = model.Speed.ValueInt64Pointer()
+	}
+
+	// List attributes
+	if !model.AggregateMembers.IsNull() {
+		var aggrMembers []int64
+		diags.Append(model.AggregateMembers.ElementsAs(ctx, &aggrMembers, true)...)
+		if diags.HasError() {
+			return po, diags
+		}
+		po.AggregateMembers = aggrMembers
+	}
+
+	if !model.ExcludedNetworkIDs.IsNull() {
+		var excludedIDs []string
+		diags.Append(model.ExcludedNetworkIDs.ElementsAs(ctx, &excludedIDs, true)...)
+		if diags.HasError() {
+			return po, diags
+		}
+		po.ExcludedNetworkIDs = excludedIDs
+	}
+
+	if !model.TaggedNetworkIDs.IsNull() && !model.TaggedNetworkIDs.IsUnknown() {
+		// Always a non-nil slice when configured, even if empty: a nil
+		// slice means "not managed" to carryUnwritableFields, which
+		// would then keep the controller's tagged networks. An empty
+		// slice is dropped by omitempty, which clears them.
+		taggedIDs := []string{}
+		diags.Append(model.TaggedNetworkIDs.ElementsAs(ctx, &taggedIDs, false)...)
+		if diags.HasError() {
+			return po, diags
+		}
+		if taggedIDs == nil {
+			taggedIDs = []string{}
+		}
+		po.TaggedNetworkIDs = taggedIDs
+	}
+
+	if !model.MulticastRouterNetworkIDs.IsNull() {
+		var multicastIDs []string
+		diags.Append(
+			model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...,
+		)
+		if diags.HasError() {
+			return po, diags
+		}
+		po.MulticastRouterNetworkIDs = multicastIDs
+	}
+
+	return po, diags
+}
+
 func (r *deviceResource) frameworkToPortOverrides(
 	ctx context.Context,
 	portOverrideSet types.Set,
@@ -3231,187 +3460,12 @@ func (r *deviceResource) frameworkToPortOverrides(
 				return nil, diags
 			}
 
-			idx := model.Index.ValueInt64()
-			po := unifi.DevicePortOverrides{
-				PortIDX: model.Index.ValueInt64Pointer(),
-			}
-
-			// String attributes
-			if !model.Name.IsNull() {
-				po.Name = model.Name.ValueString()
-			}
-			if !model.PortProfileID.IsNull() {
-				po.PortProfileID = model.PortProfileID.ValueString()
-			}
-			// op_mode is only written when the port runs in a non-default mode
-			// (aggregate/mirror). Sending op_mode on a PUT for gateway devices
-			// (UDM) is rejected — see #213 — but those ports never use
-			// aggregate/mirror, so they stay at the "switch" default and we skip
-			// it. Writing it for the non-default cases is required to form an
-			// SFP+ link aggregation (#177), which otherwise never engages because
-			// aggregate_members is sent without ever switching op_mode.
-			if !model.OpMode.IsNull() && !model.OpMode.IsUnknown() &&
-				model.OpMode.ValueString() != "" && model.OpMode.ValueString() != "switch" {
-				po.OpMode = model.OpMode.ValueString()
-			}
-			if !model.PoeMode.IsNull() {
-				po.PoeMode = model.PoeMode.ValueString()
-			}
-			if !model.FecMode.IsNull() {
-				po.FecMode = model.FecMode.ValueString()
-			}
-			if !model.Forward.IsNull() {
-				po.Forward = model.Forward.ValueString()
-			}
-			if !model.NativeNetworkID.IsNull() {
-				po.NATiveNetworkID = model.NativeNetworkID.ValueString()
-			}
-			if !model.SettingPreference.IsNull() {
-				po.SettingPreference = model.SettingPreference.ValueString()
-			}
-			if !model.TaggedVLANMgmt.IsNull() {
-				po.TaggedVLANMgmt = model.TaggedVLANMgmt.ValueString()
-			}
-			if !model.VoiceNetworkID.IsNull() {
-				po.VoiceNetworkID = model.VoiceNetworkID.ValueString()
-			}
-			if !model.StpEdgeState.IsNull() {
-				po.StpEdgeState = model.StpEdgeState.ValueString()
-			}
-
-			// Boolean attributes
-			po.Autoneg = util.ConvertBoolToAPIValue(model.Autoneg)
-			po.FlowControlEnabled = util.ConvertBoolToAPIValue(model.FlowControlEnabled)
-			po.FullDuplex = util.ConvertBoolToAPIValue(model.FullDuplex)
-			po.Isolation = util.ConvertBoolToAPIValue(model.Isolation)
-			po.PortKeepaliveEnabled = util.ConvertBoolToAPIValue(model.PortKeepaliveEnabled)
-			po.StpPortMode = util.ConvertBoolToAPIValue(model.StpPortMode)
-
-			// Nested feature groups. A null/unknown group contributes nothing,
-			// exactly as its flat attributes did when unset.
-			if dot1x, ok, d := util.ObjectAs[portDot1xModel](ctx, model.Dot1X); ok {
-				if !dot1x.Ctrl.IsNull() {
-					po.Dot1XCtrl = dot1x.Ctrl.ValueString()
-				}
-				if !dot1x.IdleTimeout.IsNull() {
-					po.Dot1XIDleTimeout = util.DurationUnitsPtr(dot1x.IdleTimeout, time.Second)
-				}
-			} else {
-				diags.Append(d...)
-			}
-			if erl, ok, d := util.ObjectAs[portEgressRateLimitModel](
-				ctx,
-				model.EgressRateLimit,
-			); ok {
-				po.EgressRateLimitKbpsEnabled = util.ConvertBoolToAPIValue(erl.Enabled)
-				if !erl.Kbps.IsNull() {
-					po.EgressRateLimitKbps = erl.Kbps.ValueInt64Pointer()
-				}
-			} else {
-				diags.Append(d...)
-			}
-			if lldp, ok, d := util.ObjectAs[portLldpmedModel](ctx, model.Lldpmed); ok {
-				po.LldpmedEnabled = util.ConvertBoolToAPIValue(lldp.Enabled)
-				po.LldpmedNotifyEnabled = util.ConvertBoolToAPIValue(lldp.NotifyEnabled)
-			} else {
-				diags.Append(d...)
-			}
-			if ps, ok, d := util.ObjectAs[devicePortSecurityModel](ctx, model.PortSecurity); ok {
-				po.PortSecurityEnabled = util.ConvertBoolToAPIValue(ps.Enabled)
-				if !ps.MACAddress.IsNull() && !ps.MACAddress.IsUnknown() {
-					var macAddresses []string
-					diags.Append(ps.MACAddress.ElementsAs(ctx, &macAddresses, true)...)
-					if diags.HasError() {
-						return nil, diags
-					}
-					po.PortSecurityMACAddress = macAddresses
-				}
-			} else {
-				diags.Append(d...)
-			}
-			sc, d := portStormctrlFromObject(ctx, model.Stormctrl)
-			diags.Append(d...)
-			po.StormctrlType = sc.Type
-			po.StormctrlBroadcastastEnabled = sc.BcastEnabled
-			po.StormctrlBroadcastastLevel = sc.BcastLevel
-			po.StormctrlBroadcastastRate = sc.BcastRate
-			po.StormctrlMcastEnabled = sc.McastEnabled
-			po.StormctrlMcastLevel = sc.McastLevel
-			po.StormctrlMcastRate = sc.McastRate
-			po.StormctrlUcastEnabled = sc.UcastEnabled
-			po.StormctrlUcastLevel = sc.UcastLevel
-			po.StormctrlUcastRate = sc.UcastRate
+			po, poDiags := portOverrideModelToAPI(ctx, model)
+			diags.Append(poDiags...)
 			if diags.HasError() {
 				return nil, diags
 			}
-
-			// Int64 attributes
-			if !model.MirrorPortIDX.IsNull() {
-				po.MirrorPortIDX = model.MirrorPortIDX.ValueInt64Pointer()
-			}
-			if !model.PriorityQueue1Level.IsNull() {
-				po.PriorityQueue1Level = model.PriorityQueue1Level.ValueInt64Pointer()
-			}
-			if !model.PriorityQueue2Level.IsNull() {
-				po.PriorityQueue2Level = model.PriorityQueue2Level.ValueInt64Pointer()
-			}
-			if !model.PriorityQueue3Level.IsNull() {
-				po.PriorityQueue3Level = model.PriorityQueue3Level.ValueInt64Pointer()
-			}
-			if !model.PriorityQueue4Level.IsNull() {
-				po.PriorityQueue4Level = model.PriorityQueue4Level.ValueInt64Pointer()
-			}
-			if !model.Speed.IsNull() {
-				po.Speed = model.Speed.ValueInt64Pointer()
-			}
-
-			// List attributes
-			if !model.AggregateMembers.IsNull() {
-				var aggrMembers []int64
-				diags.Append(model.AggregateMembers.ElementsAs(ctx, &aggrMembers, true)...)
-				if diags.HasError() {
-					return nil, diags
-				}
-				po.AggregateMembers = aggrMembers
-			}
-
-			if !model.ExcludedNetworkIDs.IsNull() {
-				var excludedIDs []string
-				diags.Append(model.ExcludedNetworkIDs.ElementsAs(ctx, &excludedIDs, true)...)
-				if diags.HasError() {
-					return nil, diags
-				}
-				po.ExcludedNetworkIDs = excludedIDs
-			}
-
-			if !model.TaggedNetworkIDs.IsNull() && !model.TaggedNetworkIDs.IsUnknown() {
-				// Always a non-nil slice when configured, even if empty: a nil
-				// slice means "not managed" to carryUnwritableFields, which
-				// would then keep the controller's tagged networks. An empty
-				// slice is dropped by omitempty, which clears them.
-				taggedIDs := []string{}
-				diags.Append(model.TaggedNetworkIDs.ElementsAs(ctx, &taggedIDs, false)...)
-				if diags.HasError() {
-					return nil, diags
-				}
-				if taggedIDs == nil {
-					taggedIDs = []string{}
-				}
-				po.TaggedNetworkIDs = taggedIDs
-			}
-
-			if !model.MulticastRouterNetworkIDs.IsNull() {
-				var multicastIDs []string
-				diags.Append(
-					model.MulticastRouterNetworkIDs.ElementsAs(ctx, &multicastIDs, true)...,
-				)
-				if diags.HasError() {
-					return nil, diags
-				}
-				po.MulticastRouterNetworkIDs = multicastIDs
-			}
-
-			overrideMap[idx] = po
+			overrideMap[model.Index.ValueInt64()] = po
 		} else {
 			diags.Append(
 				diag.NewErrorDiagnostic(
@@ -3430,8 +3484,12 @@ func (r *deviceResource) frameworkToPortOverrides(
 	return pos, diags
 }
 
-func (r *deviceResource) waitForDeviceState(
+// waitForDeviceState polls the device at mac until it reaches targetState or
+// the timeout elapses. It is package level because unifi_device_port and the
+// port action share it with unifi_device.
+func waitForDeviceState(
 	ctx context.Context,
+	client *Client,
 	site, mac string,
 	targetState unifi.DeviceState,
 	pendingStates []unifi.DeviceState,
@@ -3449,7 +3507,7 @@ func (r *deviceResource) waitForDeviceState(
 		Pending: pending,
 		Target:  []string{targetState.String()},
 		Refresh: func() (any, string, error) {
-			device, err := r.client.GetDeviceByMAC(ctx, site, mac)
+			device, err := client.GetDeviceByMAC(ctx, site, mac)
 
 			if _, ok := err.(*unifi.NotFoundError); ok {
 				err = nil
@@ -3483,6 +3541,16 @@ func (r *deviceResource) waitForDeviceState(
 	}
 
 	return nil, err
+}
+
+// deviceLockKey is the key of a device's lock (Client.lockDevice): the cleaned
+// MAC when known, which is how unifi_device_port and the port action key it,
+// and the controller ID otherwise.
+func deviceLockKey(mac, id string) string {
+	if mac != "" {
+		return cleanMAC(mac)
+	}
+	return id
 }
 
 // cleanMAC normalizes MAC address format.

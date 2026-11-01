@@ -55,6 +55,35 @@ type Client struct {
 	// API UUID so the sites listing is fetched once per site, not on every CRUD call.
 	integrationSiteMu sync.Mutex
 	integrationSites  map[string]ui.IntegrationSiteID
+
+	// deviceLocks serialises the writers of one device's port_overrides array:
+	// unifi_device, unifi_device_port and the port action all read the device,
+	// change the array and PUT the device back, and the controller has no
+	// per-port endpoint. Two such writers for the same device in one apply
+	// would otherwise both read before either writes, and the second PUT would
+	// drop the first one's change. Keyed by cleaned MAC (deviceLockKey), shared
+	// across resource instances through the *Client. It only serialises within
+	// one provider process.
+	deviceLocksMu sync.Mutex
+	deviceLocks   map[string]*sync.Mutex
+}
+
+// lockDevice acquires the mutex of the device identified by key (see
+// deviceLockKey) and returns the function that releases it.
+func (c *Client) lockDevice(key string) func() {
+	c.deviceLocksMu.Lock()
+	if c.deviceLocks == nil {
+		c.deviceLocks = make(map[string]*sync.Mutex)
+	}
+	m, ok := c.deviceLocks[key]
+	if !ok {
+		m = &sync.Mutex{}
+		c.deviceLocks[key] = m
+	}
+	c.deviceLocksMu.Unlock()
+
+	m.Lock()
+	return m.Unlock
 }
 
 // IntegrationSiteID resolves a site (legacy name such as "default", or a UUID) to the
@@ -324,6 +353,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewAPGroupResource,
 		NewBGPResource,
 		NewDeviceFrameworkResource,
+		NewDevicePortResource,
 		NewDNSRecordFrameworkResource,
 		NewDynamicDNSResource,
 		NewFirewallGroupFrameworkResource,

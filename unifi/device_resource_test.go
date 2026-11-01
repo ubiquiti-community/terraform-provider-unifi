@@ -1590,8 +1590,9 @@ func Test_deviceResource_waitForDeviceState(t *testing.T) {
 	}{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.r.waitForDeviceState(
+			got, err := waitForDeviceState(
 				tt.args.ctx,
+				tt.r.client,
 				tt.args.site,
 				tt.args.mac,
 				tt.args.targetState,
