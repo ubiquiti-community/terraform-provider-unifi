@@ -45,3 +45,15 @@ func Test_hostOrIPValidator_ValidateString(t *testing.T) {
 		})
 	}
 }
+
+func Test_hostOrIPValidator_Description(t *testing.T) {
+	ctx := context.Background()
+	v := HostOrIPValidator()
+	want := "value must be a valid IPv4 address, IPv6 address or fully qualified domain name"
+	if got := v.Description(ctx); got != want {
+		t.Errorf("Description() = %q, want %q", got, want)
+	}
+	if got := v.MarkdownDescription(ctx); got != want {
+		t.Errorf("MarkdownDescription() = %q, want %q", got, want)
+	}
+}
