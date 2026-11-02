@@ -2544,19 +2544,21 @@ func keepPriorUnconfigured(
 	return obj, diags
 }
 
-// planGlobalSwitchUnsetUnknown plans the global_switch fields left out of
-// configuration as unknown. Adding the block to a setting whose state has none
-// otherwise leaves them null, and the read-back after the apply then fails as
-// an inconsistent result. Fields the plan already knows are left alone.
+// planGlobalSwitchUnsetUnknown plans the fields a configured global_switch
+// block leaves out as unknown. Adding the block to a setting whose state has
+// none otherwise leaves them null, and the read-back after the apply then fails
+// as an inconsistent result. Fields the plan already knows are left alone. An
+// omitted block is not written, so it keeps the state's values, nulls included.
 func (r *settingResource) planGlobalSwitchUnsetUnknown(
 	ctx context.Context,
 	req resource.ModifyPlanRequest,
 	resp *resource.ModifyPlanResponse,
 ) {
 	gsPath := path.Root("global_switch")
-	var plan types.Object
+	var config, plan types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, gsPath, &config)...)
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, gsPath, &plan)...)
-	if resp.Diagnostics.HasError() || plan.IsNull() || plan.IsUnknown() {
+	if resp.Diagnostics.HasError() || config.IsNull() || plan.IsNull() || plan.IsUnknown() {
 		return
 	}
 
