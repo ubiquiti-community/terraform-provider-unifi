@@ -34,6 +34,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -345,10 +346,11 @@ func (r *vpnServerResource) Schema(
 				MarkdownDescription: "Host name or IP address that client configurations generated " +
 					"by the controller use as the server endpoint instead of the WAN address: " +
 					"the UI's \"Alternate Address for Clients\" (e.g., `vpn.example.com`). " +
+					"Must be an IPv4 address, IPv6 address or fully qualified domain name. " +
 					"Leave unset to use the WAN address.",
 				Optional: true,
 				Validators: []validator.String{
-					stringvalidator.LengthAtLeast(1),
+					validators.HostOrIPValidator(),
 				},
 			},
 			"dns": schema.SingleNestedAttribute{
