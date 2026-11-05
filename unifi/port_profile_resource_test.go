@@ -684,3 +684,35 @@ func Test_forwardForTaggedVLANMgmt(t *testing.T) {
 		}
 	}
 }
+
+func TestPortProfileDuplicateCollections(t *testing.T) {
+	ctx := context.Background()
+	api := &unifi.PortProfile{
+		ID: "fixture", Name: "trunk",
+		ExcludedNetworkIDs:        []string{"network-b", "network-a", "network-b"},
+		MulticastRouterNetworkIDs: []string{"network-a", "network-a"},
+		PortSecurityMACAddress:    []string{"00:11:22:33:44:55", "00:11:22:33:44:55"},
+	}
+	var model portProfileResourceModel
+	r := &portProfileResource{}
+	diags := r.portProfileToModel(ctx, api, &model, "default")
+	if diags.HasError() {
+		t.Fatal(diags)
+	}
+	if len(model.ExcludedNetworkConfIDs.Elements()) != 2 || len(model.MulticastRouterNetworkIDs.Elements()) != 1 {
+		t.Fatal("duplicate networks not normalized")
+	}
+	if len(model.PortSecurity.Attributes()["mac_address"].(types.Set).Elements()) != 1 {
+		t.Fatal("duplicate MAC addresses not normalized")
+	}
+	var excluded []string
+	if d := model.ExcludedNetworkConfIDs.ElementsAs(ctx, &excluded, false); d.HasError() {
+		t.Fatal(d)
+	}
+	if !reflect.DeepEqual(excluded, []string{"network-a", "network-b"}) {
+		t.Fatalf("lost membership: %v", excluded)
+	}
+	if !reflect.DeepEqual(api.ExcludedNetworkIDs, []string{"network-b", "network-a", "network-b"}) {
+		t.Fatal("API response mutated")
+	}
+}
