@@ -108,6 +108,23 @@ func Test_portProfileResource_ModifyPlan_customize(t *testing.T) {
 		wantError bool
 	}{
 		{
+			name:    "unchanged imported customize with auto and untagged native is allowed",
+			forward: "customize", nativeID: "untagged", planned: "auto", config: "auto",
+			prior: map[string]any{"forward": "customize", "native_networkconf_id": "untagged", "tagged_vlan_mgmt": "auto"},
+		},
+		{
+			name:    "changing an unrelated field on an imported profile remains rejected",
+			forward: "customize", nativeID: "untagged", planned: "auto", config: "auto",
+			prior:     map[string]any{"forward": "customize", "native_networkconf_id": "untagged", "tagged_vlan_mgmt": "auto", "name": "old-name"},
+			wantError: true,
+		},
+		{
+			name:    "existing profile changing forward to customize remains rejected",
+			forward: "customize", nativeID: "untagged", planned: "auto", config: "auto",
+			prior:     map[string]any{"forward": "all", "native_networkconf_id": "untagged", "tagged_vlan_mgmt": "auto"},
+			wantError: true,
+		},
+		{
 			name:     "omitted, stored custom, untagged native: allowed",
 			forward:  "customize",
 			nativeID: "untagged",
