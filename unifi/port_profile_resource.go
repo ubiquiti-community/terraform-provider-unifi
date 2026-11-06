@@ -1455,21 +1455,19 @@ func (r *portProfileResource) portProfileToModel(
 
 	model.PortKeepaliveEnabled = types.BoolValue(portProfile.PortKeepaliveEnabled)
 
-	if len(portProfile.ExcludedNetworkIDs) > 0 {
-		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
-		diags.Append(d...)
-		model.ExcludedNetworkConfIDs = s
-	} else {
-		model.ExcludedNetworkConfIDs = types.SetNull(types.StringType)
-	}
+	// The controller can store the same network ID twice: creating a network
+	// appends it to every Custom-trunk profile's excluded list, and an update
+	// that already lists the new ID in the same apply adds it again. A set
+	// cannot hold duplicates ("Duplicate Set Element" on every later plan), so
+	// read through stringSetFromAPI, which drops them; the next update then
+	// writes a clean list back.
+	excluded, d := stringSetFromAPI(portProfile.ExcludedNetworkIDs, true)
+	diags.Append(d...)
+	model.ExcludedNetworkConfIDs = excluded
 
-	if len(portProfile.MulticastRouterNetworkIDs) > 0 {
-		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
-		diags.Append(d...)
-		model.MulticastRouterNetworkIDs = s
-	} else {
-		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
-	}
+	multicast, d := stringSetFromAPI(portProfile.MulticastRouterNetworkIDs, true)
+	diags.Append(d...)
+	model.MulticastRouterNetworkIDs = multicast
 
 	// Round-trip the rate-limit, priority-queue and storm-control fields from
 	// the controller. These used to be hardcoded to null/false regardless of
