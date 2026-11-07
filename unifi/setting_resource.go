@@ -203,6 +203,13 @@ type settingDpiModel struct {
 	FingerprintingEnabled types.Bool `tfsdk:"fingerprinting_enabled"`
 }
 
+// settingFirmwareUpdateModel is the firmware_update block, stored by the
+// controller as the super_fwupdate setting.
+type settingFirmwareUpdateModel struct {
+	FirmwareChannel   types.String `tfsdk:"firmware_channel"`
+	ControllerChannel types.String `tfsdk:"controller_channel"`
+}
+
 type settingLcmModel struct {
 	Enabled     types.Bool  `tfsdk:"enabled"`
 	Brightness  types.Int64 `tfsdk:"brightness"`
@@ -301,28 +308,29 @@ type settingIpsModel struct {
 }
 
 type settingResourceModel struct {
-	ID            types.String   `tfsdk:"id"`
-	Site          types.String   `tfsdk:"site"`
-	AutoSpeedtest types.Object   `tfsdk:"auto_speedtest"`
-	Country       types.Object   `tfsdk:"country"`
-	Dpi           types.Object   `tfsdk:"dpi"`
-	Lcm           types.Object   `tfsdk:"lcm"`
-	NetworkOpt    types.Object   `tfsdk:"network_optimization"`
-	Ntp           types.Object   `tfsdk:"ntp"`
-	Syslog        types.Object   `tfsdk:"syslog"`
-	Doh           types.Object   `tfsdk:"doh"`
-	Ips           types.Object   `tfsdk:"ips"`
-	Mgmt          types.Object   `tfsdk:"mgmt"`
-	Radius        types.Object   `tfsdk:"radius"`
-	Snmp          types.Object   `tfsdk:"snmp"`
-	USG           types.Object   `tfsdk:"usg"`
-	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
-	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
-	Connectivity  types.Object   `tfsdk:"connectivity"`
-	Mdns          types.Object   `tfsdk:"mdns"`
-	RadioAi       types.Object   `tfsdk:"radio_ai"`
-	EtherLighting types.Object   `tfsdk:"etherlighting"`
-	Timeouts      timeouts.Value `tfsdk:"timeouts"`
+	ID             types.String   `tfsdk:"id"`
+	Site           types.String   `tfsdk:"site"`
+	AutoSpeedtest  types.Object   `tfsdk:"auto_speedtest"`
+	Country        types.Object   `tfsdk:"country"`
+	Dpi            types.Object   `tfsdk:"dpi"`
+	FirmwareUpdate types.Object   `tfsdk:"firmware_update"`
+	Lcm            types.Object   `tfsdk:"lcm"`
+	NetworkOpt     types.Object   `tfsdk:"network_optimization"`
+	Ntp            types.Object   `tfsdk:"ntp"`
+	Syslog         types.Object   `tfsdk:"syslog"`
+	Doh            types.Object   `tfsdk:"doh"`
+	Ips            types.Object   `tfsdk:"ips"`
+	Mgmt           types.Object   `tfsdk:"mgmt"`
+	Radius         types.Object   `tfsdk:"radius"`
+	Snmp           types.Object   `tfsdk:"snmp"`
+	USG            types.Object   `tfsdk:"usg"`
+	IgmpSnooping   types.Object   `tfsdk:"igmp_snooping"`
+	GlobalSwitch   types.Object   `tfsdk:"global_switch"`
+	Connectivity   types.Object   `tfsdk:"connectivity"`
+	Mdns           types.Object   `tfsdk:"mdns"`
+	RadioAi        types.Object   `tfsdk:"radio_ai"`
+	EtherLighting  types.Object   `tfsdk:"etherlighting"`
+	Timeouts       timeouts.Value `tfsdk:"timeouts"`
 
 	// The write-only RADIUS secret sits at the root rather than inside
 	// radius: Terraform rejects a WriteOnly child of a Computed nested
@@ -468,6 +476,10 @@ var (
 	dpiAttrTypes = map[string]attr.Type{
 		"enabled":                types.BoolType,
 		"fingerprinting_enabled": types.BoolType,
+	}
+	firmwareUpdateAttrTypes = map[string]attr.Type{
+		"firmware_channel":   types.StringType,
+		"controller_channel": types.StringType,
 	}
 	lcmAttrTypes = map[string]attr.Type{
 		"enabled":      types.BoolType,
@@ -822,6 +834,40 @@ func (r *settingResource) Schema(
 						MarkdownDescription: "Whether device fingerprinting is enabled.",
 						Optional:            true,
 						Computed:            true,
+					},
+				},
+			},
+			"firmware_update": schema.SingleNestedAttribute{
+				MarkdownDescription: "Release channels for updates (Settings > Control Plane > " +
+					"Updates). `mgmt.auto_upgrade` controls whether device firmware is " +
+					"installed automatically; this block controls which channel it comes from.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"firmware_channel": schema.StringAttribute{
+						MarkdownDescription: "The channel firmware for adopted UniFi devices (access " +
+							"points, switches) is offered from: `release`, `release-candidate`, " +
+							"`beta`, `alpha` or `internal`. Taken from the controller when not set.",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.String{
+							stringvalidator.OneOf(firmwareChannels...),
+						},
+					},
+					"controller_channel": schema.StringAttribute{
+						MarkdownDescription: "The channel the Network application itself is updated " +
+							"from on a self-hosted controller, with the same values as " +
+							"`firmware_channel`. A UniFi OS console updates the application " +
+							"through UniFi OS instead and stores no value. Taken from the " +
+							"controller when not set.",
+						Optional: true,
+						Computed: true,
+						Validators: []validator.String{
+							stringvalidator.OneOf(firmwareChannels...),
+						},
 					},
 				},
 			},
@@ -2676,6 +2722,18 @@ func (r *settingResource) Create(
 		}
 	}
 
+	if !data.FirmwareUpdate.IsNull() && !data.FirmwareUpdate.IsUnknown() {
+		var m settingFirmwareUpdateModel
+		resp.Diagnostics.Append(data.FirmwareUpdate.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.writeFirmwareUpdate(ctx, site, &m); err != nil {
+			resp.Diagnostics.AddError("Error Creating Firmware Update Setting", err.Error())
+			return
+		}
+	}
+
 	if !data.Lcm.IsNull() && !data.Lcm.IsUnknown() {
 		var m settingLcmModel
 		resp.Diagnostics.Append(data.Lcm.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -3104,6 +3162,20 @@ func (r *settingResource) Update(
 		}
 	}
 
+	if !config.FirmwareUpdate.IsNull() && !plan.FirmwareUpdate.IsNull() &&
+		!plan.FirmwareUpdate.IsUnknown() &&
+		settingSectionChanged(plan.FirmwareUpdate, state.FirmwareUpdate) {
+		var m settingFirmwareUpdateModel
+		resp.Diagnostics.Append(plan.FirmwareUpdate.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.writeFirmwareUpdate(ctx, site, &m); err != nil {
+			resp.Diagnostics.AddError("Error Updating Firmware Update Setting", err.Error())
+			return
+		}
+	}
+
 	if !config.Lcm.IsNull() && !plan.Lcm.IsNull() && !plan.Lcm.IsUnknown() &&
 		settingSectionChanged(plan.Lcm, state.Lcm) {
 		var m settingLcmModel
@@ -3504,6 +3576,7 @@ func (r *settingResource) readImportedSettings(
 		{&data.AutoSpeedtest, (*settings.AutoSpeedtest)(nil), autoSpeedtestAttrTypes},
 		{&data.Country, (*settings.Country)(nil), countryAttrTypes},
 		{&data.Dpi, (*settings.Dpi)(nil), dpiAttrTypes},
+		{&data.FirmwareUpdate, (*settings.SuperFwupdate)(nil), firmwareUpdateAttrTypes},
 		{&data.Lcm, (*settings.Lcm)(nil), lcmAttrTypes},
 		{&data.NetworkOpt, (*settings.NetworkOptimization)(nil), networkOptimizationAttrTypes},
 		{&data.Ntp, (*settings.Ntp)(nil), ntpAttrTypes},
@@ -3680,6 +3753,25 @@ func (r *settingResource) readSettings(
 		data.Dpi = objValue
 	} else {
 		data.Dpi = types.ObjectNull(dpiAttrTypes)
+	}
+
+	// Firmware update channels (super_fwupdate)
+	if !data.FirmwareUpdate.IsNull() && !data.FirmwareUpdate.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.SuperFwupdate](r.client.ApiClient, ctx, site)
+		if err != nil {
+			diags.AddError("Error Reading Firmware Update Setting", err.Error())
+			return
+		}
+		objValue, d := types.ObjectValueFrom(
+			ctx, firmwareUpdateAttrTypes, r.firmwareUpdateSettingToModel(s),
+		)
+		diags.Append(d...)
+		if diags.HasError() {
+			return
+		}
+		data.FirmwareUpdate = objValue
+	} else {
+		data.FirmwareUpdate = types.ObjectNull(firmwareUpdateAttrTypes)
 	}
 
 	// LCM settings
@@ -5651,6 +5743,51 @@ func (r *settingResource) countryModelToSetting(m *settingCountryModel) *setting
 
 func (r *settingResource) countrySettingToModel(s *settings.Country) settingCountryModel {
 	return settingCountryModel{Code: types.Int64PointerValue(s.Code)}
+}
+
+// firmwareChannels are the release channels super_fwupdate accepts.
+var firmwareChannels = []string{"release", "release-candidate", "beta", "alpha", "internal"}
+
+// writeFirmwareUpdate overlays the configured channels on the stored
+// super_fwupdate document and writes the keys that changed. Starting from the
+// stored document keeps sso_enabled, a plain bool this block does not model,
+// from being sent as false.
+func (r *settingResource) writeFirmwareUpdate(
+	ctx context.Context,
+	site string,
+	m *settingFirmwareUpdateModel,
+) error {
+	_, stored, err := ui.GetSetting[*settings.SuperFwupdate](r.client.ApiClient, ctx, site)
+	if err != nil {
+		return err
+	}
+	return r.writeSetting(ctx, site, r.firmwareUpdateModelToSetting(m, stored))
+}
+
+func (r *settingResource) firmwareUpdateModelToSetting(
+	m *settingFirmwareUpdateModel,
+	base *settings.SuperFwupdate,
+) *settings.SuperFwupdate {
+	setting := &settings.SuperFwupdate{}
+	if base != nil {
+		*setting = *base
+	}
+	if !m.FirmwareChannel.IsNull() && !m.FirmwareChannel.IsUnknown() {
+		setting.FirmwareChannel = m.FirmwareChannel.ValueString()
+	}
+	if !m.ControllerChannel.IsNull() && !m.ControllerChannel.IsUnknown() {
+		setting.ControllerChannel = m.ControllerChannel.ValueString()
+	}
+	return setting
+}
+
+func (r *settingResource) firmwareUpdateSettingToModel(
+	s *settings.SuperFwupdate,
+) settingFirmwareUpdateModel {
+	return settingFirmwareUpdateModel{
+		FirmwareChannel:   util.StringValueOrNull(s.FirmwareChannel),
+		ControllerChannel: util.StringValueOrNull(s.ControllerChannel),
+	}
 }
 
 func (r *settingResource) dpiModelToSetting(m *settingDpiModel) *settings.Dpi {
