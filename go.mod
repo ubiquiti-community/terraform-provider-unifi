@@ -13,7 +13,7 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.11.0
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/testcontainers/testcontainers-go v0.45.0
-	github.com/testcontainers/testcontainers-go/modules/compose v0.44.0
+	github.com/testcontainers/testcontainers-go/modules/compose v0.45.0
 	github.com/ubiquiti-community/go-unifi v1.43.2
 )
 
