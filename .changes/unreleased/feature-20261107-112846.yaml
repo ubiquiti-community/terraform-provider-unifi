@@ -1,0 +1,3 @@
+kind: feature
+body: '**`unifi_setting`: new `firmware_update` block.** Manages the release channels in Settings > Control Plane > Updates: `firmware_channel` for adopted device firmware and `controller_channel` for a self-hosted Network application. Only the configured channels are written, on top of the stored `super_fwupdate` setting. Read from the controller when not set, and populated on import.'
+time: 2026-11-07T11:28:46.758741-06:00
