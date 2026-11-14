@@ -9,10 +9,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
-// TestSettingGlobalSwitchPlansUnsetFieldsUnknown checks that global_switch
-// fields left out of configuration plan unknown, or known from state, never
+// TestSettingGlobalSwitchPlansUnsetFieldsUnknown checks that, in a configured
+// global_switch block, fields left out plan unknown, or known from state, never
 // null: a null plan fails the apply once the read-back fills the controller's
-// value.
+// value. An omitted block keeps the state's values, nulls included.
 func TestSettingGlobalSwitchPlansUnsetFieldsUnknown(t *testing.T) {
 	ctx := context.Background()
 	r := &settingResource{}
@@ -113,6 +113,35 @@ func TestSettingGlobalSwitchPlansUnsetFieldsUnknown(t *testing.T) {
 					name,
 					got[name],
 				)
+			}
+		}
+	})
+
+	t.Run("an omitted global_switch keeps the state's nulls", func(t *testing.T) {
+		// A controller that never stored acl_device_isolation imports it as
+		// null; with the section omitted, that must not plan an update forever.
+		priorGS := map[string]tftypes.Value{}
+		for name, typ := range gsType.AttributeTypes {
+			switch name {
+			case "acl_device_isolation":
+				priorGS[name] = tftypes.NewValue(typ, nil)
+			case "stp_version":
+				priorGS[name] = tftypes.NewValue(typ, "rstp")
+			default:
+				priorGS[name] = tftypes.NewValue(typ, false)
+			}
+		}
+		state := withGlobalSwitch(prior, priorGS)
+		p := planResourceChange(
+			t, "unifi_setting", schemaResp.Schema, state, state, withGlobalSwitch(config, nil))
+		var attrs map[string]tftypes.Value
+		if err := p.As(&attrs); err != nil {
+			t.Fatalf("planned as object: %v", err)
+		}
+		got := plannedObject(t, attrs["global_switch"], "global_switch")
+		for name, want := range priorGS {
+			if !got[name].Equal(want) {
+				t.Errorf("global_switch.%s plans %v, want %v from state", name, got[name], want)
 			}
 		}
 	})
