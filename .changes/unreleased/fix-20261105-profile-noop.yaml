@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_port_profile`: allow unchanged imported customize profiles with an untagged native network.** Skip the write-oriented compatibility check only when plan and refreshed state are identical. Creates and updates retain the existing protection against controller rewrites.'
+time: 2026-11-05T17:00:01Z
