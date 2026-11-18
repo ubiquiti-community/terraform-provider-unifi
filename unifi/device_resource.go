@@ -1105,12 +1105,59 @@ func (r *deviceResource) UpgradeState(
 			util.SetDurationField(state, "lcm_idle_timeout", time.Second)
 			util.EachObject(state, "port_override", func(pm map[string]any) {
 				util.SetDurationField(pm, "dot1x_idle_timeout", time.Second)
+				dropUnsetPortFlags(pm)
 			})
 		}),
 		// v1 already stores durations as strings; only the List->Set change
 		// applies, which reconcileType handles against the current schema type.
 		1: upgrader(func(map[string]any) {}),
 		2: upgrader(func(map[string]any) {}),
+	}
+}
+
+// v0PortFlags are the Optional+Computed booleans of a port_override in schema
+// version 0, under their flat v0 names.
+var v0PortFlags = []string{
+	"autoneg",
+	"egress_rate_limit_kbps_enabled",
+	"flow_control_enabled",
+	"full_duplex",
+	"isolation",
+	"lldpmed_enabled",
+	"lldpmed_notify_enabled",
+	"port_keepalive_enabled",
+	"port_security_enabled",
+	"stormctrl_bcast_enabled",
+	"stormctrl_mcast_enabled",
+	"stormctrl_ucast_enabled",
+	"stp_port_mode",
+}
+
+// dropUnsetPortFlags removes the `false` flags from a v0 port_override.
+//
+// Up to v0.41 a Read copied every flag of a declared port from the
+// controller, which leaves a flag it does not override out of port_overrides,
+// so a v0 element can hold `false` for each one the configuration never
+// mentions. Later versions keep an unset flag null, and the upgraded element
+// has to look the same or it no longer lines up with its block:
+//
+//   - a nested group of such flags (`lldpmed = { enabled = false, … }`) is an
+//     object where the configuration has null, so Terraform no longer pairs
+//     the element with its block. Every plan then removes and re-adds every
+//     override with its computed attributes unknown, and the apply ends in
+//     "Provider returned invalid result object after apply";
+//   - any leftover value makes the planned element differ from the block, and
+//     the framework then applies op_mode's default over a configured
+//     `aggregate`, so the plan turns every LAG port into `switch`.
+//
+// A flag the configuration does set to `false` is dropped as well: the first
+// plan shows it as a change and the apply sends it again. `true` is never the
+// unset value, so it is kept.
+func dropUnsetPortFlags(po map[string]any) {
+	for _, key := range v0PortFlags {
+		if set, ok := po[key].(bool); ok && !set {
+			delete(po, key)
+		}
 	}
 }
 
