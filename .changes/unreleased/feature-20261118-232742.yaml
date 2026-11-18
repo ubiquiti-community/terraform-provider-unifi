@@ -1,0 +1,3 @@
+kind: feature
+body: '**`unifi_dynamic_dns`, `unifi_port_forward` and `unifi_site_to_site_vpn`: `wan3` through `wan9` are accepted as an interface.** The controller names WAN interfaces `wan` and `wan2` through `wan9` (`wan[2-9]?` in its field specs), and a gateway with three WAN ports has a `wan3`. `unifi_dynamic_dns.interface`, `unifi_port_forward.wan.interface`, `destination_ips[].interface` and `unifi_site_to_site_vpn.interface` took `wan` and `wan2` only, so an entry on the third port failed validation. They now use the pattern `unifi_vpn_server` and `unifi_vpn_client` already validated against'
+time: 2026-11-18T23:27:42.760570061+01:00
