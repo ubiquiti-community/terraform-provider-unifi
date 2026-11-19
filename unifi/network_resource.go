@@ -567,7 +567,7 @@ func (r *networkResource) Schema(
 					stringvalidator.OneOf("auto", "manual"),
 				},
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.UseNonNullStateForUnknown(),
 				},
 			},
 			"internet_access": schema.BoolAttribute{
