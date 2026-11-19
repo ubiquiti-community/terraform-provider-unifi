@@ -2682,6 +2682,10 @@ func carryUnwritableFields(
 	}
 
 	declared.EeeEnabled = current.EeeEnabled
+	// lag_idx is the number the controller gives the link aggregation group of
+	// an aggregate port. It is the controller's to assign, so a LAG port goes
+	// back with the number it came with.
+	declared.LagIDX = current.LagIDX
 	declared.LdMode = current.LdMode
 	declared.LdStatus = current.LdStatus
 	declared.LinkDebounce = current.LinkDebounce
