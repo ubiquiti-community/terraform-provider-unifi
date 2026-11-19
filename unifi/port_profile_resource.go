@@ -3,6 +3,7 @@ package unifi
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
@@ -377,7 +378,8 @@ func (r *portProfileResource) Schema(
 					"`customize` requires a native network that carries a VLAN id, unless " +
 					"`tagged_vlan_mgmt` is `custom`: otherwise the controller silently stores " +
 					"`all` for a profile whose native network is untagged, which the provider " +
-					"rejects at plan time rather than letting the apply leave the resource tainted.",
+					"rejects at plan time rather than letting the apply leave the resource tainted. " +
+					"An unchanged imported profile is allowed because no write is planned.",
 				Optional: true,
 				Computed: true,
 				Validators: []validator.String{
@@ -1018,6 +1020,12 @@ func (r *portProfileResource) ModifyPlan(
 		return
 	}
 
+	// A refreshed, unchanged legacy profile requires no write. Keep the guard
+	// for creates and updates, where the controller can rewrite customize.
+	if hasPrior && req.Plan.Raw.Equal(req.State.Raw) {
+		return
+	}
+
 	if r.client == nil {
 		return // not configured yet (e.g. during validation)
 	}
@@ -1406,7 +1414,7 @@ func (r *portProfileResource) portProfileToModel(
 
 	macAddressSet := types.SetNull(types.StringType)
 	if len(portProfile.PortSecurityMACAddress) > 0 {
-		set, d := types.SetValueFrom(ctx, types.StringType, portProfile.PortSecurityMACAddress)
+		set, d := types.SetValueFrom(ctx, types.StringType, uniqueProfileStrings(portProfile.PortSecurityMACAddress))
 		diags.Append(d...)
 		macAddressSet = set
 	} else if macExplicitlyEmpty {
@@ -1456,7 +1464,7 @@ func (r *portProfileResource) portProfileToModel(
 	model.PortKeepaliveEnabled = types.BoolValue(portProfile.PortKeepaliveEnabled)
 
 	if len(portProfile.ExcludedNetworkIDs) > 0 {
-		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.ExcludedNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, uniqueProfileStrings(portProfile.ExcludedNetworkIDs))
 		diags.Append(d...)
 		model.ExcludedNetworkConfIDs = s
 	} else {
@@ -1464,7 +1472,7 @@ func (r *portProfileResource) portProfileToModel(
 	}
 
 	if len(portProfile.MulticastRouterNetworkIDs) > 0 {
-		s, d := types.SetValueFrom(ctx, types.StringType, portProfile.MulticastRouterNetworkIDs)
+		s, d := types.SetValueFrom(ctx, types.StringType, uniqueProfileStrings(portProfile.MulticastRouterNetworkIDs))
 		diags.Append(d...)
 		model.MulticastRouterNetworkIDs = s
 	} else {
@@ -1719,4 +1727,12 @@ func forwardForTaggedVLANMgmt(taggedVLANMgmt string) string {
 	default:
 		return "all"
 	}
+}
+
+// Normalize collection responses before decoding them into Terraform sets.
+// Work on a copy so reading state never mutates the API response.
+func uniqueProfileStrings(values []string) []string {
+	result := slices.Clone(values)
+	slices.Sort(result)
+	return slices.Compact(result)
 }

@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_port_profile`: import duplicate collection members as sets.** Deduplicate excluded network IDs, multicast router network IDs and port-security MACs on read without changing the API response or controller configuration.'
+time: 2026-11-05T17:00:00Z
