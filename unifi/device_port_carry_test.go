@@ -14,6 +14,7 @@ import (
 // schema does not expose, which carryUnwritableFields copies from the controller.
 var unexposedPortOverrideFields = []string{
 	"eee_enabled",
+	"lag_idx",
 	"ld_mode",
 	"ld_status",
 	"link_debounce",
