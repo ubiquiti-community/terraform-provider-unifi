@@ -1,0 +1,3 @@
+kind: feature
+body: '**`unifi_vpn_server`: `client_address` sets the "Alternate Address for Clients".** Client configurations the controller generates then use this host name or IP address as the endpoint instead of the WAN address, e.g. a DNS name for a server behind a fixed or dynamic address; it must be an IPv4 address, IPv6 address or fully qualified domain name. go-unifi already modelled the fields, but the provider rebuilds the whole network on update and always sent the override as disabled, so a value set in the UI was reset by the next change to the server. Leaving it unset keeps that behaviour (the override is off) (#702 by @jigfox)'
+time: 2026-11-02T12:00:00Z
