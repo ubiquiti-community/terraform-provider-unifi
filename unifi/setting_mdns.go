@@ -3,10 +3,12 @@ package unifi
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -69,7 +71,7 @@ func mdnsSchemaAttribute() schema.Attribute {
 			},
 			"enabled_for": schema.StringAttribute{
 				MarkdownDescription: "Networks mDNS is enabled for: `all`, `some` (the networks " +
-					"with `multicast_dns` enabled on `unifi_network`), or `none`.",
+					"in `enabled_for_network_ids`), or `none`.",
 				Optional:      true,
 				Computed:      true,
 				Validators:    []validator.String{stringvalidator.OneOf("all", "some", "none")},
@@ -77,10 +79,14 @@ func mdnsSchemaAttribute() schema.Attribute {
 			},
 			"enabled_for_network_ids": schema.ListAttribute{
 				MarkdownDescription: "IDs of the networks mDNS is enabled for when `enabled_for` is " +
-					"`some`. Read-only: the controller derives this list from each network's " +
-					"`mdns_enabled` flag and ignores writes to it, so choose the networks with " +
-					"`multicast_dns` on `unifi_network`.",
+					"`some`. On Network 11 and later this is where the networks are chosen: the " +
+					"controller keeps the selection in its global network settings, and each " +
+					"network's `mdns_enabled` flag (`multicast_dns` on `unifi_network`) only " +
+					"mirrors it and ignores writes. Left unset, the current selection is kept. " +
+					"Earlier controllers derive this list from those flags instead, so there " +
+					"leave it unset and choose the networks with `multicast_dns`.",
 				ElementType: types.StringType,
+				Optional:    true,
 				Computed:    true,
 			},
 			"predefined_services": schema.ListAttribute{
@@ -126,8 +132,10 @@ func (r *settingResource) mdnsModelToSetting(
 	if isKnown(m.EnabledFor) {
 		s.EnabledFor = m.EnabledFor.ValueString()
 	}
-	// enabled_for_network_ids is derived from the networks' mdns_enabled flags;
-	// the stored value in base is sent back unchanged.
+	// enabled_for_network_ids is not written here: Network 11 keeps it in the
+	// global network settings (see mdnsNetworksUpdate) and earlier controllers
+	// derive it from the networks' mdns_enabled flags. The stored value in base
+	// is sent back unchanged.
 	if isKnown(m.PredefinedServices) {
 		var codes []string
 		diags.Append(m.PredefinedServices.ElementsAs(ctx, &codes, false)...)
@@ -203,6 +211,10 @@ func (r *settingResource) persistMdns(
 		if !ok {
 			return
 		}
+		networks, ok := r.mdnsNetworksUpdate(ctx, site, &m, base.EnabledForNetworkIDs, diags)
+		if !ok {
+			return
+		}
 		s := r.mdnsModelToSetting(ctx, &m, base, diags)
 		if diags.HasError() {
 			return
@@ -211,7 +223,80 @@ func (r *settingResource) persistMdns(
 			diags.AddError("Error Updating mDNS Setting", err.Error())
 			return
 		}
+		if networks != nil {
+			if _, err := r.client.UpdateGlobalNetworkConfig(ctx, site, networks); err != nil {
+				diags.AddError("Error Updating mDNS Networks", err.Error())
+			}
+		}
 	}
+}
+
+// mdnsNetworksUpdate returns the global network settings to write so the
+// controller applies the planned mDNS network selection, or nil when nothing
+// needs writing there.
+//
+// Network 11 keeps the selection (enabled_for and the network list) in the v2
+// global network settings. The legacy mdns setting and each network's
+// mdns_enabled flag only mirror it, and the controller answers writes to them
+// with rc "ok" and ignores them (#726), so the selection is written there.
+// A controller without that object derives the list from the networks'
+// mdns_enabled flags and takes enabled_for from the legacy setting, so nothing
+// is written there and a configured list that differs from the derived one is
+// rejected instead of failing later as an inconsistent result. ok is false
+// when diags has an error and nothing should be written.
+func (r *settingResource) mdnsNetworksUpdate(
+	ctx context.Context,
+	site string,
+	m *settingMdnsModel,
+	storedIDs []string,
+	diags *diag.Diagnostics,
+) (*ui.GlobalNetworkConfig, bool) {
+	idsPath := path.Root("mdns").AtName("enabled_for_network_ids")
+	idsSet := isKnown(m.EnabledForNetworkIDs)
+	var ids []string
+	if idsSet {
+		diags.Append(m.EnabledForNetworkIDs.ElementsAs(ctx, &ids, false)...)
+		if diags.HasError() {
+			return nil, false
+		}
+	}
+
+	cfg, err := r.client.GetGlobalNetworkConfig(ctx, site)
+	var nf *ui.NotFoundError
+	if err != nil && !errors.As(err, &nf) {
+		diags.AddError("Error Reading Global Network Settings", err.Error())
+		return nil, false
+	}
+	if cfg == nil || !cfg.HasMdns() {
+		if idsSet && !sameStringSet(ids, storedIDs) {
+			diags.AddAttributeError(idsPath, "mDNS Networks Not Writable",
+				"This controller derives enabled_for_network_ids from each network's "+
+					"mdns_enabled flag and ignores writes to it. Leave it unset and choose "+
+					"the networks with multicast_dns on unifi_network.")
+			return nil, false
+		}
+		return nil, true
+	}
+
+	enabledFor := cfg.MdnsEnabledFor
+	if isKnown(m.EnabledFor) {
+		enabledFor = m.EnabledFor.ValueString()
+	}
+	networkIDs := cfg.MdnsEnabledForNetworkIDs
+	if idsSet {
+		networkIDs = ids
+	}
+	if enabledFor == "some" && len(networkIDs) == 0 {
+		diags.AddAttributeError(idsPath, "No mDNS Networks Selected",
+			`enabled_for = "some" needs at least one network in enabled_for_network_ids.`)
+		return nil, false
+	}
+	if enabledFor == cfg.MdnsEnabledFor && slices.Equal(networkIDs, cfg.MdnsEnabledForNetworkIDs) {
+		return nil, true
+	}
+	cfg.MdnsEnabledFor = enabledFor
+	cfg.MdnsEnabledForNetworkIDs = networkIDs
+	return cfg, true
 }
 
 // readMdns refreshes the mdns block if it is present in data.
@@ -229,7 +314,8 @@ func (r *settingResource) readMdns(
 		}
 		obj, d := types.ObjectValueFrom(ctx, mdnsAttrTypes, r.mdnsSettingToModel(ctx, s, diags))
 		diags.Append(d...)
-		data.Mdns = keepNullAttributes(data.Mdns, obj, diags)
+		obj = keepNullAttributes(data.Mdns, obj, diags)
+		data.Mdns = keepListOrder(ctx, data.Mdns, obj, "enabled_for_network_ids", diags)
 	} else {
 		data.Mdns = types.ObjectNull(mdnsAttrTypes)
 	}
@@ -273,6 +359,36 @@ func keepNullAttributes(prior, fresh types.Object, diags *diag.Diagnostics) type
 		}
 	}
 	obj, d := types.ObjectValue(fresh.AttributeTypes(context.Background()), attrs)
+	diags.Append(d...)
+	return obj
+}
+
+// keepListOrder returns fresh, except that the string list attribute name
+// keeps prior's order when both hold the same elements, so a controller that
+// returns a configured list reordered does not cause an inconsistent result.
+func keepListOrder(
+	ctx context.Context,
+	prior, fresh types.Object,
+	name string,
+	diags *diag.Diagnostics,
+) types.Object {
+	if !isKnown(prior) || !isKnown(fresh) {
+		return fresh
+	}
+	p, pok := prior.Attributes()[name].(types.List)
+	f, fok := fresh.Attributes()[name].(types.List)
+	if !pok || !fok || !isKnown(p) || !isKnown(f) {
+		return fresh
+	}
+	var ps, fs []string
+	diags.Append(p.ElementsAs(ctx, &ps, false)...)
+	diags.Append(f.ElementsAs(ctx, &fs, false)...)
+	if diags.HasError() || len(ps) != len(fs) || slices.Equal(ps, fs) || !sameStringSet(ps, fs) {
+		return fresh
+	}
+	attrs := fresh.Attributes()
+	attrs[name] = p
+	obj, d := types.ObjectValue(fresh.AttributeTypes(ctx), attrs)
 	diags.Append(d...)
 	return obj
 }
