@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_port_profile`, `unifi_device`: no more "Duplicate Set Element" when the controller stores a network ID twice.** Creating a network appends it to every Custom-tagged port profile and port override; an update in the same apply that already lists the new ID adds it again, and every later plan failed until the profile was re-saved in the UI. `excluded_networkconf_ids` and `multicast_router_networkconf_ids` are now read through `stringSetFromAPI`, which drops duplicates (#707 by @StlTenny)'
+time: 2026-11-06T19:31:53.395124391Z

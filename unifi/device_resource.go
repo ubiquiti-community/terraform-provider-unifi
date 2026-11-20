@@ -2858,22 +2858,12 @@ func reconcilePortOverride(
 		}
 	}
 	if !pm.ExcludedNetworkIDs.IsNull() {
-		if len(apiPO.ExcludedNetworkIDs) > 0 {
-			sorted := make([]string, len(apiPO.ExcludedNetworkIDs))
-			copy(sorted, apiPO.ExcludedNetworkIDs)
-			sort.Strings(sorted)
-			vals := make([]attr.Value, len(sorted))
-			for i, id := range sorted {
-				vals[i] = types.StringValue(id)
-			}
-			setVal, setDiags := types.SetValue(types.StringType, vals)
-			diags.Append(setDiags...)
-			updated.ExcludedNetworkIDs = setVal
-		} else {
-			emptySet, setDiags := types.SetValue(types.StringType, []attr.Value{})
-			diags.Append(setDiags...)
-			updated.ExcludedNetworkIDs = emptySet
-		}
+		// The controller can store a network ID twice (a new network is
+		// appended to every Custom-tagged port); stringSetFromAPI drops the
+		// duplicate a set cannot hold.
+		setVal, setDiags := stringSetFromAPI(apiPO.ExcludedNetworkIDs, false)
+		diags.Append(setDiags...)
+		updated.ExcludedNetworkIDs = setVal
 	}
 	if !pm.TaggedNetworkIDs.IsNull() && !pm.TaggedNetworkIDs.IsUnknown() {
 		// Configured: surface the controller's value as a set (order and
@@ -3185,23 +3175,13 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 		model.AggregateMembers = listVal
 	}
 
-	if len(po.ExcludedNetworkIDs) == 0 {
-		model.ExcludedNetworkIDs = types.SetNull(types.StringType)
-	} else {
-		sortedExcluded := make([]string, len(po.ExcludedNetworkIDs))
-		copy(sortedExcluded, po.ExcludedNetworkIDs)
-		sort.Strings(sortedExcluded)
-		excludedValues := make([]attr.Value, 0, len(sortedExcluded))
-		for _, id := range sortedExcluded {
-			excludedValues = append(excludedValues, types.StringValue(id))
-		}
-		setVal, setDiags := types.SetValue(types.StringType, excludedValues)
-		diags.Append(setDiags...)
-		if diags.HasError() {
-			return model, diags
-		}
-		model.ExcludedNetworkIDs = setVal
+	// Duplicates from the controller are dropped (see reconcilePortOverride).
+	excludedSet, excludedDiags := stringSetFromAPI(po.ExcludedNetworkIDs, true)
+	diags.Append(excludedDiags...)
+	if diags.HasError() {
+		return model, diags
 	}
+	model.ExcludedNetworkIDs = excludedSet
 
 	// #235: this must always be a typed value. Leaving it as the zero-value
 	// types.Set makes ObjectValueFrom fail with a "!!! MISSING TYPE !!!" Value
@@ -3213,20 +3193,12 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 	}
 	model.TaggedNetworkIDs = taggedSet
 
-	if len(po.MulticastRouterNetworkIDs) == 0 {
-		model.MulticastRouterNetworkIDs = types.SetNull(types.StringType)
-	} else {
-		multicastValues := make([]attr.Value, 0, len(po.MulticastRouterNetworkIDs))
-		for _, id := range po.MulticastRouterNetworkIDs {
-			multicastValues = append(multicastValues, types.StringValue(id))
-		}
-		setVal, setDiags := types.SetValue(types.StringType, multicastValues)
-		diags.Append(setDiags...)
-		if diags.HasError() {
-			return model, diags
-		}
-		model.MulticastRouterNetworkIDs = setVal
+	multicastSet, multicastDiags := stringSetFromAPI(po.MulticastRouterNetworkIDs, true)
+	diags.Append(multicastDiags...)
+	if diags.HasError() {
+		return model, diags
 	}
+	model.MulticastRouterNetworkIDs = multicastSet
 
 	macList := types.ListNull(types.StringType)
 	if len(po.PortSecurityMACAddress) > 0 {
