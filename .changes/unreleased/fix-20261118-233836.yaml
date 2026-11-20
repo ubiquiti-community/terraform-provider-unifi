@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_device`: a `port_override` block that sets `op_mode` no longer fails the apply with `Provider returned invalid result object after apply`.** Create and Update stored the planned `port_override` set as it was. The framework marks the unset Optional+Computed attributes unknown in every element that equals its block, which is the case for a block that sets `op_mode` (a LAG or a mirror port, or an explicit `switch`). The write went through, the apply then failed on 11 unknown attributes per such port, and a device that was being created was left tainted. The attributes the plan left unknown are now stored as null, which is what Read keeps for an unset attribute'
+time: 2026-11-18T23:38:36.848944278+01:00
