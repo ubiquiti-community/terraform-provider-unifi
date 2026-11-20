@@ -211,10 +211,13 @@ func (r *portForwardResource) Schema(
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"interface": schema.StringAttribute{
-						MarkdownDescription: "The WAN interface. Can be `wan`, `wan2`, or `both`.",
+						MarkdownDescription: "The WAN interface. Can be `wan`, `wan2` through `wan9`, or `both`.",
 						Optional:            true,
 						Validators: []validator.String{
-							stringvalidator.OneOf("wan", "wan2", "both"),
+							stringvalidator.Any(
+								validators.WANInterface(),
+								stringvalidator.OneOf("both"),
+							),
 						},
 					},
 					"ip_address": schema.StringAttribute{
@@ -303,10 +306,10 @@ func (r *portForwardResource) Schema(
 							},
 						},
 						"interface": schema.StringAttribute{
-							MarkdownDescription: "The WAN interface for this destination (e.g. `wan`, `wan2`).",
+							MarkdownDescription: "The WAN interface for this destination: `wan`, or `wan2` through `wan9`.",
 							Optional:            true,
 							Validators: []validator.String{
-								stringvalidator.OneOf("wan", "wan2"),
+								validators.WANInterface(),
 							},
 						},
 					},

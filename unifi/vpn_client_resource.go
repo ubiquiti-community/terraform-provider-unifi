@@ -29,6 +29,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -366,10 +367,7 @@ func (r *vpnClientResource) Schema(
 							planmodifiers.StringDefaultOnCreateKeepNull("wan"),
 						},
 						Validators: []validator.String{
-							stringvalidator.RegexMatches(
-								regexp.MustCompile(`^wan[2-9]?$`),
-								"must be 'wan' or 'wan2' through 'wan9'",
-							),
+							validators.WANInterface(),
 						},
 					},
 					"dns_servers": schema.ListAttribute{

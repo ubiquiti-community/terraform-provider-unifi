@@ -34,6 +34,7 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -277,11 +278,6 @@ func (r *vpnServerResource) Schema(
 	req resource.SchemaRequest,
 	resp *resource.SchemaResponse,
 ) {
-	wanInterfaceValidator := stringvalidator.RegexMatches(
-		regexp.MustCompile(`^wan[2-9]?$`),
-		"must be 'wan' or 'wan2' through 'wan9'",
-	)
-
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "`unifi_vpn_server` manages VPN server configurations (WireGuard, L2TP, or OpenVPN) in the UniFi controller.",
 		// Version history:
@@ -391,7 +387,7 @@ func (r *vpnServerResource) Schema(
 						Optional: true,
 						Computed: true,
 						Validators: []validator.String{
-							wanInterfaceValidator,
+							validators.WANInterface(),
 						},
 						PlanModifiers: []planmodifier.String{
 							planmodifiers.StringDefaultOnCreateKeepNull("wan"),
