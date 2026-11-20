@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_setting`: an omitted `global_switch` no longer plans an update on every run.** A controller that never stored `acl_device_isolation` imports it as null, and the plan marked that null as `(known after apply)` even with `global_switch` left out of the configuration, so a plan never came out clean. The fields are now only planned unknown when the block is configured; an omitted block keeps the state''s values. Nothing was written: an omitted block is never sent (#703).'
+time: 2026-11-02T08:50:51.588893+01:00
