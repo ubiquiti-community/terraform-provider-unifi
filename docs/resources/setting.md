@@ -215,6 +215,7 @@ resource "unifi_setting" "etherlighting" {
 - `doh` (Attributes) Encrypted DNS (DNS-over-HTTPS) settings. (see [below for nested schema](#nestedatt--doh))
 - `dpi` (Attributes) Deep Packet Inspection (DPI) settings. (see [below for nested schema](#nestedatt--dpi))
 - `etherlighting` (Attributes) Site-wide Etherlighting colors for switches with per-port LED lighting. Switches in `speed` mode color each port by its link speed, those in `network` mode by its network; set the mode per switch with `unifi_device`'s `etherlighting` block. Each list replaces the controller's list when set and is left untouched when omitted. (see [below for nested schema](#nestedatt--etherlighting))
+- `firmware_update` (Attributes) Release channels for updates (Settings > Control Plane > Updates). `mgmt.auto_upgrade` controls whether device firmware is installed automatically; this block controls which channel it comes from. (see [below for nested schema](#nestedatt--firmware_update))
 - `global_switch` (Attributes) Site-wide switch settings (Settings > Networks > Global Switch Settings). On current controllers jumbo frames are only honored here, not via `unifi_device.jumboframe_enabled`. Options not exposed by this block are preserved across updates. (see [below for nested schema](#nestedatt--global_switch))
 - `igmp_snooping` (Attributes) Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates. (see [below for nested schema](#nestedatt--igmp_snooping))
 - `ips` (Attributes) Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset. (see [below for nested schema](#nestedatt--ips))
@@ -322,6 +323,15 @@ Required:
 - `color` (String) 6-digit hex color without the leading `#` (e.g. `ff0000`).
 - `speed` (String) Link speed: `FE`, `GbE`, `2.5GbE`, `5GbE`, `10GbE`, `25GbE`, `40GbE` or `100GbE`.
 
+
+
+<a id="nestedatt--firmware_update"></a>
+### Nested Schema for `firmware_update`
+
+Optional:
+
+- `controller_channel` (String) The channel the Network application itself is updated from on a self-hosted controller, with the same values as `firmware_channel`. A UniFi OS console updates the application through UniFi OS instead and stores no value. Taken from the controller when not set.
+- `firmware_channel` (String) The channel firmware for adopted UniFi devices (access points, switches) is offered from: `release`, `release-candidate`, `beta`, `alpha` or `internal`. Taken from the controller when not set.
 
 
 <a id="nestedatt--global_switch"></a>
