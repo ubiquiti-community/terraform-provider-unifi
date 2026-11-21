@@ -1445,6 +1445,14 @@ func (r *wanResource) Read(
 	if id == "" {
 		network, err = r.client.GetNetworkByName(ctx, site, state.Name.ValueString())
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					wanIdentityModel{ID: types.StringNull(), Site: types.StringValue(site)},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Client Error",
 				fmt.Sprintf("Unable to read WAN network, got error: %s", err),
@@ -1455,6 +1463,14 @@ func (r *wanResource) Read(
 		// Get the network
 		network, err = r.client.GetNetwork(ctx, site, id)
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					wanIdentityModel{ID: types.StringValue(id), Site: types.StringValue(site)},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Client Error",
 				fmt.Sprintf("Unable to read WAN network, got error: %s", err),

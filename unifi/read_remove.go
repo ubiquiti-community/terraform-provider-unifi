@@ -2,8 +2,10 @@ package unifi
 
 import (
 	"context"
+	"errors"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
 // removeResourceOnRead drops a resource that no longer exists on the
@@ -27,4 +29,11 @@ func removeResourceOnRead(ctx context.Context, resp *resource.ReadResponse, iden
 	}
 
 	resp.State.RemoveResource(ctx)
+}
+
+// isNotFound reports whether err says the object is not on the controller,
+// which answers a GET of a deleted ID with rc "ok" and no data.
+func isNotFound(err error) bool {
+	var notFound *unifi.NotFoundError
+	return errors.As(err, &notFound)
 }

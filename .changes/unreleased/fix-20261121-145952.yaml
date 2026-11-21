@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_network`, `unifi_wan`, `unifi_wlan`, `unifi_vpn_client`, `unifi_vpn_server`: an object deleted on the controller is dropped from the state instead of failing the refresh.** Their Read reported the controller''''s empty answer as an error, so after a factory reset (or a deletion in the UI) every plan failed until each resource was removed from the state by hand. They now remove the resource, as `unifi_firewall_zone`, `unifi_static_route` and the others already do, and the next plan creates it again (from #736)'
+time: 2026-11-21T14:59:52.199394268Z

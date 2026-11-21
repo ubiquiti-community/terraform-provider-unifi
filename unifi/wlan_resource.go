@@ -1645,6 +1645,14 @@ func (r *wlanFrameworkResource) Read(
 	if !state.ID.IsNull() && !state.ID.IsUnknown() {
 		wlan, err = r.client.GetWLAN(ctx, site, state.ID.ValueString())
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					wlanIdentityModel{ID: state.ID, Site: types.StringValue(site)},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading WLAN",
 				"Could not read WLAN with ID "+state.ID.ValueString()+": "+err.Error(),
@@ -1654,6 +1662,14 @@ func (r *wlanFrameworkResource) Read(
 	} else {
 		wlan, err = r.client.GetWLANByName(ctx, site, state.Name.ValueString())
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					wlanIdentityModel{ID: types.StringNull(), Site: types.StringValue(site)},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading WLAN",
 				"Could not read WLAN with Name "+state.Name.ValueString()+": "+err.Error(),

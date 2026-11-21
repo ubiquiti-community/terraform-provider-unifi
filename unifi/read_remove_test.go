@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
@@ -125,5 +126,84 @@ func TestRemoveResourceOnRead_nilIdentity(t *testing.T) {
 	}
 	if !resp.State.Raw.IsNull() {
 		t.Fatalf("state should have been removed, got %s", resp.State.Raw)
+	}
+}
+
+// A refresh of an object deleted on the controller, such as every network,
+// WAN and WLAN after a factory reset, must drop it from the state so the plan
+// creates it again, with or without a stored identity (OpenTofu stores none).
+// The controller answers a GET of a deleted ID with rc "ok" and no data.
+func TestReadRemovesDeletedObject(t *testing.T) {
+	ctx := context.Background()
+	empty := `{"meta":{"rc":"ok"},"data":[]}`
+	cases := map[string]string{
+		"unifi_network":    "/api/s/default/rest/networkconf/gone",
+		"unifi_wan":        "/api/s/default/rest/networkconf/gone",
+		"unifi_vpn_client": "/api/s/default/rest/networkconf/gone",
+		"unifi_vpn_server": "/api/s/default/rest/networkconf/gone",
+		"unifi_wlan":       "/api/s/default/rest/wlanconf/gone",
+	}
+	responses := map[string]string{}
+	for _, p := range cases {
+		responses[p] = empty
+	}
+	srv := newConfiguredProviderServer(t, newFakeController(t, responses))
+	schemas, err := srv.GetProviderSchema(ctx, &tfprotov6.GetProviderSchemaRequest{})
+	if err != nil {
+		t.Fatalf("GetProviderSchema: %v", err)
+	}
+	identitySchemas, err := srv.GetResourceIdentitySchemas(
+		ctx,
+		&tfprotov6.GetResourceIdentitySchemasRequest{},
+	)
+	if err != nil {
+		t.Fatalf("GetResourceIdentitySchemas: %v", err)
+	}
+
+	for typeName := range cases {
+		for _, withIdentity := range []bool{false, true} {
+			name := typeName + "/no identity"
+			if withIdentity {
+				name = typeName + "/stored identity"
+			}
+			t.Run(name, func(t *testing.T) {
+				stateType := schemas.ResourceSchemas[typeName].ValueType()
+				state, err := tfprotov6.NewDynamicValue(stateType, objectWithNulls(t, stateType,
+					map[string]tftypes.Value{
+						"id":   tftypes.NewValue(tftypes.String, "gone"),
+						"site": tftypes.NewValue(tftypes.String, "default"),
+						"name": tftypes.NewValue(tftypes.String, "deleted"),
+					}))
+				if err != nil {
+					t.Fatalf("state: %v", err)
+				}
+				req := &tfprotov6.ReadResourceRequest{TypeName: typeName, CurrentState: &state}
+				if withIdentity {
+					identityType := identitySchemas.IdentitySchemas[typeName].ValueType()
+					data, err := tfprotov6.NewDynamicValue(identityType, tftypes.NewValue(
+						identityType, map[string]tftypes.Value{
+							"id":   tftypes.NewValue(tftypes.String, "gone"),
+							"site": tftypes.NewValue(tftypes.String, "default"),
+						}))
+					if err != nil {
+						t.Fatalf("identity: %v", err)
+					}
+					req.CurrentIdentity = &tfprotov6.ResourceIdentityData{IdentityData: &data}
+				}
+
+				read, err := srv.ReadResource(ctx, req)
+				if err != nil {
+					t.Fatalf("ReadResource: %v", err)
+				}
+				failOnErrorDiagnostics(t, "read", read.Diagnostics)
+				got, err := read.NewState.Unmarshal(stateType)
+				if err != nil {
+					t.Fatalf("new state: %v", err)
+				}
+				if !got.IsNull() {
+					t.Errorf("new state = %v, want the resource removed", got)
+				}
+			})
+		}
 	}
 }

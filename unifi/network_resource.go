@@ -1795,6 +1795,14 @@ func (r *networkResource) Read(
 		// Get the network by ID
 		network, err = r.client.GetNetwork(ctx, site, id)
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					networkIdentityModel{ID: types.StringValue(id), Site: types.StringValue(site)},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading network",
 				"Could not read network ID "+id+": "+err.Error(),
@@ -1805,6 +1813,14 @@ func (r *networkResource) Read(
 		// Get the network by name
 		network, err = r.client.GetNetworkByName(ctx, site, data.Name.ValueString())
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					networkIdentityModel{ID: types.StringNull(), Site: types.StringValue(site)},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading network",
 				"Could not read network name "+data.Name.ValueString()+": "+err.Error(),
