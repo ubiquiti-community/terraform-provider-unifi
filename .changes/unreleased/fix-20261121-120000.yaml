@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_setting`: `ips` changes now apply while IPS is off on the controller.** The controller ignores `ips_mode`, `enabled_categories` and `enabled_networks` while `advanced_filtering_preference` is `disabled`, so the apply failed with an inconsistent result on `enabled_networks`. When `ips_mode` is enabled and `advanced_filtering_preference` is not configured, the provider now sends `manual` (#709)'
+time: 2026-11-21T12:00:00Z

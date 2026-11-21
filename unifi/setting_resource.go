@@ -6092,6 +6092,11 @@ func (r *settingResource) ipsModelToSetting(
 	if !model.AdvancedFilteringPreference.IsNull() &&
 		!model.AdvancedFilteringPreference.IsUnknown() {
 		setting.AdvancedFilteringPreference = model.AdvancedFilteringPreference.ValueString()
+	} else if setting.AdvancedFilteringPreference == "disabled" &&
+		setting.IPsMode != "" && setting.IPsMode != "disabled" {
+		// The controller returns 200 but ignores ips_mode, categories and
+		// networks while the preference is "disabled" (#709).
+		setting.AdvancedFilteringPreference = "manual"
 	}
 	if !model.EnabledCategories.IsNull() && !model.EnabledCategories.IsUnknown() {
 		diags.Append(model.EnabledCategories.ElementsAs(ctx, &setting.EnabledCategories, false)...)
