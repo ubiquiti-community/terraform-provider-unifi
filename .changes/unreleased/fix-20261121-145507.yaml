@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_wan`: an update of a WAN stored without `ipv6_setting_preference` no longer fails.** Network 11 stores `manual` when it next saves such a WAN (a secondary WAN, or the primary WAN after a factory reset), but the plan copied the null from state, so the apply failed with "inconsistent result after apply". A null prior value is now left unknown in the plan, as #732 does for `unifi_network`''s `setting_preference` (from #717)'
+time: 2026-11-21T14:55:07.477719989Z
