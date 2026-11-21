@@ -224,12 +224,19 @@ func (r *settingResource) readMdns(
 	if isKnown(data.Mdns) {
 		_, s, err := ui.GetSetting[*settings.Mdns](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading mDNS Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading mDNS Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Mdns = types.ObjectNull(mdnsAttrTypes)
+		} else {
+			obj, d := types.ObjectValueFrom(ctx, mdnsAttrTypes, r.mdnsSettingToModel(ctx, s, diags))
+			diags.Append(d...)
+			data.Mdns = keepNullAttributes(data.Mdns, obj, diags)
 		}
-		obj, d := types.ObjectValueFrom(ctx, mdnsAttrTypes, r.mdnsSettingToModel(ctx, s, diags))
-		diags.Append(d...)
-		data.Mdns = keepNullAttributes(data.Mdns, obj, diags)
 	} else {
 		data.Mdns = types.ObjectNull(mdnsAttrTypes)
 	}

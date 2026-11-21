@@ -54,7 +54,7 @@ var fakeSettingDocuments = map[string]string{
 
 // fakeSettingController is a minimal fake controller (old-style API: 302 on
 // /, cookie login at /api/login) serving the site setting documents in docs.
-// A key in unreadable is listed but its own document cannot be read, and
+// A key in unreadable is listed but reading its own document fails, and
 // failList makes listing the settings fail. listKeysOnly lists every
 // document with its key alone, so writeSetting, which diffs against the
 // listed documents, sends every non-zero field while each document still
@@ -113,7 +113,11 @@ func newSettingFakeControllerClient(t *testing.T, fc *fakeSettingController) *Cl
 	})
 	mux.HandleFunc("/api/s/default/get/setting/", func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/api/s/default/get/setting/")
-		if doc, ok := fc.docs[key]; ok && !fc.unreadable[key] {
+		if fc.unreadable[key] {
+			http.Error(w, `{"meta":{"rc":"error","msg":"api.err.Invalid"}}`, http.StatusBadRequest)
+			return
+		}
+		if doc, ok := fc.docs[key]; ok {
 			reply(w, doc)
 			return
 		}
