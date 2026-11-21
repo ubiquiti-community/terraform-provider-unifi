@@ -1231,13 +1231,18 @@ func Test_deviceResource_reconcilePortOverrides(t *testing.T) {
 				tt.args.ctx,
 				tt.args.prior,
 				tt.args.apiOverrides,
+				nil,
 			)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("deviceResource.reconcilePortOverrides() got = %v, want %v", got, tt.want)
+				t.Errorf(
+					"deviceResource.reconcilePortOverrides(, nil) got = %v, want %v",
+					got,
+					tt.want,
+				)
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
 				t.Errorf(
-					"deviceResource.reconcilePortOverrides() got1 = %v, want %v",
+					"deviceResource.reconcilePortOverrides(, nil) got1 = %v, want %v",
 					got1,
 					tt.want1,
 				)
@@ -1286,7 +1291,7 @@ func TestReconcilePortOverrides_NativeNetworkClearedRoundTrips(t *testing.T) {
 
 	got, diags := r.reconcilePortOverrides(ctx, priorSet, []unifi.DevicePortOverrides{
 		{PortIDX: ptrInt64(1), NATiveNetworkID: ""},
-	})
+	}, nil)
 	if diags.HasError() {
 		t.Fatalf("reconcilePortOverrides returned errors: %v", diags)
 	}
@@ -1343,7 +1348,7 @@ func TestReconcilePortOverrides_NativeNetworkAssignedKept(t *testing.T) {
 
 	got, diags := r.reconcilePortOverrides(ctx, priorSet, []unifi.DevicePortOverrides{
 		{PortIDX: ptrInt64(1), NATiveNetworkID: "net-123"},
-	})
+	}, nil)
 	if diags.HasError() {
 		t.Fatalf("reconcilePortOverrides returned errors: %v", diags)
 	}
@@ -1450,7 +1455,7 @@ func TestReconcilePortOverrides_ResolvesUnknownOptionalComputedAttrs(t *testing.
 
 	got, gotDiags := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{
 		{PortIDX: ptrInt64(7), Name: "Port 7", FlowControlEnabled: boolPtr(true)},
-	})
+	}, nil)
 	if gotDiags.HasError() {
 		t.Fatalf("reconcilePortOverrides errored: %v", gotDiags.Errors())
 	}
@@ -1511,7 +1516,7 @@ func TestReconcilePortOverrides_OmittedBoolKeepsPlannedValue(t *testing.T) {
 	// The controller response omits every boolean key for the port.
 	got, diags := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{
 		{PortIDX: ptrInt64(49)},
-	})
+	}, nil)
 	if diags.HasError() {
 		t.Fatalf("reconcilePortOverrides errored: %v", diags.Errors())
 	}

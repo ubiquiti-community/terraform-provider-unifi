@@ -307,10 +307,16 @@ func (r *devicePortResource) write(
 		return plan, site, diags
 	}
 
-	merged := mergePortOverridesByIndex(
-		device.PortOverrides,
-		[]unifi.DevicePortOverrides{declared},
-	)
+	var taggable []string
+	if declared.TaggedNetworkIDs != nil {
+		if taggable, err = taggableNetworkIDs(ctx, r.client, site); err != nil {
+			diags.AddError("Error Updating Device Port", err.Error())
+			return plan, site, diags
+		}
+	}
+	declaredPorts := []unifi.DevicePortOverrides{declared}
+	excludeUntaggedNetworks(device.PortOverrides, declaredPorts, taggable)
+	merged := mergePortOverridesByIndex(device.PortOverrides, declaredPorts)
 	body := buildMinimalUpdateDevice(device, device, merged)
 	if _, err := r.client.UpdateDevice(ctx, site, body); err != nil {
 		diags.AddError(
@@ -356,7 +362,7 @@ func (r *devicePortResource) write(
 	state := plan
 	state.ID = types.StringValue(devicePortID(mac, index))
 	state.Site = types.StringValue(site)
-	state.portOverrideModel, d = reconcilePortOverride(plan.portOverrideModel, apiPO)
+	state.portOverrideModel, d = reconcilePortOverride(plan.portOverrideModel, apiPO, taggable)
 	diags.Append(d...)
 	return state, site, diags
 }
@@ -436,6 +442,13 @@ func (r *devicePortResource) Read(
 		return
 	}
 
+	var taggable []string
+	if isKnown(state.TaggedNetworkIDs) {
+		if taggable, err = taggableNetworkIDs(ctx, r.client, site); err != nil {
+			resp.Diagnostics.AddError("Error Reading Device Port", err.Error())
+			return
+		}
+	}
 	apiPO, found := findPortOverride(device.PortOverrides, index)
 	switch {
 	case state.ID.IsNull() || state.ID.ValueString() == "":
@@ -461,7 +474,7 @@ func (r *devicePortResource) Read(
 			state.OpMode = types.StringValue("switch")
 		}
 	case found:
-		state.portOverrideModel, d = reconcilePortOverride(state.portOverrideModel, apiPO)
+		state.portOverrideModel, d = reconcilePortOverride(state.portOverrideModel, apiPO, taggable)
 	default:
 		// The port lost its override entry (cleared on the controller): every
 		// attribute the configuration sets now reads as unset, so the plan
@@ -469,6 +482,7 @@ func (r *devicePortResource) Read(
 		state.portOverrideModel, d = reconcilePortOverride(
 			state.portOverrideModel,
 			unifi.DevicePortOverrides{PortIDX: &index},
+			taggable,
 		)
 	}
 	resp.Diagnostics.Append(d...)
