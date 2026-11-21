@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_setting`: a section whose setting the site does not store reads as unset instead of failing the refresh.** A factory-reset site has no `radius` or `snmp` setting until it is first saved, so a configuration that sets either failed every plan with `Error Reading … Setting: not found`. The section now reads as null and the next apply writes it, as writes already treated a missing setting as empty (from #736)'
+time: 2026-11-21T15:02:54.446575421Z

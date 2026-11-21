@@ -207,3 +207,30 @@ func TestReadRemovesDeletedObject(t *testing.T) {
 		}
 	}
 }
+
+// unifi_setting has no object to delete, but a site can lack a setting key
+// that the configuration sets: a factory-reset site stores no radius or snmp
+// key until they are first saved. A refresh must read such a section as unset,
+// so the plan writes it again, instead of failing.
+func TestSettingReadMissingKeyReadsSectionAsUnset(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newSettingsFakeController(t, storedMdns())
+	created := createSettings(t, r, mdnsConfig("some"))
+	if created.Diagnostics.HasError() {
+		t.Fatalf("Create: %v", created.Diagnostics)
+	}
+
+	reset, _ := newSettingsFakeController(t, nil)
+	resp := &resource.ReadResponse{State: created.State, Identity: created.Identity}
+	reset.Read(ctx, resource.ReadRequest{State: created.State, Identity: created.Identity}, resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Read of a site without the mdns key: %v", resp.Diagnostics)
+	}
+	var m settingResourceModel
+	if d := resp.State.Get(ctx, &m); d.HasError() {
+		t.Fatalf("reading state: %v", d)
+	}
+	if !m.Mdns.IsNull() {
+		t.Errorf("mdns = %v, want null so the next plan writes it", m.Mdns)
+	}
+}
