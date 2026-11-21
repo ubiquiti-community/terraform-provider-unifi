@@ -85,6 +85,7 @@ func reconcileEdge(t *testing.T, prior types.String, api string) types.String {
 		context.Background(),
 		priorSet,
 		[]unifi.DevicePortOverrides{{PortIDX: ptrInt64(8), StpEdgeState: api}},
+		nil,
 	)
 	if diags.HasError() {
 		t.Fatalf("reconcilePortOverrides errored: %v", diags)

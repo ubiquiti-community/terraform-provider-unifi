@@ -331,7 +331,7 @@ func TestDevicePortOverride_nestedGroupsRoundTrip(t *testing.T) {
 	if d.HasError() {
 		t.Fatalf("planned SetValue: %v", d)
 	}
-	reconciled, d := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{api})
+	reconciled, d := r.reconcilePortOverrides(ctx, prior, []unifi.DevicePortOverrides{api}, nil)
 	if d.HasError() {
 		t.Fatalf("reconcilePortOverrides: %v", d)
 	}

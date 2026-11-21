@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -1352,9 +1354,14 @@ func devicePortOverrideAttributes() map[string]schema.Attribute {
 			Computed:    true,
 		},
 		"tagged_networkconf_ids": schema.SetAttribute{
-			Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.",
+			Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them. UniFi Network 11 stores no tagged list and tags every network that is not in `excluded_networkconf_ids`, so the provider writes the other networks of the site, except the port's native network, as excluded, and reads the tagged networks back from that list; a network added to the site later shows up as drift. Conflicts with `excluded_networkconf_ids`.",
 			Optional:    true,
 			ElementType: types.StringType,
+			Validators: []validator.Set{
+				setvalidator.ConflictsWith(
+					path.MatchRelative().AtParent().AtName("excluded_networkconf_ids"),
+				),
+			},
 		},
 		"tagged_vlan_mgmt": schema.StringAttribute{
 			Description: "Tagged VLAN management.",
@@ -1710,10 +1717,19 @@ func (r *deviceResource) Read(
 	if priorPortOverride.IsNull() || priorPortOverride.IsUnknown() {
 		state.PortOverride = priorPortOverride
 	} else {
+		var taggable []string
+		if portOverridesSetTagged(ctx, priorPortOverride) {
+			var err error
+			if taggable, err = taggableNetworkIDs(ctx, r.client, site); err != nil {
+				resp.Diagnostics.AddError("Error Reading Device", err.Error())
+				return
+			}
+		}
 		reconciled, reconcileDiags := r.reconcilePortOverrides(
 			ctx,
 			priorPortOverride,
 			device.PortOverrides,
+			taggable,
 		)
 		resp.Diagnostics.Append(reconcileDiags...)
 		if !resp.Diagnostics.HasError() {
@@ -2251,6 +2267,16 @@ func (r *deviceResource) updateDevice(
 		mergeRadioTableFromDevice(deviceReq.RadioTable, currentDevice.RadioTable)
 	}
 
+	if slices.ContainsFunc(deviceReq.PortOverrides, func(po unifi.DevicePortOverrides) bool {
+		return po.TaggedNetworkIDs != nil
+	}) {
+		taggable, err := taggableNetworkIDs(ctx, r.client, site)
+		if err != nil {
+			diags.AddError("Error Updating Device", err.Error())
+			return diags
+		}
+		excludeUntaggedNetworks(currentDevice.PortOverrides, deviceReq.PortOverrides, taggable)
+	}
 	portOverrides := resolvePortOverridesForUpdate(currentDevice, deviceReq)
 
 	minimalDevice := buildMinimalUpdateDevice(deviceReq, currentDevice, portOverrides)
@@ -2819,6 +2845,7 @@ func mergePortOverridesByIndex(
 func reconcilePortOverride(
 	pm portOverrideModel,
 	apiPO unifi.DevicePortOverrides,
+	taggable []string,
 ) (portOverrideModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
@@ -2881,8 +2908,10 @@ func reconcilePortOverride(
 		// list cannot cause a perpetual diff). An empty controller value
 		// reads back as an empty set so `tagged_networkconf_ids = []`
 		// round-trips, and a non-empty config that the controller did not
-		// apply shows up as drift.
-		setVal, setDiags := stringSetFromAPI(apiPO.TaggedNetworkIDs, false)
+		// apply shows up as drift. Network 11 stores no tagged list, so it
+		// is worked out from the exclusions (taggedNetworksFromAPI); taggable
+		// is nil when the networks of the site were not listed.
+		setVal, setDiags := stringSetFromAPI(taggedNetworksFromAPI(apiPO, taggable), false)
 		diags.Append(setDiags...)
 		updated.TaggedNetworkIDs = setVal
 	}
@@ -2920,6 +2949,7 @@ func (r *deviceResource) reconcilePortOverrides(
 	ctx context.Context,
 	prior types.Set,
 	apiOverrides []unifi.DevicePortOverrides,
+	taggable []string,
 ) (types.Set, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
@@ -2951,7 +2981,7 @@ func (r *deviceResource) reconcilePortOverrides(
 			continue
 		}
 
-		updated, elemDiags := reconcilePortOverride(pm, apiPO)
+		updated, elemDiags := reconcilePortOverride(pm, apiPO, taggable)
 		diags.Append(elemDiags...)
 		if diags.HasError() {
 			return prior, diags

@@ -24,13 +24,19 @@ const (
 
 // fakeSwitch serves one connected switch with four ports. A PUT merges its
 // top-level keys into the device (port_overrides is replaced whole, as the
-// controller does) and every PUT body is recorded.
+// controller does) and every PUT body is recorded. networks is the site's
+// rest/networkconf.
+//
+// network11 makes the PUT behave like UniFi Network 11: it rejects an override
+// that excludes its native network and drops tagged_networkconf_ids.
 type fakeSwitch struct {
-	mu     sync.Mutex
-	device map[string]any
-	gone   bool
-	reject bool
-	puts   []map[string]any
+	mu        sync.Mutex
+	device    map[string]any
+	networks  []any
+	network11 bool
+	gone      bool
+	reject    bool
+	puts      []map[string]any
 }
 
 func newFakeSwitch(t *testing.T, overrides ...map[string]any) (*fakeSwitch, *Client) {
@@ -82,6 +88,11 @@ func newFakeSwitch(t *testing.T, overrides ...map[string]any) (*fakeSwitch, *Cli
 		}
 		reply(w, []any{f.device})
 	})
+	mux.HandleFunc("/api/s/default/rest/networkconf", func(w http.ResponseWriter, _ *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		reply(w, f.networks)
+	})
 	mux.HandleFunc("/api/s/default/rest/device/"+fakeSwitchID,
 		func(w http.ResponseWriter, r *http.Request) {
 			b, _ := io.ReadAll(r.Body)
@@ -92,6 +103,16 @@ func newFakeSwitch(t *testing.T, overrides ...map[string]any) (*fakeSwitch, *Cli
 			f.mu.Lock()
 			defer f.mu.Unlock()
 			f.puts = append(f.puts, body)
+			if f.network11 && network11DropTagged(body) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write(
+					[]byte(
+						`{"meta":{"rc":"error","msg":"api.err.NativeVlanCannotBeExcluded"},"data":[]}`,
+					),
+				)
+				return
+			}
 			if f.reject {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
@@ -113,6 +134,26 @@ func newFakeSwitch(t *testing.T, overrides ...map[string]any) (*fakeSwitch, *Cli
 		t.Fatalf("creating client against fake controller: %v", err)
 	}
 	return f, &Client{ApiClient: apiClient, Site: "default"}
+}
+
+// network11DropTagged removes tagged_networkconf_ids from every override of a
+// device PUT body, and reports whether one excludes its native network.
+func network11DropTagged(body map[string]any) bool {
+	po, _ := body["port_overrides"].([]any)
+	for _, e := range po {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		delete(m, "tagged_networkconf_ids")
+		excluded, _ := m["excluded_networkconf_ids"].([]any)
+		for _, id := range excluded {
+			if id == m["native_networkconf_id"] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (f *fakeSwitch) overrides() []any {

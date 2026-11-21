@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
@@ -188,6 +192,7 @@ func reconcileTagged(t *testing.T, prior types.Set, api []string) types.Set {
 		[]unifi.DevicePortOverrides{
 			{PortIDX: ptrInt64(5), TaggedNetworkIDs: api},
 		},
+		nil,
 	)
 	if diags.HasError() {
 		t.Fatalf("reconcilePortOverrides errored: %v", diags)
@@ -227,5 +232,101 @@ func TestReconcilePortOverrides_TaggedNetworkIDsEmptyAndUnset(t *testing.T) {
 	null := types.SetNull(types.StringType)
 	if got := reconcileTagged(t, null, []string{"net-a"}); !got.IsNull() {
 		t.Errorf("unset read back as %v, want null", got)
+	}
+}
+
+// UniFi Network 11 drops tagged_networkconf_ids from a port override and
+// keeps excluded_networkconf_ids: a "custom" port tags every LAN network that
+// is not excluded. A unifi_device_port with tagged networks therefore tagged
+// every network of the site, and the apply failed with "planned set element
+// ... does not correlate with any element in actual". The tagged set must be
+// written as the excluded LAN networks, without the native one (the
+// controller rejects that with api.err.NativeVlanCannotBeExcluded), and read
+// back from them, so a network added later shows up as drift.
+func TestDevicePortTaggedNetworks_network11(t *testing.T) {
+	ctx := context.Background()
+	sw, client := newFakeSwitch(t)
+	network := func(id, purpose string) map[string]any {
+		return map[string]any{"_id": id, "name": id, "purpose": purpose}
+	}
+	sw.network11 = true
+	sw.networks = []any{
+		network("lan", "corporate"), network("workers", "corporate"),
+		network("kvm", "corporate"), network("orbs", "corporate"),
+		network("guests", "guest"), network("vpn", "site-vpn"), network("wan", "wan"),
+	}
+
+	resp := devicePortCreate(t, client, map[string]any{
+		"device_mac":             fakeSwitchMAC,
+		"index":                  int64(1),
+		"native_networkconf_id":  "orbs",
+		"tagged_vlan_mgmt":       "custom",
+		"tagged_networkconf_ids": []any{"workers"},
+	})
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Create: %v", resp.Diagnostics)
+	}
+	stored := overrideAt(sw.overrides(), 1)
+	if got, want := stored["excluded_networkconf_ids"], []any{
+		"guests",
+		"kvm",
+		"lan",
+	}; !reflect.DeepEqual(
+		got,
+		want,
+	) {
+		t.Errorf("stored excluded_networkconf_ids = %v, want %v", got, want)
+	}
+	assertTagged := func(step string, s tfsdk.State, want ...string) {
+		t.Helper()
+		var got []string
+		if d := s.GetAttribute(ctx, path.Root("tagged_networkconf_ids"), &got); d.HasError() {
+			t.Fatalf("%s: reading tagged_networkconf_ids: %v", step, d)
+		}
+		sort.Strings(got)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: tagged_networkconf_ids = %v, want %v", step, got, want)
+		}
+	}
+	assertTagged("state after Create", resp.State, "workers")
+
+	read := func() tfsdk.State {
+		r := &devicePortResource{client: client}
+		out := &fwresource.ReadResponse{State: resp.State, Identity: resp.Identity}
+		r.Read(ctx, fwresource.ReadRequest{State: resp.State, Identity: resp.Identity}, out)
+		if out.Diagnostics.HasError() {
+			t.Fatalf("Read: %v", out.Diagnostics)
+		}
+		return out.State
+	}
+	assertTagged("refresh", read(), "workers")
+
+	sw.mu.Lock()
+	sw.networks = append(sw.networks, network("new", "corporate"))
+	sw.mu.Unlock()
+	assertTagged("refresh after a network was added", read(), "new", "workers")
+}
+
+// unifi_device writes the declared ports onto the controller's entries: a
+// port that leaves native_networkconf_id unset keeps the controller's native
+// network out of the exclusions, and an unchanged exclusion keeps the
+// controller's order so nothing is written.
+func TestExcludeUntaggedNetworks(t *testing.T) {
+	idx := int64(2)
+	current := []unifi.DevicePortOverrides{{
+		PortIDX:            &idx,
+		NATiveNetworkID:    "orbs",
+		ExcludedNetworkIDs: []string{"lan", "kvm"},
+	}}
+	declared := []unifi.DevicePortOverrides{
+		{PortIDX: &idx, TaggedNetworkIDs: []string{"workers"}},
+		{Name: "untouched"},
+	}
+	excludeUntaggedNetworks(current, declared, []string{"kvm", "lan", "orbs", "workers"})
+	if got := declared[0].ExcludedNetworkIDs; !reflect.DeepEqual(got, []string{"lan", "kvm"}) {
+		t.Errorf("excluded = %v, want the controller's [lan kvm]", got)
+	}
+	if declared[1].ExcludedNetworkIDs != nil {
+		t.Errorf("a port without tagged networks got excluded = %v", declared[1].ExcludedNetworkIDs)
 	}
 }

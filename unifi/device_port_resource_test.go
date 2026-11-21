@@ -239,7 +239,7 @@ func TestReconcilePortOverride_LostEntry(t *testing.T) {
 		Autoneg:          types.BoolUnknown(),
 		TaggedNetworkIDs: types.SetValueMust(types.StringType, nil),
 	}
-	got, diags := reconcilePortOverride(prior, unifi.DevicePortOverrides{PortIDX: ptrInt64(8)})
+	got, diags := reconcilePortOverride(prior, unifi.DevicePortOverrides{PortIDX: ptrInt64(8)}, nil)
 	if diags.HasError() {
 		t.Fatalf("reconcilePortOverride: %v", diags)
 	}
