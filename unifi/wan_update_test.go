@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/ubiquiti-community/go-unifi/unifi"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/util"
 )
 
 const wanTestID = "6650cc00000000000000a001"
@@ -98,6 +99,24 @@ func Test_wanResource_Update(t *testing.T) {
 			}
 		}
 	})
+
+	// A WAN the provider has never written can be stored without
+	// ipv6_setting_preference, and the controller stores "manual" when it
+	// next saves it. The update must not plan the null prior as known, which
+	// failed the apply with "inconsistent result after apply" (#717).
+	t.Run("a stored null ipv6_setting_preference takes the controller's value on save",
+		func(t *testing.T) {
+			h := newWANHarness(t)
+			h.fake.onPut = func(body map[string]any) { body["ipv6_setting_preference"] = "manual" }
+			cfg := wanBaseConfig()
+			cfg["report_wan_event"] = types.BoolValue(true)
+			assertBodies(t, h.apply(h.config(cfg)), `{"report_wan_event":true}`)
+			var got types.String
+			h.state.GetAttribute(h.ctx, path.Root("ipv6_setting_preference"), &got)
+			if got.ValueString() != "manual" {
+				t.Errorf("state ipv6_setting_preference = %v, want manual", got)
+			}
+		})
 
 	t.Run("nothing to change sends no PUT", func(t *testing.T) {
 		h := newWANHarness(t)
@@ -211,7 +230,11 @@ func Test_wanResource_Update(t *testing.T) {
 		if diags := h.update(planned, config); diags.HasError() {
 			t.Fatalf("Update: %v", diags)
 		}
-		h.assertEqual("state after Update differs from the plan", planned, h.state.Raw)
+		resolved, err := util.ResolveUnknowns(planned, h.state.Raw)
+		if err != nil {
+			t.Fatalf("resolving the plan from the new state: %v", err)
+		}
+		h.assertEqual("state after Update differs from the plan", resolved, h.state.Raw)
 	})
 
 	t.Run("adding upnp, load_balance and dns sends only their known values", func(t *testing.T) {

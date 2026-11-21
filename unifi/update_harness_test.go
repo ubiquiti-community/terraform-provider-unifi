@@ -37,6 +37,9 @@ type fakeController struct {
 	reject func(body map[string]any) string
 	// onPost, when set, edits a POST body before it is stored.
 	onPost func(body map[string]any)
+	// onPut, when set, edits a recorded PUT body before it is merged, as a
+	// controller that writes keys of its own when it saves the object.
+	onPut func(body map[string]any)
 }
 
 func newUpdateFakeController(t *testing.T, kind, id, document string) (*fakeController, *Client) {
@@ -109,6 +112,10 @@ func (f *fakeController) serve(t *testing.T) http.HandlerFunc {
 					_, _ = fmt.Fprintf(w, `{"meta":{"rc":"error","msg":%q},"data":[]}`, code)
 					return
 				}
+			}
+			if f.onPut != nil {
+				body = maps.Clone(body)
+				f.onPut(body)
 			}
 			changed := false
 			for k, v := range body {
