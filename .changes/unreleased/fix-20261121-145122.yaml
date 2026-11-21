@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_network`: the built-in Default LAN no longer plans `dhcp_server.leasetime = "24h0m0s"` on every run.** Some controllers store the Default LAN without `dhcpd_leasetime`, before and after an update, so the 24h create default read back as null and every apply failed with "inconsistent result after apply", even with `ignore_changes`. A network stored without a lease time now keeps none; a new network, and a network whose `dhcp_server` is added now, still get 24h (from #718)'
+time: 2026-11-21T14:51:22.028885208Z

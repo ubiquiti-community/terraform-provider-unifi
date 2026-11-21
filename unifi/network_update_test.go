@@ -111,6 +111,19 @@ func Test_networkResource_Update(t *testing.T) {
 		h.assertEqual("plan after import", h.state.Raw, h.plan(h.config(networkBaseConfig())))
 	})
 
+	// The built-in Default LAN can be stored without dhcpd_leasetime, before
+	// and after an update. Planning the 24h create default for it failed every
+	// apply with "inconsistent result" (#718).
+	t.Run("default LAN stored without a lease time plans nothing", func(t *testing.T) {
+		doc := strings.Replace(networkTestDocument, `"dhcpd_leasetime": 86400,`, "", 1)
+		h := newNetworkHarness(t, doc)
+		h.assertEqual("plan after import", h.state.Raw, h.plan(h.config(networkBaseConfig())))
+
+		cfg := networkBaseConfig()
+		cfg["igmp_snooping"] = types.BoolValue(true)
+		assertBodies(t, h.apply(h.config(cfg)), `{"igmp_snooping":true}`)
+	})
+
 	t.Run("enabled reads a missing key as true and keeps false", func(t *testing.T) {
 		for doc, want := range map[string]bool{
 			networkTestDocument: true,
