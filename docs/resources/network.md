@@ -161,7 +161,7 @@ Optional:
 - `dns` (Attributes) DNS servers handed out to DHCP clients. (see [below for nested schema](#nestedatt--dhcp_server--dns))
 - `enabled` (Boolean) Specifies whether DHCP server is enabled. Defaults to `true` when the block is first configured; an existing network keeps the controller's value (#544).
 - `gateway_enabled` (Boolean) Specifies whether DHCP gateway is enabled.
-- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string (e.g. `24h`, `86400s`). Defaults to `24h0m0s` when the DHCP server is first configured; an existing network keeps the controller's lease time (#544).
+- `leasetime` (String) Specifies the DHCP lease time, as a Go duration string (e.g. `24h`, `86400s`). Defaults to `24h0m0s` when the DHCP server is first configured; an existing network keeps the controller's lease time (#544), and one stored without a lease time (the built-in Default LAN on some controllers) stays without one (#718).
 - `ntp` (Attributes) NTP servers handed out to DHCP clients. (see [below for nested schema](#nestedatt--dhcp_server--ntp))
 - `start` (String) The IPv4 address where the DHCP range starts.
 - `stop` (String) The IPv4 address where the DHCP range stops.

@@ -7,7 +7,9 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -37,7 +39,10 @@ func StringDefaultOnCreate(def string) planmodifier.String {
 // adopted resource whose controller document lacks the field plans
 // `null -> def` and writes it, which is #544 again: the built-in RADIUS
 // profile stores no interim update interval and was planned a `1h` one that
-// even ignore_changes could not suppress.
+// even ignore_changes could not suppress. The null is held only when the
+// object holding the attribute was already in state: an attribute of a nested
+// object the configuration adds now is being configured for the first time,
+// so it gets def as on create (see holdNull).
 func StringDefaultOnCreateKeepNull(def string) planmodifier.String {
 	return stringDefaultOnCreate{def: def, keepNull: true}
 }
@@ -58,11 +63,12 @@ func (m stringDefaultOnCreate) MarkdownDescription(ctx context.Context) string {
 }
 
 func (m stringDefaultOnCreate) PlanModifyString(
-	_ context.Context,
+	ctx context.Context,
 	req planmodifier.StringRequest,
 	resp *planmodifier.StringResponse,
 ) {
-	switch planOnCreate(req.ConfigValue, req.State.Raw.IsNull(), req.StateValue, m.keepNull) {
+	keepNull := m.keepNull && holdNull(ctx, req.State, req.Path)
+	switch planOnCreate(req.ConfigValue, req.State.Raw.IsNull(), req.StateValue, keepNull) {
 	case planDefault:
 		resp.PlanValue = types.StringValue(m.def)
 	case planPrior:
@@ -103,4 +109,21 @@ func planOnCreate(config attr.Value, noState bool, prior attr.Value, keepNull bo
 	default:
 		return planDefault
 	}
+}
+
+// holdNull reports whether a keep-null modifier holds a null prior value at p:
+// only when the object holding the attribute is in the prior state. A
+// top-level attribute always is. For a nested one, a null parent means the
+// configuration adds the object now, such as `dhcp_server` on a network that
+// had no DHCP server, and its attributes take their create defaults (#718).
+func holdNull(ctx context.Context, state tfsdk.State, p path.Path) bool {
+	parent := p.ParentPath()
+	if len(parent.Steps()) == 0 {
+		return true
+	}
+	var v attr.Value
+	if diags := state.GetAttribute(ctx, parent, &v); diags.HasError() {
+		return true
+	}
+	return !v.IsNull()
 }
