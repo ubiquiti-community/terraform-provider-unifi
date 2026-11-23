@@ -372,6 +372,7 @@ func (p *unifiProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewStaticRouteFrameworkResource,
 		NewClientResource,
 		NewWANResource,
+		NewWANSlaResource,
 		NewWLANFrameworkResource,
 		NewVPNClientResource,
 		NewVPNServerResource,

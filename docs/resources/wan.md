@@ -129,6 +129,7 @@ resource "unifi_wan" "pppoe" {
 - `setting_preference` (String) Whether WAN settings are managed automatically by the controller or manually. Can be one of `auto` or `manual`.
 - `single_network_lan` (String) The LAN network used for IPv6 single-network prefix delegation (used when the IPv6 delegation type is `single_network`).
 - `site` (String) The name of the site to associate the WAN network with
+- `sla_id` (String) ID of the WAN SLA profile (`unifi_wan_sla`) that decides whether this WAN is usable. When the profile is down, the WAN is taken out of load balancing or failover. Taken from the controller when not set; set it to `""` to detach the profile.
 - `smartq` (Attributes) Smart Queue configuration (see [below for nested schema](#nestedatt--smartq))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `type` (String) The WAN type (`dhcp`, `static`, `pppoe` or `disabled`). Taken from the controller when not set: an imported or adopted static or PPPoE uplink keeps its type instead of being planned back to `dhcp` (#544).
