@@ -424,6 +424,19 @@ func (r *powerSupervisorResource) Read(
 	}
 
 	supervisor, err := r.client.GetPowerSupervisor(ctx, site, data.ID.ValueString())
+	if _, ok := err.(*unifi.NotFoundError); ok {
+		supervisor, err = adoptMigrated(data.ID.ValueString(),
+			func() ([]unifi.PowerSupervisor, error) {
+				return r.client.ListPowerSupervisors(ctx, site)
+			},
+			func(s unifi.PowerSupervisor) string { return s.ID },
+			func(s unifi.PowerSupervisor) bool {
+				return strings.EqualFold(s.ClientMAC, data.DeviceMAC.ValueString())
+			})
+		if err == nil && supervisor == nil {
+			err = &unifi.NotFoundError{}
+		}
+	}
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			removeResourceOnRead(

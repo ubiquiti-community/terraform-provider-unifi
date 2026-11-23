@@ -282,6 +282,18 @@ func (r *firewallZoneResource) Read(
 	}
 
 	zone, err := r.client.GetFirewallZone(ctx, site, id)
+	if _, ok := err.(*unifi.NotFoundError); ok {
+		zone, err = adoptMigrated(id,
+			func() ([]unifi.FirewallZone, error) { return r.client.ListFirewallZone(ctx, site) },
+			func(z unifi.FirewallZone) string { return z.ID },
+			func(z unifi.FirewallZone) bool {
+				return z.Name == data.Name.ValueString() &&
+					z.ZoneKey == data.ZoneKey.ValueString()
+			})
+		if err == nil && zone == nil {
+			err = &unifi.NotFoundError{}
+		}
+	}
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			removeResourceOnRead(ctx, resp, identity)

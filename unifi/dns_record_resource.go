@@ -379,6 +379,18 @@ func (r *dnsRecordFrameworkResource) Read(
 
 	// Get the DNS record from the API
 	dnsRecord, err := r.client.GetDNSRecord(ctx, site, lookupID)
+	if _, ok := err.(*unifi.NotFoundError); ok {
+		dnsRecord, err = adoptMigrated(lookupID,
+			func() ([]unifi.DNSRecord, error) { return r.client.ListDNSRecord(ctx, site) },
+			func(d unifi.DNSRecord) string { return d.ID },
+			func(d unifi.DNSRecord) bool {
+				return d.Key == data.Name.ValueString() &&
+					d.RecordType == data.RecordType.ValueString()
+			})
+		if err == nil && dnsRecord == nil {
+			err = &unifi.NotFoundError{}
+		}
+	}
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			removeResourceOnRead(
