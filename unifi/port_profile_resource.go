@@ -871,6 +871,7 @@ func (r *portProfileResource) Update(
 
 	portProfile.ID = id
 	portProfile.SiteID = site
+	carryUnexposedPortProfileFields(currentPortProfile, portProfile)
 
 	apiPortProfile, err := r.client.UpdatePortProfile(ctx, site, portProfile)
 	if err != nil {
@@ -1719,4 +1720,19 @@ func forwardForTaggedVLANMgmt(taggedVLANMgmt string) string {
 	default:
 		return "all"
 	}
+}
+
+// carryUnexposedPortProfileFields copies from the controller's profile the
+// fields go-unifi always sends but the schema does not expose. The update body
+// is built from the model, so without this every update would send them as
+// false and switch off what was set in the UI (#741).
+func carryUnexposedPortProfileFields(current, body *unifi.PortProfile) {
+	body.EeeEnabled = current.EeeEnabled
+	body.FlowControlEnabled = current.FlowControlEnabled
+	body.LdStatus = current.LdStatus
+	body.LinkDebounceAuto = current.LinkDebounceAuto
+	body.PrecisionTimeProtocolEnabled = current.PrecisionTimeProtocolEnabled
+	body.StablePortEnabled = current.StablePortEnabled
+	body.StpBpduGuardEnabled = current.StpBpduGuardEnabled
+	body.StpUplink = current.StpUplink
 }
