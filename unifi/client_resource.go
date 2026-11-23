@@ -1134,12 +1134,8 @@ func (r *clientResource) clientToModel(
 			diags.AddError("Error Resolving Groups", err.Error())
 			return diags
 		}
-		elements := make([]attr.Value, len(tagNames))
-		for i, name := range tagNames {
-			elements[i] = types.StringValue(name)
-		}
 		var listDiags diag.Diagnostics
-		model.Groups, listDiags = types.ListValue(types.StringType, elements)
+		model.Groups, listDiags = listInPriorOrder(ctx, model.Groups, tagNames)
 		diags.Append(listDiags...)
 	} else {
 		model.Groups = types.ListNull(types.StringType)

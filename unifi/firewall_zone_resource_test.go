@@ -678,6 +678,16 @@ func newFirewallZoneFakeControllerClient(
 				_, _ = w.Write(payload)
 			},
 		)
+		// Network 11 refuses any write to its built-in zones.
+		mux.HandleFunc(
+			"/v2/api/site/"+site+"/firewall/zone/",
+			func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"code":"api.err.ZoneCouldNotBeModified",` +
+					`"message":"ZoneCouldNotBeModified"}`))
+			},
+		)
 	}
 
 	srv := httptest.NewServer(mux)
@@ -843,4 +853,68 @@ resource "unifi_firewall_zone" "test" {
 	network_ids = []
 }
 `
+}
+
+// The controller returns the External zone's WANs in its own order, and
+// Network 11 rejects every write to the zone, so a reorder alone must neither
+// show as a change nor be sent (#717).
+func Test_firewallZoneResource_networkIDOrder(t *testing.T) {
+	ctx := context.Background()
+	r := &firewallZoneResource{
+		client: newFirewallZoneFakeControllerClient(t, map[string][]unifi.FirewallZone{
+			"default": {{
+				ID:          "external-zone-id",
+				Name:        "External",
+				ZoneKey:     "wan",
+				DefaultZone: boolPtr(true),
+				NetworkIDs:  []string{"wan2", "wan1"},
+			}},
+		}),
+	}
+	s := resourceSchema(t, r)
+	zone := func(networkIDs ...any) map[string]any {
+		return map[string]any{
+			"id": "external-zone-id", "site": "default", "name": "External",
+			"zone_key": "wan", "default_zone": true, "network_ids": networkIDs,
+		}
+	}
+
+	t.Run("refresh keeps the configured order", func(t *testing.T) {
+		state := tfState(t, s, zone("wan1", "wan2"))
+		resp := &fwresource.ReadResponse{State: state, Identity: tfIdentity(t, r)}
+		r.Read(ctx, fwresource.ReadRequest{State: state}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("Read: %v", resp.Diagnostics)
+		}
+		if !resp.State.Raw.Equal(state.Raw) {
+			t.Errorf("state after refresh = %v, want %v", resp.State.Raw, state.Raw)
+		}
+	})
+
+	t.Run("a reorder sends nothing", func(t *testing.T) {
+		state := tfState(t, s, zone("wan2", "wan1"))
+		plan := tfPlan(t, s, zone("wan1", "wan2"))
+		resp := &fwresource.UpdateResponse{State: state, Identity: tfIdentity(t, r)}
+		r.Update(ctx, fwresource.UpdateRequest{
+			Plan: plan, Config: tfConfig(t, s, zone("wan1", "wan2")), State: state,
+		}, resp)
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("Update: %v", resp.Diagnostics)
+		}
+		if !resp.State.Raw.Equal(plan.Raw) {
+			t.Errorf("state after update = %v, want the plan %v", resp.State.Raw, plan.Raw)
+		}
+	})
+
+	t.Run("a real change is sent", func(t *testing.T) {
+		state := tfState(t, s, zone("wan2", "wan1"))
+		resp := &fwresource.UpdateResponse{State: state, Identity: tfIdentity(t, r)}
+		r.Update(ctx, fwresource.UpdateRequest{
+			Plan: tfPlan(t, s, zone("wan1")), Config: tfConfig(t, s, zone("wan1")), State: state,
+		}, resp)
+		if !resp.Diagnostics.HasError() ||
+			!strings.Contains(diagDetails(resp.Diagnostics), "ZoneCouldNotBeModified") {
+			t.Errorf("Update = %v, want the controller's ZoneCouldNotBeModified", resp.Diagnostics)
+		}
+	})
 }

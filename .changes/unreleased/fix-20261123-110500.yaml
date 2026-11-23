@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_client` `groups` and `unifi_firewall_zone` `network_ids`: a reorder by the controller is no longer a change.** The controller returns both lists in its own order, so a client failed to create with "inconsistent result after apply" and the External zone planned a reorder on every run, which Network 11 then rejected with `api.err.ZoneCouldNotBeModified`. State keeps the configured order when the elements are the same, and a zone update that only reorders `network_ids` sends nothing (from #719 and #717)'
+time: 2026-11-23T11:05:00.000000000Z
