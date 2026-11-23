@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/hwtypes"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
@@ -125,5 +126,63 @@ func TestRemoveResourceOnRead_nilIdentity(t *testing.T) {
 	}
 	if !resp.State.Raw.IsNull() {
 		t.Fatalf("state should have been removed, got %s", resp.State.Raw)
+	}
+}
+
+// A refresh that finds the object gone must still return an identity. The
+// state of Terraform < 1.12 carries none, and a bare RemoveResource then
+// failed the plan with "Missing Resource Identity After Read" (#743): every
+// unifi_nat rule after Network 11 gave its rules new IDs.
+func TestReadRemovesMissingV2ObjectWithoutStoredIdentity(t *testing.T) {
+	ctx := context.Background()
+	cases := map[string][]string{
+		"unifi_nat": {"/v2/api/site/default/nat", "/v2/api/site/default/nat/gone"},
+		"unifi_qos_rule": {
+			"/v2/api/site/default/qos-rules",
+			"/v2/api/site/default/qos-rules/gone",
+		},
+		"unifi_content_filter": {
+			"/v2/api/site/default/content-filtering",
+			"/v2/api/site/default/content-filtering/gone",
+		},
+	}
+	responses := map[string]string{}
+	for _, paths := range cases {
+		for _, p := range paths {
+			responses[p] = `[]`
+		}
+	}
+	srv := newConfiguredProviderServer(t, newFakeController(t, responses))
+	schemas, err := srv.GetProviderSchema(ctx, &tfprotov6.GetProviderSchemaRequest{})
+	if err != nil {
+		t.Fatalf("GetProviderSchema: %v", err)
+	}
+	for typeName := range cases {
+		t.Run(typeName, func(t *testing.T) {
+			stateType := schemas.ResourceSchemas[typeName].ValueType()
+			state, err := tfprotov6.NewDynamicValue(stateType, objectWithNulls(t, stateType,
+				map[string]tftypes.Value{
+					"id":   tftypes.NewValue(tftypes.String, "gone"),
+					"site": tftypes.NewValue(tftypes.String, "default"),
+				}))
+			if err != nil {
+				t.Fatalf("state: %v", err)
+			}
+			read, err := srv.ReadResource(ctx, &tfprotov6.ReadResourceRequest{
+				TypeName:     typeName,
+				CurrentState: &state,
+			})
+			if err != nil {
+				t.Fatalf("ReadResource: %v", err)
+			}
+			failOnErrorDiagnostics(t, "read", read.Diagnostics)
+			got, err := read.NewState.Unmarshal(stateType)
+			if err != nil {
+				t.Fatalf("new state: %v", err)
+			}
+			if !got.IsNull() {
+				t.Errorf("new state = %v, want the resource removed", got)
+			}
+		})
 	}
 }

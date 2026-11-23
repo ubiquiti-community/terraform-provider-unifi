@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_nat`, `unifi_qos_rule`, `unifi_content_filter`, `unifi_traffic_matching_list`: a rule missing on the controller no longer fails the plan with "Missing Resource Identity After Read".** Their Read removed the resource without returning an identity, which the framework rejects when the state stores none (Terraform < 1.12, OpenTofu). After Network 11 gave NAT rules new IDs, every `unifi_nat` refresh failed that way. They now use `removeResourceOnRead` like the other resources, so the rule is dropped from the state and planned again; adopting it under its new ID is not covered (from #743)'
+time: 2026-11-23T09:59:15.499516011Z
