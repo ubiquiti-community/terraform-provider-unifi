@@ -219,6 +219,7 @@ resource "unifi_setting" "etherlighting" {
 - `igmp_snooping` (Attributes) Site-level IGMP snooping setting. On UniFi Network 10.3.x+ the effective IGMP snooping toggle lives here rather than on each network. Advanced querier/flood options configured in the UI are preserved across updates. (see [below for nested schema](#nestedatt--igmp_snooping))
 - `ips` (Attributes) Intrusion Prevention System (IPS/IDS) and threat management settings. Basic IDS/IPS uses the built-in Emerging Threats ruleset and is free. A UniFi CyberSecure subscription adds enhanced threat intelligence from Proofpoint and Cloudflare on top of the base ruleset. (see [below for nested schema](#nestedatt--ips))
 - `lcm` (Attributes) LCD/display (LCM) settings for devices with a screen. (see [below for nested schema](#nestedatt--lcm))
+- `magic_site_to_site_vpn` (Attributes) Site Magic, the site-to-site VPN between gateways of the same UI account. This is the gateway's switch only: the tunnels themselves are set up in Site Manager. The gateway's WireGuard keys in the same setting are never written. (see [below for nested schema](#nestedatt--magic_site_to_site_vpn))
 - `mdns` (Attributes) Multicast DNS (Settings > Networks > Multicast DNS): which networks mDNS is reflected between, and which services. Options not exposed by this block are preserved across updates. (see [below for nested schema](#nestedatt--mdns))
 - `mgmt` (Attributes) Management settings. (see [below for nested schema](#nestedatt--mgmt))
 - `network_optimization` (Attributes) Automated network optimization settings. (see [below for nested schema](#nestedatt--network_optimization))
@@ -230,6 +231,7 @@ resource "unifi_setting" "etherlighting" {
 - `site` (String) The name of the site to associate the settings with.
 - `snmp` (Attributes) SNMP agent settings (Settings > System > SNMP): a v1/v2c community and a single SNMPv3 user. Only configured SNMP settings are read; import does not populate this attribute. (see [below for nested schema](#nestedatt--snmp))
 - `syslog` (Attributes) Remote syslog (rsyslogd) settings. (see [below for nested schema](#nestedatt--syslog))
+- `teleport` (Attributes) Teleport, the one-click remote access VPN into the site. (see [below for nested schema](#nestedatt--teleport))
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `usg` (Attributes) USG settings. (see [below for nested schema](#nestedatt--usg))
 
@@ -424,6 +426,14 @@ Optional:
 - `idle_timeout` (Number) Seconds of inactivity before the display turns off (10-3600).
 - `sync` (Boolean) Sync display settings across devices. Taken from the controller when not set (#544).
 - `touch_event` (Boolean) Whether touch events on the display are enabled.
+
+
+<a id="nestedatt--magic_site_to_site_vpn"></a>
+### Nested Schema for `magic_site_to_site_vpn`
+
+Optional:
+
+- `enabled` (Boolean) Whether Site Magic is enabled on this gateway.
 
 
 <a id="nestedatt--mdns"></a>
@@ -624,6 +634,15 @@ Optional:
 - `enabled` (Boolean) Also log this controller's events.
 - `encrypted_only` (Boolean) Only send this controller's logs over an encrypted channel.
 
+
+
+<a id="nestedatt--teleport"></a>
+### Nested Schema for `teleport`
+
+Optional:
+
+- `enabled` (Boolean) Whether Teleport is enabled.
+- `subnet_cidr` (String) The subnet Teleport clients get addresses from. Empty when the controller picks it.
 
 
 <a id="nestedatt--timeouts"></a>

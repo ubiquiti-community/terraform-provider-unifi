@@ -1,0 +1,3 @@
+kind: feature
+body: '**`unifi_setting`: new `teleport` and `magic_site_to_site_vpn` sections.** They manage the gateway''s Teleport switch (and its client subnet) and its Site Magic switch, so turning either on in the UI shows up as drift. Only the configured keys are written; the WireGuard key pair stored next to the Site Magic switch is never sent. A controller that stores neither setting reads them as unset (from #722)'
+time: 2026-11-23T12:00:00.000000000Z

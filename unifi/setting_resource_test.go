@@ -106,9 +106,11 @@ func settingImportIgnore(extra ...string) []string {
 		"ips.",
 		"lcm.",
 		"mgmt.",
+		"magic_site_to_site_vpn.",
 		"network_optimization.",
 		"ntp.",
 		"syslog.",
+		"teleport.",
 		"usg.",
 	}, extra...)
 }
