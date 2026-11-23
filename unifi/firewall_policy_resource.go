@@ -1026,6 +1026,17 @@ func (r *firewallPolicyResource) Read(
 	}
 
 	fp, err := r.client.GetFirewallPolicy(ctx, site, id)
+	if _, ok := err.(*unifi.NotFoundError); ok {
+		fp, err = adoptMigrated(
+			id,
+			func() ([]unifi.FirewallPolicy, error) { return r.client.ListFirewallPolicy(ctx, site) },
+			func(p unifi.FirewallPolicy) string { return p.ID },
+			func(p unifi.FirewallPolicy) bool { return p.Name == state.Name.ValueString() },
+		)
+		if err == nil && fp == nil {
+			err = &unifi.NotFoundError{}
+		}
+	}
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			removeResourceOnRead(ctx, resp, identity)

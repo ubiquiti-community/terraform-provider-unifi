@@ -61,6 +61,19 @@ func Test_read_adoptsMigratedIDs(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "unifi_firewall_policy", coll: "firewall-policies",
+			new:   func(c *Client) crudResource { return &firewallPolicyResource{client: c} },
+			state: map[string]any{"name": "Me to IoT"},
+			item: func(id string) map[string]any {
+				return map[string]any{
+					"_id": id, "name": "Me to IoT", "action": "ALLOW", "enabled": true,
+					"ip_version": "BOTH", "protocol": "all", "index": 10000,
+					"source":      map[string]any{"zone_id": "zone-me", "matching_target": "ANY"},
+					"destination": map[string]any{"zone_id": "zone-iot", "matching_target": "ANY"},
+				}
+			},
+		},
 	}
 	for _, tc := range cases {
 		read := func(t *testing.T, item map[string]any) *fwresource.ReadResponse {
