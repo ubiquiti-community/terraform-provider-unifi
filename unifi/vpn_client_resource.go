@@ -751,7 +751,7 @@ func (r *vpnClientResource) ImportState(
 		return
 	}
 
-	if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(importID) {
+	if isControllerID(importID) {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), importID)...)
 		idModel := vpnClientIdentityModel{
 			ID:   types.StringValue(importID),
