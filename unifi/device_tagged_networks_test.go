@@ -235,7 +235,7 @@ func TestReconcilePortOverrides_TaggedNetworkIDsEmptyAndUnset(t *testing.T) {
 	}
 }
 
-// UniFi Network 11 drops tagged_networkconf_ids from a port override and
+// The controller (9.5 to 11.0) drops tagged_networkconf_ids from a port override and
 // keeps excluded_networkconf_ids: a "custom" port tags every LAN network that
 // is not excluded. A unifi_device_port with tagged networks therefore tagged
 // every network of the site, and the apply failed with "planned set element

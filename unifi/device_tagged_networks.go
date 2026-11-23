@@ -9,7 +9,8 @@ import (
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
-// UniFi Network 11 stores no tagged_networkconf_ids on a port override: it
+// The controller stores no tagged_networkconf_ids on a port override (checked
+// on UniFi Network 9.5.21, 10.0.162 and 11.0.103): it
 // drops the list from a PUT and keeps excluded_networkconf_ids instead. With
 // tagged_vlan_mgmt = "custom" the port tags every taggable network that is not
 // excluded, and the port's native network cannot be excluded
@@ -86,7 +87,7 @@ func excludeUntaggedNetworks(
 }
 
 // taggedNetworksFromAPI returns the networks the port tags. A controller that
-// stores tagged_networkconf_ids returns them; otherwise (Network 11) they
+// stores tagged_networkconf_ids returns them; otherwise (every version checked) they
 // follow from tagged_vlan_mgmt: none for block_all, every taggable network
 // except the excluded ones for custom, and every one for auto. The native
 // network is untagged and never counted.

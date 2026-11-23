@@ -1354,7 +1354,7 @@ func devicePortOverrideAttributes() map[string]schema.Attribute {
 			Computed:    true,
 		},
 		"tagged_networkconf_ids": schema.SetAttribute{
-			Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them. UniFi Network 11 stores no tagged list and tags every network that is not in `excluded_networkconf_ids`, so the provider writes the other networks of the site, except the port's native network, as excluded, and reads the tagged networks back from that list; a network added to the site later shows up as drift. Conflicts with `excluded_networkconf_ids`.",
+			Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them. The controller (checked on UniFi Network 9.5, 10.0 and 11.0) stores no tagged list and tags every network that is not in `excluded_networkconf_ids`, so the provider writes the other networks of the site, except the port's native network, as excluded, and reads the tagged networks back from that list; a network added to the site later shows up as drift. Conflicts with `excluded_networkconf_ids`.",
 			Optional:    true,
 			ElementType: types.StringType,
 			Validators: []validator.Set{
@@ -2908,7 +2908,7 @@ func reconcilePortOverride(
 		// list cannot cause a perpetual diff). An empty controller value
 		// reads back as an empty set so `tagged_networkconf_ids = []`
 		// round-trips, and a non-empty config that the controller did not
-		// apply shows up as drift. Network 11 stores no tagged list, so it
+		// apply shows up as drift. The controller stores no tagged list, so it
 		// is worked out from the exclusions (taggedNetworksFromAPI); taggable
 		// is nil when the networks of the site were not listed.
 		setVal, setDiags := stringSetFromAPI(taggedNetworksFromAPI(apiPO, taggable), false)

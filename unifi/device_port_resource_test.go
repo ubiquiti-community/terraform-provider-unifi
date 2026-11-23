@@ -2,7 +2,10 @@ package unifi
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"testing"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 )
 
@@ -581,4 +585,103 @@ resource "unifi_device_port" "test" {
 
 func itoa(i int) string {
 	return types.Int64Value(int64(i)).String()
+}
+
+// The controller ignores tagged_networkconf_ids on a port override: it stores
+// excluded_networkconf_ids, and "custom" tags every LAN network that is not
+// excluded (#735). Checked on UniFi Network 9.5.21, 10.0.162 and 11.0.103.
+// The port must end up excluding every LAN network but the tagged and the
+// native one, and plan empty afterwards.
+func TestAccDevicePort_taggedNetworks(t *testing.T) {
+	const name = "unifi_device_port.trunk"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { preCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDevicePortSwitch() + `
+resource "unifi_network" "native" {
+	name    = "tf-trunk-native"
+	subnet  = "10.231.0.1/24"
+	vlan    = 231
+}
+
+resource "unifi_network" "tagged" {
+	name    = "tf-trunk-tagged"
+	subnet  = "10.232.0.1/24"
+	vlan    = 232
+}
+
+resource "unifi_network" "other" {
+	name    = "tf-trunk-other"
+	subnet  = "10.233.0.1/24"
+	vlan    = 233
+}
+
+resource "unifi_device_port" "trunk" {
+	device_mac             = unifi_device.sw.mac
+	index                  = 8
+	name                   = "tf-trunk"
+	native_networkconf_id  = unifi_network.native.id
+	forward                = "customize"
+	tagged_vlan_mgmt       = "custom"
+	tagged_networkconf_ids = [unifi_network.tagged.id]
+
+	depends_on = [unifi_network.other]
+}
+`,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(name, "tagged_networkconf_ids.#", "1"),
+					resource.TestCheckTypeSetElemAttrPair(
+						name, "tagged_networkconf_ids.*", "unifi_network.tagged", "id"),
+					testAccCheckPortExcludesAllBut(
+						8,
+						"unifi_network.tagged",
+						"unifi_network.native",
+					),
+				),
+			},
+			{
+				RefreshState:       true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
+// testAccCheckPortExcludesAllBut checks that the port excludes every LAN
+// network of the site except the given ones, as the controller stores it.
+func testAccCheckPortExcludesAllBut(index int64, keep ...string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		ctx := context.Background()
+		client, err := testAccFirewallPolicyClient(ctx)
+		if err != nil {
+			return err
+		}
+		keepIDs := map[string]bool{}
+		for _, k := range keep {
+			keepIDs[s.RootModule().Resources[k].Primary.ID] = true
+		}
+		taggable, err := taggableNetworkIDs(
+			ctx,
+			&Client{ApiClient: client, Site: "default"},
+			"default",
+		)
+		if err != nil {
+			return err
+		}
+		want := networksExcept(taggable, slices.Collect(maps.Keys(keepIDs)), "")
+		device, err := client.GetDeviceByMAC(ctx, "default", testAccDevicePortSwitchMAC)
+		if err != nil {
+			return err
+		}
+		po, found := findPortOverride(device.PortOverrides, index)
+		if !found {
+			return fmt.Errorf("port %d has no override", index)
+		}
+		if !sameStringSet(po.ExcludedNetworkIDs, want) {
+			return fmt.Errorf("port %d excludes %v, want %v", index, po.ExcludedNetworkIDs, want)
+		}
+		return nil
+	}
 }
