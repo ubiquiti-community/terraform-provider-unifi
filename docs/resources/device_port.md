@@ -29,6 +29,9 @@ resource "unifi_device_port" "nas" {
   native_networkconf_id = unifi_network.servers.id
   poe_mode              = "off"
   stp_edge_state        = "enabled"
+
+  # Shut the port down if a switch appears behind it.
+  stp_bpdu_guard_enabled = true
 }
 ```
 
@@ -45,6 +48,7 @@ resource "unifi_device_port" "nas" {
 - `aggregate_members` (List of Number) Port indices that make up this link-aggregation (LAG) group. Only takes effect when `op_mode` is `aggregate` on this port.
 - `autoneg` (Boolean) Enable auto-negotiation for port speed.
 - `dot1x` (Attributes) 802.1X port authentication settings. (see [below for nested schema](#nestedatt--dot1x))
+- `eee_enabled` (Boolean) Enable Energy Efficient Ethernet (802.3az) on the port, where the switch supports it. Taken from the controller when not set.
 - `egress_rate_limit` (Attributes) Egress rate limiting. (see [below for nested schema](#nestedatt--egress_rate_limit))
 - `excluded_networkconf_ids` (Set of String) List of network IDs to exclude from this port.
 - `fec_mode` (String) Forward Error Correction mode.
@@ -52,8 +56,10 @@ resource "unifi_device_port" "nas" {
 - `forward` (String) Forwarding mode.
 - `full_duplex` (Boolean) Enable full duplex mode.
 - `isolation` (Boolean) Enable port isolation.
+- `link_debounce` (Attributes) Link debounce for the port: delays link state changes to ignore brief interruptions and reduce link flapping. Higher values can improve stability but may slow failover or recovery. Taken from the controller when not set. (see [below for nested schema](#nestedatt--link_debounce))
 - `lldpmed` (Attributes) LLDP-MED settings. (see [below for nested schema](#nestedatt--lldpmed))
 - `mirror_port_idx` (Number) Mirror port index.
+- `multicast_router_mode` (String) Multicast router port mode: `NONE`, `ALL` (a multicast router port on every network of the port) or `CUSTOM` (on the networks in `multicast_router_networkconf_ids`, each of which needs IGMP snooping). Only managed when set: leaving it unset keeps the port's current value; once set, use `NONE` to turn it off.
 - `multicast_router_networkconf_ids` (Set of String) List of network IDs for multicast router.
 - `name` (String) Human-readable name of the port.
 - `native_networkconf_id` (String) Native network ID (VLAN).
@@ -62,16 +68,21 @@ resource "unifi_device_port" "nas" {
 - `port_keepalive_enabled` (Boolean) Enable port keepalive.
 - `port_profile_id` (String) ID of the Port Profile used on this port.
 - `port_security` (Attributes) Port security (MAC allow-list) settings. (see [below for nested schema](#nestedatt--port_security))
+- `precision_time_protocol_enabled` (Boolean) Enable Precision Time Protocol (PTP) on the port, on a switch that supports PTP and has it enabled. Taken from the controller when not set.
 - `priority_queue1_level` (Number) Priority queue 1 level.
 - `priority_queue2_level` (Number) Priority queue 2 level.
 - `priority_queue3_level` (Number) Priority queue 3 level.
 - `priority_queue4_level` (Number) Priority queue 4 level.
+- `qos_profile` (Attributes) QoS profile for the port (the UI's Pro AV and custom QoS): a preset `mode` for an AV protocol, or `custom` with your own `policies`. Only managed when set: leaving it unset keeps the port's current profile, and `qos_profile = {}` removes it. (see [below for nested schema](#nestedatt--qos_profile))
 - `setting_preference` (String) Setting preference.
 - `site` (String) The name of the site the device belongs to. Defaults to the provider's site.
 - `speed` (Number) Port speed in Mbps.
+- `stable_port_enabled` (Boolean) The controller's `stable_port_enabled` setting. Taken from the controller when not set.
 - `stormctrl` (Attributes) Storm control settings. (see [below for nested schema](#nestedatt--stormctrl))
+- `stp_bpdu_guard_enabled` (Boolean) Enable BPDU Guard: the switch shuts the port down if it receives STP BPDUs (a switch behind it), and the port stays down until it is re-enabled by hand. For ports facing end devices. Taken from the controller when not set.
 - `stp_edge_state` (String) STP edge port mode; valid values are `enabled`, `disabled`, and `auto`. An edge port (the UI's Edge port mode, `enabled`) forwards as soon as its link comes up and sends no topology change when it goes up or down, for a port with an end device behind it. `auto` detects edge ports (RSTP auto-edge). Only managed when set: leaving it unset keeps the port's current value.
 - `stp_port_mode` (Boolean) STP port mode.
+- `stp_uplink` (Boolean) Mark the port as the preferred STP uplink (the UI's STP Uplink): on a non-root switch, the port STP keeps forwarding when it blocks redundant paths. Taken from the controller when not set.
 - `tagged_networkconf_ids` (Set of String) Set of network IDs to tag on this port (the UI's Tagged VLAN Management "Custom" selection; pair with `tagged_vlan_mgmt = "custom"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.
 - `tagged_vlan_mgmt` (String) Tagged VLAN management.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
@@ -99,6 +110,15 @@ Optional:
 - `kbps` (Number) Egress rate limit in kbps.
 
 
+<a id="nestedatt--link_debounce"></a>
+### Nested Schema for `link_debounce`
+
+Optional:
+
+- `auto` (Boolean) Let the switch's global link debounce setting decide (the UI's "Automatically set"); `delay` is then not used. Taken from the controller when not set.
+- `delay` (String) How long a link state change must last before the port acts on it, as a Go duration string (e.g. `500ms`, `2s`): `0s` to `5s` in steps of `100ms`. Taken from the controller when not set.
+
+
 <a id="nestedatt--lldpmed"></a>
 ### Nested Schema for `lldpmed`
 
@@ -115,6 +135,48 @@ Optional:
 
 - `enabled` (Boolean) Enable port security.
 - `mac_address` (List of String) List of MAC addresses allowed when port security is enabled.
+
+
+<a id="nestedatt--qos_profile"></a>
+### Nested Schema for `qos_profile`
+
+Optional:
+
+- `mode` (String) The QoS profile: `custom` (use `policies`), or a Pro AV preset: `unifi_play`, `aes67_audio`, `crestron_audio_video`, `dante_audio`, `ndi_aes67_audio`, `ndi_dante_audio`, `qsys_audio_video`, `qsys_video_dante_audio`, `sdvoe_aes67_audio`, `sdvoe_dante_audio` or `shure_audio`, or `smpte_st2110`.
+- `policies` (Attributes List) The `custom` profile's policies, in order: traffic that matches `matching` gets the `marking`. (see [below for nested schema](#nestedatt--qos_profile--policies))
+
+<a id="nestedatt--qos_profile--policies"></a>
+### Nested Schema for `qos_profile.policies`
+
+Optional:
+
+- `marking` (Attributes) What matching traffic gets: an egress `queue`, which the controller requires whenever a marking is set, and optionally DSCP, CoS or IP precedence values to write. (see [below for nested schema](#nestedatt--qos_profile--policies--marking))
+- `matching` (Attributes) Which traffic the policy applies to. Every field set must match. (see [below for nested schema](#nestedatt--qos_profile--policies--matching))
+
+<a id="nestedatt--qos_profile--policies--marking"></a>
+### Nested Schema for `qos_profile.policies.marking`
+
+Optional:
+
+- `cos_code` (Number) 802.1p class of service to set, `0` to `7`.
+- `dscp_code` (Number) DSCP value to set: a class selector (`0`, `8`, ..., `56`), an AF value (`10`, `12`, `14`, ..., `38`) or EF (`46`), or `44`.
+- `ip_precedence_code` (Number) IP precedence to set, `0` to `7`.
+- `queue` (Number) Switch egress queue, `0` to `7`.
+
+
+<a id="nestedatt--qos_profile--policies--matching"></a>
+### Nested Schema for `qos_profile.policies.matching`
+
+Optional:
+
+- `cos_code` (Number) 802.1p class of service, `0` to `7`.
+- `dscp_code` (Number) DSCP value, `0` to `63`.
+- `dst_port` (Number) Destination TCP/UDP port, `0` to `65535`.
+- `ip_precedence_code` (Number) IP precedence, `0` to `7`.
+- `protocol` (String) IP protocol, as a number (`0` to `255`) or a name (`tcp`, `udp`, `icmp`, `igmp`, `pim`, ...).
+- `src_port` (Number) Source TCP/UDP port, `0` to `65535`.
+
+
 
 
 <a id="nestedatt--stormctrl"></a>

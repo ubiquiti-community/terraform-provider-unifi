@@ -1271,6 +1271,8 @@ func TestReconcilePortOverrides_NativeNetworkClearedRoundTrips(t *testing.T) {
 		Lldpmed:                   types.ObjectNull(portLldpmedAttrTypes()),
 		PortSecurity:              types.ObjectNull(devicePortSecurityAttrTypes()),
 		Stormctrl:                 types.ObjectNull(portStormctrlAttrTypes()),
+		LinkDebounce:              types.ObjectNull(portLinkDebounceAttrTypes()),
+		QOSProfile:                types.ObjectNull(portQOSProfileAttrTypes()),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {
@@ -1328,6 +1330,8 @@ func TestReconcilePortOverrides_NativeNetworkAssignedKept(t *testing.T) {
 		Lldpmed:                   types.ObjectNull(portLldpmedAttrTypes()),
 		PortSecurity:              types.ObjectNull(devicePortSecurityAttrTypes()),
 		Stormctrl:                 types.ObjectNull(portStormctrlAttrTypes()),
+		LinkDebounce:              types.ObjectNull(portLinkDebounceAttrTypes()),
+		QOSProfile:                types.ObjectNull(portQOSProfileAttrTypes()),
 	}
 	priorObj, diags := types.ObjectValueFrom(ctx, priorModel.AttributeTypes(), priorModel)
 	if diags.HasError() {
