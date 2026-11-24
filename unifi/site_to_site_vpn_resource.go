@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -89,6 +90,9 @@ type siteToSiteVPNResourceModel struct {
 	PreSharedKey                   types.String        `tfsdk:"pre_shared_key"`
 	PreSharedKeyWO                 types.String        `tfsdk:"pre_shared_key_wo"`
 	RemoteSubnets                  types.List          `tfsdk:"remote_subnets"`
+	LocalSubnetsMode               types.String        `tfsdk:"local_subnets_mode"`
+	LocalNetworkIDs                types.List          `tfsdk:"local_network_ids"`
+	LocalSubnets                   types.List          `tfsdk:"local_subnets"`
 	Profile                        types.String        `tfsdk:"profile"`
 	IKE                            types.Object        `tfsdk:"ike"`
 	ESP                            types.Object        `tfsdk:"esp"`
@@ -434,6 +438,50 @@ func (r *siteToSiteVPNResource) Schema(
 					listvalidator.ValueStringsAre(validators.CIDRValidator()),
 				},
 			},
+			"local_subnets_mode": schema.StringAttribute{
+				MarkdownDescription: "Which of this site's subnets are reachable through the " +
+					"tunnel (the UI's \"Local Networks\" choice): `all` (every network), " +
+					"`selected_networks` (the networks in `local_network_ids`) or `custom` " +
+					"(the CIDRs in `local_subnets`). Defaults to `all` for a new tunnel; an " +
+					"existing tunnel keeps the controller's value when this is not set, so " +
+					"adopting a tunnel limited to selected networks does not widen it.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					planmodifiers.StringDefaultOnCreateKeepNull("all"),
+				},
+				Validators: []validator.String{
+					stringvalidator.OneOf("all", "selected_networks", "custom"),
+				},
+			},
+			"local_network_ids": schema.ListAttribute{
+				MarkdownDescription: "IDs of the local networks reachable through the tunnel. " +
+					"Used when `local_subnets_mode` is `selected_networks`, and required " +
+					"then. The controller cannot clear the list, so removing it from the " +
+					"configuration keeps the controller's value; switch `local_subnets_mode` " +
+					"instead.",
+				ElementType: types.StringType,
+				Optional:    true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"local_subnets": schema.ListAttribute{
+				MarkdownDescription: "CIDRs of this site reachable through the tunnel. Used " +
+					"when `local_subnets_mode` is `custom`, and required then. The " +
+					"controller cannot clear the list, so removing it from the configuration " +
+					"keeps the controller's value; switch `local_subnets_mode` instead.",
+				ElementType: types.StringType,
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.List{
+					listvalidator.ValueStringsAre(validators.CIDRValidator()),
+				},
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"profile": schema.StringAttribute{
 				MarkdownDescription: "IPsec profile. One of `customized`, `azure_dynamic`, or " +
 					"`azure_static`. Set to `customized` to tune the `ike`/`esp` objects; " +
@@ -566,6 +614,7 @@ func (r *siteToSiteVPNResource) ConfigValidators(
 ) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		&siteToSiteVPNRemoteSubnetsValidator{},
+		&siteToSiteVPNLocalSubnetsValidator{},
 	}
 }
 
@@ -610,6 +659,79 @@ func (v *siteToSiteVPNRemoteSubnetsValidator) ValidateResource(
 		"Empty Remote Subnets",
 		"remote_subnets must contain at least one CIDR unless dynamic_routing is enabled.",
 	)
+}
+
+// siteToSiteVPNLocalSubnetsValidator requires the list that the chosen
+// local_subnets_mode reads, and rejects a list the mode would ignore.
+type siteToSiteVPNLocalSubnetsValidator struct{}
+
+func (v *siteToSiteVPNLocalSubnetsValidator) Description(_ context.Context) string {
+	return "local_network_ids and local_subnets must match local_subnets_mode"
+}
+
+func (v *siteToSiteVPNLocalSubnetsValidator) MarkdownDescription(
+	_ context.Context,
+) string {
+	return "`local_network_ids` and `local_subnets` must match `local_subnets_mode`"
+}
+
+func (v *siteToSiteVPNLocalSubnetsValidator) ValidateResource(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var mode types.String
+	var networkIDs, subnets types.List
+
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("local_subnets_mode"), &mode)...,
+	)
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("local_network_ids"), &networkIDs)...,
+	)
+	resp.Diagnostics.Append(
+		req.Config.GetAttribute(ctx, path.Root("local_subnets"), &subnets)...,
+	)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if mode.IsUnknown() {
+		return
+	}
+	switch mode.ValueString() {
+	case "selected_networks":
+		if networkIDs.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("local_network_ids"),
+				"Missing Local Network IDs",
+				"local_network_ids is required when local_subnets_mode is \"selected_networks\".",
+			)
+		}
+	case "custom":
+		if subnets.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("local_subnets"),
+				"Missing Local Subnets",
+				"local_subnets is required when local_subnets_mode is \"custom\".",
+			)
+		}
+	case "all":
+		if !networkIDs.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("local_network_ids"),
+				"Unused Local Network IDs",
+				"local_network_ids is ignored when local_subnets_mode is \"all\".",
+			)
+		}
+		if !subnets.IsNull() {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("local_subnets"),
+				"Unused Local Subnets",
+				"local_subnets is ignored when local_subnets_mode is \"all\".",
+			)
+		}
+	}
 }
 
 func siteToSiteVPNRemoteSubnetsValid(
@@ -1084,6 +1206,7 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		IPSecTunnelIPEnabled: tunnelIPEnabled(
 			model.TunnelIPEnabled, model.TunnelIP,
 		),
+		LocalVPNSubnetsMode: optStr(model.LocalSubnetsMode),
 		IPSecKeyExchange:    optStr(model.KeyExchange),
 		IPSecProfile:        optStr(model.Profile),
 		IPSecPfs:            model.PFS.ValueBool(),
@@ -1121,7 +1244,19 @@ func (r *siteToSiteVPNResource) modelToNetwork(
 		diags.Append(model.RemoteSubnets.ElementsAs(ctx, &network.RemoteVPNSubnets, false)...)
 	}
 
+	diags.Append(optStringList(ctx, model.LocalNetworkIDs, &network.LocalVPNNetworkIDs)...)
+	diags.Append(optStringList(ctx, model.LocalSubnets, &network.LocalVPNSubnets)...)
+
 	return network, diags
+}
+
+// optStringList copies a known list attribute into dst and leaves dst nil for
+// null or unknown, so the marshaler omits it.
+func optStringList(ctx context.Context, l types.List, dst *[]string) diag.Diagnostics {
+	if l.IsNull() || l.IsUnknown() {
+		return nil
+	}
+	return l.ElementsAs(ctx, dst, false)
 }
 
 // networkToModel maps the API network back onto the model. It deliberately does
@@ -1185,6 +1320,14 @@ func (r *siteToSiteVPNResource) networkToModel(
 	subnets, subnetDiags := types.ListValueFrom(ctx, types.StringType, network.RemoteVPNSubnets)
 	diags.Append(subnetDiags...)
 	model.RemoteSubnets = subnets
+
+	model.LocalSubnetsMode = stringPtrOrNull(network.LocalVPNSubnetsMode)
+	localNetworks, d := stringListOrNull(ctx, network.LocalVPNNetworkIDs, model.LocalNetworkIDs)
+	diags.Append(d...)
+	model.LocalNetworkIDs = localNetworks
+	localSubnets, d := stringListOrNull(ctx, network.LocalVPNSubnets, model.LocalSubnets)
+	diags.Append(d...)
+	model.LocalSubnets = localSubnets
 
 	return diags
 }

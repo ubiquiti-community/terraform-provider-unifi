@@ -55,3 +55,25 @@ resource "unifi_site_to_site_vpn" "branch_dyndns" {
   local_identifier  = "hq.example.com"
   remote_identifier = "branch.example.com"
 }
+
+# Limit the tunnel to selected local networks, or to explicit local CIDRs.
+# local_subnets_mode is "all" (default), "selected_networks" or "custom".
+resource "unifi_site_to_site_vpn" "branch_selected" {
+  name           = "HQ-to-Branch-selected"
+  peer_ip        = "203.0.113.40"
+  pre_shared_key = var.branch_psk
+  remote_subnets = ["198.51.100.0/24"]
+
+  local_subnets_mode = "selected_networks"
+  local_network_ids  = [unifi_network.servers.id]
+}
+
+resource "unifi_site_to_site_vpn" "branch_custom" {
+  name           = "HQ-to-Branch-custom"
+  peer_ip        = "203.0.113.41"
+  pre_shared_key = var.branch_psk
+  remote_subnets = ["198.51.100.0/24"]
+
+  local_subnets_mode = "custom"
+  local_subnets      = ["192.0.2.0/25"]
+}

@@ -654,11 +654,14 @@ func TestSiteToSiteVPNProposals_wireAndReadBack(t *testing.T) {
 func Test_siteToSiteVPNResource_ConfigValidators(t *testing.T) {
 	r := &siteToSiteVPNResource{}
 	validators := r.ConfigValidators(context.Background())
-	if len(validators) != 1 {
-		t.Fatalf("expected one ConfigValidator, got %d", len(validators))
+	if len(validators) != 2 {
+		t.Fatalf("expected two ConfigValidators, got %d", len(validators))
 	}
 	if _, ok := validators[0].(*siteToSiteVPNRemoteSubnetsValidator); !ok {
 		t.Errorf("unexpected ConfigValidator type %T", validators[0])
+	}
+	if _, ok := validators[1].(*siteToSiteVPNLocalSubnetsValidator); !ok {
+		t.Errorf("unexpected ConfigValidator type %T", validators[1])
 	}
 }
 
