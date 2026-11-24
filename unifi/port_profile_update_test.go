@@ -51,9 +51,15 @@ const portProfileTestDocument = `{
 // (no omitempty) that the schema does not expose, which carryUnexposedFields
 // copies from the controller.
 var unexposedPortProfileFields = []string{
+	"ld_status",
+}
+
+// keptWhenUnsetPortProfileFields are the other always-sent fields #741 found:
+// attributes now, taken from the controller when configuration leaves them
+// out, so an update that does not set them must keep the controller's value.
+var keptWhenUnsetPortProfileFields = []string{
 	"eee_enabled",
 	"flow_control_enabled",
-	"ld_status",
 	"link_debounce_auto",
 	"precision_time_protocol_enabled",
 	"stable_port_enabled",
@@ -80,7 +86,8 @@ func Test_portProfileResource_Update_keepsUnexposedFields(t *testing.T) {
 	if got := h.fake.stored("name"); got != "Uplink 2" {
 		t.Errorf("name = %v after update, want Uplink 2", got)
 	}
-	for _, key := range unexposedPortProfileFields {
+	for _, key := range append(append([]string{}, unexposedPortProfileFields...),
+		keptWhenUnsetPortProfileFields...) {
 		if got := h.fake.stored(key); got != true {
 			t.Errorf("%s = %v after update, want the controller's true", key, got)
 		}
