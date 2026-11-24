@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_vpn_client`: `wireguard.peer.public_key` is no longer sensitive.** It is a public key shared with the peer; marking it sensitive hid changes from plan output and made `-generate-config-out` write `public_key = null`, which failed validation. `private_key` and `preshared_key` stay sensitive.'
+time: 2026-11-25T00:33:30.357607+02:00

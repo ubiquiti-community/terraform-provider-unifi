@@ -335,7 +335,6 @@ func (r *vpnClientResource) Schema(
 							"public_key": schema.StringAttribute{
 								MarkdownDescription: "WireGuard peer public key.",
 								Required:            true,
-								Sensitive:           true,
 							},
 						},
 					},

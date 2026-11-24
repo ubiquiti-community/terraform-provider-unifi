@@ -153,7 +153,7 @@ Required:
 
 - `ip` (String) WireGuard peer endpoint IP address.
 - `port` (Number) WireGuard peer endpoint port.
-- `public_key` (String, Sensitive) WireGuard peer public key.
+- `public_key` (String) WireGuard peer public key.
 
 
 
