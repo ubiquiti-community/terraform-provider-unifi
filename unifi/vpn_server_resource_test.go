@@ -2091,3 +2091,95 @@ func Test_vpnServerPrivateKeyPlanModifiers(t *testing.T) {
 		}
 	})
 }
+
+func Test_vpnServerResource_clientAddress(t *testing.T) {
+	ctx := context.Background()
+	r := &vpnServerResource{}
+	wgObj, d := types.ObjectValueFrom(
+		ctx,
+		vpnServerWireguardModel{}.AttributeTypes(),
+		vpnServerWireguardModel{
+			PrivateKey: types.StringValue("WPiBa/Ak1W+8Sp8L5yvbyhHeRO2o5kJvihq2VtJ+kFg="),
+			PublicKey:  types.StringNull(),
+			Port:       types.Int64Value(51820),
+		},
+	)
+	if d.HasError() {
+		t.Fatalf("building wireguard object: %v", d)
+	}
+	model := func(clientAddress types.String) *vpnServerResourceModel {
+		return &vpnServerResourceModel{
+			Name:          types.StringValue("wg-server"),
+			Enabled:       types.BoolValue(true),
+			Subnet:        cidrtypes.NewIPv4PrefixValue("10.100.0.1/24"),
+			ClientAddress: clientAddress,
+			Wireguard:     wgObj,
+			L2TP:          types.ObjectNull(vpnServerL2TPModel{}.AttributeTypes()),
+			OpenVPN:       types.ObjectNull(vpnServerOpenVPNModel{}.AttributeTypes()),
+			DNS:           types.ObjectNull(vpnServerDNSModel{}.AttributeTypes()),
+			WAN:           types.ObjectNull(vpnServerWANModel{}.AttributeTypes()),
+		}
+	}
+
+	t.Run("set enables the override", func(t *testing.T) {
+		got, diags := r.modelToNetwork(ctx, model(types.StringValue("vpn.example.com")))
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if !got.VPNClientConfigurationRemoteIPOverrideEnabled {
+			t.Error("VPNClientConfigurationRemoteIPOverrideEnabled should be true")
+		}
+		if v := got.VPNClientConfigurationRemoteIPOverride; v == nil || *v != "vpn.example.com" {
+			t.Errorf("VPNClientConfigurationRemoteIPOverride = %v, want vpn.example.com", v)
+		}
+	})
+
+	t.Run("unset disables the override", func(t *testing.T) {
+		got, diags := r.modelToNetwork(ctx, model(types.StringNull()))
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		if got.VPNClientConfigurationRemoteIPOverrideEnabled {
+			t.Error("VPNClientConfigurationRemoteIPOverrideEnabled should be false")
+		}
+		if got.VPNClientConfigurationRemoteIPOverride != nil {
+			t.Error("VPNClientConfigurationRemoteIPOverride should be nil")
+		}
+	})
+
+	read := func(enabled bool, override *string) types.String {
+		vpnType := "wireguard-server"
+		network := &unifi.Network{
+			ID:       "net-123",
+			Name:     new("wg-server"),
+			Enabled:  new(true),
+			IPSubnet: new("10.100.0.1/24"),
+			VPNType:  &vpnType,
+			VPNClientConfigurationRemoteIPOverrideEnabled: enabled,
+			VPNClientConfigurationRemoteIPOverride:        override,
+		}
+		var m vpnServerResourceModel
+		if diags := r.networkToModel(
+			ctx,
+			network,
+			&m,
+			"default",
+			&vpnServerResourceModel{},
+		); diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		return m.ClientAddress
+	}
+
+	t.Run("enabled override is read back", func(t *testing.T) {
+		if got := read(true, new("vpn.example.com")); got.ValueString() != "vpn.example.com" {
+			t.Errorf("ClientAddress = %v, want vpn.example.com", got)
+		}
+	})
+
+	t.Run("disabled override reads as null", func(t *testing.T) {
+		if got := read(false, new("vpn.example.com")); !got.IsNull() {
+			t.Errorf("ClientAddress = %v, want null", got)
+		}
+	})
+}
