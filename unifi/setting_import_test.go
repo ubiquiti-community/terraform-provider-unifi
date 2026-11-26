@@ -416,6 +416,9 @@ var allSettingDocuments = map[string]string{
 	"lcm": `{"key":"lcm","enabled":true,"brightness":80,"idle_timeout":300,"sync":true,
 		"touch_event":true}`,
 	"network_optimization": `{"key":"network_optimization","enabled":true}`,
+	"teleport":             `{"key":"teleport","enabled":true}`,
+	"magic_site_to_site_vpn": `{"key":"magic_site_to_site_vpn","enabled":true,
+		"public_key":"site-magic-public","x_private_key":"site-magic-private"}`,
 	"doh": `{"key":"doh","state":"off","server_names":["cloudflare"],
 		"custom_servers":[]}`,
 	"ips": `{"key":"ips","ips_mode":"disabled","honeypot_enabled":false,
@@ -493,21 +496,23 @@ func TestSettingImportByIdentityReadsEverySection(t *testing.T) {
 		t.Fatalf("reading imported state: %v", d)
 	}
 	for name, section := range map[string]types.Object{
-		"auto_speedtest":       imported.AutoSpeedtest,
-		"country":              imported.Country,
-		"dpi":                  imported.Dpi,
-		"lcm":                  imported.Lcm,
-		"network_optimization": imported.NetworkOpt,
-		"ntp":                  imported.Ntp,
-		"syslog":               imported.Syslog,
-		"doh":                  imported.Doh,
-		"ips":                  imported.Ips,
-		"mgmt":                 imported.Mgmt,
-		"radius":               imported.Radius,
-		"usg":                  imported.USG,
-		"igmp_snooping":        imported.IgmpSnooping,
-		"connectivity":         imported.Connectivity,
-		"global_switch":        imported.GlobalSwitch,
+		"auto_speedtest":         imported.AutoSpeedtest,
+		"country":                imported.Country,
+		"dpi":                    imported.Dpi,
+		"lcm":                    imported.Lcm,
+		"network_optimization":   imported.NetworkOpt,
+		"teleport":               imported.Teleport,
+		"magic_site_to_site_vpn": imported.MagicSiteToSiteVpn,
+		"ntp":                    imported.Ntp,
+		"syslog":                 imported.Syslog,
+		"doh":                    imported.Doh,
+		"ips":                    imported.Ips,
+		"mgmt":                   imported.Mgmt,
+		"radius":                 imported.Radius,
+		"usg":                    imported.USG,
+		"igmp_snooping":          imported.IgmpSnooping,
+		"connectivity":           imported.Connectivity,
+		"global_switch":          imported.GlobalSwitch,
 	} {
 		if section.IsNull() || section.IsUnknown() {
 			t.Errorf("%s imported as %v, want the controller's document", name, section)
@@ -756,6 +761,7 @@ func TestSettingUpdateWritesEveryConfiguredSection(t *testing.T) {
 			"auto_speedtest", "country", "dpi", "lcm", "network_optimization", "ntp",
 			"rsyslogd", "doh", "ips", "mgmt", "radius", "usg", "igmp_snooping",
 			"connectivity", "global_switch", "usg_geo", "ips_suppression",
+			"teleport", "magic_site_to_site_vpn",
 		} {
 			if !written[key] {
 				t.Errorf("update did not write the configured %s section (wrote %v)", key, fc.puts)

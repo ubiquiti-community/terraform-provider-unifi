@@ -215,6 +215,15 @@ type settingNetworkOptimizationModel struct {
 	Enabled types.Bool `tfsdk:"enabled"`
 }
 
+type settingTeleportModel struct {
+	Enabled    types.Bool   `tfsdk:"enabled"`
+	SubnetCidr types.String `tfsdk:"subnet_cidr"`
+}
+
+type settingMagicSiteToSiteVpnModel struct {
+	Enabled types.Bool `tfsdk:"enabled"`
+}
+
 type settingNtpModel struct {
 	NtpServer1        types.String `tfsdk:"ntp_server_1"`
 	NtpServer2        types.String `tfsdk:"ntp_server_2"`
@@ -301,28 +310,30 @@ type settingIpsModel struct {
 }
 
 type settingResourceModel struct {
-	ID            types.String   `tfsdk:"id"`
-	Site          types.String   `tfsdk:"site"`
-	AutoSpeedtest types.Object   `tfsdk:"auto_speedtest"`
-	Country       types.Object   `tfsdk:"country"`
-	Dpi           types.Object   `tfsdk:"dpi"`
-	Lcm           types.Object   `tfsdk:"lcm"`
-	NetworkOpt    types.Object   `tfsdk:"network_optimization"`
-	Ntp           types.Object   `tfsdk:"ntp"`
-	Syslog        types.Object   `tfsdk:"syslog"`
-	Doh           types.Object   `tfsdk:"doh"`
-	Ips           types.Object   `tfsdk:"ips"`
-	Mgmt          types.Object   `tfsdk:"mgmt"`
-	Radius        types.Object   `tfsdk:"radius"`
-	Snmp          types.Object   `tfsdk:"snmp"`
-	USG           types.Object   `tfsdk:"usg"`
-	IgmpSnooping  types.Object   `tfsdk:"igmp_snooping"`
-	GlobalSwitch  types.Object   `tfsdk:"global_switch"`
-	Connectivity  types.Object   `tfsdk:"connectivity"`
-	Mdns          types.Object   `tfsdk:"mdns"`
-	RadioAi       types.Object   `tfsdk:"radio_ai"`
-	EtherLighting types.Object   `tfsdk:"etherlighting"`
-	Timeouts      timeouts.Value `tfsdk:"timeouts"`
+	ID                 types.String   `tfsdk:"id"`
+	Site               types.String   `tfsdk:"site"`
+	AutoSpeedtest      types.Object   `tfsdk:"auto_speedtest"`
+	Country            types.Object   `tfsdk:"country"`
+	Dpi                types.Object   `tfsdk:"dpi"`
+	Lcm                types.Object   `tfsdk:"lcm"`
+	NetworkOpt         types.Object   `tfsdk:"network_optimization"`
+	Teleport           types.Object   `tfsdk:"teleport"`
+	MagicSiteToSiteVpn types.Object   `tfsdk:"magic_site_to_site_vpn"`
+	Ntp                types.Object   `tfsdk:"ntp"`
+	Syslog             types.Object   `tfsdk:"syslog"`
+	Doh                types.Object   `tfsdk:"doh"`
+	Ips                types.Object   `tfsdk:"ips"`
+	Mgmt               types.Object   `tfsdk:"mgmt"`
+	Radius             types.Object   `tfsdk:"radius"`
+	Snmp               types.Object   `tfsdk:"snmp"`
+	USG                types.Object   `tfsdk:"usg"`
+	IgmpSnooping       types.Object   `tfsdk:"igmp_snooping"`
+	GlobalSwitch       types.Object   `tfsdk:"global_switch"`
+	Connectivity       types.Object   `tfsdk:"connectivity"`
+	Mdns               types.Object   `tfsdk:"mdns"`
+	RadioAi            types.Object   `tfsdk:"radio_ai"`
+	EtherLighting      types.Object   `tfsdk:"etherlighting"`
+	Timeouts           timeouts.Value `tfsdk:"timeouts"`
 
 	// The write-only RADIUS secret sits at the root rather than inside
 	// radius: Terraform rejects a WriteOnly child of a Computed nested
@@ -477,6 +488,13 @@ var (
 		"touch_event":  types.BoolType,
 	}
 	networkOptimizationAttrTypes = map[string]attr.Type{
+		"enabled": types.BoolType,
+	}
+	teleportAttrTypes = map[string]attr.Type{
+		"enabled":     types.BoolType,
+		"subnet_cidr": types.StringType,
+	}
+	magicSiteToSiteVpnAttrTypes = map[string]attr.Type{
 		"enabled": types.BoolType,
 	}
 	ntpAttrTypes = map[string]attr.Type{
@@ -872,6 +890,45 @@ func (r *settingResource) Schema(
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Whether automated network optimization is enabled.",
+						Optional:            true,
+						Computed:            true,
+					},
+				},
+			},
+			"teleport": schema.SingleNestedAttribute{
+				MarkdownDescription: "Teleport, the one-click remote access VPN into the site.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether Teleport is enabled.",
+						Optional:            true,
+						Computed:            true,
+					},
+					"subnet_cidr": schema.StringAttribute{
+						MarkdownDescription: "The subnet Teleport clients get addresses from. " +
+							"Empty when the controller picks it.",
+						Optional: true,
+						Computed: true,
+					},
+				},
+			},
+			"magic_site_to_site_vpn": schema.SingleNestedAttribute{
+				MarkdownDescription: "Site Magic, the site-to-site VPN between gateways of the " +
+					"same UI account. This is the gateway's switch only: the tunnels " +
+					"themselves are set up in Site Manager. The gateway's WireGuard keys " +
+					"in the same setting are never written.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						MarkdownDescription: "Whether Site Magic is enabled on this gateway.",
 						Optional:            true,
 						Computed:            true,
 					},
@@ -2702,6 +2759,30 @@ func (r *settingResource) Create(
 		}
 	}
 
+	if !data.Teleport.IsNull() && !data.Teleport.IsUnknown() {
+		var m settingTeleportModel
+		resp.Diagnostics.Append(data.Teleport.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.writeSetting(ctx, site, r.teleportModelToSetting(&m)); err != nil {
+			resp.Diagnostics.AddError("Error Creating Teleport Setting", err.Error())
+			return
+		}
+	}
+
+	if !data.MagicSiteToSiteVpn.IsNull() && !data.MagicSiteToSiteVpn.IsUnknown() {
+		var m settingMagicSiteToSiteVpnModel
+		resp.Diagnostics.Append(data.MagicSiteToSiteVpn.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.writeSetting(ctx, site, r.magicSiteToSiteVpnModelToSetting(&m)); err != nil {
+			resp.Diagnostics.AddError("Error Creating Site Magic Setting", err.Error())
+			return
+		}
+	}
+
 	if !data.Ntp.IsNull() && !data.Ntp.IsUnknown() {
 		var m settingNtpModel
 		resp.Diagnostics.Append(data.Ntp.As(ctx, &m, basetypes.ObjectAsOptions{})...)
@@ -3132,6 +3213,33 @@ func (r *settingResource) Update(
 		}
 	}
 
+	if !config.Teleport.IsNull() && !plan.Teleport.IsNull() && !plan.Teleport.IsUnknown() &&
+		settingSectionChanged(plan.Teleport, state.Teleport) {
+		var m settingTeleportModel
+		resp.Diagnostics.Append(plan.Teleport.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.writeSetting(ctx, site, r.teleportModelToSetting(&m)); err != nil {
+			resp.Diagnostics.AddError("Error Updating Teleport Setting", err.Error())
+			return
+		}
+	}
+
+	if !config.MagicSiteToSiteVpn.IsNull() && !plan.MagicSiteToSiteVpn.IsNull() &&
+		!plan.MagicSiteToSiteVpn.IsUnknown() &&
+		settingSectionChanged(plan.MagicSiteToSiteVpn, state.MagicSiteToSiteVpn) {
+		var m settingMagicSiteToSiteVpnModel
+		resp.Diagnostics.Append(plan.MagicSiteToSiteVpn.As(ctx, &m, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if err := r.writeSetting(ctx, site, r.magicSiteToSiteVpnModelToSetting(&m)); err != nil {
+			resp.Diagnostics.AddError("Error Updating Site Magic Setting", err.Error())
+			return
+		}
+	}
+
 	if !config.Ntp.IsNull() && !plan.Ntp.IsNull() && !plan.Ntp.IsUnknown() &&
 		settingSectionChanged(plan.Ntp, state.Ntp) {
 		var m settingNtpModel
@@ -3506,6 +3614,8 @@ func (r *settingResource) readImportedSettings(
 		{&data.Dpi, (*settings.Dpi)(nil), dpiAttrTypes},
 		{&data.Lcm, (*settings.Lcm)(nil), lcmAttrTypes},
 		{&data.NetworkOpt, (*settings.NetworkOptimization)(nil), networkOptimizationAttrTypes},
+		{&data.Teleport, (*settings.Teleport)(nil), teleportAttrTypes},
+		{&data.MagicSiteToSiteVpn, (*settings.MagicSiteToSiteVpn)(nil), magicSiteToSiteVpnAttrTypes},
 		{&data.Ntp, (*settings.Ntp)(nil), ntpAttrTypes},
 		{&data.Syslog, (*settings.Rsyslogd)(nil), syslogAttrTypes},
 		{&data.Doh, (*settings.Doh)(nil), dohAttrTypes},
@@ -3716,6 +3826,58 @@ func (r *settingResource) readSettings(
 		data.NetworkOpt = objValue
 	} else {
 		data.NetworkOpt = types.ObjectNull(networkOptimizationAttrTypes)
+	}
+
+	if !data.Teleport.IsNull() && !data.Teleport.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.Teleport](r.client.ApiClient, ctx, site)
+		var notFound *ui.NotFoundError
+		switch {
+		case errors.As(err, &notFound):
+			// Controllers before this feature store no such setting.
+			data.Teleport = types.ObjectNull(teleportAttrTypes)
+		case err != nil:
+			diags.AddError("Error Reading Teleport Setting", err.Error())
+			return
+		default:
+			objValue, d := types.ObjectValueFrom(
+				ctx,
+				teleportAttrTypes,
+				r.teleportSettingToModel(s),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Teleport = objValue
+		}
+	} else {
+		data.Teleport = types.ObjectNull(teleportAttrTypes)
+	}
+
+	if !data.MagicSiteToSiteVpn.IsNull() && !data.MagicSiteToSiteVpn.IsUnknown() {
+		_, s, err := ui.GetSetting[*settings.MagicSiteToSiteVpn](r.client.ApiClient, ctx, site)
+		var notFound *ui.NotFoundError
+		switch {
+		case errors.As(err, &notFound):
+			// Controllers before this feature store no such setting.
+			data.MagicSiteToSiteVpn = types.ObjectNull(magicSiteToSiteVpnAttrTypes)
+		case err != nil:
+			diags.AddError("Error Reading Site Magic Setting", err.Error())
+			return
+		default:
+			objValue, d := types.ObjectValueFrom(
+				ctx,
+				magicSiteToSiteVpnAttrTypes,
+				r.magicSiteToSiteVpnSettingToModel(s),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.MagicSiteToSiteVpn = objValue
+		}
+	} else {
+		data.MagicSiteToSiteVpn = types.ObjectNull(magicSiteToSiteVpnAttrTypes)
 	}
 
 	// NTP settings
@@ -5704,6 +5866,32 @@ func (r *settingResource) networkOptimizationSettingToModel(
 	s *settings.NetworkOptimization,
 ) settingNetworkOptimizationModel {
 	return settingNetworkOptimizationModel{Enabled: types.BoolValue(s.Enabled)}
+}
+
+func (r *settingResource) teleportModelToSetting(m *settingTeleportModel) *settings.Teleport {
+	return &settings.Teleport{
+		Enabled:    m.Enabled.ValueBool(),
+		SubnetCidr: m.SubnetCidr.ValueString(),
+	}
+}
+
+func (r *settingResource) teleportSettingToModel(s *settings.Teleport) settingTeleportModel {
+	return settingTeleportModel{
+		Enabled:    types.BoolValue(s.Enabled),
+		SubnetCidr: types.StringValue(s.SubnetCidr),
+	}
+}
+
+func (r *settingResource) magicSiteToSiteVpnModelToSetting(
+	m *settingMagicSiteToSiteVpnModel,
+) *settings.MagicSiteToSiteVpn {
+	return &settings.MagicSiteToSiteVpn{Enabled: m.Enabled.ValueBool()}
+}
+
+func (r *settingResource) magicSiteToSiteVpnSettingToModel(
+	s *settings.MagicSiteToSiteVpn,
+) settingMagicSiteToSiteVpnModel {
+	return settingMagicSiteToSiteVpnModel{Enabled: types.BoolValue(s.Enabled)}
 }
 
 func (r *settingResource) ntpModelToSetting(m *settingNtpModel) *settings.Ntp {
