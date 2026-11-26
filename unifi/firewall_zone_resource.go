@@ -334,10 +334,19 @@ func (r *firewallZoneResource) Update(
 		site = r.client.Site
 	}
 
-	updated, err := r.client.UpdateFirewallZone(ctx, site, zone)
+	updated, err := r.client.GetFirewallZone(ctx, site, zone.ID)
 	if err != nil {
-		resp.Diagnostics.AddError("Error Updating Firewall Zone", err.Error())
+		resp.Diagnostics.AddError("Error Reading Firewall Zone", err.Error())
 		return
+	}
+	// A reorder of network_ids alone changes nothing on the controller, and
+	// Network 11 rejects every write to a built-in zone (#717).
+	if updated.Name != zone.Name || !sameElements(updated.NetworkIDs, zone.NetworkIDs) {
+		updated, err = r.client.UpdateFirewallZone(ctx, site, zone)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Updating Firewall Zone", err.Error())
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(r.firewallZoneToModel(ctx, updated, &data, site)...)
@@ -512,7 +521,7 @@ func (r *firewallZoneResource) firewallZoneToModel(
 	model.ZoneKey = types.StringValue(zone.ZoneKey)
 	model.DefaultZone = types.BoolPointerValue(zone.DefaultZone)
 
-	networkIDs, diags := types.ListValueFrom(ctx, types.StringType, zone.NetworkIDs)
+	networkIDs, diags := listInPriorOrder(ctx, model.NetworkIDs, zone.NetworkIDs)
 	model.NetworkIDs = networkIDs
 	return diags
 }
