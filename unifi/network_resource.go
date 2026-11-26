@@ -1007,12 +1007,13 @@ func (r *networkResource) Schema(
 						MarkdownDescription: "Specifies the DHCP lease time, as a Go duration " +
 							"string (e.g. `24h`, `86400s`). Defaults to `24h0m0s` when the DHCP " +
 							"server is first configured; an existing network keeps the " +
-							"controller's lease time (#544).",
+							"controller's lease time, none included; a DHCP server added to an " +
+							"existing network gets `24h0m0s` too (#544).",
 						CustomType: timetypes.GoDurationType{},
 						Optional:   true,
 						Computed:   true,
 						PlanModifiers: []planmodifier.String{
-							planmodifiers.StringDefaultOnCreate("24h0m0s"),
+							planmodifiers.StringDefaultOnCreateKeepNullInParent("24h0m0s"),
 						},
 					},
 					"wins": schema.SingleNestedAttribute{
