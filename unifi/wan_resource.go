@@ -943,8 +943,10 @@ func (r *wanResource) Schema(
 				Validators: []validator.String{
 					stringvalidator.OneOf("auto", "manual"),
 				},
+				// A WAN stored without it gets "manual" when the controller next
+				// saves it, so a null prior stays unknown on update (#717).
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.UseNonNullStateForUnknown(),
 				},
 			},
 			"single_network_lan": schema.StringAttribute{
