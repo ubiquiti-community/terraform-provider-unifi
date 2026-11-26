@@ -108,6 +108,16 @@ type portProfileResourceModel struct {
 	FecMode                   types.String   `tfsdk:"fec_mode"`
 	SettingPreference         types.String   `tfsdk:"setting_preference"`
 	PortKeepaliveEnabled      types.Bool     `tfsdk:"port_keepalive_enabled"`
+	STPBPDUGuardEnabled       types.Bool     `tfsdk:"stp_bpdu_guard_enabled"`
+	STPEdgeState              types.String   `tfsdk:"stp_edge_state"`
+	STPUplink                 types.Bool     `tfsdk:"stp_uplink"`
+	MulticastRouterMode       types.String   `tfsdk:"multicast_router_mode"`
+	EEEEnabled                types.Bool     `tfsdk:"eee_enabled"`
+	FlowControlEnabled        types.Bool     `tfsdk:"flow_control_enabled"`
+	LinkDebounce              types.Object   `tfsdk:"link_debounce"`
+	StablePortEnabled         types.Bool     `tfsdk:"stable_port_enabled"`
+	PTPEnabled                types.Bool     `tfsdk:"precision_time_protocol_enabled"`
+	QOSProfile                types.Object   `tfsdk:"qos_profile"`
 	Timeouts                  timeouts.Value `tfsdk:"timeouts"`
 }
 
@@ -161,6 +171,19 @@ func portProfileLldpmedDefault() types.Object {
 		"enabled":        types.BoolValue(true),
 		"notify_enabled": types.BoolNull(),
 	})
+}
+
+// portProfileBoolAttribute is an Optional+Computed boolean that keeps the
+// controller's value when configuration leaves it out.
+func portProfileBoolAttribute(description string) schema.BoolAttribute {
+	return schema.BoolAttribute{
+		Description: description + " Taken from the controller when not set.",
+		Optional:    true,
+		Computed:    true,
+		PlanModifiers: []planmodifier.Bool{
+			boolplanmodifier.UseStateForUnknown(),
+		},
+	}
 }
 
 // portProfileStormctrlSchema is the `stormctrl` nested attribute.
@@ -547,7 +570,8 @@ func (r *portProfileResource) Schema(
 				},
 			},
 			"multicast_router_networkconf_ids": schema.SetAttribute{
-				Description: "The IDs of networks designated as multicast routers for the port profile.",
+				Description: "The IDs of networks on which the port is a multicast router port, used when " +
+					"`multicast_router_mode` is `CUSTOM`. Each network needs IGMP snooping.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
@@ -582,6 +606,63 @@ func (r *portProfileResource) Schema(
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"stp_bpdu_guard_enabled": portProfileBoolAttribute(
+				"Enable BPDU Guard: the switch shuts the port down if it receives STP BPDUs (a switch " +
+					"behind it), and the port stays down until it is re-enabled by hand. For ports facing end " +
+					"devices, typically with `stp_edge_state = \"enabled\"`; the UI does not offer it on an " +
+					"`stp_uplink` port.",
+			),
+			"stp_edge_state": schema.StringAttribute{
+				Description: "STP edge port mode: `enabled` (the UI's STP Edge: the port forwards as soon as " +
+					"its link comes up and takes no part in STP convergence, for end devices) or `disabled`. " +
+					"Taken from the controller when not set; a profile that never set it uses the switch's " +
+					"Auto STP Edge and reads as null. Once set, the controller only accepts `enabled` or " +
+					"`disabled`: it cannot be returned to Auto STP Edge through the API.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.OneOf("enabled", "disabled"),
+				},
+			},
+			"stp_uplink": portProfileBoolAttribute(
+				"Mark the port as the preferred STP uplink (the UI's STP Uplink): on a non-root switch, " +
+					"the port STP keeps forwarding when it blocks redundant paths.",
+			),
+			"multicast_router_mode": schema.StringAttribute{
+				Description: "Multicast router port mode (the UI's Multicast Router Port, with IGMP " +
+					"snooping): `NONE`, `ALL` (a multicast router port on every network of the port) or " +
+					"`CUSTOM` (on the networks in `multicast_router_networkconf_ids`, each of which needs " +
+					"IGMP snooping; the controller rejects the profile otherwise). Taken from the controller " +
+					"when not set; once set, it cannot be returned to unset, use `NONE`.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.OneOf("ALL", "CUSTOM", "NONE"),
+				},
+			},
+			"eee_enabled": portProfileBoolAttribute(
+				"Enable Energy Efficient Ethernet (802.3az): the link enters a low-power state when traffic " +
+					"is low. The UI does not offer it together with a Pro AV `qos_profile`.",
+			),
+			"flow_control_enabled": portProfileBoolAttribute(
+				"Enable flow control (802.3x pause frames).",
+			),
+			"link_debounce": portLinkDebounceSchema("port profile"),
+			"stable_port_enabled": portProfileBoolAttribute(
+				"The controller's `stable_port_enabled` setting. Network 11.0 defines it for port profiles " +
+					"but does not show it in its UI.",
+			),
+			"precision_time_protocol_enabled": portProfileBoolAttribute(
+				"Enable Precision Time Protocol (PTP) on the port, for AV timing (AES67, SMPTE ST 2110). " +
+					"It needs PTP enabled in the switch's settings, and does not run over aggregated ports.",
+			),
+			"qos_profile": portQOSProfileSchema("port profile", portQOSProfileModes),
 			"timeouts": timeouts.Attributes(
 				ctx,
 				timeouts.Opts{Create: true, Read: true, Update: true, Delete: true},
@@ -871,6 +952,7 @@ func (r *portProfileResource) Update(
 
 	portProfile.ID = id
 	portProfile.SiteID = site
+	carryUnexposedPortProfileFields(currentPortProfile, portProfile)
 
 	apiPortProfile, err := r.client.UpdatePortProfile(ctx, site, portProfile)
 	if err != nil {
@@ -1014,6 +1096,13 @@ func (r *portProfileResource) ModifyPlan(
 	planObjectOnCreate(ctx, req, resp, path.Root("lldpmed"), portProfileLldpmedDefault())
 	planDefaultOnCreate(ctx, req, resp, path.Root("lldpmed").AtName("enabled"),
 		types.BoolValue(true), hasPrior)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// A configured qos_profile is planned exactly as written (its leaves are
+	// Computed only so that an unset qos_profile keeps the controller's).
+	planConfiguredObject(ctx, req, resp, path.Root("qos_profile"))
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1300,6 +1389,40 @@ func (r *portProfileResource) modelToAPIPortProfile(
 		}
 	}
 
+	setBool := func(v types.Bool, dst *bool) {
+		if !v.IsNull() && !v.IsUnknown() {
+			*dst = v.ValueBool()
+		}
+	}
+	setString := func(v types.String, dst *string) {
+		if !v.IsNull() && !v.IsUnknown() {
+			*dst = v.ValueString()
+		}
+	}
+	setBool(model.STPBPDUGuardEnabled, &portProfile.StpBpduGuardEnabled)
+	setString(model.STPEdgeState, &portProfile.StpEdgeState)
+	setBool(model.STPUplink, &portProfile.StpUplink)
+	setString(model.MulticastRouterMode, &portProfile.MulticastRouterMode)
+	setBool(model.EEEEnabled, &portProfile.EeeEnabled)
+	setBool(model.FlowControlEnabled, &portProfile.FlowControlEnabled)
+	setBool(model.StablePortEnabled, &portProfile.StablePortEnabled)
+	setBool(model.PTPEnabled, &portProfile.PrecisionTimeProtocolEnabled)
+
+	if ld, ok, d := util.ObjectAs[portLinkDebounceModel](ctx, model.LinkDebounce); ok {
+		setBool(ld.Auto, &portProfile.LinkDebounceAuto)
+		if delay := util.DurationUnitsPtr(ld.Delay, time.Millisecond); delay != nil {
+			portProfile.LinkDebounce = delay
+		}
+	} else {
+		diags.Append(d...)
+	}
+
+	if q, ok, d := portQOSProfileFromObject(ctx, model.QOSProfile); ok {
+		portProfile.QOSProfile = portProfileQOSToAPI(q)
+	} else {
+		diags.Append(d...)
+	}
+
 	return portProfile, diags
 }
 
@@ -1506,6 +1629,28 @@ func (r *portProfileResource) portProfileToModel(
 
 	model.STPPortMode = types.BoolValue(portProfile.StpPortMode)
 
+	model.STPBPDUGuardEnabled = types.BoolValue(portProfile.StpBpduGuardEnabled)
+	model.STPEdgeState = util.StringValueOrNull(portProfile.StpEdgeState)
+	model.STPUplink = types.BoolValue(portProfile.StpUplink)
+	model.MulticastRouterMode = util.StringValueOrNull(portProfile.MulticastRouterMode)
+	model.EEEEnabled = types.BoolValue(portProfile.EeeEnabled)
+	model.FlowControlEnabled = types.BoolValue(portProfile.FlowControlEnabled)
+	model.StablePortEnabled = types.BoolValue(portProfile.StablePortEnabled)
+	model.PTPEnabled = types.BoolValue(portProfile.PrecisionTimeProtocolEnabled)
+
+	linkDebounce, d := portLinkDebounceObject(
+		ctx, &portProfile.LinkDebounceAuto, portProfile.LinkDebounce)
+	diags.Append(d...)
+	model.LinkDebounce = linkDebounce
+
+	qos, d := portQOSProfileObject(
+		ctx,
+		portProfileQOSFromAPI(portProfile.QOSProfile),
+		model.QOSProfile,
+	)
+	diags.Append(d...)
+	model.QOSProfile = qos
+
 	return diags
 }
 
@@ -1589,6 +1734,30 @@ func (r *portProfileResource) applyPlanToState(
 	}
 	if !plan.STPPortMode.IsNull() && !plan.STPPortMode.IsUnknown() {
 		state.STPPortMode = plan.STPPortMode
+	}
+	for _, b := range []struct{ p, s *types.Bool }{
+		{&plan.STPBPDUGuardEnabled, &state.STPBPDUGuardEnabled},
+		{&plan.STPUplink, &state.STPUplink},
+		{&plan.EEEEnabled, &state.EEEEnabled},
+		{&plan.FlowControlEnabled, &state.FlowControlEnabled},
+		{&plan.StablePortEnabled, &state.StablePortEnabled},
+		{&plan.PTPEnabled, &state.PTPEnabled},
+	} {
+		if !b.p.IsNull() && !b.p.IsUnknown() {
+			*b.s = *b.p
+		}
+	}
+	if !plan.STPEdgeState.IsNull() && !plan.STPEdgeState.IsUnknown() {
+		state.STPEdgeState = plan.STPEdgeState
+	}
+	if !plan.MulticastRouterMode.IsNull() && !plan.MulticastRouterMode.IsUnknown() {
+		state.MulticastRouterMode = plan.MulticastRouterMode
+	}
+	state.LinkDebounce = util.OverlayKnownObject(ctx, plan.LinkDebounce, state.LinkDebounce)
+	// A configured qos_profile replaces the controller's whole profile (its
+	// policies are an ordered list, not a set of independent leaves).
+	if !plan.QOSProfile.IsNull() && !plan.QOSProfile.IsUnknown() {
+		state.QOSProfile = plan.QOSProfile
 	}
 	// Apply other fields as needed...
 }
@@ -1719,4 +1888,14 @@ func forwardForTaggedVLANMgmt(taggedVLANMgmt string) string {
 	default:
 		return "all"
 	}
+}
+
+// carryUnexposedPortProfileFields copies from the controller's profile the
+// fields go-unifi always sends but the schema does not expose. The update body
+// is built from the model, so without this every update would send them as
+// false and switch off what was set in the UI (#741). ld_status is a status the
+// controller reports; the other fields #741 found are attributes now, read from
+// the controller when configuration leaves them out.
+func carryUnexposedPortProfileFields(current, body *unifi.PortProfile) {
+	body.LdStatus = current.LdStatus
 }

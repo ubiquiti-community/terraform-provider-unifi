@@ -1,0 +1,10 @@
+kind: feature
+body: |-
+  **`unifi_port_profile`: BPDU Guard, STP edge and uplink, multicast router mode, EEE, flow control, link debounce, stable port, PTP and QoS profiles.** New attributes, each taken from the controller when not set:
+    - `stp_bpdu_guard_enabled`, `stp_edge_state`, `stp_uplink`
+    - `multicast_router_mode` (with the existing `multicast_router_networkconf_ids`)
+    - `eee_enabled`, `flow_control_enabled`, `stable_port_enabled`, `precision_time_protocol_enabled`
+    - `link_debounce = { auto, delay }`
+    - `qos_profile = { mode, policies }`: the Pro AV presets, or `custom` with match/mark policies; `qos_profile = {}` removes it
+  (#755, builds on #746, by @mmrk)
+time: 2026-11-24T12:01:00Z

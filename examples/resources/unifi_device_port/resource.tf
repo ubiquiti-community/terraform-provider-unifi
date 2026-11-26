@@ -9,4 +9,7 @@ resource "unifi_device_port" "nas" {
   native_networkconf_id = unifi_network.servers.id
   poe_mode              = "off"
   stp_edge_state        = "enabled"
+
+  # Shut the port down if a switch appears behind it.
+  stp_bpdu_guard_enabled = true
 }

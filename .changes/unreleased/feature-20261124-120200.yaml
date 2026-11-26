@@ -1,0 +1,3 @@
+kind: feature
+body: '**`unifi_device` `port_override` and `unifi_device_port`: the same port settings.** `stp_bpdu_guard_enabled`, `stp_uplink`, `multicast_router_mode`, `eee_enabled`, `link_debounce`, `stable_port_enabled`, `precision_time_protocol_enabled` and `qos_profile` (which also takes `smpte_st2110`), each only managed when set: a port that leaves one out keeps the controller''s value. They were carried from the controller before but could not be set (#756, builds on #755, by @mmrk)'
+time: 2026-11-24T12:02:00Z

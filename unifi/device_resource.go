@@ -176,6 +176,14 @@ type portOverrideModel struct {
 	Stormctrl                 types.Object `tfsdk:"stormctrl"`
 	StpEdgeState              types.String `tfsdk:"stp_edge_state"`
 	StpPortMode               types.Bool   `tfsdk:"stp_port_mode"`
+	STPBPDUGuardEnabled       types.Bool   `tfsdk:"stp_bpdu_guard_enabled"`
+	STPUplink                 types.Bool   `tfsdk:"stp_uplink"`
+	MulticastRouterMode       types.String `tfsdk:"multicast_router_mode"`
+	EEEEnabled                types.Bool   `tfsdk:"eee_enabled"`
+	LinkDebounce              types.Object `tfsdk:"link_debounce"`
+	StablePortEnabled         types.Bool   `tfsdk:"stable_port_enabled"`
+	PTPEnabled                types.Bool   `tfsdk:"precision_time_protocol_enabled"`
+	QOSProfile                types.Object `tfsdk:"qos_profile"`
 	TaggedNetworkIDs          types.Set    `tfsdk:"tagged_networkconf_ids"`
 	TaggedVLANMgmt            types.String `tfsdk:"tagged_vlan_mgmt"`
 	VoiceNetworkID            types.String `tfsdk:"voice_networkconf_id"`
@@ -1351,6 +1359,50 @@ func devicePortOverrideAttributes() map[string]schema.Attribute {
 			Optional:    true,
 			Computed:    true,
 		},
+		"stp_bpdu_guard_enabled": schema.BoolAttribute{
+			Description: "Enable BPDU Guard: the switch shuts the port down if it receives STP BPDUs (a " +
+				"switch behind it), and the port stays down until it is re-enabled by hand. For ports " +
+				"facing end devices. Taken from the controller when not set.",
+			Optional: true,
+			Computed: true,
+		},
+		"stp_uplink": schema.BoolAttribute{
+			Description: "Mark the port as the preferred STP uplink (the UI's STP Uplink): on a non-root " +
+				"switch, the port STP keeps forwarding when it blocks redundant paths. Taken from the " +
+				"controller when not set.",
+			Optional: true,
+			Computed: true,
+		},
+		"multicast_router_mode": schema.StringAttribute{
+			Description: "Multicast router port mode: `NONE`, `ALL` (a multicast router port on every " +
+				"network of the port) or `CUSTOM` (on the networks in `multicast_router_networkconf_ids`, " +
+				"each of which needs IGMP snooping). Only managed when set: leaving it unset keeps the " +
+				"port's current value; once set, use `NONE` to turn it off.",
+			Optional: true,
+			Validators: []validator.String{
+				stringvalidator.OneOf("ALL", "CUSTOM", "NONE"),
+			},
+		},
+		"eee_enabled": schema.BoolAttribute{
+			Description: "Enable Energy Efficient Ethernet (802.3az) on the port, where the switch " +
+				"supports it. Taken from the controller when not set.",
+			Optional: true,
+			Computed: true,
+		},
+		"link_debounce": devicePortLinkDebounceSchema(),
+		"stable_port_enabled": schema.BoolAttribute{
+			Description: "The controller's `stable_port_enabled` setting. Taken from the controller " +
+				"when not set.",
+			Optional: true,
+			Computed: true,
+		},
+		"precision_time_protocol_enabled": schema.BoolAttribute{
+			Description: "Enable Precision Time Protocol (PTP) on the port, on a switch that supports " +
+				"PTP and has it enabled. Taken from the controller when not set.",
+			Optional: true,
+			Computed: true,
+		},
+		"qos_profile": devicePortQOSProfileSchema(),
 		"tagged_networkconf_ids": schema.SetAttribute{
 			Description: "Set of network IDs to tag on this port (the UI's Tagged VLAN Management \"Custom\" selection; pair with `tagged_vlan_mgmt = \"custom\"`). Only managed when set: leaving it unset keeps the port's current tagged networks, and an empty set clears them.",
 			Optional:    true,
@@ -2681,20 +2733,42 @@ func carryUnwritableFields(
 		declared.StpEdgeState = current.StpEdgeState
 	}
 
-	declared.EeeEnabled = current.EeeEnabled
+	// The port settings below are configurable, but only managed when set, the
+	// same way: a declared entry leaves an unset one nil (or ""), and the
+	// controller's value is kept.
+	if declared.StpBpduGuardEnabled == nil {
+		declared.StpBpduGuardEnabled = current.StpBpduGuardEnabled
+	}
+	if declared.StpUplink == nil {
+		declared.StpUplink = current.StpUplink
+	}
+	if declared.MulticastRouterMode == "" {
+		declared.MulticastRouterMode = current.MulticastRouterMode
+	}
+	if declared.EeeEnabled == nil {
+		declared.EeeEnabled = current.EeeEnabled
+	}
+	if declared.LinkDebounce == nil {
+		declared.LinkDebounce = current.LinkDebounce
+	}
+	if declared.LinkDebounceAuto == nil {
+		declared.LinkDebounceAuto = current.LinkDebounceAuto
+	}
+	if declared.StablePortEnabled == nil {
+		declared.StablePortEnabled = current.StablePortEnabled
+	}
+	if declared.PrecisionTimeProtocolEnabled == nil {
+		declared.PrecisionTimeProtocolEnabled = current.PrecisionTimeProtocolEnabled
+	}
+	if declared.QOSProfile == nil {
+		declared.QOSProfile = current.QOSProfile
+	}
+
 	declared.LdMode = current.LdMode
 	declared.LdStatus = current.LdStatus
-	declared.LinkDebounce = current.LinkDebounce
-	declared.LinkDebounceAuto = current.LinkDebounceAuto
-	declared.MulticastRouterMode = current.MulticastRouterMode
-	declared.PrecisionTimeProtocolEnabled = current.PrecisionTimeProtocolEnabled
-	declared.QOSProfile = current.QOSProfile
 	declared.RoutedNetworkID = current.RoutedNetworkID
 	declared.SdWANUnderlayPort = current.SdWANUnderlayPort
 	declared.SdWANUnderlayPortNetworkID = current.SdWANUnderlayPortNetworkID
-	declared.StablePortEnabled = current.StablePortEnabled
-	declared.StpBpduGuardEnabled = current.StpBpduGuardEnabled
-	declared.StpUplink = current.StpUplink
 	declared.TrustedPortMAC = current.TrustedPortMAC
 	declared.UnitID = current.UnitID
 	return declared
@@ -2899,6 +2973,26 @@ func reconcilePortOverride(
 		} else {
 			updated.StpEdgeState = types.StringValue(apiPO.StpEdgeState)
 		}
+	}
+	if !pm.MulticastRouterMode.IsNull() && !pm.MulticastRouterMode.IsUnknown() {
+		updated.MulticastRouterMode = util.StringValueOrNull(apiPO.MulticastRouterMode)
+	}
+	if !pm.QOSProfile.IsNull() && !pm.QOSProfile.IsUnknown() {
+		// Configured: the controller's profile, so drift shows. The configured
+		// object is the prior, which keeps an empty policy list.
+		qos, d := portQOSProfileObject(context.Background(), deviceQOSFromAPI(apiPO.QOSProfile),
+			pm.QOSProfile)
+		diags.Append(d...)
+		if q, ok, _ := portQOSProfileFromObject(
+			context.Background(),
+			pm.QOSProfile,
+		); qos.IsNull() && ok &&
+			q.Mode == "" &&
+			len(q.Policies) == 0 {
+			// qos_profile = {} and no profile on the controller: what was asked for.
+			qos = pm.QOSProfile
+		}
+		updated.QOSProfile = qos
 	}
 
 	// The guards above only resolve fields the user explicitly configured.
@@ -3132,6 +3226,12 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 	model.Isolation = types.BoolPointerValue(po.Isolation)
 	model.PortKeepaliveEnabled = types.BoolPointerValue(po.PortKeepaliveEnabled)
 	model.StpPortMode = types.BoolPointerValue(po.StpPortMode)
+	model.STPBPDUGuardEnabled = types.BoolPointerValue(po.StpBpduGuardEnabled)
+	model.STPUplink = types.BoolPointerValue(po.StpUplink)
+	model.MulticastRouterMode = util.StringValueOrNull(po.MulticastRouterMode)
+	model.EEEEnabled = types.BoolPointerValue(po.EeeEnabled)
+	model.StablePortEnabled = types.BoolPointerValue(po.StablePortEnabled)
+	model.PTPEnabled = types.BoolPointerValue(po.PrecisionTimeProtocolEnabled)
 
 	// Nested feature groups
 	var d diag.Diagnostics
@@ -3141,6 +3241,11 @@ func apiPortOverrideToModel(po unifi.DevicePortOverrides) (portOverrideModel, di
 		ctx, po.EgressRateLimitKbpsEnabled, po.EgressRateLimitKbps)
 	diags.Append(d...)
 	model.Lldpmed, d = portLldpmedObject(ctx, po.LldpmedEnabled, po.LldpmedNotifyEnabled)
+	diags.Append(d...)
+	model.LinkDebounce, d = portLinkDebounceObject(ctx, po.LinkDebounceAuto, po.LinkDebounce)
+	diags.Append(d...)
+	model.QOSProfile, d = portQOSProfileObject(ctx, deviceQOSFromAPI(po.QOSProfile),
+		types.ObjectNull(portQOSProfileAttrTypes()))
 	diags.Append(d...)
 	model.Stormctrl, d = portStormctrlObject(ctx, portStormctrlAPI{
 		Type:         po.StormctrlType,
@@ -3315,6 +3420,27 @@ func portOverrideModelToAPI(
 	po.Isolation = util.ConvertBoolToAPIValue(model.Isolation)
 	po.PortKeepaliveEnabled = util.ConvertBoolToAPIValue(model.PortKeepaliveEnabled)
 	po.StpPortMode = util.ConvertBoolToAPIValue(model.StpPortMode)
+	// The settings below are only written when known; an unset one is nil here
+	// and carryUnwritableFields keeps the controller's value.
+	po.StpBpduGuardEnabled = util.ConvertBoolToAPIValue(model.STPBPDUGuardEnabled)
+	po.StpUplink = util.ConvertBoolToAPIValue(model.STPUplink)
+	po.EeeEnabled = util.ConvertBoolToAPIValue(model.EEEEnabled)
+	po.StablePortEnabled = util.ConvertBoolToAPIValue(model.StablePortEnabled)
+	po.PrecisionTimeProtocolEnabled = util.ConvertBoolToAPIValue(model.PTPEnabled)
+	if !model.MulticastRouterMode.IsNull() && !model.MulticastRouterMode.IsUnknown() {
+		po.MulticastRouterMode = model.MulticastRouterMode.ValueString()
+	}
+	if ld, ok, d := util.ObjectAs[portLinkDebounceModel](ctx, model.LinkDebounce); ok {
+		po.LinkDebounceAuto = util.ConvertBoolToAPIValue(ld.Auto)
+		po.LinkDebounce = util.DurationUnitsPtr(ld.Delay, time.Millisecond)
+	} else {
+		diags.Append(d...)
+	}
+	if q, ok, d := portQOSProfileFromObject(ctx, model.QOSProfile); ok {
+		po.QOSProfile = deviceQOSToAPI(q)
+	} else {
+		diags.Append(d...)
+	}
 
 	// Nested feature groups. A null/unknown group contributes nothing,
 	// exactly as its flat attributes did when unset.
@@ -3588,18 +3714,26 @@ func portOverrideAttrTypes() map[string]attr.Type {
 		"port_security": types.ObjectType{
 			AttrTypes: devicePortSecurityAttrTypes(),
 		},
-		"priority_queue1_level":  types.Int64Type,
-		"priority_queue2_level":  types.Int64Type,
-		"priority_queue3_level":  types.Int64Type,
-		"priority_queue4_level":  types.Int64Type,
-		"setting_preference":     types.StringType,
-		"speed":                  types.Int64Type,
-		"stormctrl":              types.ObjectType{AttrTypes: portStormctrlAttrTypes()},
-		"stp_edge_state":         types.StringType,
-		"stp_port_mode":          types.BoolType,
-		"tagged_networkconf_ids": types.SetType{ElemType: types.StringType},
-		"tagged_vlan_mgmt":       types.StringType,
-		"voice_networkconf_id":   types.StringType,
+		"priority_queue1_level":           types.Int64Type,
+		"priority_queue2_level":           types.Int64Type,
+		"priority_queue3_level":           types.Int64Type,
+		"priority_queue4_level":           types.Int64Type,
+		"setting_preference":              types.StringType,
+		"speed":                           types.Int64Type,
+		"stormctrl":                       types.ObjectType{AttrTypes: portStormctrlAttrTypes()},
+		"stp_edge_state":                  types.StringType,
+		"stp_port_mode":                   types.BoolType,
+		"stp_bpdu_guard_enabled":          types.BoolType,
+		"stp_uplink":                      types.BoolType,
+		"multicast_router_mode":           types.StringType,
+		"eee_enabled":                     types.BoolType,
+		"link_debounce":                   types.ObjectType{AttrTypes: portLinkDebounceAttrTypes()},
+		"stable_port_enabled":             types.BoolType,
+		"precision_time_protocol_enabled": types.BoolType,
+		"qos_profile":                     types.ObjectType{AttrTypes: portQOSProfileAttrTypes()},
+		"tagged_networkconf_ids":          types.SetType{ElemType: types.StringType},
+		"tagged_vlan_mgmt":                types.StringType,
+		"voice_networkconf_id":            types.StringType,
 	}
 }
 

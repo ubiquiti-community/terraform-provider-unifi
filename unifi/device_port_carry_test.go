@@ -13,20 +13,11 @@ import (
 // unexposedPortOverrideFields are the DevicePortOverrides keys the port_override
 // schema does not expose, which carryUnwritableFields copies from the controller.
 var unexposedPortOverrideFields = []string{
-	"eee_enabled",
 	"ld_mode",
 	"ld_status",
-	"link_debounce",
-	"link_debounce_auto",
-	"multicast_router_mode",
-	"precision_time_protocol_enabled",
-	"qos_profile",
 	"routed_networkconf_id",
 	"sd_wan_underlay_port",
 	"sd_wan_underlay_port_networkconf_id",
-	"stable_port_enabled",
-	"stp_bpdu_guard_enabled",
-	"stp_uplink",
 	"trusted_port_mac",
 	"unit_id",
 }
@@ -38,6 +29,9 @@ var schemaKeyToJSON = map[string]string{
 	"index":                     "port_idx",
 	"port_profile_id":           "portconf_id",
 	"egress_rate_limit_enabled": "egress_rate_limit_kbps_enabled",
+	"link_debounce_delay":       "link_debounce",
+	"qos_profile_mode":          "qos_profile",
+	"qos_profile_policies":      "qos_profile",
 }
 
 // exposedPortOverrideKeys returns the port_override schema attributes as flat
