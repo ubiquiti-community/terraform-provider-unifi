@@ -146,3 +146,21 @@ func TestNetworkCreateKeepsCreateTimeDefaults(t *testing.T) {
 		}
 	}
 }
+
+// A network the controller stores without a DHCP lease time (one created
+// through the API without dhcpd_leasetime) must import with no change: the
+// lease time is held null from the controller, not planned to the 24h
+// create-time default and written on the first apply (#544).
+func TestNetworkAdoptedWithoutLeaseTimeKeepsIt(t *testing.T) {
+	doc := networkTestDocument
+	if !strings.Contains(doc, `"dhcpd_leasetime": 86400,`) {
+		t.Fatal("networkTestDocument no longer contains dhcpd_leasetime")
+	}
+	doc = strings.Replace(doc, `"dhcpd_leasetime": 86400,`, ``, 1)
+	h := newNetworkHarness(t, doc)
+	cfg := networkBaseConfig()
+	h.assertEqual("plan after import", h.state.Raw, h.plan(h.config(cfg)))
+
+	cfg["domain_name"] = types.StringValue("lan.example")
+	assertBodies(t, h.apply(h.config(cfg)), `{"domain_name":"lan.example"}`)
+}

@@ -42,6 +42,52 @@ func StringDefaultOnCreateKeepNull(def string) planmodifier.String {
 	return stringDefaultOnCreate{def: def, keepNull: true}
 }
 
+// StringDefaultOnCreateKeepNullInParent is StringDefaultOnCreateKeepNull for a
+// leaf of a nested object the configuration can add to an existing resource:
+// the null is held only while that object already exists in the prior state,
+// so an adopted object whose controller document lacks the field plans no
+// change, while an object being added on update still gets def, which is what
+// the provider sends for it. unifi_network's dhcp_server.leasetime is one: a
+// network stored without dhcpd_leasetime keeps none on import, and a DHCP
+// server enabled on an existing network still plans the 24h it is given.
+func StringDefaultOnCreateKeepNullInParent(def string) planmodifier.String {
+	return stringDefaultOnCreateInParent{def: def}
+}
+
+type stringDefaultOnCreateInParent struct {
+	def string
+}
+
+func (m stringDefaultOnCreateInParent) Description(_ context.Context) string {
+	return fmt.Sprintf(
+		"defaults to %q on create or when its object is added; keeps the current value, none included, on update",
+		m.def,
+	)
+}
+
+func (m stringDefaultOnCreateInParent) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m stringDefaultOnCreateInParent) PlanModifyString(
+	ctx context.Context,
+	req planmodifier.StringRequest,
+	resp *planmodifier.StringResponse,
+) {
+	keepNull := false
+	if !req.State.Raw.IsNull() {
+		var parent types.Object
+		diags := req.State.GetAttribute(ctx, req.Path.ParentPath(), &parent)
+		keepNull = !diags.HasError() && !parent.IsNull() && !parent.IsUnknown()
+	}
+	switch planOnCreate(req.ConfigValue, req.State.Raw.IsNull(), req.StateValue, keepNull) {
+	case planDefault:
+		resp.PlanValue = types.StringValue(m.def)
+	case planPrior:
+		resp.PlanValue = req.StateValue
+	}
+}
+
 type stringDefaultOnCreate struct {
 	def      string
 	keepNull bool
