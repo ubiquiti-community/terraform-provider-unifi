@@ -316,7 +316,14 @@ func (r *trafficMatchingListResource) Read(
 	apiList, err := r.client.GetTrafficMatchingList(ctx, siteID, id)
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(
+				ctx,
+				resp,
+				trafficMatchingListIdentityModel{
+					ID:   types.StringValue(id),
+					Site: types.StringValue(site),
+				},
+			)
 			return
 		}
 		resp.Diagnostics.AddError(

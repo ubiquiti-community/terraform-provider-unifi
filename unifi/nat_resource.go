@@ -441,7 +441,11 @@ func (r *natResource) Read(
 	if err != nil {
 		var notFound *unifi.NotFoundError
 		if errors.As(err, &notFound) {
-			resp.State.RemoveResource(ctx)
+			removeResourceOnRead(
+				ctx,
+				resp,
+				natIdentityModel{ID: types.StringValue(id), Site: types.StringValue(site)},
+			)
 			return
 		}
 		resp.Diagnostics.AddError(
