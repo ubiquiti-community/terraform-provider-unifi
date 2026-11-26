@@ -29,6 +29,10 @@ type v2FakeController struct {
 	bodies map[string]map[string]any
 }
 
+// v2NestedCollections are the collections whose path has more than one
+// segment.
+var v2NestedCollections = map[string]bool{"firewall/zone": true}
+
 func newV2FakeController(t *testing.T) (*Client, *v2FakeController) {
 	t.Helper()
 	f := &v2FakeController{
@@ -69,8 +73,17 @@ func (f *v2FakeController) serve(t *testing.T) http.HandlerFunc {
 			http.Error(w, `{"code":"api.err.Invalid"}`, http.StatusBadRequest)
 			return
 		}
-		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v2/api/site/default/"), "/")
-		coll := parts[0]
+		rest := strings.TrimPrefix(r.URL.Path, "/v2/api/site/default/")
+		coll, id, _ := strings.Cut(rest, "/")
+		for nested := range v2NestedCollections {
+			if after, ok := strings.CutPrefix(
+				rest,
+				nested,
+			); ok &&
+				(after == "" || after[0] == '/') {
+				coll, id = nested, strings.TrimPrefix(after, "/")
+			}
+		}
 		var body map[string]any
 		if b, _ := io.ReadAll(r.Body); len(b) > 0 && string(b) != "{}" {
 			if err := json.Unmarshal(b, &body); err != nil {
@@ -80,13 +93,13 @@ func (f *v2FakeController) serve(t *testing.T) http.HandlerFunc {
 		}
 
 		switch {
-		case r.Method == http.MethodGet && len(parts) == 1:
+		case r.Method == http.MethodGet && id == "":
 			list := f.items[coll]
 			if list == nil {
 				list = []map[string]any{}
 			}
 			_ = json.NewEncoder(w).Encode(list)
-		case r.Method == http.MethodPost && (len(parts) == 1 || parts[1] == "create"):
+		case r.Method == http.MethodPost && (id == "" || id == "create"):
 			f.nextID++
 			body["_id"] = fmt.Sprintf("fake%020d", f.nextID)
 			if coll == "qos-rules" {
@@ -94,9 +107,9 @@ func (f *v2FakeController) serve(t *testing.T) http.HandlerFunc {
 			}
 			f.items[coll] = append(f.items[coll], body)
 			_ = json.NewEncoder(w).Encode(body)
-		case (r.Method == http.MethodPut || r.Method == http.MethodDelete) && len(parts) == 2:
+		case (r.Method == http.MethodPut || r.Method == http.MethodDelete) && id != "":
 			for i, it := range f.items[coll] {
-				if it["_id"] != parts[1] {
+				if it["_id"] != id {
 					continue
 				}
 				if r.Method == http.MethodDelete {
@@ -104,7 +117,7 @@ func (f *v2FakeController) serve(t *testing.T) http.HandlerFunc {
 					w.WriteHeader(http.StatusOK)
 					return
 				}
-				body["_id"] = parts[1]
+				body["_id"] = id
 				if idx, ok := it["index"]; ok {
 					body["index"] = idx
 				}

@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_dns_record`, `unifi_firewall_zone`, `unifi_firewall_policy`, `unifi_ap_group` and `unifi_power_supervisor`: an object UniFi Network 11 re-keyed to a UUID is adopted instead of dropped.** These resources are read from v2 lists that hold only the new UUIDs, so after the upgrade every refresh dropped them from state and the next apply created a duplicate (a duplicate firewall zone takes networks from the original) or failed with "already exists". When the stored ObjectID is gone, Read now adopts the single object with a UUID and the same natural key (DNS key and record type, zone name and key, policy name, AP group name, supervised device MAC). Controllers before Network 11 are unaffected (from #742 and #716)'
+time: 2026-11-23T11:30:00.000000000Z

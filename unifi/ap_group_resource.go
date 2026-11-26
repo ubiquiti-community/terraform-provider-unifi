@@ -289,6 +289,15 @@ func (r *apGroupResource) Read(
 	}
 
 	apGroup, err := r.client.GetAPGroup(ctx, site, id)
+	if _, ok := err.(*unifi.NotFoundError); ok {
+		apGroup, err = adoptMigrated(id,
+			func() ([]unifi.APGroup, error) { return r.client.ListAPGroup(ctx, site) },
+			func(g unifi.APGroup) string { return g.ID },
+			func(g unifi.APGroup) bool { return g.Name == state.Name.ValueString() })
+		if err == nil && apGroup == nil {
+			err = &unifi.NotFoundError{}
+		}
+	}
 	if err != nil {
 		if _, ok := err.(*unifi.NotFoundError); ok {
 			removeResourceOnRead(ctx, resp, apGroupIdentityModel{ID: state.ID, Site: state.Site})
