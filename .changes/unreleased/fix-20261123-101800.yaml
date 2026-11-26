@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_port_profile`: an update no longer switches off settings the resource does not manage.** The update body was built from the configuration only, so every change sent `flow_control_enabled`, `link_debounce_auto`, `precision_time_protocol_enabled`, `eee_enabled`, `ld_status`, `stable_port_enabled`, `stp_bpdu_guard_enabled` and `stp_uplink` as `false`, overwriting what was set in the UniFi UI. They are now kept from the controller (from #741)'
+time: 2026-11-23T10:18:00.000000000Z
