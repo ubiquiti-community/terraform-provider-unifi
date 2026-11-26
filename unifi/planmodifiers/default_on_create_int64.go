@@ -36,11 +36,12 @@ func (m int64DefaultOnCreate) MarkdownDescription(ctx context.Context) string {
 }
 
 func (m int64DefaultOnCreate) PlanModifyInt64(
-	_ context.Context,
+	ctx context.Context,
 	req planmodifier.Int64Request,
 	resp *planmodifier.Int64Response,
 ) {
-	switch planOnCreate(req.ConfigValue, req.State.Raw.IsNull(), req.StateValue, m.keepNull) {
+	keepNull := m.keepNull && holdNull(ctx, req.State, req.Path)
+	switch planOnCreate(req.ConfigValue, req.State.Raw.IsNull(), req.StateValue, keepNull) {
 	case planDefault:
 		resp.PlanValue = types.Int64Value(m.def)
 	case planPrior:
