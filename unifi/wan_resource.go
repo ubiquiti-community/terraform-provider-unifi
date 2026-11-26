@@ -115,6 +115,7 @@ type wanResourceModel struct {
 	Enabled               types.Bool   `tfsdk:"enabled"`
 	IPAliases             types.List   `tfsdk:"ip_aliases"`
 	SettingPreference     types.String `tfsdk:"setting_preference"`
+	SLAID                 types.String `tfsdk:"sla_id"`
 	IPv6SettingPreference types.String `tfsdk:"ipv6_setting_preference"`
 	SingleNetworkLAN      types.String `tfsdk:"single_network_lan"`
 	MACOverrideEnabled    types.Bool   `tfsdk:"mac_override_enabled"`
@@ -936,6 +937,16 @@ func (r *wanResource) Schema(
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"sla_id": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "ID of the WAN SLA profile (`unifi_wan_sla`) that decides whether this WAN is usable. " +
+					"When the profile is down, the WAN is taken out of load balancing or failover. Taken from the controller " +
+					"when not set; set it to `\"\"` to detach the profile.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"ipv6_setting_preference": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -1367,6 +1378,9 @@ func (r *wanResource) overlayConfig(
 	// stays consistent with the plan.
 	if !config.SettingPreference.IsNull() {
 		state.SettingPreference = plan.SettingPreference
+	}
+	if !config.SLAID.IsNull() {
+		state.SLAID = plan.SLAID
 	}
 	if !config.IPv6SettingPreference.IsNull() {
 		state.IPv6SettingPreference = plan.IPv6SettingPreference
@@ -1967,6 +1981,9 @@ func (r *wanResource) modelToNetwork(
 	if !model.SettingPreference.IsNull() && !model.SettingPreference.IsUnknown() {
 		network.SettingPreference = model.SettingPreference.ValueStringPointer()
 	}
+	if !model.SLAID.IsNull() && !model.SLAID.IsUnknown() {
+		network.WANSla = model.SLAID.ValueStringPointer()
+	}
 	if !model.IPv6SettingPreference.IsNull() && !model.IPv6SettingPreference.IsUnknown() {
 		network.IPV6SettingPreference = model.IPv6SettingPreference.ValueStringPointer()
 	}
@@ -2343,6 +2360,7 @@ func (r *wanResource) networkToModel(
 		model.Enabled = types.BoolValue(true)
 	}
 	model.SettingPreference = types.StringPointerValue(network.SettingPreference)
+	model.SLAID = types.StringPointerValue(network.WANSla)
 	model.IPv6SettingPreference = types.StringPointerValue(network.IPV6SettingPreference)
 	model.SingleNetworkLAN = types.StringPointerValue(network.SingleNetworkLan)
 	model.MACOverrideEnabled = types.BoolValue(network.MACOverrideEnabled)
@@ -2413,6 +2431,9 @@ func applyWANDefaults(model *wanResourceModel) {
 	}
 	if model.ReportWANEvent.IsUnknown() {
 		model.ReportWANEvent = types.BoolNull()
+	}
+	if model.SLAID.IsUnknown() {
+		model.SLAID = types.StringNull()
 	}
 	if model.Enabled.IsUnknown() {
 		model.Enabled = types.BoolNull()

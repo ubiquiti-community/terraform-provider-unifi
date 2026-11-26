@@ -1,0 +1,3 @@
+kind: feature
+body: '**New `unifi_wan_sla` resource and `unifi_wan.sla_id`: manage Network 11 WAN SLA profiles.** A profile''s verification servers (ICMP or DNS) and their packet loss, latency and jitter thresholds decide whether a WAN is usable; an unusable WAN is taken out of load balancing or failover. (#752, from go-unifi#132 by @mmrk)'
+time: 2026-11-23T14:00:00.000000-05:00
