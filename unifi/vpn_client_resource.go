@@ -542,6 +542,17 @@ func (r *vpnClientResource) Read(
 		// Get the network by ID
 		network, err = r.client.GetNetwork(ctx, site, lookupID)
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					vpnClientIdentityModel{
+						ID:   types.StringValue(lookupID),
+						Site: types.StringValue(site),
+					},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading VPN Client",
 				"Could not read VPN client ID "+lookupID+": "+err.Error(),
@@ -552,6 +563,14 @@ func (r *vpnClientResource) Read(
 		// Get the network by name
 		network, err = r.client.GetNetworkByName(ctx, site, data.Name.ValueString())
 		if err != nil {
+			if isNotFound(err) {
+				removeResourceOnRead(
+					ctx,
+					resp,
+					vpnClientIdentityModel{ID: types.StringNull(), Site: types.StringValue(site)},
+				)
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Error Reading VPN Client",
 				"Could not read VPN client name "+data.Name.ValueString()+": "+err.Error(),

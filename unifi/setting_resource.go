@@ -3633,17 +3633,24 @@ func (r *settingResource) readSettings(
 	if !data.AutoSpeedtest.IsNull() && !data.AutoSpeedtest.IsUnknown() {
 		_, asSetting, err := ui.GetSetting[*settings.AutoSpeedtest](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Auto Speedtest Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Auto Speedtest Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.AutoSpeedtest = types.ObjectNull(autoSpeedtestAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(
+				ctx, autoSpeedtestAttrTypes, r.autoSpeedtestSettingToModel(asSetting),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.AutoSpeedtest = objValue
 		}
-		objValue, d := types.ObjectValueFrom(
-			ctx, autoSpeedtestAttrTypes, r.autoSpeedtestSettingToModel(asSetting),
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.AutoSpeedtest = objValue
 	} else {
 		data.AutoSpeedtest = types.ObjectNull(autoSpeedtestAttrTypes)
 	}
@@ -3652,15 +3659,22 @@ func (r *settingResource) readSettings(
 	if !data.Country.IsNull() && !data.Country.IsUnknown() {
 		_, s, err := ui.GetSetting[*settings.Country](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Country Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Country Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Country = types.ObjectNull(countryAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(ctx, countryAttrTypes, r.countrySettingToModel(s))
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Country = objValue
 		}
-		objValue, d := types.ObjectValueFrom(ctx, countryAttrTypes, r.countrySettingToModel(s))
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.Country = objValue
 	} else {
 		data.Country = types.ObjectNull(countryAttrTypes)
 	}
@@ -3669,15 +3683,22 @@ func (r *settingResource) readSettings(
 	if !data.Dpi.IsNull() && !data.Dpi.IsUnknown() {
 		_, s, err := ui.GetSetting[*settings.Dpi](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading DPI Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading DPI Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Dpi = types.ObjectNull(dpiAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(ctx, dpiAttrTypes, r.dpiSettingToModel(s))
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Dpi = objValue
 		}
-		objValue, d := types.ObjectValueFrom(ctx, dpiAttrTypes, r.dpiSettingToModel(s))
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.Dpi = objValue
 	} else {
 		data.Dpi = types.ObjectNull(dpiAttrTypes)
 	}
@@ -3686,15 +3707,22 @@ func (r *settingResource) readSettings(
 	if !data.Lcm.IsNull() && !data.Lcm.IsUnknown() {
 		_, s, err := ui.GetSetting[*settings.Lcm](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading LCM Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading LCM Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Lcm = types.ObjectNull(lcmAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(ctx, lcmAttrTypes, r.lcmSettingToModel(s))
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Lcm = objValue
 		}
-		objValue, d := types.ObjectValueFrom(ctx, lcmAttrTypes, r.lcmSettingToModel(s))
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.Lcm = objValue
 	} else {
 		data.Lcm = types.ObjectNull(lcmAttrTypes)
 	}
@@ -3703,17 +3731,24 @@ func (r *settingResource) readSettings(
 	if !data.NetworkOpt.IsNull() && !data.NetworkOpt.IsUnknown() {
 		_, s, err := ui.GetSetting[*settings.NetworkOptimization](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Network Optimization Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Network Optimization Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.NetworkOpt = types.ObjectNull(networkOptimizationAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(
+				ctx, networkOptimizationAttrTypes, r.networkOptimizationSettingToModel(s),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.NetworkOpt = objValue
 		}
-		objValue, d := types.ObjectValueFrom(
-			ctx, networkOptimizationAttrTypes, r.networkOptimizationSettingToModel(s),
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.NetworkOpt = objValue
 	} else {
 		data.NetworkOpt = types.ObjectNull(networkOptimizationAttrTypes)
 	}
@@ -3722,15 +3757,22 @@ func (r *settingResource) readSettings(
 	if !data.Ntp.IsNull() && !data.Ntp.IsUnknown() {
 		_, s, err := ui.GetSetting[*settings.Ntp](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading NTP Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading NTP Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Ntp = types.ObjectNull(ntpAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(ctx, ntpAttrTypes, r.ntpSettingToModel(s))
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Ntp = objValue
 		}
-		objValue, d := types.ObjectValueFrom(ctx, ntpAttrTypes, r.ntpSettingToModel(s))
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.Ntp = objValue
 	} else {
 		data.Ntp = types.ObjectNull(ntpAttrTypes)
 	}
@@ -3739,17 +3781,24 @@ func (r *settingResource) readSettings(
 	if !data.Syslog.IsNull() && !data.Syslog.IsUnknown() {
 		_, s, err := ui.GetSetting[*settings.Rsyslogd](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Syslog Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Syslog Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Syslog = types.ObjectNull(syslogAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(
+				ctx, syslogAttrTypes, r.syslogSettingToModel(ctx, s, diags),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Syslog = objValue
 		}
-		objValue, d := types.ObjectValueFrom(
-			ctx, syslogAttrTypes, r.syslogSettingToModel(ctx, s, diags),
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.Syslog = objValue
 	} else {
 		data.Syslog = types.ObjectNull(syslogAttrTypes)
 	}
@@ -3764,17 +3813,24 @@ func (r *settingResource) readSettings(
 
 		_, dohSetting, err := ui.GetSetting[*settings.Doh](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading DoH Setting", err.Error())
-			return
-		}
+			if !isNotFound(err) {
+				diags.AddError("Error Reading DoH Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Doh = types.ObjectNull(dohAttrTypes)
+		} else {
 
-		dohModel := r.dohSettingToModel(ctx, dohSetting, &planDoh, diags)
-		objValue, d := types.ObjectValueFrom(ctx, dohAttrTypes, dohModel)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
+			dohModel := r.dohSettingToModel(ctx, dohSetting, &planDoh, diags)
+			objValue, d := types.ObjectValueFrom(ctx, dohAttrTypes, dohModel)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Doh = objValue
 		}
-		data.Doh = objValue
 	} else {
 		data.Doh = types.ObjectNull(dohAttrTypes)
 	}
@@ -3789,56 +3845,66 @@ func (r *settingResource) readSettings(
 
 		_, typedIps, err := ui.GetSetting[*settings.Ips](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading IPS Setting", err.Error())
-			return
-		}
-		ipsSetting := typedIps
-
-		// Suppression lives in the standalone ips_suppression setting (#381).
-		// go-unifi v1.34.1 removed Ips.Suppression entirely, so read it as its
-		// own document and carry it alongside.
-		var ipsSuppression *settings.IpsSuppression
-		planSupp, suppOK, d := util.ObjectAs[settingIpsSuppressionModel](ctx, planIps.Suppression)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		if suppOK && ipsSuppressionConfigured(&planSupp) {
-			rawData, found, err := r.readRawSettingData(ctx, site, ipsSuppressionSettingKey)
-			if err != nil {
-				diags.AddError("Error Reading IPS Suppression Setting", err.Error())
+			if !isNotFound(err) {
+				diags.AddError("Error Reading IPS Setting", err.Error())
 				return
 			}
-			if !found {
-				// Controllers without the standalone document keep
-				// suppression nested in the ips setting (see
-				// persistIpsSuppression).
-				ipsData, ipsFound, ipsErr := r.readRawSettingData(ctx, site, ipsSettingKey)
-				if ipsErr != nil {
-					diags.AddError("Error Reading IPS Suppression Setting", ipsErr.Error())
-					return
-				}
-				if nested, ok := ipsData["suppression"].(map[string]any); ipsFound && ok {
-					rawData, found = nested, true
-				}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Ips = types.ObjectNull(ipsAttrTypes)
+		} else {
+			ipsSetting := typedIps
+
+			// Suppression lives in the standalone ips_suppression setting (#381).
+			// go-unifi v1.34.1 removed Ips.Suppression entirely, so read it as its
+			// own document and carry it alongside.
+			var ipsSuppression *settings.IpsSuppression
+			planSupp, suppOK, d := util.ObjectAs[settingIpsSuppressionModel](
+				ctx,
+				planIps.Suppression,
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
 			}
-			if found {
-				supp, err := ipsSuppressionFromRaw(rawData)
+			if suppOK && ipsSuppressionConfigured(&planSupp) {
+				rawData, found, err := r.readRawSettingData(ctx, site, ipsSuppressionSettingKey)
 				if err != nil {
 					diags.AddError("Error Reading IPS Suppression Setting", err.Error())
 					return
 				}
-				ipsSuppression = supp
+				if !found {
+					// Controllers without the standalone document keep
+					// suppression nested in the ips setting (see
+					// persistIpsSuppression).
+					ipsData, ipsFound, ipsErr := r.readRawSettingData(ctx, site, ipsSettingKey)
+					if ipsErr != nil {
+						diags.AddError("Error Reading IPS Suppression Setting", ipsErr.Error())
+						return
+					}
+					if nested, ok := ipsData["suppression"].(map[string]any); ipsFound && ok {
+						rawData, found = nested, true
+					}
+				}
+				if found {
+					supp, err := ipsSuppressionFromRaw(rawData)
+					if err != nil {
+						diags.AddError("Error Reading IPS Suppression Setting", err.Error())
+						return
+					}
+					ipsSuppression = supp
+				}
 			}
-		}
 
-		ipsModel := r.ipsSettingToModel(ctx, ipsSetting, &planIps, diags, ipsSuppression)
-		objValue, d := types.ObjectValueFrom(ctx, ipsAttrTypes, ipsModel)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
+			ipsModel := r.ipsSettingToModel(ctx, ipsSetting, &planIps, diags, ipsSuppression)
+			objValue, d := types.ObjectValueFrom(ctx, ipsAttrTypes, ipsModel)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Ips = objValue
 		}
-		data.Ips = objValue
 	} else {
 		data.Ips = types.ObjectNull(ipsAttrTypes)
 	}
@@ -3854,17 +3920,24 @@ func (r *settingResource) readSettings(
 
 		_, mgmtSetting, err := ui.GetSetting[*settings.Mgmt](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Mgmt Setting", err.Error())
-			return
-		}
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Mgmt Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Mgmt = types.ObjectNull(mgmtAttrTypes)
+		} else {
 
-		mgmtModel := r.mgmtSettingToModel(ctx, mgmtSetting, &planMgmt)
-		objValue, d := types.ObjectValueFrom(ctx, mgmtAttrTypes, mgmtModel)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
+			mgmtModel := r.mgmtSettingToModel(ctx, mgmtSetting, &planMgmt)
+			objValue, d := types.ObjectValueFrom(ctx, mgmtAttrTypes, mgmtModel)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Mgmt = objValue
 		}
-		data.Mgmt = objValue
 	} else {
 		data.Mgmt = types.ObjectNull(mgmtAttrTypes)
 	}
@@ -3880,17 +3953,24 @@ func (r *settingResource) readSettings(
 
 		_, radiusSetting, err := ui.GetSetting[*settings.Radius](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Radius Setting", err.Error())
-			return
-		}
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Radius Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Radius = types.ObjectNull(radiusAttrTypes)
+		} else {
 
-		radiusModel := r.radiusSettingToModel(ctx, radiusSetting, &planRadius)
-		objValue, d := types.ObjectValueFrom(ctx, radiusAttrTypes, radiusModel)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
+			radiusModel := r.radiusSettingToModel(ctx, radiusSetting, &planRadius)
+			objValue, d := types.ObjectValueFrom(ctx, radiusAttrTypes, radiusModel)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Radius = objValue
 		}
-		data.Radius = objValue
 	} else {
 		data.Radius = types.ObjectNull(radiusAttrTypes)
 	}
@@ -3904,18 +3984,25 @@ func (r *settingResource) readSettings(
 		}
 		_, snmpSetting, err := ui.GetSetting[*settings.Snmp](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading SNMP Setting", err.Error())
-			return
-		}
+			if !isNotFound(err) {
+				diags.AddError("Error Reading SNMP Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Snmp = types.ObjectNull(snmpAttrTypes)
+		} else {
 
-		objValue, d := types.ObjectValueFrom(
-			ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting, &prior),
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
+			objValue, d := types.ObjectValueFrom(
+				ctx, snmpAttrTypes, r.snmpSettingToModel(ctx, snmpSetting, &prior),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Snmp = objValue
 		}
-		data.Snmp = objValue
 	} else {
 		data.Snmp = types.ObjectNull(snmpAttrTypes)
 	}
@@ -3931,47 +4018,54 @@ func (r *settingResource) readSettings(
 
 		_, typedUsg, err := ui.GetSetting[*settings.Usg](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading USG Setting", err.Error())
-			return
-		}
-
-		usgSetting := &usgWithGeo{Usg: typedUsg}
-
-		// Newer controllers store Region Blocking under the standalone
-		// usg_geo setting: when the controller has one it is authoritative
-		// for the geo fields, so mirror it into the usg struct before
-		// conversion (#374). Older controllers keep them on usg itself,
-		// where only the raw payload still carries them.
-		planGeo, geoOK, d := util.ObjectAs[settingUsgGeoIPFilteringModel](
-			ctx,
-			planUSG.GeoIPFiltering,
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		if geoOK && usgGeoConfigured(&planGeo) {
-			rawData, found, err := r.readRawSettingData(ctx, site, usgGeoSettingKey)
-			if err != nil {
-				diags.AddError("Error Reading USG GeoIP Filtering Setting", err.Error())
+			if !isNotFound(err) {
+				diags.AddError("Error Reading USG Setting", err.Error())
 				return
 			}
-			if found {
-				applyUsgGeoIPFiltering(usgSetting, rawData)
-			} else if legacy, legacyFound, legacyErr := r.readRawSettingData(
-				ctx, site, usgSettingKey,
-			); legacyErr == nil && legacyFound {
-				applyLegacyUsgGeoIPFiltering(usgSetting, legacy)
-			}
-		}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.USG = types.ObjectNull(usgAttrTypes)
+		} else {
 
-		usgModel := r.usgSettingToModel(ctx, usgSetting, &planUSG)
-		objValue, d := types.ObjectValueFrom(ctx, usgAttrTypes, usgModel)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
+			usgSetting := &usgWithGeo{Usg: typedUsg}
+
+			// Newer controllers store Region Blocking under the standalone
+			// usg_geo setting: when the controller has one it is authoritative
+			// for the geo fields, so mirror it into the usg struct before
+			// conversion (#374). Older controllers keep them on usg itself,
+			// where only the raw payload still carries them.
+			planGeo, geoOK, d := util.ObjectAs[settingUsgGeoIPFilteringModel](
+				ctx,
+				planUSG.GeoIPFiltering,
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			if geoOK && usgGeoConfigured(&planGeo) {
+				rawData, found, err := r.readRawSettingData(ctx, site, usgGeoSettingKey)
+				if err != nil {
+					diags.AddError("Error Reading USG GeoIP Filtering Setting", err.Error())
+					return
+				}
+				if found {
+					applyUsgGeoIPFiltering(usgSetting, rawData)
+				} else if legacy, legacyFound, legacyErr := r.readRawSettingData(
+					ctx, site, usgSettingKey,
+				); legacyErr == nil && legacyFound {
+					applyLegacyUsgGeoIPFiltering(usgSetting, legacy)
+				}
+			}
+
+			usgModel := r.usgSettingToModel(ctx, usgSetting, &planUSG)
+			objValue, d := types.ObjectValueFrom(ctx, usgAttrTypes, usgModel)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.USG = objValue
 		}
-		data.USG = objValue
 	} else {
 		data.USG = types.ObjectNull(usgAttrTypes)
 	}
@@ -3980,16 +4074,23 @@ func (r *settingResource) readSettings(
 	if !data.IgmpSnooping.IsNull() && !data.IgmpSnooping.IsUnknown() {
 		_, igmpSetting, err := ui.GetSetting[*settings.IgmpSnooping](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading IGMP Snooping Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading IGMP Snooping Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.IgmpSnooping = types.ObjectNull(igmpSnoopingAttrTypes)
+		} else {
+			igmpModel := r.igmpSnoopingSettingToModel(ctx, igmpSetting, diags)
+			objValue, d := types.ObjectValueFrom(ctx, igmpSnoopingAttrTypes, igmpModel)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.IgmpSnooping = objValue
 		}
-		igmpModel := r.igmpSnoopingSettingToModel(ctx, igmpSetting, diags)
-		objValue, d := types.ObjectValueFrom(ctx, igmpSnoopingAttrTypes, igmpModel)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.IgmpSnooping = objValue
 	} else {
 		data.IgmpSnooping = types.ObjectNull(igmpSnoopingAttrTypes)
 	}
@@ -3998,19 +4099,26 @@ func (r *settingResource) readSettings(
 	if !data.Connectivity.IsNull() && !data.Connectivity.IsUnknown() {
 		_, connSetting, err := ui.GetSetting[*settings.Connectivity](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Connectivity Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Connectivity Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.Connectivity = types.ObjectNull(connectivityAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(
+				ctx,
+				connectivityAttrTypes,
+				r.connectivitySettingToModel(connSetting),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.Connectivity = objValue
 		}
-		objValue, d := types.ObjectValueFrom(
-			ctx,
-			connectivityAttrTypes,
-			r.connectivitySettingToModel(connSetting),
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.Connectivity = objValue
 	} else {
 		data.Connectivity = types.ObjectNull(connectivityAttrTypes)
 	}
@@ -4024,24 +4132,31 @@ func (r *settingResource) readSettings(
 	if !data.RadioAi.IsNull() && !data.RadioAi.IsUnknown() {
 		_, raSetting, err := ui.GetSetting[*settings.RadioAi](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Channel AI Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Channel AI Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.RadioAi = types.ObjectNull(radioAiAttrTypes)
+		} else {
+			model, d := r.radioAiSettingToModel(ctx, raSetting)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			objValue, d := types.ObjectValueFrom(ctx, radioAiAttrTypes, model)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			// An attribute the plan carries as null from prior state (one added
+			// after the state was written, or one the controller did not report)
+			// stays null, as in mdns: filling it from the controller here would be
+			// an inconsistent result after apply.
+			data.RadioAi = keepNullAttributes(data.RadioAi, objValue, diags)
 		}
-		model, d := r.radioAiSettingToModel(ctx, raSetting)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		objValue, d := types.ObjectValueFrom(ctx, radioAiAttrTypes, model)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		// An attribute the plan carries as null from prior state (one added
-		// after the state was written, or one the controller did not report)
-		// stays null, as in mdns: filling it from the controller here would be
-		// an inconsistent result after apply.
-		data.RadioAi = keepNullAttributes(data.RadioAi, objValue, diags)
 	} else {
 		data.RadioAi = types.ObjectNull(radioAiAttrTypes)
 	}
@@ -4050,19 +4165,26 @@ func (r *settingResource) readSettings(
 	if !data.GlobalSwitch.IsNull() && !data.GlobalSwitch.IsUnknown() {
 		_, gsSetting, err := ui.GetSetting[*settings.GlobalSwitch](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Global Switch Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Global Switch Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.GlobalSwitch = types.ObjectNull(globalSwitchAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(
+				ctx,
+				globalSwitchAttrTypes,
+				r.globalSwitchSettingToModel(ctx, gsSetting, diags),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.GlobalSwitch = objValue
 		}
-		objValue, d := types.ObjectValueFrom(
-			ctx,
-			globalSwitchAttrTypes,
-			r.globalSwitchSettingToModel(ctx, gsSetting, diags),
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.GlobalSwitch = objValue
 	} else {
 		data.GlobalSwitch = types.ObjectNull(globalSwitchAttrTypes)
 	}
@@ -4070,19 +4192,26 @@ func (r *settingResource) readSettings(
 	if !data.EtherLighting.IsNull() && !data.EtherLighting.IsUnknown() {
 		_, elSetting, err := ui.GetSetting[*settings.EtherLighting](r.client.ApiClient, ctx, site)
 		if err != nil {
-			diags.AddError("Error Reading Etherlighting Setting", err.Error())
-			return
+			if !isNotFound(err) {
+				diags.AddError("Error Reading Etherlighting Setting", err.Error())
+				return
+			}
+			// The controller stores no such setting (a reset site has no
+			// radius or snmp key): read the section as unset so the plan
+			// writes it again.
+			data.EtherLighting = types.ObjectNull(etherLightingAttrTypes)
+		} else {
+			objValue, d := types.ObjectValueFrom(
+				ctx,
+				etherLightingAttrTypes,
+				r.etherLightingSettingToModel(ctx, elSetting, diags),
+			)
+			diags.Append(d...)
+			if diags.HasError() {
+				return
+			}
+			data.EtherLighting = objValue
 		}
-		objValue, d := types.ObjectValueFrom(
-			ctx,
-			etherLightingAttrTypes,
-			r.etherLightingSettingToModel(ctx, elSetting, diags),
-		)
-		diags.Append(d...)
-		if diags.HasError() {
-			return
-		}
-		data.EtherLighting = objValue
 	} else {
 		data.EtherLighting = types.ObjectNull(etherLightingAttrTypes)
 	}
