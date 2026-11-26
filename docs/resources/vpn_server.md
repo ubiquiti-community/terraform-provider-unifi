@@ -223,7 +223,7 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# VPN servers can be imported by their 24-character hex network ID:
+# VPN servers can be imported by their network ID (24-character hex, or a UUID on UniFi Network 11):
 terraform import unifi_vpn_server.wireguard 5f3e1c2b9a8d7e6f5a4b3c2d
 
 # Or by name, using the "name=" prefix:

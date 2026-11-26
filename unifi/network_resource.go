@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -2048,7 +2047,7 @@ func (r *networkResource) ImportState(
 	resp *resource.ImportStateResponse,
 ) {
 	// Import by ID string (terraform import CLI, or import block with id set).
-	// Formats: "site:id", "name=<name>", a bare 24-hex controller ObjectID, or
+	// Formats: "site:id", "name=<name>", a bare controller ID (ObjectID or UUID), or
 	// a plain network name.
 	if req.ID != "" {
 		var site types.String
@@ -2063,7 +2062,7 @@ func (r *networkResource) ImportState(
 		if strings.HasPrefix(req.ID, "name=") {
 			req.ID = strings.TrimPrefix(req.ID, "name=")
 			resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
-		} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+		} else if isControllerID(req.ID) {
 			idModel := networkIdentityModel{ID: types.StringValue(req.ID), Site: site}
 			resp.Diagnostics.Append(
 				resp.State.SetAttribute(ctx, path.Root("id"), idModel.ID)...)

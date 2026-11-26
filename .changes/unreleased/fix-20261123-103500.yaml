@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_network`, `unifi_wan`, `unifi_wlan`, `unifi_vpn_client` and `unifi_vpn_server`: importing by a UniFi Network 11 UUID imports by ID.** Only a 24-hex ObjectID counted as an ID, so a UUID was looked up as a name and the import failed with "not found". Both forms are now accepted (from #715)'
+time: 2026-11-23T10:35:00.000000000Z

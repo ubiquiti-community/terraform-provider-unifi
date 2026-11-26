@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -1923,7 +1922,7 @@ func (r *wlanFrameworkResource) ImportState(
 	rootAttributeName := "name"
 	if strings.HasPrefix(req.ID, "name=") {
 		req.ID = strings.TrimPrefix(req.ID, "name=")
-	} else if regexp.MustCompile(`^[0-9a-f]{24}$`).MatchString(req.ID) {
+	} else if isControllerID(req.ID) {
 		rootAttributeName = "id"
 	}
 
