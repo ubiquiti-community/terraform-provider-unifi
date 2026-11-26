@@ -595,7 +595,9 @@ func (r *networkResource) Schema(
 					"controllers (notably UniFi OS gateways) ignore `mdns_enabled` " +
 					"at create/update time and always store `false`, so forcing a " +
 					"`true` default produced a \"provider produced inconsistent " +
-					"result after apply\" error.",
+					"result after apply\" error. On Network 11 and later the flag " +
+					"mirrors `unifi_setting`'s `mdns.enabled_for_network_ids` and " +
+					"writes to it are ignored; choose the networks there.",
 				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{

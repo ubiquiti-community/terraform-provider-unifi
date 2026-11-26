@@ -248,3 +248,5 @@ tool (
 	github.com/miniscruff/changie
 	gotest.tools/gotestsum
 )
+
+replace github.com/ubiquiti-community/go-unifi => github.com/scottsuch/go-unifi v1.33.43-0.20261117235920-bd6384fbf778
