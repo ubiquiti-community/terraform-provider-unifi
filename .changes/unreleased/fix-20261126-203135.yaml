@@ -1,0 +1,3 @@
+kind: fix
+body: '**`unifi_network`: importing a network stored without a DHCP lease time no longer plans and writes `24h`.** `dhcp_server.leasetime` used `StringDefaultOnCreate`, which plans its default whenever the prior value is null, imports included, so a network created through the API without `dhcpd_leasetime` planned `null -> 24h0m0s` on adoption. It now holds the null while `dhcp_server` already exists in state, and still plans `24h0m0s` on create and when a DHCP server is added to an existing network, which is what the provider sends then (#761, part of #544)'
+time: 2026-11-26T20:31:35.781406+11:00
