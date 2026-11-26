@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/list"
 	listschema "github.com/hashicorp/terraform-plugin-framework/list/schema"
@@ -21,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/ubiquiti-community/go-unifi/unifi"
 	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/planmodifiers"
+	"github.com/ubiquiti-community/terraform-provider-unifi/unifi/validators"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -115,7 +115,7 @@ func (r *dynamicDNSResource) Schema(
 			},
 			"interface": schema.StringAttribute{
 				MarkdownDescription: "The interface for the dynamic DNS. Can be `wan` or " +
-					"`wan2`. Defaults to `wan` for a new entry; an existing entry keeps the " +
+					"`wan2` through `wan9`. Defaults to `wan` for a new entry; an existing entry keeps the " +
 					"controller's value when this is not set, so adopting a `wan2` entry " +
 					"does not plan to replace it (#544).",
 				Optional: true,
@@ -127,7 +127,7 @@ func (r *dynamicDNSResource) Schema(
 					stringplanmodifier.RequiresReplace(),
 				},
 				Validators: []validator.String{
-					stringvalidator.OneOf("wan", "wan2"),
+					validators.WANInterface(),
 				},
 			},
 			"service": schema.StringAttribute{

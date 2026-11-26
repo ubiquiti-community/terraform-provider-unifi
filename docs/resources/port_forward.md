@@ -132,7 +132,7 @@ resource "unifi_port_forward" "game_server" {
 Optional:
 
 - `destination_ip` (String) The destination IPv4 address. Use `any` for all addresses.
-- `interface` (String) The WAN interface for this destination (e.g. `wan`, `wan2`).
+- `interface` (String) The WAN interface for this destination: `wan`, or `wan2` through `wan9`.
 
 
 <a id="nestedatt--forward"></a>
@@ -171,7 +171,7 @@ Optional:
 
 Optional:
 
-- `interface` (String) The WAN interface. Can be `wan`, `wan2`, or `both`.
+- `interface` (String) The WAN interface. Can be `wan`, `wan2` through `wan9`, or `both`.
 - `ip_address` (String) The WAN IP address for the port forwarding rule. Use `any` for all addresses.
 - `port` (String) The WAN port or port range (e.g. `1-10,11,12`).
 

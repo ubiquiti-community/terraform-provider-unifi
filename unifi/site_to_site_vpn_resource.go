@@ -291,8 +291,8 @@ func (r *siteToSiteVPNResource) Schema(
 				},
 			},
 			"interface": schema.StringAttribute{
-				MarkdownDescription: "The local WAN interface the tunnel binds to (e.g. `wan`, " +
-					"`wan2`). Defaults to `wan` for a new tunnel; an existing tunnel keeps the " +
+				MarkdownDescription: "The local WAN interface the tunnel binds to: `wan`, or " +
+					"`wan2` through `wan9`. Defaults to `wan` for a new tunnel; an existing tunnel keeps the " +
 					"controller's value when this is not set, so adopting a tunnel on `wan2` " +
 					"does not move it (#544).",
 				Optional: true,
@@ -301,7 +301,7 @@ func (r *siteToSiteVPNResource) Schema(
 					planmodifiers.StringDefaultOnCreateKeepNull("wan"),
 				},
 				Validators: []validator.String{
-					stringvalidator.OneOf("wan", "wan2"),
+					validators.WANInterface(),
 				},
 			},
 			"peer_ip": schema.StringAttribute{
