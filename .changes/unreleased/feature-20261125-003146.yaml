@@ -1,0 +1,3 @@
+kind: feature
+body: '**`unifi_site_to_site_vpn`: choose which local networks the tunnel exposes.** New `local_subnets_mode` (`all`, `selected_networks`, `custom`), `local_network_ids` and `local_subnets` map the controller''s `local_vpn_subnets_mode`, `local_vpn_networkconf_ids` and `local_vpn_subnets`. An adopted tunnel keeps the selection stored on the controller when the attributes are not set.'
+time: 2026-11-25T00:31:46.278703+02:00
